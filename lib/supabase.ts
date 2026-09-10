@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import { getSupabaseEnvConfig } from '@/lib/config';
 
 const config = getSupabaseEnvConfig();
@@ -7,10 +7,14 @@ const config = getSupabaseEnvConfig();
 // SUPABASE_SERVICE_ROLE_KEY is server-only and never inlined in client bundles.
 export const isSupabaseConfigured = Boolean(config.supabaseUrl && config.anonKey);
 
-export const supabase = createClient(
+/**
+ * SESSION STORAGE CONTRACT — the browser client MUST share its session through
+ * cookies (`createBrowserClient`), never localStorage. Server Components
+ * (`createSupabaseServerClient`) and the middleware (`createServerClient`) read
+ * the session from cookies; a localStorage-only client produces the
+ * "login → glimpse of dashboard → kicked to /login" loop on production.
+ */
+export const supabase = createBrowserClient(
   config.supabaseUrl || 'https://example.supabase.co',
-  config.anonKey || 'invalid-anon-key',
-  {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-  }
+  config.anonKey || 'invalid-anon-key'
 );
