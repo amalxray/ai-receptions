@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-09-03T22:06:20.580Z",
+  "steps": [
+    {
+      "id": "typescript",
+      "status": "pass",
+      "evidence": "0 errors"
+    },
+    {
+      "id": "tests",
+      "status": "pass",
+      "evidence": "Tests  1501 passed"
+    },
+    {
+      "id": "build",
+      "status": "pass",
+      "evidence": "          328 kB\n├ ƒ /d/[slug]                                                  168 B          87.6 kB\n├ ○ /dashboard                                                 168 B          87.6 kB\n├ ○ /dashboard/ads                                             4.89 kB         156 kB\n├ ○ /dashboard/ai-settings                                     4.5 kB          155 kB\n├ ○ /dashboard/analytics                                       4.6 kB          155 kB\n├ ○ /dashboard/appointments                                    10.3 kB         161 kB\n├ ○ /dashboard/clinic-setup                                    4.67 kB         164 kB\n├ ○ /dashboard/communication-settings                          3.5 kB          154 kB\n├ ○ /dashboard/conversations                                   4.58 kB         164 kB\n├ ƒ /dashboard/conversations/[id]                              5.35 kB         165 kB\n├ ○ /dashboard/financial-intelligence                          4.44 kB         155 kB\n├ ○ /dashboard/growth                                          4.95 kB         156 kB\n├ ○ /dashboard/imaging                                         146 B           156 kB\n├ ○ /dashboard/knowledge                                       168 B          87.6 kB\n├ ○ /dashboard/knowledge-base                                  6.11 kB         157 kB\n├ ○ /dashboard/lab                                             146 B           156 kB\n├ ○ /dashboard/leads                                           1.53 kB        88.9 kB\n├ ○ /dashboard/notifications                                   3.67 kB         154 kB\n├ ○ /dashboard/overview                                        5.72 kB         156 kB\n├ ○ /dashboard/patients                                        6.34 kB         157 kB\n├ ○ /dashboard/providers                                       6.33 kB         165 kB\n├ ○ /dashboard/services                                        182 B           159 kB\n├ ○ /dashboard/setup                                           3.48 kB         163 kB\n├ ○ /dashboard/subscription                                    6.64 kB         157 kB\n├ ○ /dashboard/team                                            5.26 kB         156 kB\n├ ○ /demo                                                      182 B          96.3 kB\n├ ƒ /discover                                                  168 B          87.6 kB\n├ ○ /login                                                     2.1 kB          161 kB\n├ ○ /portal                                                    1.25 kB        88.7 kB\n├ ƒ /portal/auth/callback                                      0 B                0 B\n├ ○ /portal/balance                                            1.12 kB        88.5 kB\n├ ○ /portal/intake                                             2.14 kB        89.6 kB\n├ ○ /portal/invoices                                           941 B          88.4 kB\n├ ƒ /portal/invoices/[invoiceId]                               1.1 kB         88.5 kB\n├ ○ /portal/login                                              6.33 kB         157 kB\n├ ○ /portal/payments                                           1.02 kB        88.4 kB\n├ ƒ /q/[publicId]                                              0 B                0 B\n├ ○ /receptionist                                              3.32 kB        90.7 kB\n├ ○ /register                                                  3.26 kB        99.3 kB\n├ ○ /robots.txt                                                0 B                0 B\n├ ○ /setup                                                     1.69 kB        89.1 kB\n└ ƒ /sitemap.xml                                               0 B                0 B\n+ First Load JS shared by all                                  87.4 kB\n  ├ chunks/2117-90ebbd2a266026e4.js                            31.7 kB\n  ├ chunks/fd9d1056-2d7a8d217105eef5.js                        53.7 kB\n  └ other shared chunks (total)                                2.02 kB\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n"
+    },
+    {
+      "id": "migrations_order",
+      "status": "pass",
+      "evidence": "49 migrations, filename-date ordered"
+    },
+    {
+      "id": "database_rls",
+      "status": "pass",
+      "evidence": "RLS enabled on all 6 critical tables"
+    },
+    {
+      "id": "targeted_security",
+      "status": "pass",
+      "evidence": "Tests  65 passed"
+    }
+  ],
+  "external": {
+    "supabase_backups_pitr": "open",
+    "staging_project": "open",
+    "restore_drill": "open",
+    "stripe_production_secrets": "open",
+    "stripe_connect_kyc": "open",
+    "country_gate_ps_jo_sa_kw": "open",
+    "owner_approval_first_real_patient": "open"
+  },
+  "code": "PASS",
+  "overall": "PASS — IMPLEMENTATION COMPLETE / EXTERNAL GATES OPEN",
+  "reason": "7 external gate(s) still open"
+}

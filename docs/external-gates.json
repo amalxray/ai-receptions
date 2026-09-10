@@ -1,0 +1,39 @@
+{
+  "_comment": "PHASE 8 — External Gates status. ONLY the Owner may change 'open' to 'closed' (with evidence). The readiness gate script treats anything not 'closed' as OPEN — this file can never fake a PASS.",
+  "_updated_by": "agent (initial scaffold 2026-09-03 — all gates OPEN)",
+  "supabase_backups_pitr": {
+    "status": "open",
+    "owner_action": "Supabase Dashboard → Database → Backups → enable Daily Backups (+ PITR on Pro plan)",
+    "evidence": "API probe (2026-08-24): pitr_enabled=false, backups=[]"
+  },
+  "staging_project": {
+    "status": "open",
+    "owner_action": "Create second Supabase project (staging) + Vercel preview env with TEST-only keys — steps in PRE_PRODUCTION_CHECKLIST.md §STAGING SETUP",
+    "evidence": "no staging project exists as of 2026-09-03"
+  },
+  "restore_drill": {
+    "status": "open",
+    "owner_action": "Execute docs/phase8-restore-drill.md on staging after backups+staging exist (BLOCKED until then — documented 2026-08-24)",
+    "evidence": "blocked on staging_project"
+  },
+  "stripe_production_secrets": {
+    "status": "open",
+    "owner_action": "Provide Stripe LIVE restricted keys (secret + webhook secret) outside the repo",
+    "evidence": "only TEST keys ever used; no live charges allowed in any phase"
+  },
+  "stripe_connect_kyc": {
+    "status": "open",
+    "owner_action": "Stripe Connect onboarding / KYC for the platform account",
+    "evidence": "not started (external)"
+  },
+  "country_gate_ps_jo_sa_kw": {
+    "status": "open",
+    "owner_action": "Confirm launch countries (PS / JO / SA / KW) and any per-country compliance requirements",
+    "evidence": "country_profiles seeded (Localization Foundation); launch decision pending"
+  },
+  "owner_approval_first_real_patient": {
+    "status": "open",
+    "owner_action": "Explicit Owner approval to start FIRST REAL CLINIC / FIRST REAL PATIENT (MASTER PLAN §12)",
+    "evidence": "GO gate: 'لا GO حتى تفعيل Backups/PITR + Restore Drill ناجح' (PROJECT_STATUS, 2026-08-24)"
+  }
+}
