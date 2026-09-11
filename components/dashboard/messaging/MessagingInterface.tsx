@@ -658,8 +658,15 @@ export default function MessagingInterface({ clinicId }: Props) {
             </ul>
           )}
         </div>
-        {selectedPartner && (
+        {/* Composer — always visible (fix: no "no place to type" state).
+        Active only once a partner thread is selected. */}
+        {(selectedPartner || allPartners.length > 0) && (
           <div className="border-t border-slate-800 p-3">
+            {!selectedPartner && (
+              <p className="mb-2 text-xs text-cyan-300/80">
+                اختر شريكاً من القائمة لبدء المحادثة — يمكنك الكتابة بعد الاختيار.
+              </p>
+            )}
             {error && <p className="mb-2 text-xs text-rose-400">{error}</p>}
 
             {files.length > 0 && (
@@ -759,10 +766,10 @@ export default function MessagingInterface({ clinicId }: Props) {
               <button
                 type="button"
                 onClick={() => void sendMessage()}
-                disabled={sending || (!content.trim() && files.length === 0)}
+                disabled={sending || !selectedPartner || (!content.trim() && files.length === 0)}
                 className="rounded-full bg-cyan-500 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"
               >
-                {sending ? 'جارٍ الإرسال...' : 'إرسال'}
+                {sending ? 'جارٍ الإرسال...' : '🚀 إرسال'}
               </button>
             </div>
           </div>

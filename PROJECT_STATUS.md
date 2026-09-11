@@ -2,6 +2,11 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-11 — FIX: messages composer always visible (no "no place to type" state)
+
+- Root cause: `components/dashboard/messaging/MessagingInterface.tsx` rendered the text composer ONLY inside `{selectedPartner && …}` — the input/buttons vanished until a thread was selected (and with no partners at all there was no affordance at all).
+- Fix: composer block now renders whenever partners exist (or a thread is selected): shows a helper line "اختر شريكاً من القائمة…" before selection, the input is always visible, and the send button is disabled until a partner is chosen. Send disabled logic: `sending || !selectedPartner || (!content.trim() && files.length === 0)` · Enter key sends (existing).
+- Verified: `tsc` app = 0 errors, `npm run build` = PASS (160 pages).
 ## 2026-09-11 — PHASE B ✅ (Platform Admin UI/APIs) + Register activity_type + Activity-Aware Labels
 
 ### ما تم بناؤه (deployed — commit `43c80b6`, BUILD PASS 160 pages)
