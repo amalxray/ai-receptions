@@ -88,16 +88,21 @@ export default function DashboardNav() {
     clinicSlug ? tenantDashboardUrl(clinicSlug, module) : `/dashboard/${module}`;
 
   return (
-    <nav aria-label="قائمة لوحة التحكم" className="space-y-5">
-      {groups.map((group) => {
+    <nav aria-label="قائمة لوحة التحكم" className="space-y-2">
+      {groups.map((group, index) => {
         const items = group.items.filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module));
         if (items.length === 0) return null;
         return (
-          <div key={group.id}>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {group.icon} {group.label}
-            </p>
-            <div className="mt-2 space-y-1">
+          <details key={group.id} open={index === 0} className="group rounded-xl border border-slate-800/70 bg-slate-950/40">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-200">
+              <span>
+                {group.icon} {group.label}
+              </span>
+              <span className="text-slate-600 transition group-open:rotate-90" aria-hidden="true">
+                ▸
+              </span>
+            </summary>
+            <div className="space-y-1 px-2 pb-2 pt-1">
               {items.map((item) => (
                 <Link
                   key={item.module}
@@ -108,7 +113,7 @@ export default function DashboardNav() {
                 </Link>
               ))}
             </div>
-          </div>
+          </details>
         );
       })}
     </nav>

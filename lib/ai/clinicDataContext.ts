@@ -19,6 +19,7 @@ export type ClinicServiceForAI = {
   description: string | null;
   duration_minutes: number;
   pricing_type: 'unspecified' | 'fixed' | 'estimate' | 'range' | 'case_by_case' | null;
+  price: number | null;
   price_min: number | null;
   price_max: number | null;
   price_visible_to_patients: boolean;
@@ -56,7 +57,7 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
       supabaseAdmin
         .from('clinic_services')
         .select(
-          'id, name, description, duration_minutes, pricing_type, price_min, price_max, price_visible_to_patients, active'
+          'id, name, description, duration_minutes, pricing_type, price, price_min, price_max, price_visible_to_patients, active'
         )
         .eq('clinic_id', clinicId)
         .eq('active', true)
@@ -101,16 +102,23 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
 export function describeServicePrice(service: ClinicServiceForAI): string | null {
   const hidden = service.price_visible_to_patients === false;
   if (hidden) return null;
+  // Canonical fixed price lives in `price` (price_min is the legacy fallback —
+  // the بانوراما bug: price=30 stored, price_min=null → showed "غير محدد").
+  const fixed = service.price != null && Number(service.price) > 0 ? String(service.price) : null;
+  const legacyFixed = service.price_min != null && Number(service.price_min) > 0 ? String(service.price_min) : null;
   switch (service.pricing_type) {
     case 'fixed':
-      return service.price_min != null && Number(service.price_min) > 0 ? String(service.price_min) : null;
-    case 'range':
-      if (service.price_min != null && service.price_max != null && Number(service.price_min) > 0 && Number(service.price_max) >= Number(service.price_min)) {
-        return `${service.price_min}–${service.price_max}`;
-      }
-      return null;
-    case 'estimate':
+      return fixed ?? legacyFixed;
+    case 'range': {
+      const min = service.price_min != null && Number(service.price_min) > 0 ? Number(service.price_min) : null;
+      const max = service.price_max != null ? Number(service.price_max) : null;
+      if (min != null && max != null && max >= min) return `${min}–${max}`;
+      return fixed ?? null;
+    }
+    case 'estimate': {
+      if (fixed) return `≈${fixed}`;
       return service.price_min != null && Number(service.price_min) > 0 ? `≈${service.price_min}` : null;
+    }
     case 'case_by_case':
     case 'unspecified':
     default:

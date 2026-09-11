@@ -8,7 +8,10 @@ const availabilitySchema = z.object({
   provider_id: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
   service_id: z.string().uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(20).optional().default(10),
+  // A full working day (9:00–20:00) with short imaging services (5–15 min)
+  // spans well over a hundred slots — the old max=20 truncated the day to its
+  // first hour. Return the whole day by default.
+  limit: z.coerce.number().int().min(1).max(200).optional().default(200),
 });
 
 export async function GET(req: Request) {

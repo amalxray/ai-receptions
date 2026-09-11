@@ -460,6 +460,16 @@ function BookingForm() {
               <button onClick={resetBooking} className="mt-8 inline-flex items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400">
                 حجز موعد آخر
               </button>
+
+              {/* العودة لصفحة العيادة العامة (وليس الرئيسية) — نفس مسار شريط الدعاية */}
+              <p className="mt-4">
+                <Link
+                  href={clinic.status === 'ready' ? `/${clinic.clinic.slug}` : '/'}
+                  className="text-sm text-cyan-300 underline-offset-4 hover:text-cyan-200 hover:underline"
+                >
+                  العودة إلى صفحة العيادة
+                </Link>
+              </p>
             </div>
           ) : clinic.status === 'ready' ? (
             <>
@@ -661,7 +671,9 @@ function BookingForm() {
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">
-          <Link href="/" className="hover:text-slate-300">العودة للرئيسية</Link>
+          <Link href={clinic.status === 'ready' ? `/${clinic.clinic.slug}` : '/'} className="hover:text-slate-300">
+            {clinic.status === 'ready' ? 'العودة إلى صفحة العيادة' : 'العودة للرئيسية'}
+          </Link>
         </p>
       </div>
     </main>

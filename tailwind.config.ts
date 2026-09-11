@@ -115,6 +115,13 @@ const config: Config = {
         'dot-pulse': 'dot-pulse 1.5s ease-in-out infinite',
         'blob-drift': 'blob-drift 18s ease-in-out infinite',
         'num-float': 'num-float 4s ease-in-out infinite',
+        'float-slow': 'float-slow 9s ease-in-out infinite',
+        'float-slower': 'float-slower 14s ease-in-out infinite',
+        drift: 'drift 12s ease-in-out infinite',
+        reveal: 'reveal 0.7s ease-out both',
+        // News ticker: linear + duration set inline (tickerDuration); content is
+        // duplicated once and translated -50% for a seamless loop.
+        ticker: 'ticker linear infinite',
       },
       keyframes: {
         'pulse-coral': {
@@ -133,6 +140,26 @@ const config: Config = {
         'num-float': {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-8px)' },
+        },
+        'float-slow': {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '50%': { transform: 'translate(-24px, 18px) scale(1.05)' },
+        },
+        'float-slower': {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '50%': { transform: 'translate(20px, -14px) scale(0.96)' },
+        },
+        drift: {
+          '0%, 100%': { transform: 'translate(0, 0)', opacity: '0.6' },
+          '50%': { transform: 'translate(-14px, 22px)', opacity: '1' },
+        },
+        reveal: {
+          from: { opacity: '0', transform: 'translateY(14px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        ticker: {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(-50%)' },
         },
       },
     },
