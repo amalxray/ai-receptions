@@ -3,5 +3,9 @@
 .restore-drill/**
 LM_Studio.AppImage
 *.zip
-Patients
+# Root-anchored: the legacy `Patients/` folder in the repo root ONLY.
+# A bare `Patients` pattern also matched every `.../patients/...` route and
+# silently dropped the patients page, its API routes and the payments panel
+# from deployments (the 404 + missing "إضافة دفعة" root cause).
+/Patients/
 
