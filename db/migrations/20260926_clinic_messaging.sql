@@ -128,7 +128,7 @@ BEGIN
         partner.id AS partner_id,
         partner.name AS partner_name,
         partner.slug AS partner_slug,
-        partner.activity_type AS partner_activity,
+        partner.activity_type::TEXT AS partner_activity,
         lm.id::UUID AS last_message_id,
         lm.content AS last_content,
         lm.file_name AS last_file_name,
