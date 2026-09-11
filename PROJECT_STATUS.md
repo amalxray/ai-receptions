@@ -2,6 +2,27 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-11 — PHASE B ✅ (Platform Admin UI/APIs) + Register activity_type + Activity-Aware Labels
+
+### ما تم بناؤه (deployed — commit `43c80b6`, BUILD PASS 160 pages)
+
+| Area | Detail |
+|---|---|
+| **Admin guards** | `lib/services/platformAdmin.ts` (getPlatformAdmin/requirePlatformAdmin) + `middleware.ts` guard (`/admin/*` → 307 login · `/api/admin/*` → 401) + server layout `app/admin/layout.tsx` re-verifies `platform_admins` |
+| **Admin pages (6)** | `/admin` (stats) · `/admin/clinics` (+ toggle activate/disable) · `/admin/clinics/[id]` · `/admin/users` · `/admin/subscriptions` (+ manual extend) · `/admin/notifications` · `/admin/settings` |
+| **Admin APIs (6)** | `GET /api/admin/stats` · `GET /api/admin/clinics` · `GET|PATCH /api/admin/clinics/[id]` · `GET /api/admin/users` · `GET|POST /api/admin/subscriptions` · `POST /api/admin/notifications` |
+| **Register activity_type** | 3 choice buttons (عيادة أسنان/مركز تصوير/مختبر أسنان) + dynamic labels; route schema `activity_type` → saved on `clinics` (verified live: `{"activity_type":"imaging_center"}`) |
+| **Activity labels** | `lib/clinic/activityLabels.ts` + applied in DashboardSidebar, ActivityIdentity, overview page (تصوير اليوم/حالات اليوم...) |
+| **Navbar** | Platform owner → "لوحة التحكم" points to `/admin`; clinic owners → `/dashboard/{slug}/overview` |
+
+### Verified live
+- `/admin` unauth → 307 `/login?next=/admin` · `/api/admin/stats` unauth → 401
+- `/register` shows نوع النشاط buttons · activity_type persisted (E2E test then cleaned)
+- Build 160/160 PASS · tsc app = 0 errors
+
+### Pending / Next
+- Admin CMS (`/admin/content`), analytics charts (`/admin/analytics`), audit-logs UI (data exists in `audit_logs`-style tables) — can extend the same guarded pattern.
+- Stripe webhook secret (auto-activation) still needs the owner to add `whsec_...` on Vercel.
 ## 2026-09-11 — HARDENING + P0/P1 + PLATFORM ADMIN FOUNDATION (PHASE A)
 
 ### Latest production state (ai-receptions.vercel.app — READY)
