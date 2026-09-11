@@ -2,6 +2,31 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-11 — HARDENING + P0/P1 + PLATFORM ADMIN FOUNDATION (PHASE A)
+
+### Latest production state (ai-receptions.vercel.app — READY)
+
+| Area | What changed | Files |
+|---|---|---|
+| **Session/login loop fixed** | `createBrowserClient` (@supabase/ssr) — cookie session consistent with server/middleware | `lib/supabase.ts` |
+| **Dashboard routing** | `/dashboard` resolves memberships server-side → canonical tenant URL; 17 legacy flat modules are compat-redirects; patients page shipped (`.vercelignore` root-anchored `/Patients/`) | `app/(dashboard)/dashboard/*`, `.vercelignore` |
+| **Arabic shell** | Sidebar groups (activity-aware, collapsible, persisted in localStorage) + Arabic header/branding | `components/dashboard/DashboardNav.tsx`, `DashboardSidebar.tsx`, layout |
+| **Booking slots** | Availability `limit` 10→200 (full 9:00–20:00 day, 132 slots), 12h labels (9:00 ص / 1:00 م), booking redirect → `/{slug}` | `app/api/booking/availability/route.ts`, `app/book/page.tsx` |
+| **Patient finance** | payments panel shipped (cash/card/transfer/insurance), invoice ✅ print button, `patient_id` upload fix, `record_payment` RPC verified live (RCP-2026-000001..3) then demo data voided/soft-deleted | `components/dashboard/patients/PatientFinancialFilesPanel.tsx`, `app/api/clinic/medical-files/route.ts` |
+| **Public content / ticker** | content tables created + GRANTed; ticker keyframes + promo row + `sections.news` read (fix in `clinicPublicProfile.ts`) — ticker visible & animated | `db/migrations/20260928_public_page_content.sql`, `tailwind.config.ts`, `lib/services/clinicPublicProfile.ts` |
+| **Chat suggestions** | activity-aware chips (`suggestedQuestionsFor(activityType)`) — clinic / imaging_center / dental_lab | `components/chat/ChatInterface.tsx`, `FloatingChatWidget.tsx`, `ActivitySpaceChrome.tsx` |
+| **Stripe (P0)** | `STRIPE_SECRET_KEY`, `STRIPE_PRICE_{FOUNDING,GROWTH,PRO}_MONTHLY`, `STRIPE_MODE=test` added to Vercel env (prod/preview/dev). ⚠️ `STRIPE_WEBHOOK_SECRET` still needs to be added from Stripe dashboard for auto-activation | Vercel project env |
+| **Landing CTAs (P1)** | Navbar: تسجيل الدخول / ابدأ مجاناً (أو "لوحة التحكم" عند الجلسة) · Hero: "ابدأ الآن مجاناً ←" · Footer quick links | `components/landing/Navbar.tsx`, `Hero.tsx`, `LandingPage.tsx` |
+
+### Phase A — Platform Super Admin foundation ✅ (DONE — backend/DB level)
+
+- **Migration**: `db/migrations/20260912_platform_admins.sql` — `platform_admins` table (user_id FK → auth.users, role `owner|admin|viewer`), RLS (self-select policy) + service_role GRANT, additive indexes. Applied to prod.
+- **Seed**: `scripts/seed-platform-admin.mjs` — idempotent; created auth user `shadi_nouri78@hotmail.com` (confirmed) + `platform_admins` row (`role=owner`). Verified in DB: `[{id 59fb80fb…, email shadi_nouri78@hotmail.com, role owner}]`.
+- **⏭ Pending Phase B**: `/admin` dashboard + `/admin/clinics|users|subscriptions|notifications|settings` UIs, `/api/admin/*` routes with `platform_admins` gate, middleware guard, Navbar "👑 لوحة المالك" for platform owners. **Awaiting user go-ahead.**
+
+### Known baseline noise (pre-existing, not from recent work)
+- `tests/unit/*` type errors (`.price` field contract after pricing fix) — excluded from app build; app tsc/build clean (BUILD PASS, 149 pages).
+
 ## Clinic Registration & Authentication Verification
 
 **Status: COMPLETE — Verified against real Supabase**
