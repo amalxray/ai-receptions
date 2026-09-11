@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { groupNavLinks, type NavModule } from '@/lib/services/dashboardNavModel';
@@ -79,22 +80,60 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
 // in the API (roleDenied) and RLS.
 const ADMIN_ONLY_MODULES = new Set(['providers', 'services', 'ai-settings', 'subscription', 'team', 'setup']);
 
+/** localStorage key remembering open/collapsed sidebar groups. */
+const OPEN_STATE_KEY = 'dashnav_open_groups_v1';
+
+function readOpenState(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(OPEN_STATE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function DashboardNav() {
   const { role, clinicSlug, activityType } = useClinicContext();
   const isAdmin = role === 'owner' || role === 'manager';
   const groups = groupNavLinks(getActivityNavigation(activityType));
+  const firstGroupId = groups.length > 0 ? groups[0].id : undefined;
+
+  // Open/closed state: persisted in localStorage; the FIRST group (التشغيل
+  // اليومي) is open by default unless the user collapsed it before.
+  const persisted = useMemo(readOpenState, []);
+  const [openState, setOpenState] = useState<Record<string, boolean>>({});
+
+  const isOpen = (id: string): boolean =>
+    openState[id] ?? persisted[id] ?? id === firstGroupId;
+
+  const toggle = (id: string) => {
+    const next = { ...openState, [id]: !isOpen(id) };
+    setOpenState(next);
+    try {
+      window.localStorage.setItem(OPEN_STATE_KEY, JSON.stringify(next));
+    } catch {
+      /* storage unavailable — keep session-only */
+    }
+  };
 
   const hrefFor = (module: string): string =>
     clinicSlug ? tenantDashboardUrl(clinicSlug, module) : `/dashboard/${module}`;
 
   return (
     <nav aria-label="قائمة لوحة التحكم" className="space-y-2">
-      {groups.map((group, index) => {
+      {groups.map((group) => {
         const items = group.items.filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module));
         if (items.length === 0) return null;
         return (
-          <details key={group.id} open={index === 0} className="group rounded-xl border border-slate-800/70 bg-slate-950/40">
-            <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-200">
+          <details key={group.id} open={isOpen(group.id)} className="group rounded-xl border border-slate-800/70 bg-slate-950/40">
+            <summary
+              onClick={(e) => {
+                e.preventDefault();
+                toggle(group.id);
+              }}
+              className="flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-200"
+            >
               <span>
                 {group.icon} {group.label}
               </span>

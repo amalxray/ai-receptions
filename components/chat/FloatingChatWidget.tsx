@@ -19,11 +19,14 @@ export default function FloatingChatWidget({
   clinicId,
   clinicName,
   externalOpenSignal,
+  activityType = null,
 }: {
   clinicId: string;
   clinicName?: string | null;
   /** When this counter changes to a value > 0 the panel opens programmatically. */
   externalOpenSignal?: number;
+  /** Business activity — forwarded to ChatInterface for activity-aware chips. */
+  activityType?: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -124,7 +127,7 @@ export default function FloatingChatWidget({
 
               {/* Chat body */}
               <div className="min-h-0 flex-1">
-                <ChatInterface clinicId={clinicId} embedded />
+                <ChatInterface clinicId={clinicId} activityType={activityType} embedded />
               </div>
             </div>
           </motion.div>

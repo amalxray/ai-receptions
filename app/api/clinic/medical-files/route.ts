@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     if (gate) return NextResponse.json({ error: 'لا تملك صلاحية رفع ملفات طبية' }, { status: 403 });
 
     const form = await req.formData();
-    const patientId = String(form.get('patient_id') ?? '');
+    const patientId = String(form.get('patient_id') ?? url.searchParams.get('patient_id') ?? '');
     const imagingRequestIdRaw = form.get('imaging_request_id');
     const imagingRequestId = imagingRequestIdRaw ? String(imagingRequestIdRaw) : null;
     const file = form.get('file');

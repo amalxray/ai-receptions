@@ -17,6 +17,12 @@ type Props = {
   /** Render in a full-height panel (floating widget) instead of a tall card. */
   embedded?: boolean;
   /**
+   * Business activity: clinic / imaging_center / dental_lab.
+   * Drives the suggested-question chips (a dental clinic must not suggest
+   * "تنظيف الأسنان" questions to an imaging center). Defaults to 'clinic'.
+   */
+  activityType?: string | null;
+  /**
    * Explicit API mode. NEVER inferred from the identifier shape (that caused
    * anonymous visitors to hit the session-protected route → 401 everywhere).
    * Public chat pages/widgets leave the default 'public'.
@@ -26,14 +32,34 @@ type Props = {
 const STORAGE_KEY_PREFIX = 'dentalai_chat_conv_';
 const MAX_MESSAGE_LENGTH = 2000;
 
-const SUGGESTED_QUESTIONS = [
-  'ما هي خدمات العيادة؟',
-  'كم سعر تنظيف الأسنان؟',
-  'أريد حجز موعد',
-  'ما أوقات الدوام؟',
-];
+const ACTIVITY_QUESTIONS: Record<string, string[]> = {
+  clinic: [
+    'ما هي خدمات العيادة؟',
+    'كم سعر تنظيف الأسنان؟',
+    'أريد حجز موعد لفحص',
+    'ما أوقات الدوام؟',
+  ],
+  imaging_center: [
+    'ما هي خدمات التصوير؟',
+    'كم سعر البانوراما؟',
+    'كم سعر الـ CBCT؟',
+    'أريد حجز تصوير بانوراما',
+    'ما أوقات الدوام؟',
+  ],
+  dental_lab: [
+    'ما هي خدمات المختبر؟',
+    'كم سعر التركيبة؟',
+    'أريد حجز موعد للمختبر',
+    'ما أوقات الدوام؟',
+  ],
+};
 
-export default function ChatInterface({ clinicId = '', initialConversationId = null, embedded = false }: Props) {
+/** Suggested questions are activity-aware — never a hard-coded dental list. */
+function suggestedQuestionsFor(activity?: string | null): string[] {
+  return ACTIVITY_QUESTIONS[activity ?? 'clinic'] ?? ACTIVITY_QUESTIONS.clinic;
+}
+
+export default function ChatInterface({ clinicId = '', initialConversationId = null, embedded = false, activityType = null }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
@@ -690,7 +716,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
               <div className="mt-2 space-y-2">
                 <p className="text-xs text-slate-500">أسئلة مقترحة:</p>
                 <div className="flex flex-wrap gap-2">
-                  {SUGGESTED_QUESTIONS.map((q) => (
+                  {suggestedQuestionsFor(activityType).map((q) => (
                     <button
                       key={q}
                       type="button"

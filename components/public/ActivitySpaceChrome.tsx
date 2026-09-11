@@ -381,7 +381,7 @@ export function ActivitySpaceChrome({
       </main>
 
       {/* Public Chat UX (Phase 8): embedded in the SAME page, not a redirect. */}
-      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={space.name} externalOpenSignal={chatSignal} />}
+      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={space.name} externalOpenSignal={chatSignal} activityType={space.activityType} />}
 
     </div>
   );

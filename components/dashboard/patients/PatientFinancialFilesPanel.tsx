@@ -63,7 +63,7 @@ const METHOD_AR: Record<string, string> = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function PatientFinancialFilesPanel({ patientId, patientName }: Props) {
-  const { clinicId, authHeaders } = useClinicContext();
+  const { clinicId, authHeaders, clinicName } = useClinicContext();
 
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -233,6 +233,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     try {
       const form = new FormData();
       form.append('file', file);
+      form.append('patient_id', patientId);
       const headers = await authHeaders();
       const res = await fetch(`/api/clinic/medical-files?clinic_id=${clinicId}&patient_id=${patientId}`, {
         method: 'POST',
@@ -249,6 +250,51 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setUploadBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const printInvoice = (inv: InvoiceRow) => {
+    const total = Number(inv.total_amount ?? inv.total ?? inv.total_due ?? 0);
+    const date = inv.created_at ? new Date(inv.created_at).toLocaleDateString('ar') : '—';
+    const statusAr = inv.status === 'voided'
+      ? 'ملغاة'
+      : inv.status === 'paid'
+        ? 'مدفوعة'
+        : inv.status === 'partial' ? 'مدفوعة جزئياً' : 'غير مدفوعة';
+    const w = window.open('', '_blank', 'width=760,height=800');
+    if (!w) return;
+    const title = `فاتورة ${inv.invoice_number ?? ''}`.trim();
+    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${title}</title>
+<style>
+  * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+  body { max-width: 640px; margin: 24px auto; padding: 32px; color: #111; background: #fff; }
+  .brand { font-size: 20px; font-weight: 700; }
+  .muted { color: #666; font-size: 12px; }
+  .divider { border-top: 2px solid #111; margin: 14px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { border: 1px solid #333; padding: 8px 10px; font-size: 14px; text-align: right; }
+  th { background: #f2f2f2; }
+  .total-row td { font-weight: 700; background: #f8f8f8; }
+  .stamp { margin-top: 28px; font-size: 14px; }
+  h1 { font-size: 18px; margin: 2px 0 0; }
+</style></head><body>
+  <div class="brand">${clinicName ?? 'العيادة'}</div>
+  <h1>${title}</h1>
+  <p class="muted">فاتورة خدمات — ضريبة حسب النافذ</p>
+  <div class="divider"></div>
+  <table>
+    <tr><th>المريض</th><td>${patientName ?? ''}</td></tr>
+    <tr><th>رقم الفاتورة</th><td>${inv.invoice_number ?? inv.id.slice(0, 8)}</td></tr>
+    <tr><th>التاريخ</th><td>${date}</td></tr>
+    <tr><th>الحالة</th><td>${statusAr}</td></tr>
+    <tr><th>الخدمة</th><td>فاتورة خدمات العيادة (حسب السجل المالي)</td></tr>
+    <tr class="total-row"><th>إجمالي المبلغ</th><td>${total.toFixed(2)} ₪</td></tr>
+  </table>
+  <div class="stamp">
+    <p class="muted">تم الإصدار إلكترونياً من لوحة تحكم موظفة استقبال الأسنان الذكية.</p>
+  </div>
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };<\/script>
+</body></html>`);
+    w.document.close();
   };
 
   const invoiceTotal = useMemo(() => {
@@ -447,6 +493,14 @@ return (
                     {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partial' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => printInvoice(inv)}
+                  className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+                  title="طباعة الفاتورة"
+                >
+                  🖨️ طباعة
+                </button>
               </li>
             ))}
           </ul>

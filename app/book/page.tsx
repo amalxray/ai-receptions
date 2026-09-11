@@ -215,9 +215,19 @@ function BookingForm() {
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
-    const h = d.getUTCHours().toString().padStart(2, '0');
-    const m = d.getUTCMinutes().toString().padStart(2, '0');
-    return `${h}:${m}`;
+    const h24 = d.getUTCHours();
+    const m = d.getUTCMinutes();
+    const period = h24 >= 12 ? 'م' : 'ص';
+    const h = h24 % 12 === 0 ? 12 : h24 % 12;
+    // Keep minutes when present (imaging slots step by 5) — hide ":00" for clean hours.
+    const mm = m === 0 ? '' : `:${m.toString().padStart(2, '0')}`;
+    return `${h}${mm} ${period}`;
+  };
+
+  /** Wire format (24h HH:MM) for the booking API — display stays 12h above. */
+  const formatTimeApi = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getUTCHours().toString().padStart(2, '0')}:${d.getUTCMinutes().toString().padStart(2, '0')}`;
   };
 
   const validatePatient = () => {
@@ -245,7 +255,7 @@ function BookingForm() {
           service: selectedService!.name,
           service_id: selectedService!.id,
           date: selectedDate,
-          time: formatTime(selectedSlot),
+          time: formatTimeApi(selectedSlot),
           patient_name: patientInfo.name.trim(),
           phone: patientInfo.phone.trim(),
           email: patientInfo.email.trim() || undefined,
