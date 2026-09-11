@@ -56,7 +56,8 @@ export type PublicSocialLinks = {
 
 export type PublicSectionKey =
   | 'hero' | 'about' | 'services' | 'providers' | 'hours' | 'offers'
-  | 'gallery' | 'contact' | 'bookingCta' | 'aiCta' | 'qrShare';
+  | 'gallery' | 'contact' | 'bookingCta' | 'aiCta' | 'qrShare'
+  | 'news';
 
 export type PublicClinicProfile = {
   id: string;
@@ -122,6 +123,7 @@ type ClinicSettingsShape = {
 const SECTION_KEYS: PublicSectionKey[] = [
   'hero', 'about', 'services', 'providers', 'hours', 'offers',
   'gallery', 'contact', 'bookingCta', 'aiCta', 'qrShare',
+  'news',
 ];
 
 function readSections(raw: unknown): Partial<Record<PublicSectionKey, boolean>> {
