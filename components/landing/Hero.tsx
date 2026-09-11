@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import { landingCopy } from '@/lib/landing/landing-copy';
 import LandingButton from './LandingButton';
 
@@ -126,6 +127,12 @@ export default function Hero() {
           </p>
 
           <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-landing-cyan to-landing-emerald px-8 py-3 text-base font-bold text-white shadow-landing-btn transition hover:opacity-90"
+            >
+              ابدأ الآن مجاناً ←
+            </Link>
             <LandingButton href="/chat" size="lg">
               {landingCopy.hero.ctaPrimary}
             </LandingButton>

@@ -46,6 +46,21 @@ export default function LandingPage() {
             </span>
             {landingCopy.brand.name}
           </div>
+          {/* Quick links */}
+          <nav className="flex flex-wrap items-center gap-4" aria-label="روابط سريعة">
+            <a href="/login" className="text-sm transition hover:text-white">
+              تسجيل الدخول
+            </a>
+            <a href="/register" className="text-sm transition hover:text-white">
+              إنشاء حساب
+            </a>
+            <a href="#faq" className="text-sm transition hover:text-white">
+              الأسئلة الشائعة
+            </a>
+            <a href="mailto:support@ai-receptions.com" className="text-sm transition hover:text-white">
+              تواصل معنا
+            </a>
+          </nav>
           <p className="text-sm">{landingCopy.footer.copyright}</p>
         </div>
       </footer>

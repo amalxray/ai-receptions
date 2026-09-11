@@ -4,16 +4,42 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { landingCopy } from '@/lib/landing/landing-copy';
-import LandingButton from './LandingButton';
+import { supabase } from '@/lib/supabase';
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const [dashboardUrl, setDashboardUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Signed-in users see a direct "لوحة التحكم" entry instead of auth buttons.
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data } = await supabase
+          .from('clinic_users')
+          .select('clinic:clinics(slug)')
+          .eq('user_id', session.user.id)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        const membership = Array.isArray(data?.clinic) ? data?.clinic[0] : data?.clinic;
+        const slug = membership?.slug;
+        if (slug) setDashboardUrl(`/dashboard/${encodeURIComponent(slug)}/overview`);
+      } catch {
+        /* no session — fall through to auth CTA */
+      }
+    };
+    void checkSession();
   }, []);
 
   return (
@@ -52,11 +78,31 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* CTA */}
+        {/* Auth CTA — dashboard entry for signed-in users */}
         <div className="flex items-center gap-3">
-          <LandingButton href="#pricing" size="md">
-            {landingCopy.nav.cta}
-          </LandingButton>
+          {dashboardUrl ? (
+            <Link
+              href={dashboardUrl}
+              className="rounded-full bg-gradient-to-r from-landing-indigo to-landing-violet px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:opacity-90"
+            >
+              لوحة التحكم
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="rounded-full border border-landing-indigo/20 px-4 py-2 text-sm font-semibold text-landing-text transition hover:border-landing-indigo hover:text-landing-indigo"
+              >
+                تسجيل الدخول
+              </Link>
+              <Link
+                href="/register"
+                className="rounded-full bg-gradient-to-r from-landing-cyan to-landing-emerald px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:opacity-90"
+              >
+                ابدأ مجاناً
+              </Link>
+            </>
+          )}
         </div>
       </nav>
     </motion.header>
