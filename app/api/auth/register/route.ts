@@ -13,6 +13,7 @@ const registerSchema = z.object({
     .min(1)
     .max(100)
     .regex(/^[a-z0-9-]+$/, 'slug must be lowercase letters, numbers, and dashes'),
+  activity_type: z.enum(['clinic', 'imaging_center', 'dental_lab']).default('clinic'),
 });
 
 /**
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { email, password, clinic_name, clinic_slug } = parsed.data;
+    const { email, password, clinic_name, clinic_slug, activity_type } = parsed.data;
 
     // Check slug uniqueness before creating anything
     const { data: existingClinic } = await supabaseAdmin
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
         .insert({
           name: clinic_name,
           slug: clinic_slug,
+          activity_type,
           settings: { timezone: 'Asia/Jerusalem', default_appointment_duration_minutes: 30 },
           is_founding_member: isFoundingMember,
           founding_price_locked_at: foundingPriceLockedAt,
@@ -137,6 +139,7 @@ export async function POST(req: Request) {
           .insert({
             name: clinic_name,
             slug: clinic_slug,
+            activity_type,
             settings: { timezone: 'Asia/Jerusalem', default_appointment_duration_minutes: 30 },
           })
           .select('id, name, slug')

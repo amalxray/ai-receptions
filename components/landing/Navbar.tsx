@@ -25,6 +25,16 @@ export default function Navbar() {
           data: { session },
         } = await supabase.auth.getSession();
         if (!session) return;
+        // Platform owner → عمدة لوحة المالك (مدخل منفصل تماماً عن العيادات).
+        const { data: platform } = await supabase
+          .from('platform_admins')
+          .select('user_id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (platform) {
+          setDashboardUrl('/admin');
+          return;
+        }
         const { data } = await supabase
           .from('clinic_users')
           .select('clinic:clinics(slug)')

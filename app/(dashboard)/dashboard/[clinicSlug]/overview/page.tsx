@@ -9,6 +9,7 @@ import StatusPill from '@/components/dashboard/StatusPill';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, WEEKDAY_AR } from '@/lib/dashboard/labels-ar';
+import { getActivityLabels } from '@/lib/clinic/activityLabels';
 
 type OverviewAppointment = {
   id: string;
@@ -50,7 +51,8 @@ function AppointmentCard({ item }: { item: OverviewAppointment }) {
 
 export default function OverviewPage() {
   const { isConfigured: isSupabaseConfigured, checkFailed } = useSupabaseConfig();
-  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError, activityType } = useClinicContext();
+  const labels = getActivityLabels(activityType);
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,15 +86,15 @@ export default function OverviewPage() {
   const metricCards = data
     ? [
         { icon: <Users size={18} className="text-cyan-300" />, label: 'إجمالي المرضى', value: String(data.patients_count), href: '/dashboard/patients' },
-        { icon: <CalendarDays size={18} className="text-emerald-300" />, label: 'مواعيد اليوم', value: String(data.today_appointments.length), href: '/dashboard/appointments' },
-        { icon: <CalendarCheck2 size={18} className="text-cyan-300" />, label: 'المواعيد القادمة', value: String(data.upcoming_appointments.length), href: '/dashboard/appointments' },
+        { icon: <CalendarDays size={18} className="text-emerald-300" />, label: labels.appointmentsToday, value: String(data.today_appointments.length), href: '/dashboard/appointments' },
+        { icon: <CalendarCheck2 size={18} className="text-cyan-300" />, label: labels.appointmentsUpcoming, value: String(data.upcoming_appointments.length), href: '/dashboard/appointments' },
         { icon: <MessageSquare size={18} className="text-violet-300" />, label: 'محادثات جديدة (7 أيام)', value: String(data.new_conversations_count), href: '/dashboard/conversations' },
         { icon: <BellRing size={18} className="text-amber-300" />, label: 'تحتاج متابعة الفريق', value: String(data.needs_attention_count), href: '/dashboard/conversations' },
       ]
     : [];
 
   return (
-    <DashboardSection title="الرئيسية" subtitle="نظرة مباشرة على عمليات العيادة من البيانات الفعلية.">
+    <DashboardSection title={labels.overviewTitle} subtitle={labels.overviewSubtitle}>
       {!isSupabaseConfigured && !checkFailed ? (
         <EmptyState title="قاعدة البيانات غير مهيأة" description="فعّل بيئة العيادة الخلفية لعرض البيانات الحقيقية." />
       ) : loading || clinicLoading ? (
@@ -122,7 +124,7 @@ export default function OverviewPage() {
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <Clock size={18} className="text-cyan-300" />
-                  <h2 className="text-base font-semibold text-white">مواعيد اليوم</h2>
+                  <h2 className="text-base font-semibold text-white">{labels.appointmentsToday}</h2>
                 </div>
                 {data.generated_for_day ? (
                   <span className="text-xs text-slate-500">{WEEKDAY_AR[new Date(`${data.generated_for_day}T00:00:00`).getDay()]}</span>
@@ -140,7 +142,7 @@ export default function OverviewPage() {
             <section className="rounded-[1.75rem] border border-slate-800 bg-slate-950/70 p-5">
               <div className="flex items-center gap-3">
                 <CalendarCheck2 size={18} className="text-emerald-300" />
-                <h2 className="text-base font-semibold text-white">المواعيد القادمة</h2>
+                <h2 className="text-base font-semibold text-white">{labels.appointmentsUpcoming}</h2>
               </div>
               {data.upcoming_appointments.length === 0 ? (
                 <p className="mt-6 text-sm text-slate-500">لا توجد بيانات بعد — ستظهر المواعيد القادمة هنا.</p>

@@ -42,12 +42,24 @@ export async function middleware(request: NextRequest) {
 
   // IMPORTANT: do not run anything between client creation and getUser() — this
   // both refreshes the session and protects against CSRF in the cookie flow.
-  // Errors here simply mean "no/session refresh not possible" → pass through;
-  // the page/role guards decide access.
+  // Errors here simply mean "no/session refresh not possible".
+  let authed = false;
   try {
-    await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    authed = Boolean(data.user);
   } catch {
-    // Best-effort refresh only — never block requests on session refresh errors.
+    // No session → treated as unauthenticated below.
+  }
+
+  const { pathname } = request.nextUrl;
+  // Admin page guard: /admin/* requires a session (the admin LAYOUT then
+  // re-verifies the platform_admins row server-side before rendering).
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
+    if (!authed) return NextResponse.redirect(new URL('/login?next=/admin', request.url));
+  }
+  // Admin API guard: /api/admin/* without a session → 401 (Never redirect an API).
+  if (pathname.startsWith('/api/admin')) {
+    if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   return response;
