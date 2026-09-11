@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { landingCopy } from '@/lib/landing/landing-copy';
+import { useLandingCopy } from '@/components/landing/LandingContent';
 import LandingButton from './LandingButton';
 
 type ChatStep =
@@ -41,6 +41,7 @@ const CONFIRM_DELAY_MS = 1500;
 const LOOP_DELAY_MS = 6000;
 
 export default function Hero() {
+  const copy = useLandingCopy();
   const [showTyping, setShowTyping] = useState(false);
   const [messages, setMessages] = useState<ChatStep[]>([]);
 
@@ -116,14 +117,14 @@ export default function Hero() {
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
         >
           <h1 className="font-heading text-4xl font-extrabold leading-[1.15] tracking-tight text-landing-text sm:text-5xl lg:text-6xl">
-            {landingCopy.hero.headline1}
+            {copy.hero.headline1}
             <span className="mt-2 block bg-gradient-to-l from-landing-indigo via-landing-violet to-landing-cyan bg-clip-text text-transparent">
-              {landingCopy.hero.headline2}
+              {copy.hero.headline2}
             </span>
           </h1>
 
           <p className="mt-6 max-w-xl text-lg leading-8 text-landing-text/80">
-            {landingCopy.hero.paragraph}
+            {copy.hero.paragraph}
           </p>
 
           <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -134,15 +135,15 @@ export default function Hero() {
               ابدأ الآن مجاناً ←
             </Link>
             <LandingButton href="/chat" size="lg">
-              {landingCopy.hero.ctaPrimary}
+              {copy.hero.ctaPrimary}
             </LandingButton>
             <LandingButton href="#how-it-works" variant="secondary" size="lg">
-              {landingCopy.hero.ctaSecondary}
+              {copy.hero.ctaSecondary}
             </LandingButton>
           </div>
 
           <div className="mt-10 flex flex-wrap gap-8">
-            {landingCopy.hero.stats.map((stat) => (
+            {copy.hero.stats.map((stat) => (
               <div key={stat.label} className="flex items-center gap-3">
                 <span className="font-mono text-2xl font-bold text-landing-indigo">{stat.value}</span>
                 <span className="text-sm text-landing-text/70">{stat.label}</span>

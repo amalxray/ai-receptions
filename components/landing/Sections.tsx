@@ -2,22 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { landingCopy, FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { useLandingCopy } from '@/components/landing/LandingContent';
 import LandingButton from './LandingButton';
 import { FadeUp, Stagger, staggerItem } from './motion';
 
 /* ────────────── Pain Stats ────────────── */
 export function PainStats() {
+  const copy = useLandingCopy();
   return (
     <section className="bg-landing-bg py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.painStats.title}
+            {copy.painStats.title}
           </h2>
         </FadeUp>
         <Stagger className="mt-12 grid gap-6 md:grid-cols-3">
-          {landingCopy.painStats.cards.map((card, i) => (
+          {copy.painStats.cards.map((card, i) => (
             <motion.div
               key={i}
               variants={staggerItem}
@@ -36,19 +38,20 @@ export function PainStats() {
 
 /* ────────────── Features ────────────── */
 export function Features() {
+  const copy = useLandingCopy();
   return (
     <section id="features" className="bg-landing-bg-white py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.features.title}
+            {copy.features.title}
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-center text-landing-text/70">
-            {landingCopy.features.subtitle}
+            {copy.features.subtitle}
           </p>
         </FadeUp>
         <Stagger className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {landingCopy.features.cards.map((card, i) => (
+          {copy.features.cards.map((card, i) => (
             <motion.div
               key={i}
               variants={staggerItem}
@@ -80,20 +83,21 @@ const dotColors = [
 ];
 
 export function ForDoctors() {
+  const copy = useLandingCopy();
   return (
     <section id="for-doctors" className="bg-landing-dark py-20 text-white lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <p className="text-center text-sm font-semibold text-landing-cyan">
-            {landingCopy.forDoctors.eyebrow}
+            {copy.forDoctors.eyebrow}
           </p>
           <h2 className="mx-auto mt-3 max-w-3xl text-center font-heading text-3xl font-extrabold sm:text-4xl">
-            {landingCopy.forDoctors.title}
+            {copy.forDoctors.title}
           </h2>
         </FadeUp>
 
         <Stagger className="mt-14 space-y-3">
-          {landingCopy.forDoctors.points.map((point, i) => (
+          {copy.forDoctors.points.map((point, i) => (
             <motion.div
               key={i}
               variants={staggerItem}
@@ -121,7 +125,7 @@ export function ForDoctors() {
 
         <div className="mt-12 text-center">
           <LandingButton href="#pricing" size="lg">
-            {landingCopy.forDoctors.cta}
+            {copy.forDoctors.cta}
           </LandingButton>
         </div>
       </div>
@@ -131,6 +135,7 @@ export function ForDoctors() {
 
 /* ────────────── Gallery ────────────── */
 export function Gallery() {
+  const copy = useLandingCopy();
   const tiles = [
     { icon: '🦷', label: 'سن' },
     { icon: '🏥', label: 'عيادة' },
@@ -144,9 +149,9 @@ export function Gallery() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.gallery.title}
+            {copy.gallery.title}
           </h2>
-          <p className="mt-3 text-center text-landing-text/70">{landingCopy.gallery.subtitle}</p>
+          <p className="mt-3 text-center text-landing-text/70">{copy.gallery.subtitle}</p>
         </FadeUp>
         <Stagger className="mt-12 grid grid-cols-2 gap-4 md:grid-cols-3">
           {tiles.map((tile, i) => (
@@ -169,18 +174,19 @@ export function Gallery() {
 
 /* ────────────── How It Works ────────────── */
 export function HowItWorks() {
+  const copy = useLandingCopy();
   return (
     <section id="how-it-works" className="bg-landing-bg-white py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.howItWorks.title}
+            {copy.howItWorks.title}
           </h2>
         </FadeUp>
         <div className="relative mt-14 grid gap-8 md:grid-cols-3">
           {/* Dashed connector */}
           <div className="absolute right-0 left-0 top-10 hidden h-px border-t-2 border-dashed border-landing-indigo/30 md:block" />
-          {landingCopy.howItWorks.steps.map((step, i) => (
+          {copy.howItWorks.steps.map((step, i) => (
             <FadeUp key={step.num} delay={i * 0.15} className="relative text-center">
               <div className="relative z-10 mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-landing-indigo to-landing-violet font-mono text-xl font-bold text-white shadow-landing-btn">
                 {step.num}
@@ -197,6 +203,7 @@ export function HowItWorks() {
 
 /* ────────────── Pricing ────────────── */
 export function Pricing() {
+  const copy = useLandingCopy();
   const [remaining, setRemaining] = useState<number>(FOUNDING_SLOTS_TOTAL);
 
   useEffect(() => {
@@ -216,7 +223,7 @@ export function Pricing() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.pricing.title}
+            {copy.pricing.title}
           </h2>
         </FadeUp>
 
@@ -225,13 +232,13 @@ export function Pricing() {
           <FadeUp>
             <div className="relative overflow-hidden rounded-3xl border-2 border-landing-indigo bg-white p-8 shadow-landing-btn">
               <span className="absolute left-0 top-6 rounded-r-full bg-gradient-to-l from-landing-amber to-landing-amber/80 px-4 py-1 text-xs font-bold text-landing-dark">
-                {landingCopy.pricing.founding.badge}
+                {copy.pricing.founding.badge}
               </span>
               <div className="mt-8 flex items-end gap-2">
-                <span className="font-mono text-5xl font-bold text-landing-text">{landingCopy.pricing.founding.price}</span>
-                <span className="mb-1 text-sm text-landing-text/60">{landingCopy.pricing.founding.per}</span>
+                <span className="font-mono text-5xl font-bold text-landing-text">{copy.pricing.founding.price}</span>
+                <span className="mb-1 text-sm text-landing-text/60">{copy.pricing.founding.per}</span>
               </div>
-              <p className="mt-2 text-sm font-semibold text-landing-indigo">{landingCopy.pricing.founding.note}</p>
+              <p className="mt-2 text-sm font-semibold text-landing-indigo">{copy.pricing.founding.note}</p>
               <div className="mt-6">
                 <LandingButton href="#founding" size="lg" className="w-full">
                   احجز مكانك
@@ -244,10 +251,10 @@ export function Pricing() {
           <FadeUp delay={0.1}>
             <div className="rounded-3xl border border-landing-indigo/10 bg-white p-8 shadow-sm">
               <div className="flex items-end gap-2">
-                <span className="font-mono text-5xl font-bold text-landing-text">{landingCopy.pricing.standard.price}</span>
-                <span className="mb-1 text-sm text-landing-text/60">{landingCopy.pricing.standard.per}</span>
+                <span className="font-mono text-5xl font-bold text-landing-text">{copy.pricing.standard.price}</span>
+                <span className="mb-1 text-sm text-landing-text/60">{copy.pricing.standard.per}</span>
               </div>
-              <p className="mt-2 text-sm font-semibold text-landing-text/70">{landingCopy.pricing.standard.note}</p>
+              <p className="mt-2 text-sm font-semibold text-landing-text/70">{copy.pricing.standard.note}</p>
               {/* Standard card — "ابدأ الآن" leads to the existing registration
                   flow (per product spec: registration-first, no new checkout
                   path). "احجز مكانك" above stays a founding lead-form CTA. */}
@@ -263,16 +270,16 @@ export function Pricing() {
         {/* Live slots remaining */}
         <FadeUp delay={0.15} className="mt-8 text-center">
           <p className="inline-flex items-center gap-2 rounded-full border border-landing-amber/30 bg-landing-amber/10 px-5 py-2 font-semibold text-landing-text">
-            {landingCopy.pricing.slotsRemaining}{' '}
+            {copy.pricing.slotsRemaining}{' '}
             <span className="font-mono text-lg font-bold text-landing-indigo">{remaining}</span>{' '}
-            {landingCopy.pricing.slotsSuffix}
+            {copy.pricing.slotsSuffix}
           </p>
         </FadeUp>
 
         {/* Features table */}
         <FadeUp delay={0.2} className="mx-auto mt-10 max-w-3xl">
           <div className="overflow-hidden rounded-3xl border border-landing-indigo/10 bg-white shadow-sm">
-            {landingCopy.pricing.featuresTable.map((feature, i) => (
+            {copy.pricing.featuresTable.map((feature, i) => (
               <div
                 key={feature}
                 className={`flex items-center justify-between gap-3 px-6 py-3.5 text-sm ${
@@ -292,15 +299,16 @@ export function Pricing() {
 
 /* ────────────── Clinic Ads (carousel) ────────────── */
 export function ClinicAds() {
+  const copy = useLandingCopy();
   const [active, setActive] = useState(0);
-  const items = landingCopy.clinicAds.items;
+  const items = copy.clinicAds.items;
 
   return (
     <section id="clinic-ads" className="bg-landing-dark py-20 text-white lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold sm:text-4xl">
-            {landingCopy.clinicAds.title}
+            {copy.clinicAds.title}
           </h2>
         </FadeUp>
 
@@ -321,7 +329,7 @@ export function ClinicAds() {
                     <p className="text-sm text-landing-text/70">{ad.offer}</p>
                     {/* TODO: connect to clinic_ads table once live content is available */}
                     <LandingButton href="#pricing" variant="secondary">
-                      {landingCopy.clinicAds.cta}
+                      {copy.clinicAds.cta}
                     </LandingButton>
                   </div>
                 </div>
@@ -348,16 +356,46 @@ export function ClinicAds() {
   );
 }
 
+/* ────────────── Testimonials (CMS section) ────────────── */
+export function Testimonials() {
+  const copy = useLandingCopy();
+  const cfg = copy.testimonials as { title?: string; items?: { name: string; text: string; rating?: number }[] } | undefined;
+  const items = cfg?.items ?? [];
+  if (items.length === 0) return null; // hidden until the owner adds items
+
+  return (
+    <section id="testimonials" className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+      <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
+        {cfg?.title ?? 'آراء الأطباء'}
+      </h2>
+      <div className="mt-10 grid gap-6 md:grid-cols-3">
+        {items.map((t, i) => (
+          <FadeUp key={i} delay={i * 0.05}>
+            <div className="h-full rounded-[1.75rem] border border-landing-indigo/10 bg-white/70 p-6 shadow-sm">
+              <div className="text-amber-400" aria-label={`${t.rating ?? 5} من 5`}>
+                {'★'.repeat(Math.max(1, Math.min(5, t.rating ?? 5)))}
+              </div>
+              <p className="mt-3 text-sm leading-7 text-landing-text/80">“{t.text}”</p>
+              <p className="mt-4 text-sm font-bold text-landing-text">{t.name}</p>
+            </div>
+          </FadeUp>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /* ────────────── Compare ────────────── */
 export function Compare() {
+  const copy = useLandingCopy();
   return (
     <section className="bg-landing-bg py-20 lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Stagger className="grid gap-6 md:grid-cols-2">
           <motion.div variants={staggerItem} className="rounded-3xl border border-slate-200 bg-slate-100 p-8">
-            <h3 className="font-heading text-xl font-bold text-slate-500">😓 {landingCopy.compare.without.title}</h3>
+            <h3 className="font-heading text-xl font-bold text-slate-500">😓 {copy.compare.without.title}</h3>
             <ul className="mt-6 space-y-3">
-              {landingCopy.compare.without.points.map((point) => (
+              {copy.compare.without.points.map((point) => (
                 <li key={point} className="flex items-start gap-2 text-sm text-slate-500">
                   <span className="mt-0.5 text-red-400">✕</span>
                   {point}
@@ -367,9 +405,9 @@ export function Compare() {
           </motion.div>
 
           <motion.div variants={staggerItem} className="rounded-3xl bg-landing-dark p-8 text-white shadow-landing-btn">
-            <h3 className="font-heading text-xl font-bold">✨ {landingCopy.compare.with.title}</h3>
+            <h3 className="font-heading text-xl font-bold">✨ {copy.compare.with.title}</h3>
             <ul className="mt-6 space-y-3">
-              {landingCopy.compare.with.points.map((point) => (
+              {copy.compare.with.points.map((point) => (
                 <li key={point} className="flex items-start gap-2 text-sm text-white/90">
                   <span className="mt-0.5 text-emerald-400">✓</span>
                   {point}
@@ -385,17 +423,18 @@ export function Compare() {
 
 /* ────────────── FAQ (accordion) ────────────── */
 export function FAQ() {
+  const copy = useLandingCopy();
   const [open, setOpen] = useState<number | null>(0);
   return (
     <section id="faq" className="bg-landing-bg-white py-20 lg:py-28">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.faq.title}
+            {copy.faq.title}
           </h2>
         </FadeUp>
         <div className="mt-10 space-y-3">
-          {landingCopy.faq.items.map((item, i) => {
+          {copy.faq.items.map((item, i) => {
             const isOpen = open === i;
             return (
               <FadeUp key={item.q} delay={i * 0.05}>
@@ -433,6 +472,7 @@ export function FAQ() {
 
 /* ────────────── Imaging (tabs) ────────────── */
 export function Imaging() {
+  const copy = useLandingCopy();
   const [tab, setTab] = useState(0);
   const healthy = [
     { label: 'الاسم', value: 'أحمد سالم' },
@@ -445,17 +485,17 @@ export function Imaging() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-            {landingCopy.imaging.title}
+            {copy.imaging.title}
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-center leading-7 text-landing-text/70">
-            {landingCopy.imaging.desc}
+            {copy.imaging.desc}
           </p>
         </FadeUp>
 
         <FadeUp delay={0.1} className="mx-auto mt-12 max-w-3xl">
           {/* Tabs */}
           <div className="flex justify-center gap-2 rounded-2xl border border-landing-indigo/10 bg-white p-2 shadow-sm">
-            {landingCopy.imaging.tabs.map((t, i) => (
+            {copy.imaging.tabs.map((t, i) => (
               <button
                 key={t}
                 onClick={() => setTab(i)}
@@ -501,7 +541,7 @@ export function Imaging() {
         </FadeUp>
 
         <Stagger className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-3">
-          {landingCopy.imaging.features.map((feature, i) => (
+          {copy.imaging.features.map((feature, i) => (
             <motion.div
               key={i}
               variants={staggerItem}

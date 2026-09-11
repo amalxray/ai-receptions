@@ -11,6 +11,7 @@ const ADMIN_LINKS = [
   { href: '/admin/users', label: '👥 المستخدمون' },
   { href: '/admin/subscriptions', label: '💳 الاشتراكات' },
   { href: '/admin/notifications', label: '📢 الإشعارات' },
+  { href: '/admin/landing-page', label: '🌐 الصفحة الرئيسية' },
   { href: '/admin/settings', label: '⚙️ الإعدادات' },
 ];
 

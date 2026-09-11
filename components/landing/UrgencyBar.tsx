@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { landingCopy, FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { useLandingCopy } from '@/components/landing/LandingContent';
 import LandingButton from './LandingButton';
 
 /**
@@ -12,6 +13,7 @@ import LandingButton from './LandingButton';
  * if the migration is not applied yet.
  */
 export default function UrgencyBar() {
+  const copy = useLandingCopy();
   const [remaining, setRemaining] = useState<number>(FOUNDING_SLOTS_TOTAL);
 
   useEffect(() => {
@@ -41,12 +43,12 @@ export default function UrgencyBar() {
     >
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-center gap-3 px-4 py-3 text-center sm:flex-row sm:justify-between sm:px-6 sm:text-right lg:px-8">
         <p className="text-sm font-semibold text-landing-text sm:text-base">
-          ⚡ {landingCopy.urgencyBar.text}{' '}
+          ⚡ {copy.urgencyBar.text}{' '}
           <span className="font-mono font-bold text-landing-indigo">{remaining}</span>{' '}
-          {landingCopy.urgencyBar.suffix}
+          {copy.urgencyBar.suffix}
         </p>
         <LandingButton href="#pricing" size="md" className="whitespace-nowrap">
-          {landingCopy.urgencyBar.cta}
+          {copy.urgencyBar.cta}
         </LandingButton>
       </div>
     </motion.div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { landingCopy } from '@/lib/landing/landing-copy';
+import { useLandingCopy } from '@/components/landing/LandingContent';
 import { PainStats } from './Sections';
 import { Features } from './Sections';
 import { ForDoctors } from './Sections';
@@ -12,12 +12,14 @@ import { Pricing } from './Sections';
 import { ClinicAds } from './Sections';
 import { Compare } from './Sections';
 import { FAQ } from './Sections';
+import { Testimonials } from './Sections';
 import LeadForm from './LeadForm';
 import Navbar from './Navbar';
 import UrgencyBar from './UrgencyBar';
 import Hero from './Hero';
 
 export default function LandingPage() {
+  const copy = useLandingCopy();
   return (
     <>
       <Navbar />
@@ -32,6 +34,7 @@ export default function LandingPage() {
         <Imaging />
         <Pricing />
         <ClinicAds />
+        <Testimonials />
         <Compare />
         <FAQ />
         <LeadForm />
@@ -44,7 +47,7 @@ export default function LandingPage() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-landing-indigo to-landing-violet text-sm font-black">
               A
             </span>
-            {landingCopy.brand.name}
+            {copy.brand.name}
           </div>
           {/* Quick links */}
           <nav className="flex flex-wrap items-center gap-4" aria-label="روابط سريعة">
@@ -61,7 +64,7 @@ export default function LandingPage() {
               تواصل معنا
             </a>
           </nav>
-          <p className="text-sm">{landingCopy.footer.copyright}</p>
+          <p className="text-sm">{copy.footer.copyright}</p>
         </div>
       </footer>
 
@@ -72,10 +75,10 @@ export default function LandingPage() {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 1.2, type: 'spring', stiffness: 260, damping: 20 }}
         className="group fixed bottom-6 left-6 z-50 flex items-center gap-2"
-        aria-label={landingCopy.footer.fabTooltip}
+        aria-label={copy.footer.fabTooltip}
       >
         <span className="pointer-events-none hidden translate-x-2 rounded-lg bg-landing-dark px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100 sm:block">
-          {landingCopy.footer.fabTooltip}
+          {copy.footer.fabTooltip}
         </span>
         <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-landing-indigo to-landing-violet text-white shadow-landing-btn">
           <span className="absolute inset-0 animate-ping rounded-full bg-landing-indigo/40" />

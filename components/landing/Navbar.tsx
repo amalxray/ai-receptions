@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { landingCopy } from '@/lib/landing/landing-copy';
+import { useLandingCopy } from '@/components/landing/LandingContent';
 import { supabase } from '@/lib/supabase';
 
 export default function Navbar() {
+  const copy = useLandingCopy();
   const [scrolled, setScrolled] = useState(false);
   const [dashboardUrl, setDashboardUrl] = useState<string | null>(null);
 
@@ -77,7 +78,7 @@ export default function Navbar() {
 
         {/* Desktop links */}
         <div className="hidden items-center gap-8 lg:flex">
-          {landingCopy.nav.links.map((link) => (
+          {copy.nav.links.map((link) => (
             <a
               key={link.href}
               href={link.href}
