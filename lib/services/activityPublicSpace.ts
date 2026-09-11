@@ -51,7 +51,7 @@ export type ActivityPublicSpace = {
   /** Owner-managed hero/cover image URL (public_profile.cover_url). */
   coverUrl: string | null;
   /** Owner-managed social links (public_profile.social_links). */
-  socialLinks: { facebook?: string; instagram?: string; whatsapp?: string; website?: string };
+  socialLinks: { facebook?: string; instagram?: string; whatsapp?: string; website?: string; email?: string };
   /** Owner section visibility toggles (public_profile.sections). */
   sections: Record<string, boolean | undefined>;
   /** Bounded display controls (public_profile.display) — activity-agnostic,

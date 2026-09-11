@@ -52,6 +52,7 @@ export type PublicSocialLinks = {
   instagram?: string;
   whatsapp?: string;
   website?: string;
+  email?: string;
 };
 
 export type PublicSectionKey =

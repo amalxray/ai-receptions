@@ -428,6 +428,11 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
       )}
       {Object.entries(space.socialLinks ?? {}).filter(([, v]) => Boolean(v)).length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
+          {space.socialLinks?.email && (
+            <a href={`mailto:${space.socialLinks.email}`} className="text-slate-500 hover:text-brand-cyan" dir="ltr">
+              ✉️ {space.socialLinks.email}
+            </a>
+          )}
           {space.socialLinks?.website && (
             <a href={space.socialLinks.website} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-brand-cyan" dir="ltr">
               🌐 الموقع

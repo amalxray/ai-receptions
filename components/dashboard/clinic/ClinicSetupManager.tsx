@@ -12,7 +12,7 @@ type ClinicProfile = {
   name: string;
   phone: string | null;
   address: string | null;
-  website: string | null;
+  email: string | null;
   slug: string;
 };
 
@@ -52,7 +52,7 @@ export default function ClinicSetupManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', address: '', website: '' });
+  const [form, setForm] = useState({ name: '', phone: '', address: '', email: '' });
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setLoading(false); return; }
@@ -88,7 +88,7 @@ export default function ClinicSetupManager() {
         name: body.data.name || '',
         phone: body.data.phone || '',
         address: body.data.address || '',
-        website: body.data.website || '',
+        email: body.data.email ?? body.data.website ?? '',
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load profile');
@@ -122,7 +122,7 @@ export default function ClinicSetupManager() {
           name: form.name,
           phone: form.phone || null,
           address: form.address || null,
-          website: form.website || null,
+          email: form.email || null,
         }),
       });
       const body = await res.json();
@@ -217,16 +217,22 @@ export default function ClinicSetupManager() {
             <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
           </div>
           <div>
-            <label className="text-xs text-slate-400">Address</label>
+            <label className="text-xs text-slate-400">العنوان</label>
             <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
           </div>
           <div>
-            <label className="text-xs text-slate-400">Website</label>
-            <input value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
+            <label className="text-xs text-slate-400">البريد الإلكتروني ✉️</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              dir="ltr"
+              className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100"
+            />
           </div>
           <div className="md:col-span-2 flex justify-end">
             <button type="submit" disabled={saving} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">
-              {saving ? 'Saving...' : 'Save Profile'}
+              {saving ? 'جارٍ الحفظ...' : 'حفظ الملف'}
             </button>
           </div>
         </form>

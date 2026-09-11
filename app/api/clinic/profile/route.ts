@@ -9,6 +9,7 @@ const profileSchema = z.object({
   phone: z.string().max(30).optional().nullable(),
   address: z.string().max(500).optional().nullable(),
   website: z.string().url().max(500).optional().nullable(),
+  email: z.string().email().max(254).optional().nullable(),
 });
 
 export async function GET(req: Request) {
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
     const supabase = supabaseAdmin;
     const { data, error } = await supabase
       .from('clinics')
-      .select('id, name, phone, address, website, slug, created_at, updated_at')
+      .select('id, name, phone, address, website, email, slug, created_at, updated_at')
       .eq('id', clinicId)
       .is('deleted_at', null)
       .single();
@@ -65,10 +66,11 @@ export async function PUT(req: Request) {
         phone: parsed.data.phone ?? null,
         address: parsed.data.address ?? null,
         website: parsed.data.website ?? null,
+        email: parsed.data.email ?? null,
       })
       .eq('id', clinicId)
       .is('deleted_at', null)
-      .select('id, name, phone, address, website, slug, created_at, updated_at')
+      .select('id, name, phone, address, website, email, slug, created_at, updated_at')
       .single();
 
     if (error || !data) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });

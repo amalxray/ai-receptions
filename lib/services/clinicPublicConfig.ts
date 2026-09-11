@@ -39,6 +39,7 @@ export type SocialLinks = {
   instagram?: string;
   whatsapp?: string;
   website?: string;
+  email?: string;
 };
 
 /**

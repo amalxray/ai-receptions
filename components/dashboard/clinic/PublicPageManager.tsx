@@ -6,6 +6,7 @@ import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import Skeleton from '@/components/ui/Skeleton';
 import PublicMediaManager from '@/components/dashboard/clinic/PublicMediaManager';
+import ImageUpload from '@/components/ui/ImageUpload';
 
 /**
  * CLINIC PUBLIC PAGE OWNER EXPERIENCE — owner screen for the clinic's public
@@ -30,7 +31,7 @@ type PageConfig = {
   show_prices: boolean;
   show_providers: boolean;
   discovery_enabled: boolean;
-  social_links: { facebook?: string; instagram?: string; whatsapp?: string; website?: string };
+  social_links: { facebook?: string; instagram?: string; whatsapp?: string; website?: string; email?: string };
   sections: Record<string, boolean>;
   hidden_services: string[];
   hidden_providers: string[];
@@ -69,7 +70,7 @@ const SOCIAL_LABELS: Record<string, string> = {
   whatsapp: 'واتساب',
   facebook: 'فيسبوك',
   instagram: 'انستغرام',
-  website: 'الموقع الإلكتروني',
+  website: 'البريد الإلكتروني',
 };
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -139,7 +140,7 @@ export default function PublicPageManager() {
         whatsapp: data.social_links?.whatsapp ?? '',
         facebook: data.social_links?.facebook ?? '',
         instagram: data.social_links?.instagram ?? '',
-        website: data.social_links?.website ?? '',
+        website: data.social_links?.email ?? data.social_links?.website ?? '',
       });
       setError(null);
     } catch (e) {
@@ -199,7 +200,7 @@ export default function PublicPageManager() {
         whatsapp: form.whatsapp.trim() || null,
         facebook: form.facebook.trim() || null,
         instagram: form.instagram.trim() || null,
-        website: form.website.trim() || null,
+        email: form.website.trim() || null,
       },
     }).then(() => load());
   };
@@ -325,16 +326,13 @@ export default function PublicPageManager() {
       {/* Branding + basic info */}
       <Section title="الهوية والنبذة" subtitle="الاسم والشعار والنبذة تظهر في الصفحة العامة.">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">صورة الغلاف</span>
-            <input
-              type="text"
-              value={form.cover_url}
-              onChange={(e) => setForm((f) => ({ ...f, cover_url: e.target.value }))}
-              placeholder="https://… (اختياري)"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
-          </label>
+                    <ImageUpload
+            label="صورة الغلاف"
+            aspect="wide"
+            title="غلاف الصفحة العامة"
+            value={form.cover_url}
+            onChange={(url) => setForm((f) => ({ ...f, cover_url: url }))}
+          />
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-slate-700">شعار مختصر (Tagline)</span>
             <input
