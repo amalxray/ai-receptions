@@ -43,3 +43,8 @@ INSERT INTO public.landing_page_content (section_key, content) VALUES
 ('seo', '{"title":"AI-Receptions — موظفة الاستقبال الرقمية لعيادتك","description":"موظفة استقبال رقمية بتحجز مواعيد عيادتك وترد على مرضاك 24/7 بلهجتهم. جرّبها الآن وثبّت سعر عرض التأسيس.","og_image":""}'::jsonb),
 ('colors', '{"cta":"","primary":"","secondary":""}'::jsonb)
 ON CONFLICT (section_key) DO NOTHING;
+
+-- Service-role-only access (RLS has no policies by design): the admin API
+-- reads/writes through supabaseAdmin. Without this grant the CMS endpoints
+-- fail with `permission denied for table landing_page_content`.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.landing_page_content TO service_role;

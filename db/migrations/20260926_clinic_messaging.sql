@@ -4,7 +4,7 @@
 -- ============================================================
 
 -- 1) Core message table
-CREATE TABLE IF NOT EXISTS clinic_messages (
+CREATE TABLE IF NOT EXISTS public.clinic_messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     from_clinic_id  UUID NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
     to_clinic_id    UUID NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
@@ -168,3 +168,12 @@ $$;
 -- ALTER TABLE clinic_messages DROP CONSTRAINT clinic_messages_clinic_ids_differ;
 -- DROP TABLE clinic_messages;
 -- ============================================================
+-- ============================================================
+-- PRIVILEGES — the app's service-layer client is `service_role`
+-- (PostgREST). RLS has NO policies by design (service-role-only access
+-- after authorizeClinicRequest), so the table grants are what the RPC
+-- and direct reads depend on. Without these, get_clinic_conversations
+-- fails with `permission denied for table clinic_messages`.
+-- ============================================================
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.clinic_messages TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_clinic_conversations(UUID) TO service_role;
