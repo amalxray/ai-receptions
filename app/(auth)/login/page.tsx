@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { supabase } from '@/lib/supabase';
 import { isSafeDashboardPath, isSafeAdminPath } from '@/lib/services/dashboardPaths';
 
@@ -109,13 +110,12 @@ export default function LoginPage() {
             <label htmlFor="password" className="block text-sm font-medium text-slate-200">
               كلمة المرور
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+              onChange={(v) => setPassword(v)}
               placeholder="••••••••"
+              className="mt-2"
               required
             />
           </div>

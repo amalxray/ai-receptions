@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import PasswordInput from '@/components/ui/PasswordInput';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
@@ -85,32 +86,30 @@ export default function ResetPasswordPage() {
               <label htmlFor="password" className="block text-sm font-medium text-slate-200">
                 كلمة المرور الجديدة
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                placeholder="••••••••"
-                autoComplete="new-password"
-                required
-                minLength={8}
-              />
+              <PasswordInput
+              id="password"
+              value={password}
+              onChange={(v) => setPassword(v)}
+              placeholder="••••••••"
+              className="mt-2"
+              autoComplete="new-password"
+              required
+              minLength={ 8 }
+            />
             </div>
             <div>
               <label htmlFor="confirm" className="block text-sm font-medium text-slate-200">
                 تأكيد كلمة المرور
               </label>
-              <input
-                id="confirm"
-                type="password"
-                value={confirm}
-                onChange={(event) => setConfirm(event.target.value)}
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                placeholder="••••••••"
-                autoComplete="new-password"
-                required
-              />
+              <PasswordInput
+              id="confirm"
+              value={confirm}
+              onChange={(v) => setConfirm(v)}
+              placeholder="••••••••"
+              className="mt-2"
+              autoComplete="new-password"
+              required
+            />
             </div>
 
             {error && <p className="text-sm text-red-400">{error}</p>}

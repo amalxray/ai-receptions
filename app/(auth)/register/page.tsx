@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import PasswordInput from '@/components/ui/PasswordInput';
 import Link from 'next/link';
 
 function normalizeSlug(value: string) {
@@ -185,15 +186,14 @@ export default function RegisterPage() {
             <label htmlFor="password" className="block text-sm font-medium text-slate-200">
               كلمة المرور
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+              onChange={(v) => setPassword(v)}
               placeholder="••••••••"
+              className="mt-2"
               required
-              minLength={6}
+              minLength={ 6 }
             />
           </div>
 
@@ -201,15 +201,14 @@ export default function RegisterPage() {
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-200">
               تأكيد كلمة المرور
             </label>
-            <input
+            <PasswordInput
               id="confirmPassword"
-              type="password"
               value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+              onChange={(v) => setConfirmPassword(v)}
               placeholder="••••••••"
+              className="mt-2"
               required
-              minLength={6}
+              minLength={ 6 }
             />
           </div>
 

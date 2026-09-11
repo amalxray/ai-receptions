@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { supabase } from '@/lib/supabase';
 import { useClinicContext } from '@/lib/useClinicContext';
 
@@ -91,31 +92,29 @@ export default function ProfilePage() {
           <label htmlFor="new-password" className="block text-xs font-medium text-slate-300">
             كلمة المرور الجديدة
           </label>
-          <input
+          <PasswordInput
             id="new-password"
-            type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(v) => setPassword(v)}
+            placeholder="••••••••"
+            className="mt-2"
+            autoComplete="new-password"
             required
             minLength={8}
-            className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-            placeholder="••••••••"
-            autoComplete="new-password"
           />
         </div>
         <div>
           <label htmlFor="confirm-password" className="block text-xs font-medium text-slate-300">
             تأكيد كلمة المرور
           </label>
-          <input
+          <PasswordInput
             id="confirm-password"
-            type="password"
             value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-            className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            onChange={(v) => setConfirm(v)}
             placeholder="••••••••"
+            className="mt-2"
             autoComplete="new-password"
+            required
           />
         </div>
 
