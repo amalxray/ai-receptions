@@ -219,9 +219,7 @@ function BookingForm() {
     const m = d.getUTCMinutes();
     const period = h24 >= 12 ? 'م' : 'ص';
     const h = h24 % 12 === 0 ? 12 : h24 % 12;
-    // Keep minutes when present (imaging slots step by 5) — hide ":00" for clean hours.
-    const mm = m === 0 ? '' : `:${m.toString().padStart(2, '0')}`;
-    return `${h}${mm} ${period}`;
+    return `${h}:${m.toString().padStart(2, '0')} ${period}`;
   };
 
   /** Wire format (24h HH:MM) for the booking API — display stays 12h above. */
