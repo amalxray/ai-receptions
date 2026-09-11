@@ -658,11 +658,15 @@ export default function MessagingInterface({ clinicId }: Props) {
             </ul>
           )}
         </div>
-        {/* Composer — always visible (fix: no "no place to type" state).
-        Active only once a partner thread is selected. */}
-        {(selectedPartner || allPartners.length > 0) && (
-          <div className="border-t border-slate-800 p-3">
-            {!selectedPartner && (
+        {/* Composer — ALWAYS visible (fix: no "no place to type" state, even with
+        zero partners). Send stays disabled until a partner thread is selected. */}
+        <div className="border-t border-slate-800 p-3">
+            {!selectedPartner && allPartners.length === 0 && (
+              <p className="mb-2 text-xs text-cyan-300/80">
+                لا يوجد شركاء مرتبطون بعد — أنشئ ارتباطاً من إعدادات الشراكات، وسيظهر حقل الكتابة هنا بعد اختيار شريك.
+              </p>
+            )}
+            {!selectedPartner && allPartners.length > 0 && (
               <p className="mb-2 text-xs text-cyan-300/80">
                 اختر شريكاً من القائمة لبدء المحادثة — يمكنك الكتابة بعد الاختيار.
               </p>
@@ -773,7 +777,6 @@ export default function MessagingInterface({ clinicId }: Props) {
               </button>
             </div>
           </div>
-        )}
       </div>
 
       {/* ── PHASE I: Attach-to-patient modal ── */}
