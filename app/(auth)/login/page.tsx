@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { isSafeDashboardPath } from '@/lib/services/dashboardPaths';
+import { isSafeDashboardPath, isSafeAdminPath } from '@/lib/services/dashboardPaths';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,6 +49,34 @@ export default function LoginPage() {
 
       // `?next=` is honored only for safe internal dashboard paths (open-redirect guard).
       const requested = new URLSearchParams(window.location.search).get('next');
+
+      // Platform owner takes priority over any clinic membership → /admin.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (userId) {
+        const { data: platformAdmin } = await supabase
+          .from('platform_admins')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (platformAdmin) {
+          router.replace(isSafeAdminPath(requested) ? requested : '/admin');
+          return;
+        }
+        const { data: membership } = await supabase
+          .from('clinic_users')
+          .select('clinic:clinics(slug)')
+          .eq('user_id', userId)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        const clinic = Array.isArray(membership?.clinic) ? membership?.clinic[0] : membership?.clinic;
+        if (clinic?.slug) {
+          router.replace(isSafeDashboardPath(requested) ? requested : `/dashboard/${encodeURIComponent(clinic.slug)}/overview`);
+          return;
+        }
+      }
+
       router.replace(isSafeDashboardPath(requested) ? requested : '/dashboard');
     } catch (caught) {
       setError('تعذر الاتصال بخدمة المصادقة. تحقق من اتصالك بالإنترنت ثم أعد المحاولة.');

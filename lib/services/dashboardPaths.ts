@@ -54,3 +54,17 @@ export function tenantDashboardUrl(clinicSlug: string, module: DashboardModule |
 export function ownerLoginUrl(clinicSlug: string): string {
   return `/login?next=${encodeURIComponent(tenantDashboardUrl(clinicSlug, 'overview'))}`;
 }
+
+/**
+ * True when `path` is a safe internal admin destination (/admin[/segment...]).
+ * Same rejection rules as isSafeDashboardPath (no absolute URLs, `..`, `\`, `:`).
+ */
+export function isSafeAdminPath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  if (path.startsWith('//') || path.includes('\\') || path.includes('..') || path.includes(':')) {
+    return false;
+  }
+  const segments = path.split('/').filter((s) => s.length > 0);
+  if (segments.length === 0 || segments[0] !== 'admin') return false;
+  return segments.slice(1).every((s) => MODULE_SEGMENT.test(s));
+}

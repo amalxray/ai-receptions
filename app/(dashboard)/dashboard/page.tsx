@@ -38,6 +38,14 @@ export default async function DashboardIndexPage() {
   } = await serverClient.auth.getUser();
   if (!user) redirect('/login?next=/dashboard');
 
+  // Platform owner takes priority over clinic membership → /admin.
+  const { data: platformAdmin } = await supabaseAdmin
+    .from('platform_admins')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (platformAdmin) redirect('/admin');
+
   const { data: memberships } = await supabaseAdmin
     .from('clinic_users')
     .select('clinic:clinics(slug)')
