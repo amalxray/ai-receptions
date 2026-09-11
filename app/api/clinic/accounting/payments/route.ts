@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const denied = roleDenied(authorization, PAYMENT_RECORD_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
 
-    const { invoice_id, amount, method, reference, idempotency_key, payer_type, payer_ref } = body;
+    const { invoice_id, amount, method, reference, idempotency_key, payer_type, payer_ref, payment_date } = body;
     // record_payment expects a real invoice UUID — reject anything else early
     // with a clear message instead of a cryptic Postgres uuid syntax error.
     if (!invoice_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(invoice_id))) {
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
       idempotencyKey: idempotency_key ?? null,
       payerType: payer_type ?? null,
       payerRef: payer_ref ?? null,
+      paymentDate: payment_date ?? null,
       actorUserId: authorization.user?.id ?? null,
     });
     return NextResponse.json({ data: result }, { status: 201 });

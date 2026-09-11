@@ -18,6 +18,9 @@ type InvoiceRow = {
   total?: number;
   total_amount?: number;
   total_due?: number;
+  outstanding_amount?: number;
+  invoiced_total?: number;
+  paid_total?: number;
   balance_due?: number;
   paid_amount?: number;
   status?: string;
@@ -35,6 +38,9 @@ type PaymentRow = {
 };
 
 type BalanceRow = {
+  outstanding_amount?: number;
+  invoiced_total?: number;
+  paid_total?: number;
   balance_due?: number;
 };
 
@@ -83,6 +89,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const [payInvoiceId, setPayInvoiceId] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'bank_transfer' | 'insurance' | 'other'>('cash');
+  const [payDate, setPayDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   const [uploadBusy, setUploadBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -209,6 +216,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
           invoice_id: payInvoiceId,
           amount,
           method: payMethod,
+          payment_date: payDate ? new Date(`${payDate}T12:00:00`).toISOString() : null,
           idempotency_key: crypto.randomUUID(),
         }),
       });
@@ -217,6 +225,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setActionSuccess(`تم تسجيل الدفعة ${json.data?.receiptNumber ?? ''}`);
       setShowPaymentForm(false);
       setPayAmount('');
+      setPayDate(new Date().toISOString().split('T')[0]);
       await loadAll();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'حدث خطأ');
@@ -259,7 +268,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       ? 'ملغاة'
       : inv.status === 'paid'
         ? 'مدفوعة'
-        : inv.status === 'partial' ? 'مدفوعة جزئياً' : 'غير مدفوعة';
+        : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة';
     const w = window.open('', '_blank', 'width=760,height=800');
     if (!w) return;
     const title = `فاتورة ${inv.invoice_number ?? ''}`.trim();
@@ -308,7 +317,10 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   );
 
   const balance = useMemo(() => {
-    if (balances.length > 0) return Number(balances[0].balance_due ?? 0);
+    // patient_balances exposes `outstanding_amount` (NOT balance_due) — a wrong
+    // column name here silently zeroed the whole balance display.
+    const fromView = Number(balances[0]?.outstanding_amount ?? balances[0]?.balance_due);
+    if (Number.isFinite(fromView)) return fromView;
     return invoiceTotal - paymentTotal;
   }, [balances, invoiceTotal, paymentTotal]);
 
@@ -423,7 +435,7 @@ return (
       {showPaymentForm && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
           <p className="mb-3 text-sm font-semibold text-white">تسجيل دفعة</p>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-5">
             <select
               value={payInvoiceId}
               onChange={(e) => setPayInvoiceId(e.target.value)}
@@ -454,6 +466,13 @@ return (
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
+            <input
+              type="date"
+              value={payDate}
+              onChange={(e) => setPayDate(e.target.value)}
+              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/70 focus:outline-none"
+              aria-label="تاريخ الدفعة"
+            />
           </div>
           <div className="mt-3 flex gap-2">
             <button
@@ -490,7 +509,7 @@ return (
                 <div className="text-left">
                   <p className="font-bold text-white">{Number(inv.total_amount ?? inv.total ?? 0).toFixed(2)}</p>
                   <p className={`text-xs ${inv.status === 'voided' ? 'text-rose-400' : inv.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>
-                    {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partial' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
+                    {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
                   </p>
                 </div>
                 <button

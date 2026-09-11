@@ -12,6 +12,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import { useClinicContext } from '@/lib/useClinicContext';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 type PatientRecord = {
@@ -49,7 +50,7 @@ type PatientCommunication = {
 
 export default function PatientsPage() {
   const router = useRouter();
-  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [patients, setPatients] = useState<PatientRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -308,9 +309,19 @@ export default function PatientsPage() {
 
           {selectedPatient ? (
             <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5">
-              <p className="text-sm text-slate-400">ملف المريض</p>
-              <h3 className="mt-2 text-2xl font-semibold text-white">{selectedPatient.name}</h3>
-              <p className="mt-2 text-sm text-slate-300">{selectedPatient.email}</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-slate-400">ملف المريض</p>
+                  <h3 className="mt-2 text-2xl font-semibold text-white">{selectedPatient.name}</h3>
+                  <p className="mt-2 text-sm text-slate-300">{selectedPatient.email}</p>
+                </div>
+                <Link
+                  href={`/dashboard/${clinicSlug}/patients/${selectedPatient.id}`}
+                  className="rounded-full bg-cyan-500/20 px-4 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/30"
+                >
+                  ↔ فتح الملف الكامل بالتبويبات
+                </Link>
+              </div>
               <div className="mt-6 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-sm text-slate-300">
                 <div>المصدر: {selectedPatient.source}</div>
                 <div>الهاتف: {selectedPatient.phone}</div>

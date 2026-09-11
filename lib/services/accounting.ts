@@ -38,6 +38,8 @@ export type RecordPaymentInput = {
   idempotencyKey?: string | null;
   payerType?: 'patient' | 'insurance' | 'employer' | 'third_party' | null;
   payerRef?: string | null;
+  /** Optional backdated payment date (ISO) — defaults to now() server-side. */
+  paymentDate?: string | null;
   actorUserId: string | null;
 };
 
@@ -109,6 +111,8 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{ paymen
     p_recorded_by: input.actorUserId,
     p_payer_type: input.payerType ?? null,
     p_payer_ref: input.payerRef ?? null,
+    // Optional backdated payment date — defaults to now() when omitted.
+    ...(input.paymentDate ? { p_payment_date: new Date(input.paymentDate).toISOString() } : {}),
   });
   if (error) throw new Error(error.message);
   await writeAuditLog({
