@@ -6,10 +6,10 @@ import { logEvent } from '@/lib/server/logging';
 
 const assignmentSchema = z.object({ service_ids: z.array(z.string().uuid()).max(100) });
 
-export async function GET(req: Request) {
+export async function GET(req: Request, { params }: { params: { providerId: string } }) {
   try {
-    const { pathname, searchParams } = new URL(req.url);
-    const providerId = pathname.split('/').filter(Boolean).pop();
+    const providerId = params.providerId;
+    const { searchParams } = new URL(req.url);
     const clinicId = searchParams.get('clinic_id');
     if (!providerId) return NextResponse.json({ error: 'provider_id is required' }, { status: 400 });
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
@@ -33,10 +33,10 @@ export async function GET(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: Request, { params }: { params: { providerId: string } }) {
   try {
-    const { pathname, searchParams } = new URL(req.url);
-    const providerId = pathname.split('/').filter(Boolean).pop();
+    const providerId = params.providerId;
+    const { searchParams } = new URL(req.url);
     const clinicId = searchParams.get('clinic_id');
     if (!providerId) return NextResponse.json({ error: 'provider_id is required' }, { status: 400 });
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });

@@ -1,5 +1,6 @@
 'use client';
 
+import ImageUpload from '@/components/ui/ImageUpload';
 import { useEffect, useState } from 'react';
 import { Globe, User, Camera, FileText, ExternalLink, Stethoscope } from 'lucide-react';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
@@ -223,18 +224,16 @@ function PublicPresenceFields({
             onChange={(e) => onDraft({ ...draft, specialty: e.target.value })}
           />
         </label>
-        <label className="block text-xs text-stone-400">
-          <span className="mb-1 flex items-center gap-1"><Camera className="h-3 w-3" /> رابط الصورة (http/https)</span>
-          <input
-            type="url"
-            dir="ltr"
-            maxLength={600}
-            className="w-full rounded-md border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-stone-100"
-            placeholder="https://…"
-            value={draft.photo_url}
-            onChange={(e) => onDraft({ ...draft, photo_url: e.target.value })}
+        <div className="text-xs text-stone-400">
+          <span className="mb-1 flex items-center gap-1"><Camera className="h-3 w-3" /> صورة الطبيب</span>
+          <ImageUpload
+            label="صورة الطبيب"
+            aspect="square"
+            title="صورة مقدم الخدمة"
+            value={draft.photo_url ?? null}
+            onChange={(url) => onDraft({ ...draft, photo_url: url })}
           />
-        </label>
+        </div>
       </div>
       <label className="mt-3 block text-xs text-stone-400">
         <span className="mb-1 flex items-center gap-1"><FileText className="h-3 w-3" /> النبذة المهنية</span>
