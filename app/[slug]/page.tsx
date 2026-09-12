@@ -20,6 +20,10 @@ import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
  */
 
 export const dynamic = 'force-dynamic';
+/** Live content guarantee: the space service reads owner-managed news/media/
+ *  content via supabase-js (fetch under the hood) — force-no-store disables the
+ *  Next.js Data Cache so every /{slug} request reflects the DB as of NOW. */
+export const fetchCache = 'force-no-store';
 
 export type ActivitySpacePageProps = { params: { slug: string } };
 
