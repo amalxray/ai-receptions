@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import ShareButtons from '@/components/ask/ShareButtons';
 import { notFound } from 'next/navigation';
 import { getPublishedArticle, incrementArticleViews } from '@/lib/services/askContent';
 
@@ -18,8 +19,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     title: `${title} | سنّي`,
     description,
     keywords: (article.tags as string[] | null) ?? undefined,
-    openGraph: { title, description, images: img ? [img] : undefined, type: 'article', locale: 'ar_PS', siteName: 'سنّي' },
-    twitter: { card: 'summary_large_image', title, description, images: img ? [img] : undefined },
+    openGraph: { title, description, images: img ? [img, '/og/article-default.png'] : ['/og/article-default.png'], type: 'article', locale: 'ar_PS', siteName: 'سنّي' },
+    twitter: { card: 'summary_large_image', title, description, images: [img, '/ask/api/og?title=' + encodeURIComponent(title) + '&type=article'].filter(Boolean) as string[] },
     alternates: { canonical: `${BASE}/ask/article/${params.slug}` },
   };
 }
@@ -63,7 +64,8 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
         className="prose prose-invert mt-6 leading-8 [&_h1]:mt-8 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_li]:mr-4 [&_ol]:list-decimal [&_p]:mb-4 [&_ul]:list-disc"
         dangerouslySetInnerHTML={{ __html: String(article.content) }}
       />
-      <p className="mt-10 text-sm"><Link href="/ask" className="text-cyan-400">💬 استشارة ذكية جديدة</Link></p>
+      <div className="mt-8"><ShareButtons url={`/ask/article/${params.slug}`} title={`${String(article.title)} | سنّي`} /></div>
+      <p className="mt-6 text-sm"><Link href="/ask" className="text-cyan-400">💬 استشارة ذكية جديدة</Link></p>
     </main>
   );
 }

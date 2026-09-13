@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import AskChat from '@/components/ask/AskChat';
 import InstallButton from '@/components/ask/InstallButton';
+import WhatsAppFloat from '@/components/ask/WhatsAppFloat';
+import ShareButtons from '@/components/ask/ShareButtons';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import { getAskPageData } from '@/lib/services/askPageData';
 
@@ -11,9 +13,21 @@ export const fetchCache = 'force-no-store';
 export async function generateMetadata(): Promise<Metadata> {
   const { settings } = await getAskPageData();
   const hero = (settings.hero ?? {}) as { title?: string; subtitle?: string };
+  const ogTitle = hero.title || 'سنّي — مساعدك الذكي';
   return {
-    title: hero.title || 'AI-Receptions — استشارة ذكية',
+    title: ogTitle,
     description: hero.subtitle || undefined,
+    openGraph: {
+      title: ogTitle,
+      description: hero.subtitle || undefined,
+      images: ['/og/default.png'],
+      siteName: 'سنّي',
+      locale: 'ar_PS',
+      type: 'website',
+      url: 'https://ai-receptions.vercel.app/ask',
+    },
+    twitter: { card: 'summary_large_image', title: ogTitle, description: hero.subtitle || undefined, images: ['/og/default.png'] },
+    alternates: { canonical: 'https://ai-receptions.vercel.app/ask' },
   };
 }
 
@@ -29,6 +43,8 @@ export default async function AskPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100" dir="rtl">
       {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
+      <link rel="alternate" type="application/rss+xml" title="سنّي" href="/ask/rss.xml" />
+      <WhatsAppFloat />
       <link rel="manifest" href="/manifest.json" />
       <script
         type="application/ld+json"
@@ -50,7 +66,8 @@ export default async function AskPage() {
           <span className="inline-grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-4xl shadow-xl">{hero.logo ?? '🦷'}</span>
           <h1 className="mt-5 font-black text-white" style={{ fontSize: '2rem' }}>{hero.title ?? 'كيف يمكنني مساعدتك؟'}</h1>
           <p className="mx-auto mt-2 max-w-xl text-slate-400">{hero.subtitle ?? 'اكتب مشكلتك، وسأساعدك في العثور على أفضل طبيب قريب منك'}</p>
-          <div className="mt-3 flex justify-center"><InstallButton /></div>
+          <div className="mt-3 flex flex-wrap justify-center gap-2"><InstallButton /> <ShareButtons url="/ask" title="سنّي — ابحث عن طبيب قريب منك" compact /></div>
+          <Link href="/ask/qr" className="mt-1 text-xs text-cyan-400 hover:text-cyan-300">📱 بطاقة QR المشاركة ←</Link>
           <div className="mt-8 text-right">
             <AskChat assistantName={hero.assistant_name ?? 'سنّي'} logo={hero.logo ?? '🦷'} quickQuestions={on('quick_questions') ? questions : []} />
           </div>
@@ -160,7 +177,14 @@ export default async function AskPage() {
           <Link href="/ask/about" className="hover:text-cyan-300">عن المنصة</Link>
           <Link href="/ask/privacy" className="hover:text-cyan-300">الخصوصية</Link>
           <Link href="/ask/terms" className="hover:text-cyan-300">الشروط</Link>
+          <Link href="/ask/qr" className="hover:text-cyan-300">📱 QR</Link>
         </nav>
+        <div className="mt-2">
+          <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="inline-block px-2 text-slate-400 hover:text-cyan-300">فيس بوك</a>
+          <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="inline-block px-2 text-slate-400 hover:text-cyan-300">انستغرام</a>
+          <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" className="inline-block px-2 text-slate-400 hover:text-cyan-300">تيك توك</a>
+          <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="inline-block px-2 text-slate-400 hover:text-cyan-300">X</a>
+        </div>
         <p className="mt-3">AI-Receptions © — موظفة استقبال ذكية لكل عيادة</p>
       </footer>
       <style>{`@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(50%)}}`}</style>
