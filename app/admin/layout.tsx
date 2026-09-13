@@ -12,7 +12,16 @@ const ADMIN_LINKS = [
   { href: '/admin/subscriptions', label: '💳 الاشتراكات' },
   { href: '/admin/notifications', label: '📢 الإشعارات' },
   { href: '/admin/landing-page', label: '🌐 الصفحة الرئيسية' },
+  { href: '/admin/gallery', label: '🖼️ المعرض' },
   { href: '/admin/settings', label: '⚙️ الإعدادات' },
+];
+
+const ASK_LINKS = [
+  { href: '/admin/articles', label: '📝 المقالات' },
+  { href: '/admin/stories', label: '💚 قصص النجاح' },
+  { href: '/admin/tips', label: '💡 النصائح' },
+  { href: '/admin/faq', label: '❓ الأسئلة الشائعة' },
+  { href: '/admin/ask', label: '🎨 إعدادات /ask' },
 ];
 
 /**
@@ -44,6 +53,16 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             <p className="text-xs uppercase tracking-[0.18em] text-amber-200/80">تنقل المالك</p>
             <nav className="mt-4 space-y-1 text-sm">
               {ADMIN_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="block rounded-xl px-3 py-2 text-slate-200 transition hover:bg-slate-800/80 hover:text-white"
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <p className="mt-3 text-xs uppercase tracking-[0.16em] text-amber-200/70">محتوى /ask</p>
+              {ASK_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
