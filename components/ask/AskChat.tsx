@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import ClinicCard, { type SuggestedClinic } from './ClinicCard';
 import { sendGAEvent } from '@next/third-parties/google';
+import { TextShimmer } from '@/components/ui/text-shimmer';
 import type { PatientLocation } from './LocationPicker';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
@@ -107,7 +108,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
             </div>
           </div>
         ))}
-        {sending && <div className="flex justify-start"><div className="rounded-2xl bg-slate-800/80 px-4 py-2 text-sm text-slate-400">… يكتب</div></div>}
+        {sending && <div className="flex justify-start"><div className="rounded-2xl bg-slate-800/80 px-4 py-2"><TextShimmer duration={1}>سنّي يفكر…</TextShimmer></div></div>}
         <div ref={endRef} />
       </div>
 
@@ -128,23 +129,16 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       )}
 
       {/* Input */}
-      <div className="mt-3 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setShowLocPicker((s) => !s)}
-          title="حدد موقعك"
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-lg hover:bg-white/20"
-        >
-          📍
-        </button>
+      <div className="chat-input-container mt-3">
+        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="chat-button" style={{ background: 'rgba(255,255,255,0.12)' }}>📍</button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void send(input); }}
           placeholder="اكتب مشكلتك هنا..."
-          className="w-full rounded-full border border-white/10 bg-slate-950/70 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400/60 focus:outline-none"
+          className="chat-input"
         />
-        <button type="button" onClick={() => void send(input)} disabled={sending || !input.trim()} className="shrink-0 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-40">إرسال</button>
+        <button type="button" onClick={() => void send(input)} disabled={sending || !input.trim()} className="chat-button" aria-label="إرسال">🚀</button>
       </div>
     </div>
   );

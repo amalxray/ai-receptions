@@ -184,3 +184,67 @@ body {
     opacity: 1;
   }
 }
+
+/* ── /ask Magic UI animations ───────────────────────── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--gap))); }
+}
+@keyframes marquee-vertical {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-100% - var(--gap))); }
+}
+.animate-marquee { animation: marquee var(--duration) linear infinite; }
+.animate-marquee-vertical { animation: marquee-vertical var(--duration) linear infinite; }
+@keyframes spotlight-anim {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-25%) rotate(30deg); }
+}
+.animate-spotlight { animation: spotlight-anim 5s ease-out infinite; }
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-18px); }
+}
+.animate-float { animation: float 3.2s ease-in-out infinite; }
+/* Post-card quick question buttons */
+.post-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 104px;
+  border-radius: 18px;
+  border: none;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+.post-card-btn:hover { transform: translateY(-6px); box-shadow: 0 14px 28px rgba(0,0,0,0.35); }
+.post-card-btn:active { transform: translateY(0) scale(0.97); }
+/* Chat input with glow shadow */
+.chat-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(10px);
+  border-radius: 9999px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.chat-input { flex: 1; background: transparent; border: none; outline: none; color: white; font-size: 15px; padding: 8px; }
+.chat-input::placeholder { color: #64748b; }
+.chat-button {
+  width: 42px; height: 42px; border-radius: 9999px;
+  background: linear-gradient(135deg,#10B981,#0EA5E9);
+  border: none; color: white; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+  transition: all .3s ease;
+}
+.chat-button:hover { transform: scale(1.12); }
+.chat-button:disabled { opacity: .4; transform: none; }
