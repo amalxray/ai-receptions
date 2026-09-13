@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import AskChat from '@/components/ask/AskChat';
+import InstallButton from '@/components/ask/InstallButton';
+import { GoogleAnalytics } from '@next/third-parties/google';
 import { getAskPageData } from '@/lib/services/askPageData';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +28,21 @@ export default async function AskPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100" dir="rtl">
+      {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
+      <link rel="manifest" href="/manifest.json" />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Organization',
+            name: 'سنّي',
+            url: 'https://ai-receptions.vercel.app/ask',
+            logo: 'https://ai-receptions.vercel.app/icons/icon-512.png',
+            description: 'ابحث عن أفضل طبيب أسنان قريب منك',
+          }),
+        }}
+      />
       {/* Hero + Chat */}
       {on('hero') && (
         <section className="relative mx-auto max-w-4xl px-4 pb-10 pt-14 text-center">
@@ -33,6 +50,7 @@ export default async function AskPage() {
           <span className="inline-grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-4xl shadow-xl">{hero.logo ?? '🦷'}</span>
           <h1 className="mt-5 font-black text-white" style={{ fontSize: '2rem' }}>{hero.title ?? 'كيف يمكنني مساعدتك؟'}</h1>
           <p className="mx-auto mt-2 max-w-xl text-slate-400">{hero.subtitle ?? 'اكتب مشكلتك، وسأساعدك في العثور على أفضل طبيب قريب منك'}</p>
+          <div className="mt-3 flex justify-center"><InstallButton /></div>
           <div className="mt-8 text-right">
             <AskChat assistantName={hero.assistant_name ?? 'سنّي'} logo={hero.logo ?? '🦷'} quickQuestions={on('quick_questions') ? questions : []} />
           </div>

@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import ClinicCard, { type SuggestedClinic } from './ClinicCard';
+import { sendGAEvent } from '@next/third-parties/google';
 import type { PatientLocation } from './LocationPicker';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
@@ -40,6 +41,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     setLocation(loc);
     if (loc) {
       try { localStorage.setItem(STORE_KEY, JSON.stringify(loc)); } catch { /* noop */ }
+      try { sendGAEvent('event', 'location_set', { category: 'ask', method: loc.city ? 'city' : 'gps' }); } catch { /* noop */ }
       setMessages((m) => [...m, { role: 'user', content: `📍 موقعي: ${loc.address ?? loc.city ?? loc.lat + ', ' + loc.lng}` }]);
       void send('الموقع تم تحديده، اقترح لي أقرب المراكز.', loc);
     }
@@ -50,7 +52,12 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     const message = text.trim();
     if (!message || sending) return;
     setInput('');
-    setMessages((m) => [...m, { role: 'user', content: message }]);
+    setMessages((m) => {
+      if (!m.some((x) => x.role === 'user')) {
+        try { sendGAEvent('event', 'chat_started', { category: 'ask' }); } catch { /* noop */ }
+      }
+      return [...m, { role: 'user', content: message }];
+    });
     setSending(true);
     try {
       const res = await fetch('/api/public/ask', {
@@ -59,9 +66,13 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
         body: JSON.stringify({ message, location: locOverride ?? location }),
       });
       const json = await res.json();
+      const clinics = (json.suggested_clinics ?? []) as SuggestedClinic[];
+      if (clinics.length > 0) {
+        try { sendGAEvent('event', 'clinics_suggested', { category: 'ask', count: clinics.length }); } catch { /* noop */ }
+      }
       setMessages((m) => [
         ...m,
-        { role: 'assistant', content: json.reply ?? 'حصل خطأ، جرّب مرة ثانية.', clinics: json.suggested_clinics ?? [], needs_location: Boolean(json.needs_location) },
+        { role: 'assistant', content: json.reply ?? 'حصل خطأ، جرّب مرة ثانية.', clinics, needs_location: Boolean(json.needs_location) },
       ]);
       if (json.needs_location) setShowLocPicker(true);
     } catch {

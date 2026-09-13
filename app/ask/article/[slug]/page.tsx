@@ -6,12 +6,21 @@ import { getPublishedArticle, incrementArticleViews } from '@/lib/services/askCo
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
+const BASE = 'https://ai-receptions.vercel.app';
+
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const article = await getPublishedArticle(params.slug);
+  const article = (await getPublishedArticle(params.slug)) as Record<string, unknown> | null;
   if (!article) return { title: 'المقال غير موجود' };
+  const img = (article.featured_image as { image_url?: string } | null)?.image_url ?? null;
+  const title = String(article.title);
+  const description = String(article.excerpt ?? '').slice(0, 160) || undefined;
   return {
-    title: `${article.title} — AI-Receptions`,
-    description: String(article.excerpt ?? '').slice(0, 160) || undefined,
+    title: `${title} | سنّي`,
+    description,
+    keywords: (article.tags as string[] | null) ?? undefined,
+    openGraph: { title, description, images: img ? [img] : undefined, type: 'article', locale: 'ar_PS', siteName: 'سنّي' },
+    twitter: { card: 'summary_large_image', title, description, images: img ? [img] : undefined },
+    alternates: { canonical: `${BASE}/ask/article/${params.slug}` },
   };
 }
 
@@ -24,6 +33,22 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl bg-slate-950 px-4 py-12 text-slate-100" dir="rtl">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Article',
+            headline: String(article.title),
+            description: article.excerpt ?? undefined,
+            image: img ?? undefined,
+            author: { '@type': 'Organization', name: 'سنّي' },
+            publisher: { '@type': 'Organization', name: 'سنّي', logo: { '@type': 'ImageObject', url: `${BASE}/icons/icon-192.png` } },
+            datePublished: article.published_at ?? undefined,
+            dateModified: article.updated_at ?? article.published_at ?? undefined,
+          }),
+        }}
+      />
       <Link href="/ask/articles" className="text-sm text-cyan-400">← كل المقالات</Link>
       <h1 className="mt-4 text-3xl font-black">{String(article.title)}</h1>
       <p className="mt-2 text-xs text-slate-500">

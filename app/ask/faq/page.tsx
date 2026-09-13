@@ -9,6 +9,20 @@ export default async function AskFaqPage() {
   const faq = await listActiveFaq();
   return (
     <main className="mx-auto min-h-screen max-w-3xl bg-slate-950 px-4 py-12 text-slate-100" dir="rtl">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: (faq as Array<Record<string, unknown>>).map((f) => ({
+              '@type': 'Question',
+              name: String(f.question),
+              acceptedAnswer: { '@type': 'Answer', text: String(f.answer) },
+            })),
+          }),
+        }}
+      />
       <h1 className="text-2xl font-black">❓ الأسئلة الشائعة</h1>
       {faq.length === 0 ? (
         <p className="mt-6 text-slate-500">لا توجد أسئلة بعد.</p>
