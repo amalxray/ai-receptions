@@ -8,10 +8,12 @@ import StatusPill from '@/components/dashboard/StatusPill';
 import { useClinicContext } from '@/lib/useClinicContext';
 
 /**
- * MEDICAL FILES — imaging-center view (root-cause fix for the 404).
- * Lists imaging files with imaging-specific metadata (patient, imaging request,
- * modality/file type, upload date) and issues short-lived signed URLs for
- * download. Upload uses the direct-to-storage signed flow (large DICOM-safe).
+ * MEDICAL FILES — activity-aware view (root-cause fix for the 404).
+ * For an imaging center this is the source of truth for every produced image
+ * (panorama / CBCT / DICOM / reports); for a clinic it is the inbox of files
+ * received from partner imaging centers; for a lab, files from referrers.
+ * Issues short-lived signed URLs for download; upload uses the direct-to-
+ * storage signed flow (large DICOM-safe).
  */
 type MedicalFileRow = {
   id: string;
@@ -52,10 +54,19 @@ function formatBytes(n: number): string {
 }
 
 export default function MedicalFilesPage() {
-  const { clinicId, authHeaders, loading, error: clinicError } = useClinicContext();
+  const { clinicId, authHeaders, loading, error: clinicError, activityType } = useClinicContext();
   const [rows, setRows] = useState<MedicalFileRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Activity-aware description: the same page means different things per
+  // business type (produce vs receive imaging files).
+  const description =
+    activityType === 'imaging_center'
+      ? 'ملفات التصوير التي أنتجتها — صور بانوراما، CBCT، DICOM، وتقارير — وصول عبر روابط موقعة قصيرة الأمد فقط.'
+      : activityType === 'dental_lab'
+        ? 'ملفات المرضى التصويرية المستلمة من العيادات المحوِّلة — وصول عبر روابط موقعة قصيرة الأمد فقط.'
+        : 'ملفات التصوير المستلمة من مراكز الأشعة الشريكة (بانوراما / CBCT / DICOM / تقارير) — وصول عبر روابط موقعة قصيرة الأمد فقط.';
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -98,7 +109,7 @@ export default function MedicalFilesPage() {
   if (clinicError) return <EmptyState title="تعذر تحميل الملفات" description={clinicError} />;
 
   return (
-    <DashboardSection title="ملفات التصوير" subtitle="ملفات المرضى التصويرية (بانوراما / CBCT / DICOM / تقارير) — وصول عبر روابط موقعة قصيرة الأمد فقط.">
+    <DashboardSection title="ملفات التصوير" subtitle={description}>
       {err && <p className="mb-4 text-sm text-red-400">{err}</p>}
       {rows === null ? (
         <Skeleton className="h-40" />

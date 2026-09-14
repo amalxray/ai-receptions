@@ -65,12 +65,22 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
 
   if (type === 'imaging_center') {
     // An imaging center has no leads/growth funnel — it serves referring clinics.
-    modules = modules.filter((m) => m.module !== 'leads' && m.module !== 'growth');
+    // "مراكز الأشعة" makes no sense inside an imaging center's own nav — it
+    // RECEIVES referrals, it does not send patients to other imaging centers.
+    modules = modules.filter(
+      (m) => m.module !== 'leads' && m.module !== 'growth' && m.module !== 'imaging-centers'
+    );
     const overviewIdx = modules.findIndex((m) => m.module === 'overview');
     modules.splice(overviewIdx + 1, 0, ...IMAGING_WORKFLOW);
   } else if (type === 'dental_lab') {
-    // A lab receives cases from clinics — no appointments, no lead capture.
-    modules = modules.filter((m) => m.module !== 'appointments' && m.module !== 'leads');
+    // A lab receives cases from clinics — no appointments, no lead capture,
+    // and it does not refer patients to imaging centers. It only sees the
+    // referring clinics that send work to it.
+    modules = modules.filter(
+      (m) => m.module !== 'appointments' && m.module !== 'leads' && m.module !== 'imaging-centers'
+    );
+    const overviewIdx = modules.findIndex((m) => m.module === 'overview');
+    modules.splice(overviewIdx + 1, 0, { module: 'referring-clinics', label: 'العيادات المحوِّلة' });
   }
 
   return modules;
