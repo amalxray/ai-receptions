@@ -3,8 +3,8 @@
 import { motion } from 'framer-motion';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 import WhySection from './WhySection';
-import { ForDoctors } from './Sections';
-import { Gallery } from './Sections';
+import ResultsSection from './ResultsSection';
+import ForDoctorsSection from './ForDoctorsSection';
 import HowItWorksSection from './HowItWorksSection';
 import { Imaging } from './Sections';
 import PricingSection from './PricingSection';
@@ -27,8 +27,8 @@ export default function LandingPage() {
       <main className="bg-landing-bg text-landing-text">
         <Hero />
         <WhySection />
-        <ForDoctors />
-        <Gallery />
+        <ResultsSection />
+        <ForDoctorsSection />
         <HowItWorksSection />
         <Imaging />
         <PricingSection />
