@@ -91,6 +91,15 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'bank_transfer' | 'insurance' | 'other'>('cash');
   const [payDate, setPayDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
+  // Void + reissue — the RPC (void_invoice) keeps the invoice numbered with
+  // status 'voided'; correction happens by issuing a NEW invoice (reissue).
+  const [voidingInvoice, setVoidingInvoice] = useState<InvoiceRow | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
+  const [reissueFrom, setReissueFrom] = useState<string | null>(null);
+  const [reissueBusy, setReissueBusy] = useState(false);
+
   const [uploadBusy, setUploadBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -175,7 +184,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
           clinic_id: clinicId,
           patient_id: patientId,
           items: [{ description: invDesc.trim(), quantity: 1, unit_price: amount }],
-          notes: null,
+          notes: reissueFrom ? `إعادة إصدار من: ${reissueFrom}` : null,
         }),
       });
       const json = await res.json();
@@ -184,11 +193,72 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setShowInvoiceForm(false);
       setInvDesc('');
       setInvAmount('');
+      setReissueFrom(null);
       await loadAll();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'حدث خطأ');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /** Opens the void dialog (reason required — matches the RPC contract). */
+  const openVoidDialog = (inv: InvoiceRow) => {
+    setVoidingInvoice(inv);
+    setVoidReason('');
+    setVoidError(null);
+  };
+
+  /** POSTs to the existing void API (RPC void_invoice + audit log server-side). */
+  const confirmVoid = async () => {
+    if (!clinicId || !voidingInvoice) return;
+    if (!voidReason.trim()) {
+      setVoidError('سبب الإلغاء مطلوب');
+      return;
+    }
+    setVoidBusy(true);
+    setVoidError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/accounting/invoices/${voidingInvoice.id}/void?clinic_id=${clinicId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ reason: voidReason.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'فشل إلغاء الفاتورة');
+      setActionSuccess(`تم إلغاء الفاتورة ${voidingInvoice.invoice_number ?? ''} — يمكنك إعادة إصدارها مباشرة.`);
+      setVoidingInvoice(null);
+      await loadAll();
+    } catch (err) {
+      setVoidError(err instanceof Error ? err.message : 'حدث خطأ أثناء الإلغاء');
+    } finally {
+      setVoidBusy(false);
+    }
+  };
+
+  /** Prefills the invoice form from a voided invoice — amount stays editable. */
+  const startReissue = async (inv: InvoiceRow) => {
+    if (!clinicId) return;
+    setReissueBusy(true);
+    setActionError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/accounting/invoices/${inv.id}?clinic_id=${clinicId}`, { headers });
+      const json = await res.json();
+      const items = Array.isArray(json?.data?.items) ? json.data.items : [];
+      const desc = typeof items[0]?.description === 'string' ? items[0].description : '';
+      const total = Number(inv.total_amount ?? inv.total ?? 0);
+      setReissueFrom(inv.invoice_number ?? null);
+      setInvDesc(desc);
+      if (Number.isFinite(total) && total > 0) setInvAmount(String(total));
+      setShowInvoiceForm(true);
+      setActionSuccess(`إعادة إصدار من: ${inv.invoice_number ?? ''} — عدّل البيانات ثم أصدِر الفاتورة الجديدة`);
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'تعذر تحضير إعادة الإصدار');
+    } finally {
+      setReissueBusy(false);
     }
   };
 
@@ -392,7 +462,14 @@ return (
 {/* Invoice form */}
       {showInvoiceForm && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <p className="mb-3 text-sm font-semibold text-white">إصدار فاتورة جديدة</p>
+          <p className="mb-3 text-sm font-semibold text-white">
+            {reissueFrom ? `🔄 إعادة إصدار من: ${reissueFrom}` : 'إصدار فاتورة جديدة'}
+          </p>
+          {reissueFrom && (
+            <p className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              الفاتورة الأصلية <span className="font-mono">{reissueFrom}</span> ملغاة — هذا نموذج مستقل يصدر فاتورة جديدة برقم تسلسلي جديد. عدّل المبلغ ثم أصدِر.
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-3">
             <input
               type="text"
@@ -512,14 +589,37 @@ return (
                     {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => printInvoice(inv)}
-                  className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
-                  title="طباعة الفاتورة"
-                >
-                  🖨️ طباعة
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => printInvoice(inv)}
+                    className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+                    title="طباعة الفاتورة"
+                  >
+                    🖨️ طباعة
+                  </button>
+                  {inv.status !== 'voided' && (
+                    <button
+                      type="button"
+                      onClick={() => openVoidDialog(inv)}
+                      className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-300 transition hover:bg-red-500/30"
+                      title="إلغاء الفاتورة (تبقى برقمها بحالة ملغاة)"
+                    >
+                      ❌ إلغاء
+                    </button>
+                  )}
+                  {inv.status === 'voided' && (
+                    <button
+                      type="button"
+                      onClick={() => void startReissue(inv)}
+                      disabled={reissueBusy}
+                      className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/30 disabled:opacity-50"
+                      title="إصدار فاتورة جديدة بنفس البيانات (المبلغ قابل للتعديل)"
+                    >
+                      {reissueBusy ? '…' : '🔄 إعادة إصدار'}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -576,6 +676,60 @@ return (
           </ul>
         )}
       </div>
+
+      {/* Void invoice dialog — reason is mandatory (RPC: VOID_REASON_REQUIRED). */}
+      {voidingInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            role="presentation"
+            onClick={() => {
+              if (!voidBusy) setVoidingInvoice(null);
+            }}
+            className="absolute inset-0 bg-slate-950/80"
+          />
+          <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-[2rem] border border-slate-800 bg-slate-950 p-6 shadow-2xl">
+            <h2 className="text-base font-bold text-white">❌ إلغاء الفاتورة</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              الفاتورة: <span className="font-mono">{voidingInvoice.invoice_number ?? ''}</span> —{' '}
+              <span className="font-bold">{Number(voidingInvoice.total_amount ?? voidingInvoice.total ?? 0).toFixed(2)}₪</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              تبقى الفاتورة محفوظة برقمها بحالة «ملغاة» (لا تُحذف أبداً). فاتورة عليها دفعات مسجلة يجب عكس دفعاتها أولاً.
+            </p>
+            <label className="mt-4 block text-xs text-slate-400">سبب الإلغاء (إلزامي):</label>
+            <textarea
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              rows={3}
+              placeholder="مثال: خطأ في السعر — 330 بدلاً من 30"
+              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-500/70 focus:outline-none"
+            />
+            {voidError && (
+              <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {voidError}
+              </div>
+            )}
+            <div className="mt-5 flex justify-start gap-3">
+              <button
+                type="button"
+                onClick={() => void confirmVoid()}
+                disabled={!voidReason.trim() || voidBusy}
+                className="rounded-full bg-red-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {voidBusy ? 'جارٍ الإلغاء...' : 'تأكيد الإلغاء'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setVoidingInvoice(null)}
+                disabled={voidBusy}
+                className="rounded-full border border-slate-700 px-5 py-2 text-sm font-semibold text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

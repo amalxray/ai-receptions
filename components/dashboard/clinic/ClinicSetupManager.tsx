@@ -6,14 +6,20 @@ import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
+import LocationPicker, { type LocationValue } from '@/components/dashboard/clinic/LocationPicker';
 
 type ClinicProfile = {
   id: string;
   name: string;
   phone: string | null;
   address: string | null;
+  address_detail: string | null;
+  city: string | null;
+  area: string | null;
   email: string | null;
   slug: string;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 type SetupStatus = {
@@ -53,6 +59,15 @@ export default function ClinicSetupManager() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', address: '', email: '' });
+  // Location (map + geocoding) — persisted via the profile API (clinics.lat/lng).
+  const [location, setLocation] = useState<LocationValue>({
+    latitude: '',
+    longitude: '',
+    city: '',
+    area: '',
+    address: '',
+    address_detail: '',
+  });
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setLoading(false); return; }
@@ -90,6 +105,14 @@ export default function ClinicSetupManager() {
         address: body.data.address || '',
         email: body.data.email ?? body.data.website ?? '',
       });
+      setLocation({
+        latitude: body.data.latitude != null ? String(body.data.latitude) : '',
+        longitude: body.data.longitude != null ? String(body.data.longitude) : '',
+        city: body.data.city || '',
+        area: body.data.area || '',
+        address: '',
+        address_detail: body.data.address_detail || body.data.address || '',
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load profile');
     }
@@ -123,6 +146,11 @@ export default function ClinicSetupManager() {
           phone: form.phone || null,
           address: form.address || null,
           email: form.email || null,
+          latitude: location.latitude !== '' ? Number(location.latitude) : undefined,
+          longitude: location.longitude !== '' ? Number(location.longitude) : undefined,
+          city: location.city || null,
+          area: location.area || null,
+          address_detail: location.address_detail || null,
         }),
       });
       const body = await res.json();
@@ -229,6 +257,23 @@ export default function ClinicSetupManager() {
               dir="ltr"
               className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100"
             />
+          </div>
+          <div className="md:col-span-2">
+            <p className="mb-2 text-xs font-semibold text-slate-300">📍 موقع العيادة على الخريطة</p>
+            <p className="mb-3 text-xs text-slate-500">
+              اضغط على الخريطة أو اسحب العلامة لضبط الموقع — يظهر على صفحتك العامة ويساعد المرضى في الوصول.
+            </p>
+            <LocationPicker value={location} onChange={setLocation} />
+            {location.latitude !== '' && location.longitude !== '' && (
+              <a
+                href={`https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-block text-sm font-semibold text-cyan-400"
+              >
+                🗺️ معاينة في Google Maps
+              </a>
+            )}
           </div>
           <div className="md:col-span-2 flex justify-end">
             <button type="submit" disabled={saving} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">

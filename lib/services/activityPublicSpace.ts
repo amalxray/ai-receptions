@@ -83,6 +83,9 @@ export type ActivityPublicSpace = {
   city: string | null;
   area: string | null;
   address: string | null;
+  /** Clinic map coordinates — surfaced from PublicClinicProfile for the map section. */
+  latitude: number | null;
+  longitude: number | null;
   phone: string | null;
   bookingUrl: string;
   chatUrl: string;
@@ -258,6 +261,8 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     city: profile.city,
     area: profile.area,
     address: profile.address,
+    latitude: profile.latitude ?? null,
+    longitude: profile.longitude ?? null,
     phone: profile.phone,
     bookingUrl: profile.bookingUrl,
     chatUrl: profile.chatUrl,

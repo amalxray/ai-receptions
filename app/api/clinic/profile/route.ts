@@ -10,6 +10,12 @@ const profileSchema = z.object({
   address: z.string().max(500).optional().nullable(),
   website: z.string().url().max(500).optional().nullable(),
   email: z.string().email().max(254).optional().nullable(),
+  // Location (20261005_clinic_location columns) — optional; only written when sent.
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  city: z.string().max(120).optional().nullable(),
+  area: z.string().max(120).optional().nullable(),
+  address_detail: z.string().max(500).optional().nullable(),
 });
 
 export async function GET(req: Request) {
@@ -26,7 +32,7 @@ export async function GET(req: Request) {
     const supabase = supabaseAdmin;
     const { data, error } = await supabase
       .from('clinics')
-      .select('id, name, phone, address, website, email, slug, created_at, updated_at')
+      .select('id, name, phone, address, address_detail, city, area, website, email, slug, latitude, longitude, created_at, updated_at')
       .eq('id', clinicId)
       .is('deleted_at', null)
       .single();
@@ -59,18 +65,27 @@ export async function PUT(req: Request) {
     }
 
     const supabase = supabaseAdmin;
+    // Base fields are always written; location fields only when sent so a
+    // plain profile edit never wipes previously set coordinates.
+    const patch: Record<string, unknown> = {
+      name: parsed.data.name,
+      phone: parsed.data.phone ?? null,
+      address: parsed.data.address ?? null,
+      website: parsed.data.website ?? null,
+      email: parsed.data.email ?? null,
+    };
+    if (parsed.data.latitude !== undefined) patch.latitude = parsed.data.latitude;
+    if (parsed.data.longitude !== undefined) patch.longitude = parsed.data.longitude;
+    if (parsed.data.city !== undefined) patch.city = parsed.data.city;
+    if (parsed.data.area !== undefined) patch.area = parsed.data.area;
+    if (parsed.data.address_detail !== undefined) patch.address_detail = parsed.data.address_detail;
+
     const { data, error } = await supabase
       .from('clinics')
-      .update({
-        name: parsed.data.name,
-        phone: parsed.data.phone ?? null,
-        address: parsed.data.address ?? null,
-        website: parsed.data.website ?? null,
-        email: parsed.data.email ?? null,
-      })
+      .update(patch)
       .eq('id', clinicId)
       .is('deleted_at', null)
-      .select('id, name, phone, address, website, email, slug, created_at, updated_at')
+      .select('id, name, phone, address, address_detail, city, area, website, email, slug, latitude, longitude, created_at, updated_at')
       .single();
 
     if (error || !data) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });

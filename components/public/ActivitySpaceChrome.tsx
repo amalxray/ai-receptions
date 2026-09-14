@@ -1,11 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ShareSection } from '@/components/public/ShareSection';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
+
+// Map loads only on the client (CDN Leaflet) — never during SSR.
+const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
+  ssr: false,
+  loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-200" />,
+});
 
 /**
  * Shared chrome for activity public spaces (Phase C + redesign).
@@ -215,7 +222,9 @@ export function ActivitySpaceChrome({
             // are not loadable as page images and render broken visuals.
             space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl)
               ? {
-                  backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.93), rgba(238,244,255,0.96)), url('${space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, '')}')`,
+                  // Keep the cover clearly visible: only a light scrim (heavier at the
+                  // bottom where the copy sits) instead of the old ~95% white wash.
+                  backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.42), rgba(238,244,255,0.82)), url('${space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, '')}')`,
                 }
               : undefined
           }
@@ -425,6 +434,21 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
         <a href={`tel:${space.phone}`} className="mt-2 inline-block text-sm font-semibold text-brand-cyan hover:text-brand-cyan/80" dir="ltr">
           📞 {space.phone}
         </a>
+      )}
+      {typeof space.latitude === 'number' && typeof space.longitude === 'number' && (
+        <div className="mt-4">
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <PublicLocationMap lat={space.latitude} lng={space.longitude} label={space.name} />
+          </div>
+          <a
+            href={`https://www.google.com/maps?q=${space.latitude},${space.longitude}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block text-sm font-semibold text-brand-cyan hover:text-brand-cyan/80"
+          >
+            🗺️ افتح في Google Maps
+          </a>
+        </div>
       )}
       {Object.entries(space.socialLinks ?? {}).filter(([, v]) => Boolean(v)).length > 0 && (
         <div className="mt-3 flex flex-wrap gap-3 text-sm">

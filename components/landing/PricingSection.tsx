@@ -1,12 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { ShineBorder } from '@/components/ui/shine-border';
 
+// plan ids map to the register flow (?plan=… mirrors billing plan keys).
 const PLANS = [
   {
+    id: 'founding',
     title: 'التأسيس',
     price: '$50',
     note: 'ثابت مدى الحياة — لأول 100 طبيب',
@@ -14,6 +17,7 @@ const PLANS = [
     highlighted: true,
   },
   {
+    id: 'growth',
     title: 'النمو',
     price: '$120',
     note: 'نفس الميزات بدون خصم التأسيس',
@@ -21,6 +25,7 @@ const PLANS = [
     highlighted: false,
   },
   {
+    id: 'pro',
     title: 'الاحترافية',
     price: 'مخصص',
     note: 'لمجموعات العيادات والسلاسل',
@@ -65,7 +70,11 @@ export default function PricingSection() {
                   ))}
                 </ul>
                 <Magnetic>
-                  <ShimmerButton className="w-full py-4 text-lg">اشترك الآن 🚀</ShimmerButton>
+                  <Link href={plan.price === 'مخصص' ? '/register?plan=pro&contact=sales' : `/register?plan=${plan.id}`} className="block">
+                    <ShimmerButton className="w-full py-4 text-lg">
+                      {plan.price === 'مخصص' ? 'تواصل معنا 📞' : 'اشترك الآن 🚀'}
+                    </ShimmerButton>
+                  </Link>
                 </Magnetic>
               </div>
             </BlurFade>
