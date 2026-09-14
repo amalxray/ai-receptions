@@ -7,11 +7,12 @@ import { ForDoctors } from './Sections';
 import { Gallery } from './Sections';
 import HowItWorksSection from './HowItWorksSection';
 import { Imaging } from './Sections';
-import { Pricing } from './Sections';
+import PricingSection from './PricingSection';
 import { ClinicAds } from './Sections';
-import { Compare } from './Sections';
+import ComparisonSection from './ComparisonSection';
 import { FAQ } from './Sections';
-import { Testimonials } from './Sections';
+import TestimonialsSection from './TestimonialsSection';
+import FinalCTASection from './FinalCTASection';
 import LeadForm from './LeadForm';
 import Navbar from './Navbar';
 import UrgencyBar from './UrgencyBar';
@@ -30,11 +31,12 @@ export default function LandingPage() {
         <Gallery />
         <HowItWorksSection />
         <Imaging />
-        <Pricing />
+        <PricingSection />
         <ClinicAds />
-        <Testimonials />
-        <Compare />
+        <TestimonialsSection />
+        <ComparisonSection />
         <FAQ />
+        <FinalCTASection />
         <LeadForm />
       </main>
 

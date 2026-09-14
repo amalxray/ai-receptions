@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
-import { motion } from 'framer-motion';
 
 interface AnimatedBeamProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -65,15 +64,36 @@ export function AnimatedBeam({
   if (!d) return null;
 
   return (
-    <svg className='pointer-events-none absolute inset-0 z-0 h-full w-full' width={size.w} height={size.h} viewBox={'0 0 ${size.w} ${size.h}'} fill='none'>
+    <svg
+      className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible"
+      width={size.w}
+      height={size.h}
+      viewBox={`0 0 ${size.w} ${size.h}`}
+      fill="none"
+    >
       <defs>
-        <linearGradient id={`grad-${id}`} x1='0%' y1='0%' x2='100%' y2='100%'>
-          <stop offset='0%' stopColor={gradientStartColor} />
-          <stop offset='100%' stopColor={gradientStopColor} />
+        <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={gradientStartColor} />
+          <stop offset="100%" stopColor={gradientStopColor} />
         </linearGradient>
       </defs>
-      <path d={d} stroke={pathColor} strokeWidth={pathWidth} strokeLinecap='round' strokeDasharray='2 6' />
-      <motion.circle r={5} style={{ offsetPath: `path("${d}")` }} animate={{ offsetDistance: ['0%', '100%'] }} transition={{ duration, delay, repeat: Infinity, ease: 'easeInOut' }} fill={`url(#grad-${id})`} />
+      <path
+        d={d}
+        stroke={pathColor}
+        strokeWidth={pathWidth}
+        strokeLinecap="round"
+        strokeDasharray="2 6"
+      />
+      <circle r={4} fill={`url(#grad-${id})`} style={{ offsetPath: `path("${d}")` }}>
+        <animate
+          attributeName="offset-distance"
+          from="0%"
+          to="100%"
+          dur={`${duration}s`}
+          begin={`${delay}s`}
+          repeatCount="indefinite"
+        />
+      </circle>
     </svg>
   );
 }

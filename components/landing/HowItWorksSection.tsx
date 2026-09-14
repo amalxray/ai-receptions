@@ -21,7 +21,7 @@ export default function HowItWorksSection() {
   const refs = [step1Ref, step2Ref, step3Ref];
 
   return (
-    <section className="relative overflow-hidden bg-slate-950 py-24">
+    <section id="how-it-works" className="relative overflow-hidden bg-slate-950 py-24">
       <div
         className="pointer-events-none absolute inset-0 -z-10 opacity-[0.14]"
         style={{
