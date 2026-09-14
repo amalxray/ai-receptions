@@ -295,6 +295,8 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
     setError(null);
     setSuccess(null);
     try {
+      const missing = missingRequired(form);
+      if (missing) throw new Error(`الحقل «${missing}» مطلوب`);
       const headers = await api.authHeaders();
       const res = await fetch(`/api/clinic/public-content?clinic_id=${encodeURIComponent(api.clinicId)}&type=${type}`, {
         method: 'POST',
@@ -320,6 +322,8 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
     setError(null);
     setSuccess(null);
     try {
+      const missing = missingRequired(editForm);
+      if (missing) throw new Error(`الحقل «${missing}» مطلوب`);
       const headers = await api.authHeaders();
       const res = await fetch(`/api/clinic/public-content/${id}?clinic_id=${encodeURIComponent(api.clinicId)}&type=${type}`, {
         method: 'PATCH',
@@ -392,14 +396,28 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
       if (f.kind === 'select') initial[f.key] = f.options[0]?.value ?? '';
       if (f.kind === 'color') initial[f.key] = '#0e7490';
       if (f.kind === 'number') initial[f.key] = f.min;
+      // Text/textarea must be initialized too — otherwise required-field
+      // detection and controlled inputs start from `undefined`.
+      if (f.kind === 'text' || f.kind === 'textarea') initial[f.key] = '';
     }
     return initial;
+  };
+
+  /** Client-side required check — fails fast with an Arabic message instead
+   * of a cold API 400 like "field text is required". */
+  const missingRequired = (form: Record<string, string | boolean | number>): string | null => {
+    for (const f of fields) {
+      if (f.kind !== 'text' && f.kind !== 'textarea') continue;
+      if (!f.required) continue;
+      if (String(form[f.key] ?? '').trim() === '') return f.label;
+    }
+    return null;
   };
 
   const fieldGrid = (current: Record<string, string | boolean | number>, set: (v: Record<string, string | boolean | number>) => void) => (
     <div className="grid gap-3 sm:grid-cols-2">
       {fields.map((f) => (
-        <Field key={f.key} label={f.label}>
+        <Field key={f.key} label={f.label + ((f.kind === 'text' || f.kind === 'textarea') && f.required ? ' *' : '')}>
           <FieldInput
             field={f}
             value={String(current[f.key] ?? '')}
