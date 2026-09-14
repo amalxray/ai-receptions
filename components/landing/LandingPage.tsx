@@ -2,8 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { useLandingCopy } from '@/components/landing/LandingContent';
-import { PainStats } from './Sections';
-import { Features } from './Sections';
+import WhySection from './WhySection';
 import { ForDoctors } from './Sections';
 import { Gallery } from './Sections';
 import { HowItWorks } from './Sections';
@@ -26,8 +25,7 @@ export default function LandingPage() {
       <UrgencyBar />
       <main className="bg-landing-bg text-landing-text">
         <Hero />
-        <PainStats />
-        <Features />
+        <WhySection />
         <ForDoctors />
         <Gallery />
         <HowItWorks />
