@@ -60,7 +60,7 @@ export default function Navbar() {
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
         scrolled
-          ? 'border-b border-landing-indigo/10 bg-landing-bg/80 backdrop-blur-md'
+          ? 'border-b border-white/10 bg-slate-950/85 backdrop-blur-md'
           : 'border-b border-transparent'
       }`}
     >
@@ -71,7 +71,7 @@ export default function Navbar() {
             <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-landing-cyan animate-pulse" />
             <span className="text-lg font-black text-white">A</span>
           </span>
-          <span className="font-heading text-lg font-extrabold tracking-tight text-landing-text">
+          <span className="font-heading text-lg font-extrabold tracking-tight text-white">
             AI-Receptions
           </span>
         </Link>
@@ -82,7 +82,7 @@ export default function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-landing-text/70 transition hover:text-landing-indigo"
+              className="text-sm font-medium text-slate-200 transition hover:text-white"
             >
               {link.label}
             </a>
@@ -102,7 +102,7 @@ export default function Navbar() {
             <>
               <Link
                 href="/login"
-                className="rounded-full border border-landing-indigo/20 px-4 py-2 text-sm font-semibold text-landing-text transition hover:border-landing-indigo hover:text-landing-indigo"
+                className="rounded-full border border-white/25 px-4 py-2 text-sm font-semibold text-white transition hover:border-emerald-400/70"
               >
                 تسجيل الدخول
               </Link>
