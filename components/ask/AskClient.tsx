@@ -9,7 +9,7 @@ import { GoogleAnalytics } from '@next/third-parties/google';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { Spotlight } from '@/components/ui/spotlight';
 import { Meteors } from '@/components/ui/meteors';
-import { TextShimmerWave } from '@/components/ui/text-shimmer-wave';
+import { TextShimmer } from '@/components/ui/text-shimmer';
 import { TextLoop } from '@/components/ui/text-loop';
 import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
@@ -19,12 +19,21 @@ import { ShineBorder } from '@/components/ui/shine-border';
 import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
 
+import StatsSection from './StatsSection';
+import ClinicsSection from './ClinicsSection';
+import GallerySection from './GallerySection';
+import TestimonialsSection from './TestimonialsSection';
+import AskFooter from './AskFooter';
+
 export type AskClientData = {
   settings: Record<string, unknown>;
   tips: Array<Record<string, unknown>>;
   articles: Array<Record<string, unknown>>;
   stories: Array<Record<string, unknown>>;
   faq: Array<Record<string, unknown>>;
+  clinics: Array<Record<string, unknown>>;
+  gallery: Array<Record<string, unknown>>;
+  stats: { clinics_count: number; patients_count: number; cities_count: number };
 };
 
 const QUICK_CARDS = [
@@ -36,7 +45,7 @@ const QUICK_CARDS = [
   { text: 'حالة طارئة', emoji: '🚨', gradient: 'linear-gradient(180deg,#c800ff 0%,#ff076a 51%,#ff6c6c 100%)' },
 ];
 
-export default function AskClient({ settings, tips, articles, stories, faq }: AskClientData) {
+export default function AskClient({ settings, tips, articles, stories, faq, clinics, gallery, stats }: AskClientData) {
   const hero = (settings.hero ?? {}) as { title: string; subtitle: string; logo: string; assistant_name: string };
   const colors = (settings.colors ?? {}) as { primary?: string; secondary?: string; heading?: string; warning?: string };
   const sections = (settings.sections ?? {}) as Record<string, boolean>;
@@ -68,7 +77,7 @@ export default function AskClient({ settings, tips, articles, stories, faq }: As
           </BlurFade>
           <BlurFade delay={0.15}>
             <h1 className="mt-4 text-5xl font-black md:text-6xl">
-              <TextShimmerWave duration={1.6}>{hero.title ?? 'كيف يمكنني مساعدتك؟'}</TextShimmerWave>
+              <TextShimmer duration={2.2} className='font-black'>{hero.title ?? 'كيف يمكنني مساعدتك؟'}</TextShimmer>
             </h1>
           </BlurFade>
           <BlurFade delay={0.3}>
@@ -101,6 +110,9 @@ export default function AskClient({ settings, tips, articles, stories, faq }: As
         </div>
       </section>
 
+      {/* ═══ STATS (dynamic from DB) ═══ */}
+      <StatsSection stats={stats} />
+
       {/* ═══ CHAT + QUICK CARDS ═══ */}
       <section className="relative z-10 mx-auto max-w-4xl px-4 pb-10">
         {on('quick_questions') && questions.length > 0 && (
@@ -119,6 +131,15 @@ export default function AskClient({ settings, tips, articles, stories, faq }: As
           <AskChat assistantName={hero.assistant_name ?? 'سنّي'} logo={hero.logo ?? '🦷'} quickQuestions={questions} />
         </div>
       </section>
+
+      {/* ═══ PARTNER CLINICS (Doctor Cards) ═══ */}
+      <ClinicsSection clinics={clinics as never} />
+
+      {/* ═══ GALLERY ═══ */}
+      <GallerySection images={gallery} />
+
+      {/* ═══ TESTIMONIALS (Marquee) ═══ */}
+      <TestimonialsSection testimonials={stories} />
 
       {/* ═══ TIPS ═══ */}
       {on('tips') && tips.length > 0 && (
@@ -162,28 +183,6 @@ export default function AskClient({ settings, tips, articles, stories, faq }: As
             ))}
           </div>
           <p className="mt-4 text-center text-sm"><Link href="/ask/articles" className="text-cyan-400">كل المقالات ←</Link></p>
-        </section>
-      )}
-
-      {/* ═══ STORIES carousel ═══ */}
-      {on('stories') && stories.length > 0 && (
-        <section className="relative z-10 mx-auto max-w-4xl px-4 py-10">
-          <h2 className="text-center text-2xl font-black" style={{ color: colors.heading || '#7C3AED' }}>💚 قصص من مرضانا</h2>
-          <div className="mt-6 flex snap-x gap-4 overflow-x-auto pb-4">
-            {stories.map((s, i) => (
-              <BlurFade key={String(s.id)} delay={i * 0.08} inView>
-                <div className="w-72 shrink-0 snap-center rounded-2xl border border-white/10 bg-white/5 p-4">
-                  {typeof s.image_url === 'string' && s.image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.image_url} alt={String(s.patient_name)} loading="lazy" className="mb-3 h-28 w-full rounded-xl object-cover" />
-                  )}
-                  <p className="text-amber-400">{'★'.repeat(Number(s.rating ?? 5))}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">{String(s.content).slice(0, 150)}…</p>
-                  <p className="mt-3 text-xs font-bold text-slate-200">— {String(s.patient_name)}{s.patient_city ? ` · ${String(s.patient_city)}` : ''}</p>
-                </div>
-              </BlurFade>
-            ))}
-          </div>
         </section>
       )}
 
@@ -237,21 +236,7 @@ export default function AskClient({ settings, tips, articles, stories, faq }: As
         </section>
       )}
 
-      {/* ═══ FOOTER ═══ */}
-      <footer className="relative z-10 border-t border-white/10 py-6 text-center text-sm text-slate-500">
-        <nav className="flex flex-wrap justify-center gap-4">
-          <Link href="/ask/articles" className="hover:text-cyan-300">📝 المقالات</Link>
-          <Link href="/ask/stories" className="hover:text-cyan-300">💚 القصص</Link>
-          <Link href="/ask/tips" className="hover:text-cyan-300">💡 النصائح</Link>
-          <Link href="/ask/faq" className="hover:text-cyan-300">❓ FAQ</Link>
-          <Link href="/ask/qr" className="hover:text-cyan-300">📱 QR</Link>
-          <Link href="/ask/about" className="hover:text-cyan-300">عن المنصة</Link>
-        </nav>
-        <div className="mt-2">
-          <ShareButtons url="/ask" title="سنّي — ابحث عن طبيب قريب منك" compact />
-        </div>
-        <p className="mt-2">AI-Receptions © — موظفة استقبال ذكية لكل عيادة</p>
-      </footer>
+      <AskFooter />
 
       {/* ═══ SOCIAL DOCK ═══ */}
       <Dock className="hidden md:flex">

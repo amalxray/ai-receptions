@@ -27,7 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function AskPage() {
-  const { settings, tips, articles, stories, faq } = await getAskPageData();
+  const { settings, tips, articles, stories, faq, clinics, gallery, stats } = await getAskPageData();
   const hero = (settings.hero ?? {}) as { title: string; subtitle: string; logo: string; assistant_name: string };
   const colors = (settings.colors ?? {}) as { primary?: string; secondary?: string; heading?: string; warning?: string };
   const sections = (settings.sections ?? {}) as Record<string, boolean>;
@@ -35,5 +35,5 @@ export default async function AskPage() {
   const on = (k: string) => sections[k] !== false;
   const published = (articles as Array<Record<string, unknown>>).filter((a) => a.slug);
 
-  return <AskClient settings={settings} tips={tips} articles={articles} stories={stories} faq={faq} />;
+  return <AskClient settings={settings} tips={tips} articles={articles} stories={stories} faq={faq} clinics={clinics} gallery={gallery} stats={stats} />;
 }
