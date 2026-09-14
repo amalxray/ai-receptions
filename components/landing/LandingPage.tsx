@@ -5,7 +5,7 @@ import { useLandingCopy } from '@/components/landing/LandingContent';
 import WhySection from './WhySection';
 import { ForDoctors } from './Sections';
 import { Gallery } from './Sections';
-import { HowItWorks } from './Sections';
+import HowItWorksSection from './HowItWorksSection';
 import { Imaging } from './Sections';
 import { Pricing } from './Sections';
 import { ClinicAds } from './Sections';
@@ -28,7 +28,7 @@ export default function LandingPage() {
         <WhySection />
         <ForDoctors />
         <Gallery />
-        <HowItWorks />
+        <HowItWorksSection />
         <Imaging />
         <Pricing />
         <ClinicAds />
