@@ -9,6 +9,13 @@ export type PublicClinic = {
   id: string;
   slug: string;
   name: string;
+  /** Location (booking success directions card) — null when not set by the owner. */
+  latitude: number | null;
+  longitude: number | null;
+  /** Public display address (city/area/address_detail joined) — null when unset. */
+  address: string | null;
+  /** Phone shown only when the owner enabled show_phone on the public profile. */
+  phone: string | null;
 };
 
 export async function getActiveClinic(userId: string): Promise<Clinic | null> {
@@ -62,7 +69,7 @@ export async function resolvePublicClinic(params: { id?: string; publicId?: stri
 
   let query = supabaseAdmin
     .from('clinics')
-    .select('id, slug, name')
+    .select('id, slug, name, latitude, longitude, phone, city, area, address_detail, settings')
     .is('deleted_at', null);
 
   if (params.id) {
@@ -79,7 +86,24 @@ export async function resolvePublicClinic(params: { id?: string; publicId?: stri
     return null;
   }
 
-  return { id: data.id, slug: data.slug, name: data.name };
+  // Phone stays private unless the owner enabled show_phone on the public
+  // profile (same gating as the public space).
+  const pp = ((data.settings as Record<string, unknown> | null)?.public_profile ?? {}) as {
+    show_phone?: unknown;
+  };
+  const showPhone = pp.show_phone === true;
+
+  const addressBits = [data.city, data.area, data.address_detail].filter(Boolean) as string[];
+
+  return {
+    id: data.id,
+    slug: data.slug,
+    name: data.name,
+    latitude: typeof data.latitude === 'number' ? data.latitude : null,
+    longitude: typeof data.longitude === 'number' ? data.longitude : null,
+    address: addressBits.length > 0 ? addressBits.join(' — ') : null,
+    phone: showPhone ? (data.phone ?? null) : null,
+  };
 }
 
 export async function createClinic(clinic: Omit<Clinic, 'id' | 'created_at'>): Promise<Clinic> {

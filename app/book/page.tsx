@@ -11,7 +11,7 @@ type BookingStep = 'service' | 'provider' | 'date' | 'time' | 'patient' | 'confi
 
 type ClinicResolution =
   | { status: 'loading'; clinic: null }
-  | { status: 'ready'; clinic: { id: string; slug: string; name: string } }
+  | { status: 'ready'; clinic: { id: string; slug: string; name: string; latitude: number | null; longitude: number | null; address: string | null; phone: string | null } }
   | { status: 'not-found'; clinic: null };
 
 function BookingForm() {
@@ -463,6 +463,33 @@ function BookingForm() {
                 >
                   {lifecycleLoading === 'cancel' ? 'جاري الإلغاء...' : 'إلغاء الحجز'}
                 </button>
+              )}
+
+              {/* Clinic location — directions card (map coords set by the owner in clinic-setup). */}
+              {clinic.clinic.latitude != null && clinic.clinic.longitude != null && (
+                <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+                  <h3 className="mb-2 text-sm font-bold text-white">📍 موقع العيادة</h3>
+                  {clinic.clinic.address && <p className="mb-4 text-sm text-slate-400">{clinic.clinic.address}</p>}
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <a
+                      href={`https://www.google.com/maps?q=${clinic.clinic.latitude},${clinic.clinic.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full bg-cyan-500 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-cyan-400"
+                    >
+                      🗺️ الاتجاهات
+                    </a>
+                    {clinic.clinic.phone && (
+                      <a
+                        href={`tel:${clinic.clinic.phone}`}
+                        dir="ltr"
+                        className="rounded-full border border-slate-700 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:border-cyan-500/60"
+                      >
+                        📞 {clinic.clinic.phone}
+                      </a>
+                    )}
+                  </div>
+                </div>
               )}
 
               <button onClick={resetBooking} className="mt-8 inline-flex items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400">
