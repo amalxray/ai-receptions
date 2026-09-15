@@ -52,6 +52,13 @@ const patchSchema = z.object({
       image_size: z.enum(['small', 'medium', 'large']).optional(),
       video_size: z.enum(['small', 'medium', 'large']).optional(),
       gallery_spacing: z.enum(['compact', 'normal', 'roomy']).optional(),
+      // Cover image polish (bounded — service re-validates integers).
+      cover_blur: z.number().int().min(0).max(20).optional(),
+      cover_position: z.enum(['center', 'top', 'bottom', 'left', 'right']).optional(),
+      cover_offset_y: z.number().int().min(0).max(100).optional(),
+      // News ticker sizing (bounded enums — renderer maps to approved classes).
+      news_height: z.enum(['xs', 'sm', 'md', 'lg', 'xl']).optional(),
+      news_font: z.enum(['sm', 'base', 'lg', 'xl', '2xl']).optional(),
     })
     .optional(),
   // PHASE L — bounded theme (hex colors + enums only; service re-validates).

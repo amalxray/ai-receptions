@@ -92,11 +92,17 @@ export default function AdminArticlesPage() {
 
   const slugifyAr = (s: string) => s.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);
 
+  // ROOT-CAUSE FIX («المقالات لا تعرض المحتوى»): TipTap only reads `content`
+  // at editor creation — reopening the modal kept a stale (empty) editor, so
+  // every existing article opened blank and any later save wiped the stored
+  // content. Sync the editor explicitly on every open.
   const openNew = () => {
     setEditingId(null); setTitle(''); setSlug(''); setExcerpt(''); setCategory(''); setTags(''); setStatus('draft'); setFeatured(false); setHtml(''); setOpen(true);
+    if (editor) editor.commands.clearContent();
   };
   const openEdit = (a: Article) => {
     setEditingId(a.id); setTitle(a.title); setSlug(a.slug ?? ''); setExcerpt(a.excerpt ?? ''); setCategory(a.category ?? ''); setTags((a.tags ?? []).join('، ')); setStatus(a.status === 'archived' ? 'draft' : (a.status === 'published' ? 'published' : 'draft')); setFeatured(a.is_featured); setHtml(a.content); setOpen(true);
+    if (editor) editor.commands.setContent(a.content || '');
   };
 
   const save = async (mode: 'draft' | 'published') => {

@@ -49,6 +49,12 @@ export type SocialLinks = {
  */
 export type DisplaySize = 'small' | 'medium' | 'large';
 export type DisplaySpacing = 'compact' | 'normal' | 'roomy';
+/** Cover image focus point (object-position x). */
+export type CoverPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
+/** News ticker bar height (renderer maps to h-8..h-24). */
+export type NewsTickerHeight = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+/** News ticker font scale (renderer maps to text-sm..text-2xl). */
+export type NewsTickerFont = 'sm' | 'base' | 'lg' | 'xl' | '2xl';
 
 export type PublicDisplaySettings = {
   body_text: DisplaySize;
@@ -57,6 +63,13 @@ export type PublicDisplaySettings = {
   image_size: DisplaySize;
   video_size: DisplaySize;
   gallery_spacing: DisplaySpacing;
+  /** Cover image polish: blur px (0–20, 0 = sharp), focus point, vertical offset %. */
+  cover_blur: number;
+  cover_position: CoverPosition;
+  cover_offset_y: number;
+  /** News ticker sizing: bar height + font scale (bigger defaults — owner fix). */
+  news_height: NewsTickerHeight;
+  news_font: NewsTickerFont;
 };
 
 export const DEFAULT_DISPLAY: PublicDisplaySettings = {
@@ -66,8 +79,14 @@ export const DEFAULT_DISPLAY: PublicDisplaySettings = {
   image_size: 'medium',
   video_size: 'medium',
   gallery_spacing: 'normal',
+  cover_blur: 0,
+  cover_position: 'center',
+  cover_offset_y: 50,
+  news_height: 'md',
+  news_font: 'base',
 };
 
+/** Empty allowed-list marks integer-bounded keys (see DISPLAY_INT_BOUNDS). */
 const DISPLAY_ALLOWED: Record<keyof PublicDisplaySettings, readonly string[]> = {
   body_text: ['small', 'medium', 'large'],
   heading: ['small', 'medium', 'large'],
@@ -75,6 +94,17 @@ const DISPLAY_ALLOWED: Record<keyof PublicDisplaySettings, readonly string[]> = 
   image_size: ['small', 'medium', 'large'],
   video_size: ['small', 'medium', 'large'],
   gallery_spacing: ['compact', 'normal', 'roomy'],
+  cover_position: ['center', 'top', 'bottom', 'left', 'right'],
+  news_height: ['xs', 'sm', 'md', 'lg', 'xl'],
+  news_font: ['sm', 'base', 'lg', 'xl', '2xl'],
+  cover_blur: [],
+  cover_offset_y: [],
+};
+
+/** Bounded integers: [min, max] inclusive — no raw px beyond these. */
+const DISPLAY_INT_BOUNDS: Partial<Record<keyof PublicDisplaySettings, readonly [number, number]>> = {
+  cover_blur: [0, 20],
+  cover_offset_y: [0, 100],
 };
 
 /** Validate a display patch: unknown keys and out-of-range values are rejected (never coerced). */
@@ -82,9 +112,18 @@ export function validateDisplayPatch(input: unknown): { ok: true; value: Partial
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     return { ok: false, message: 'display must be an object' };
   }
-  const out: Record<string, string> = {};
+  const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
     if (!(k in DISPLAY_ALLOWED)) return { ok: false, message: `unknown display key: ${k}` };
+    const bounds = DISPLAY_INT_BOUNDS[k as keyof PublicDisplaySettings];
+    if (bounds) {
+      const [min, max] = bounds;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) {
+        return { ok: false, message: `display.${k} must be an integer between ${min} and ${max}` };
+      }
+      out[k] = v;
+      continue;
+    }
     const allowed = DISPLAY_ALLOWED[k as keyof PublicDisplaySettings];
     if (typeof v !== 'string' || !allowed.includes(v)) {
       return { ok: false, message: `invalid value for display.${k}` };
@@ -101,8 +140,16 @@ export function readDisplaySettings(settings: unknown): PublicDisplaySettings {
   const out = { ...DEFAULT_DISPLAY };
   for (const k of Object.keys(DISPLAY_ALLOWED) as (keyof PublicDisplaySettings)[]) {
     const v = d[k];
+    const bounds = DISPLAY_INT_BOUNDS[k];
+    if (bounds) {
+      const [min, max] = bounds;
+      if (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max) {
+        (out as unknown as Record<string, number>)[k] = v;
+      }
+      continue;
+    }
     if (typeof v === 'string' && DISPLAY_ALLOWED[k].includes(v)) {
-      (out as Record<string, string>)[k] = v;
+      (out as unknown as Record<string, string>)[k] = v;
     }
   }
   return out;

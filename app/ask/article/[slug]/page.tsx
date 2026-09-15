@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import ShareButtons from '@/components/ask/ShareButtons';
+import ArticleContentProse from '@/components/ask/ArticleContentProse';
 import { notFound } from 'next/navigation';
 import { getPublishedArticle, incrementArticleViews } from '@/lib/services/askContent';
 
@@ -60,9 +61,9 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
         <img src={img} alt={String(article.title)} className="mt-6 w-full rounded-2xl object-cover" />
       )}
       {article.excerpt ? <p className="mt-6 text-lg text-slate-300">{String(article.excerpt)}</p> : null}
-      <div
-        className="prose prose-invert mt-6 leading-8 [&_h1]:mt-8 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_li]:mr-4 [&_ol]:list-decimal [&_p]:mb-4 [&_ul]:list-disc"
-        dangerouslySetInnerHTML={{ __html: String(article.content) }}
+      <ArticleContentProse
+        html={String(article.content)}
+        className="prose prose-invert mt-6 leading-8 [&_h1]:mt-8 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_img]:cursor-zoom-in [&_img]:rounded-xl [&_li]:mr-4 [&_ol]:list-decimal [&_p]:mb-4 [&_ul]:list-disc"
       />
       <div className="mt-8"><ShareButtons url={`/ask/article/${params.slug}`} title={`${String(article.title)} | سنّي`} /></div>
       <p className="mt-6 text-sm"><Link href="/ask" className="text-cyan-400">💬 استشارة ذكية جديدة</Link></p>

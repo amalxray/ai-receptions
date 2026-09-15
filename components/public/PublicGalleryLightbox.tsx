@@ -1,6 +1,20 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+/**
+ * PUBLIC GALLERY — MorphingDialog grid. Each item springs open from its own
+ * thumbnail into a full card (large media + title + caption) and springs back
+ * on close (framer-motion shared layout). One dialog per item; images morph
+ * via layoutId, videos render a plain preview/controls (no shared-layout morph).
+ */
+
+import {
+  MorphingDialog,
+  MorphingDialogTrigger,
+  MorphingDialogContent,
+  MorphingDialogImage,
+  MorphingDialogClose,
+  MorphingDialogContainer,
+} from '@/components/ui/morphing-dialog';
 
 export type LightboxMedia = {
   id: string;
@@ -11,123 +25,76 @@ export type LightboxMedia = {
   alt_text: string | null;
 };
 
-/**
- * PUBLIC GALLERY LIGHTBOX — full-screen viewer for the public gallery.
- * RTL-aware: ArrowRight steps toward the start (previous), ArrowLeft forward,
- * matching the right-to-left grid flow. Escape / backdrop click closes.
- * Body scroll is locked while open.
- */
 export default function PublicGalleryLightbox({
   media,
-  index,
-  onClose,
-  onNavigate,
+  gapClassName = 'gap-4',
 }: {
   media: LightboxMedia[];
-  index: number;
-  onClose: () => void;
-  onNavigate: (nextIndex: number) => void;
+  /** Gallery spacing control (owner display.gallery_spacing → approved classes). */
+  gapClassName?: string;
 }) {
-  const current = media[index];
-
-  const goPrev = useCallback(
-    () => onNavigate(Math.max(0, index - 1)),
-    [index, onNavigate]
-  );
-  const goNext = useCallback(
-    () => onNavigate(Math.min(media.length - 1, index + 1)),
-    [index, media.length, onNavigate]
-  );
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      // RTL flow: right arrow = previous item, left arrow = next item.
-      else if (e.key === 'ArrowRight') goPrev();
-      else if (e.key === 'ArrowLeft') goNext();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [goPrev, goNext, onClose]);
-
-  // Lock body scroll while the lightbox is open.
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
-  if (!current) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={current.title || current.alt_text || 'عارض الوسائط'}
-      onClick={onClose}
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="إغلاق"
-        className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-3xl leading-none text-white transition hover:bg-white/20"
-      >
-        ×
-      </button>
+    <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 ${gapClassName}`}>
+      {media.map((item) => (
+        <MorphingDialog key={item.id} transition={{ type: 'spring', stiffness: 200, damping: 24 }}>
+          <MorphingDialogTrigger
+            style={{ borderRadius: '12px' }}
+            className="group relative aspect-square overflow-hidden border border-slate-200 bg-white"
+          >
+            {item.media_type === 'video' ? (
+              <video
+                src={item.public_url}
+                muted
+                playsInline
+                preload="metadata"
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+              />
+            ) : (
+              <MorphingDialogImage
+                src={item.public_url}
+                alt={item.alt_text || item.title || 'صورة من المعرض'}
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+              />
+            )}
+            {item.title && (
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                <p className="text-sm font-semibold text-white">{item.title}</p>
+              </div>
+            )}
+            {item.media_type === 'video' && (
+              <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
+                فيديو
+              </span>
+            )}
+          </MorphingDialogTrigger>
 
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          goPrev();
-        }}
-        disabled={index === 0}
-        aria-label="السابق"
-        className="absolute right-3 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-4xl leading-none text-white transition hover:bg-white/20 disabled:opacity-30 sm:right-6"
-      >
-        ›
-      </button>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          goNext();
-        }}
-        disabled={index === media.length - 1}
-        aria-label="التالي"
-        className="absolute left-3 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-4xl leading-none text-white transition hover:bg-white/20 disabled:opacity-30 sm:left-6"
-      >
-        ‹
-      </button>
-
-      <div
-        className="flex max-h-full max-w-full flex-col items-center gap-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {current.media_type === 'video' ? (
-          <video
-            src={current.public_url}
-            controls
-            autoPlay
-            className="max-h-[80vh] max-w-[90vw] rounded-xl bg-black"
-          />
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={current.public_url}
-            alt={current.alt_text || current.title || 'صورة'}
-            className="max-h-[80vh] max-w-[90vw] rounded-xl object-contain"
-          />
-        )}
-        <p className="max-w-[90vw] truncate text-center text-sm text-white/80">
-          {index + 1} / {media.length}
-          {current.title ? ` · ${current.title}` : ''}
-          {current.caption ? ` — ${current.caption}` : ''}
-        </p>
-      </div>
+          <MorphingDialogContainer>
+            <MorphingDialogContent
+              style={{ borderRadius: '16px' }}
+              className="relative h-auto w-[90vw] max-w-2xl border border-slate-100 bg-white"
+            >
+              <div className="p-4">
+                {item.media_type === 'video' ? (
+                  <video src={item.public_url} controls className="h-auto w-full rounded-lg bg-black" />
+                ) : (
+                  <MorphingDialogImage
+                    src={item.public_url}
+                    alt={item.alt_text || item.title || 'صورة من المعرض'}
+                    className="h-auto w-full rounded-lg"
+                  />
+                )}
+                {(item.title || item.caption) && (
+                  <div className="mt-4">
+                    {item.title && <h3 className="text-lg font-bold text-slate-900">{item.title}</h3>}
+                    {item.caption && <p className="mt-1 text-sm text-slate-600">{item.caption}</p>}
+                  </div>
+                )}
+              </div>
+              <MorphingDialogClose className="absolute left-4 top-4 rounded-full bg-black/50 p-2 text-2xl leading-none text-white" />
+            </MorphingDialogContent>
+          </MorphingDialogContainer>
+        </MorphingDialog>
+      ))}
     </div>
   );
 }

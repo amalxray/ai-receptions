@@ -6,6 +6,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import StatusPill from '@/components/dashboard/StatusPill';
 import { useClinicContext } from '@/lib/useClinicContext';
+import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
 
 /**
  * MEDICAL FILES — activity-aware view (root-cause fix for the 404).
@@ -129,6 +130,14 @@ export default function MedicalFilesPage() {
               </div>
               <div className="flex items-center gap-2">
                 <StatusPill tone={TONE[f.file_type] ?? 'neutral'}>{TYPE_AR[f.file_type] ?? f.file_type}</StatusPill>
+                {(f.file_type === 'image' || f.file_type === 'medical_image') && (
+                  <SignedImagePreviewButton
+                    fileId={f.id}
+                    clinicId={clinicId}
+                    filename={f.original_filename ?? 'صورة طبية'}
+                    authHeaders={authHeaders}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => void download(f.id)}

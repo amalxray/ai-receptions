@@ -74,6 +74,28 @@ export function tickerDuration(speed: string | undefined): number {
   }
 }
 
+/** PHASE 2 — news ticker bar height (owner-bounded enum → approved class). */
+export function newsHeightClass(size: string | undefined): string {
+  switch (size) {
+    case 'xs': return 'h-8';
+    case 'sm': return 'h-12';
+    case 'lg': return 'h-20';
+    case 'xl': return 'h-24';
+    default: return 'h-16'; // md — larger default per owner fix (old bar was tiny)
+  }
+}
+
+/** PHASE 2 — news ticker font scale (owner-bounded enum → approved class). */
+export function newsFontClass(font: string | undefined): string {
+  switch (font) {
+    case 'sm': return 'text-sm';
+    case 'lg': return 'text-lg';
+    case 'xl': return 'text-xl';
+    case '2xl': return 'text-2xl';
+    default: return 'text-base'; // base — readable default (old was text-xs)
+  }
+}
+
 export function InitialsBrandMark({
   name,
   className = 'h-20 w-20 text-2xl',
@@ -176,11 +198,15 @@ export function ActivitySpaceChrome({
         <span className="absolute top-[12%] left-[38%] h-2.5 w-2.5 rounded-full bg-cyan-400/30 animate-drift" style={{ animationDelay: '4s' }} />
       </div>
 
-      {/* PHASE L — news ticker (owner-managed; bounded colors/speed) */}
+      {/* PHASE L — news ticker (owner-managed; bounded colors/speed/height/font) */}
       {on('news') && space.news.length > 0 && (
-        <div dir="ltr" className="overflow-hidden border-b border-white/10" style={{ backgroundColor: space.theme?.primary_color ?? '#0e7490' }}>
+        <div
+          dir="ltr"
+          className={`flex items-center overflow-hidden border-b border-white/10 ${newsHeightClass(d?.news_height)}`}
+          style={{ backgroundColor: space.theme?.primary_color ?? '#0e7490' }}
+        >
           <div
-            className="flex w-max animate-ticker gap-10 px-4 py-2"
+            className={`flex w-max animate-ticker items-center gap-10 px-4 ${newsFontClass(d?.news_font)}`}
             style={{ animationDuration: `${tickerDuration((space.news[0] ?? {}).speed as string | undefined)}s` }}
           >
             {[...space.news, ...space.news].map((n, i) => (
@@ -225,22 +251,33 @@ export function ActivitySpaceChrome({
       </div>
 
       <main>
-        {/* Hero */}
-        <section
-          className="relative overflow-hidden border-b border-slate-200/70 bg-gradient-to-b from-white via-white to-[#eef4ff] bg-cover bg-center"
-          style={
-            // PHASE C — storage-backed covers only: social URLs (facebook stories etc.)
-            // are not loadable as page images and render broken visuals.
-            space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl)
-              ? {
-                  // Keep the cover clearly visible: only a light scrim (heavier at the
-                  // bottom where the copy sits) instead of the old ~95% white wash.
-                  backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.42), rgba(238,244,255,0.82)), url('${space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, '')}')`,
-                }
-              : undefined
-          }
-        >
-          <div className="mx-auto max-w-5xl px-4 pb-16 pt-12 text-center sm:pt-16">
+        {/* Hero — cover image is its own clean band (no text on top); copy sits
+            in a separate section below, so the owner's cover stays readable
+            with owner-controlled blur / focus point / vertical offset. */}
+        <section>
+          <div className="relative h-56 overflow-hidden sm:h-80 lg:h-96">
+            {space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, '')}
+                alt={`غلاف ${space.name}`}
+                className="h-full w-full object-cover"
+                style={{
+                  objectPosition: `${d?.cover_position ?? 'center'} ${d?.cover_offset_y ?? 50}%`,
+                  filter: d?.cover_blur ? `blur(${d.cover_blur}px)` : undefined,
+                  // Slight overscale so blur edges never show a hard cutoff.
+                  transform: d?.cover_blur ? 'scale(1.03)' : undefined,
+                }}
+              />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-br from-brand-cyan/15 via-white to-brand-emerald/10" />
+            )}
+          </div>
+        </section>
+
+        {/* Hero copy — dedicated section below the cover */}
+        <section className="border-b border-slate-200/70 bg-white">
+          <div className="mx-auto max-w-5xl px-4 py-12 text-center sm:py-16">
             <StaggerReveal>
               <div className="mb-6 flex justify-center">
                 <BrandLogo space={space} />
@@ -513,15 +550,10 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
 export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
   const media = space.media ?? [];
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   if (space.sections?.gallery === false || media.length === 0) return null;
   const d = space.display ?? undefined;
   const gap =
-    d?.gallery_spacing === 'compact' ? 'gap-2' : d?.gallery_spacing === 'roomy' ? 'gap-5' : 'gap-3';
-  const imgH =
-    d?.image_size === 'small' ? 'h-36' : d?.image_size === 'large' ? 'h-64' : 'h-48';
-  const videoH =
-    d?.video_size === 'small' ? 'h-36' : d?.video_size === 'large' ? 'h-64' : 'h-48';
+    d?.gallery_spacing === 'compact' ? 'gap-2' : d?.gallery_spacing === 'roomy' ? 'gap-5' : 'gap-4';
   const titleScale =
     d?.section_title === 'small' ? 'text-base' : d?.section_title === 'large' ? 'text-2xl' : 'text-xl';
 
@@ -578,48 +610,8 @@ export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
         </div>
       ) : null}
 
-      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 ${gap}`}>
-        {filtered.map((item, idx) =>
-          item.media_type === 'video' ? (
-            <video
-              key={item.id}
-              src={item.public_url}
-              controls
-              preload="none"
-              aria-label={item.title || item.alt_text || 'فيديو'}
-              className={`aspect-[4/3] w-full rounded-2xl border border-slate-200 bg-slate-100 object-contain ${videoH}`}
-            />
-          ) : (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setLightboxIndex(idx)}
-              aria-label={`تكبير: ${item.alt_text || item.title || 'صورة'}`}
-              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.public_url}
-                alt={item.alt_text || item.title || 'صورة من المنشأة'}
-                loading="lazy"
-                className={`aspect-[4/3] w-full object-cover transition group-hover:scale-[1.04] ${imgH}`}
-              />
-              <span className="pointer-events-none absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition group-hover:opacity-100">
-                <span className="pb-2 text-xs font-medium text-white">🔍 عرض</span>
-              </span>
-            </button>
-          )
-        )}
-      </div>
-
-      {lightboxIndex !== null && filtered[lightboxIndex] ? (
-        <PublicGalleryLightbox
-          media={filtered}
-          index={lightboxIndex}
-          onClose={() => setLightboxIndex(null)}
-          onNavigate={setLightboxIndex}
-        />
-      ) : null}
+      {/* PHASE 2 — MorphingDialog grid: each item springs open from its thumbnail */}
+      <PublicGalleryLightbox media={filtered} gapClassName={gap} />
     </section>
   );
 }

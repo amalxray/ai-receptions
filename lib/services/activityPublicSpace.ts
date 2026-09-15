@@ -55,7 +55,8 @@ export type ActivityPublicSpace = {
   /** Owner section visibility toggles (public_profile.sections). */
   sections: Record<string, boolean | undefined>;
   /** Bounded display controls (public_profile.display) — activity-agnostic,
-   *  renderer maps enums to approved Tailwind classes (no raw CSS passthrough). */
+   *  renderer maps enums to approved Tailwind classes (no raw CSS passthrough).
+   *  Kept in lockstep with PublicDisplaySettings (clinicPublicConfig.ts). */
   display: {
     body_text: 'small' | 'medium' | 'large';
     heading: 'small' | 'medium' | 'large';
@@ -63,6 +64,13 @@ export type ActivityPublicSpace = {
     image_size: 'small' | 'medium' | 'large';
     video_size: 'small' | 'medium' | 'large';
     gallery_spacing: 'compact' | 'normal' | 'roomy';
+    /** Cover image polish: blur px (0–20), focus point, vertical offset %. */
+    cover_blur: number;
+    cover_position: 'center' | 'top' | 'bottom' | 'left' | 'right';
+    cover_offset_y: number;
+    /** News ticker sizing. */
+    news_height: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+    news_font: 'sm' | 'base' | 'lg' | 'xl' | '2xl';
   };
   /** Enabled owner-uploaded public gallery items (clinic_public_media). */
   media: {
