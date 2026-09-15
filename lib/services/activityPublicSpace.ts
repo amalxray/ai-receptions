@@ -72,6 +72,7 @@ export type ActivityPublicSpace = {
     title: string | null;
     caption: string | null;
     alt_text: string | null;
+    category: 'clinic' | 'team' | 'equipment' | 'cases' | 'other';
   }[];
   /** PHASE L — bounded theme (hex colors/enums; renderer maps to safe classes). */
   theme: PublicThemeSettings;
@@ -190,7 +191,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   // Owner-managed public gallery — enabled rows only (presentation-only).
   const { data: mediaRows } = await supabaseAdmin
     .from('clinic_public_media')
-    .select('id, media_type, public_url, title, caption, alt_text')
+    .select('id, media_type, public_url, title, caption, alt_text, category')
     .eq('clinic_id', clinic.id)
     .eq('enabled', true)
     .order('display_order', { ascending: true })
@@ -202,6 +203,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     title: m.title ?? null,
     caption: m.caption ?? null,
     alt_text: m.alt_text ?? null,
+    category: (m.category ?? 'other') as 'clinic' | 'team' | 'equipment' | 'cases' | 'other',
   }));
 
   // PHASE L — owner-managed public content (enabled rows only, ordered).)

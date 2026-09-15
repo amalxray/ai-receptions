@@ -15,6 +15,7 @@ const patchSchema = z.object({
   title: z.string().trim().max(120).nullable().optional(),
   caption: z.string().trim().max(500).nullable().optional(),
   alt_text: z.string().trim().max(500).nullable().optional(),
+  category: z.enum(['clinic', 'team', 'equipment', 'cases', 'other']).optional(),
   enabled: z.boolean().optional(),
   display_order: z.number().int().min(0).max(999).optional(),
 });

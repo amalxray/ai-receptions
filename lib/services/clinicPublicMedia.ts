@@ -19,6 +19,10 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export type MediaType = 'image' | 'video';
 
+export type MediaCategory = 'clinic' | 'team' | 'equipment' | 'cases' | 'other';
+
+export const MEDIA_CATEGORIES: MediaCategory[] = ['clinic', 'team', 'equipment', 'cases', 'other'];
+
 export type PublicMediaItem = {
   id: string;
   media_type: MediaType;
@@ -26,6 +30,7 @@ export type PublicMediaItem = {
   title: string | null;
   caption: string | null;
   alt_text: string | null;
+  category: MediaCategory;
   display_order: number;
   enabled: boolean;
   file_size_bytes: number | null;
@@ -37,6 +42,7 @@ export type MediaMetaPatch = {
   title?: string | null;
   caption?: string | null;
   alt_text?: string | null;
+  category?: MediaCategory;
   enabled?: boolean;
   display_order?: number;
 };
@@ -101,10 +107,19 @@ export async function listClinicMedia(clinicId: string): Promise<PublicMediaItem
 
 export async function createClinicMedia(
   clinicId: string,
-  input: { file: File; title?: string; caption?: string; alt_text?: string }
+  input: {
+    file: File;
+    title?: string;
+    caption?: string;
+    alt_text?: string;
+    category?: string;
+  }
 ): Promise<{ ok: true; item: PublicMediaItem } | { ok: false; message: string }> {
   const validation = validateMediaFile(input.file);
   if ('message' in validation) return validation;
+  const category = MEDIA_CATEGORIES.includes(input.category as MediaCategory)
+    ? (input.category as MediaCategory)
+    : 'other';
 
   const path = buildMediaStoragePath(clinicId, validation.ext);
   const { error: uploadError } = await supabaseAdmin.storage
@@ -124,6 +139,7 @@ export async function createClinicMedia(
       title: input.title?.trim() || null,
       caption: input.caption?.trim() || null,
       alt_text: input.alt_text?.trim() || null,
+      category,
       file_size_bytes: input.file.size,
       mime_type: input.file.type,
     })
@@ -148,6 +164,9 @@ export async function updateClinicMedia(
       ...(patch.title !== undefined ? { title: patch.title?.trim() || null } : {}),
       ...(patch.caption !== undefined ? { caption: patch.caption?.trim() || null } : {}),
       ...(patch.alt_text !== undefined ? { alt_text: patch.alt_text?.trim() || null } : {}),
+      ...(patch.category !== undefined && MEDIA_CATEGORIES.includes(patch.category)
+        ? { category: patch.category }
+        : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
       ...(patch.display_order !== undefined && Number.isInteger(patch.display_order)
         ? { display_order: patch.display_order }

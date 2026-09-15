@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ShareSection } from '@/components/public/ShareSection';
+import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 
@@ -27,6 +28,16 @@ const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocati
 
 const WEEKDAY_NAMES_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const WEEKDAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Gallery categories (Phase 2) — kept local: the service module imports
+ * node crypto + supabase admin and must never reach the client bundle. */
+const GALLERY_CATEGORIES = [
+  { value: 'clinic', label: 'العيادة', icon: '🏥' },
+  { value: 'team', label: 'الطاقم', icon: '👥' },
+  { value: 'equipment', label: 'المعدات', icon: '🩺' },
+  { value: 'cases', label: 'حالات', icon: '📋' },
+  { value: 'other', label: 'أخرى', icon: '📁' },
+] as const;
 
 export function formatTime(time: string): string {
   const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
@@ -501,6 +512,8 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
 
 export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
   const media = space.media ?? [];
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   if (space.sections?.gallery === false || media.length === 0) return null;
   const d = space.display ?? undefined;
   const gap =
@@ -511,14 +524,62 @@ export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
     d?.video_size === 'small' ? 'h-36' : d?.video_size === 'large' ? 'h-64' : 'h-48';
   const titleScale =
     d?.section_title === 'small' ? 'text-base' : d?.section_title === 'large' ? 'text-2xl' : 'text-xl';
+
+  // Category filter — only shown when the owner actually used ≥2 categories.
+  const usedCategories = GALLERY_CATEGORIES.filter((c) =>
+    media.some((m) => (m.category ?? 'other') === c.value)
+  );
+  const filtered =
+    activeCategory === 'all'
+      ? media
+      : media.filter((m) => (m.category ?? 'other') === activeCategory);
+
   return (
     <section id="gallery" className="mx-auto w-full max-w-7xl px-4 py-12">
       <div className="mb-6 text-center">
         <h2 className={`font-bold text-slate-800 ${titleScale}`}>معرض الأعمال</h2>
         <p className="mt-1 text-sm text-slate-500">لقطات من بيئة المنشأة وخدماتها</p>
       </div>
+
+      {usedCategories.length > 1 ? (
+        <div className="mb-6 flex flex-wrap justify-center gap-2" role="tablist" aria-label="تصنيفات المعرض">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeCategory === 'all'}
+            onClick={() => setActiveCategory('all')}
+            className={`rounded-full border px-4 py-1.5 text-sm transition ${
+              activeCategory === 'all'
+                ? 'border-cyan-600 bg-cyan-600 text-white'
+                : 'border-slate-300 bg-white text-slate-600 hover:border-cyan-400 hover:text-cyan-700'
+            }`}
+          >
+            🖼 الكل ({media.length})
+          </button>
+          {usedCategories.map((c) => {
+            const count = media.filter((m) => (m.category ?? 'other') === c.value).length;
+            return (
+              <button
+                key={c.value}
+                type="button"
+                role="tab"
+                aria-selected={activeCategory === c.value}
+                onClick={() => setActiveCategory(c.value)}
+                className={`rounded-full border px-4 py-1.5 text-sm transition ${
+                  activeCategory === c.value
+                    ? 'border-cyan-600 bg-cyan-600 text-white'
+                    : 'border-slate-300 bg-white text-slate-600 hover:border-cyan-400 hover:text-cyan-700'
+                }`}
+              >
+                {c.icon} {c.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 ${gap}`}>
-        {media.map((item) =>
+        {filtered.map((item, idx) =>
           item.media_type === 'video' ? (
             <video
               key={item.id}
@@ -529,17 +590,36 @@ export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
               className={`aspect-[4/3] w-full rounded-2xl border border-slate-200 bg-slate-100 object-contain ${videoH}`}
             />
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <button
               key={item.id}
-              src={item.public_url}
-              alt={item.alt_text || item.title || 'صورة من المنشأة'}
-              loading="lazy"
-              className={`aspect-[4/3] w-full rounded-2xl border border-slate-200 bg-slate-100 object-cover transition hover:scale-[1.02] ${imgH}`}
-            />
+              type="button"
+              onClick={() => setLightboxIndex(idx)}
+              aria-label={`تكبير: ${item.alt_text || item.title || 'صورة'}`}
+              className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={item.public_url}
+                alt={item.alt_text || item.title || 'صورة من المنشأة'}
+                loading="lazy"
+                className={`aspect-[4/3] w-full object-cover transition group-hover:scale-[1.04] ${imgH}`}
+              />
+              <span className="pointer-events-none absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition group-hover:opacity-100">
+                <span className="pb-2 text-xs font-medium text-white">🔍 عرض</span>
+              </span>
+            </button>
           )
         )}
       </div>
+
+      {lightboxIndex !== null && filtered[lightboxIndex] ? (
+        <PublicGalleryLightbox
+          media={filtered}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
+      ) : null}
     </section>
   );
 }

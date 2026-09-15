@@ -69,6 +69,7 @@ export async function POST(req: Request) {
       title: str('title', 120),
       caption: str('caption', 500),
       alt_text: str('alt_text', 500),
+      category: str('category', 20) ?? undefined,
     });
     if (!result.ok) return NextResponse.json({ error: 'message' in result ? result.message : 'Upload failed' }, { status: 400 });
 
