@@ -49,6 +49,9 @@ type PageConfig = {
     cover_blur: number;
     cover_position: 'center' | 'top' | 'bottom' | 'left' | 'right';
     cover_offset_y: number;
+    /** Cover band height px (200–800) + fit mode. */
+    cover_height: number;
+    cover_fit: 'cover' | 'contain';
     /** News ticker sizing (bounded enums — renderer maps to classes). */
     news_height: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
     news_font: 'sm' | 'base' | 'lg' | 'xl' | '2xl';
@@ -413,6 +416,32 @@ export default function PublicPageManager() {
       {/* PHASE 2 — cover image polish + news ticker sizing (bounded enums/ints) */}
       <Section title="الغلاف وشريط الأخبار" subtitle="وضوح صورة الغلاف وموقعها وإزاحتها، وحجم شريط الأخبار وخطه — تطبيق فوري على الصفحة العامة.">
         <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              ارتفاع الغلاف — {config.display?.cover_height ?? 384}px
+            </span>
+            <input
+              type="range"
+              min={200}
+              max={800}
+              step={10}
+              value={config.display?.cover_height ?? 384}
+              onChange={(e) => void update({ display: { cover_height: Number(e.target.value) } })}
+              className="w-full accent-cyan-600"
+            />
+            <span className="text-xs text-slate-500">من 200 إلى 800 بكسل</span>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">طريقة عرض الغلاف</span>
+            <select
+              value={config.display?.cover_fit ?? 'cover'}
+              onChange={(e) => void update({ display: { cover_fit: e.target.value } })}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="cover">قص (يملأ المساحة)</option>
+              <option value="contain">كامل (تظهر الصورة كاملة)</option>
+            </select>
+          </label>
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-sm font-medium text-slate-700">
               وضوح صورة الغلاف — {config.display?.cover_blur ?? 0}px (0 = واضحة تماماً)

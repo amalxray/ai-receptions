@@ -255,14 +255,15 @@ export function ActivitySpaceChrome({
             in a separate section below, so the owner's cover stays readable
             with owner-controlled blur / focus point / vertical offset. */}
         <section>
-          <div className="relative h-56 overflow-hidden sm:h-80 lg:h-96">
+          <div className="relative overflow-hidden" style={{ height: `${d?.cover_height ?? 384}px` }}>
             {space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, '')}
                 alt={`غلاف ${space.name}`}
-                className="h-full w-full object-cover"
+                className="h-full w-full"
                 style={{
+                  objectFit: d?.cover_fit ?? 'cover',
                   objectPosition: `${d?.cover_position ?? 'center'} ${d?.cover_offset_y ?? 50}%`,
                   filter: d?.cover_blur ? `blur(${d.cover_blur}px)` : undefined,
                   // Slight overscale so blur edges never show a hard cutoff.

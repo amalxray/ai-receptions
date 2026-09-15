@@ -68,6 +68,9 @@ export type ActivityPublicSpace = {
     cover_blur: number;
     cover_position: 'center' | 'top' | 'bottom' | 'left' | 'right';
     cover_offset_y: number;
+    /** Cover band height px (200–800) + fit mode. */
+    cover_height: number;
+    cover_fit: 'cover' | 'contain';
     /** News ticker sizing. */
     news_height: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
     news_font: 'sm' | 'base' | 'lg' | 'xl' | '2xl';

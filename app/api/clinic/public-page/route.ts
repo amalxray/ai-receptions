@@ -56,6 +56,8 @@ const patchSchema = z.object({
       cover_blur: z.number().int().min(0).max(20).optional(),
       cover_position: z.enum(['center', 'top', 'bottom', 'left', 'right']).optional(),
       cover_offset_y: z.number().int().min(0).max(100).optional(),
+      cover_height: z.number().int().min(200).max(800).optional(),
+      cover_fit: z.enum(['cover', 'contain']).optional(),
       // News ticker sizing (bounded enums — renderer maps to approved classes).
       news_height: z.enum(['xs', 'sm', 'md', 'lg', 'xl']).optional(),
       news_font: z.enum(['sm', 'base', 'lg', 'xl', '2xl']).optional(),

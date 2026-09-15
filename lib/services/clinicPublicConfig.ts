@@ -67,6 +67,9 @@ export type PublicDisplaySettings = {
   cover_blur: number;
   cover_position: CoverPosition;
   cover_offset_y: number;
+  /** Cover band height px (200–800) + fit (cover crop vs contain full view). */
+  cover_height: number;
+  cover_fit: 'cover' | 'contain';
   /** News ticker sizing: bar height + font scale (bigger defaults — owner fix). */
   news_height: NewsTickerHeight;
   news_font: NewsTickerFont;
@@ -82,6 +85,8 @@ export const DEFAULT_DISPLAY: PublicDisplaySettings = {
   cover_blur: 0,
   cover_position: 'center',
   cover_offset_y: 50,
+  cover_height: 384,
+  cover_fit: 'cover',
   news_height: 'md',
   news_font: 'base',
 };
@@ -95,16 +100,19 @@ const DISPLAY_ALLOWED: Record<keyof PublicDisplaySettings, readonly string[]> = 
   video_size: ['small', 'medium', 'large'],
   gallery_spacing: ['compact', 'normal', 'roomy'],
   cover_position: ['center', 'top', 'bottom', 'left', 'right'],
+  cover_fit: ['cover', 'contain'],
   news_height: ['xs', 'sm', 'md', 'lg', 'xl'],
   news_font: ['sm', 'base', 'lg', 'xl', '2xl'],
   cover_blur: [],
   cover_offset_y: [],
+  cover_height: [],
 };
 
 /** Bounded integers: [min, max] inclusive — no raw px beyond these. */
 const DISPLAY_INT_BOUNDS: Partial<Record<keyof PublicDisplaySettings, readonly [number, number]>> = {
   cover_blur: [0, 20],
   cover_offset_y: [0, 100],
+  cover_height: [200, 800],
 };
 
 /** Validate a display patch: unknown keys and out-of-range values are rejected (never coerced). */
