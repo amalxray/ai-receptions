@@ -6,6 +6,8 @@ import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ShareSection } from '@/components/public/ShareSection';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
+import HoursStatusBadge from '@/components/public/HoursStatusBadge';
+import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 
@@ -301,6 +303,9 @@ export function ActivitySpaceChrome({
                 </p>
               )}
             </StaggerReveal>
+            <StaggerReveal delay={230}>
+              {space.workingHours.length > 0 && <HoursStatusBadge slug={space.slug} />}
+            </StaggerReveal>
             {space.description && (
               <StaggerReveal delay={260}>
                 <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-slate-600">
@@ -338,6 +343,13 @@ export function ActivitySpaceChrome({
               <p className="mt-4 text-xs text-slate-500">
                 أتحدث مباشرة مع نظام {space.name} — بدون وسيط، على مدار الساعة.
               </p>
+            </StaggerReveal>
+            <StaggerReveal delay={440}>
+              <div className="mt-6 flex justify-center">
+                <div className="inline-flex rounded-2xl bg-slate-900/90 px-4 py-2 shadow-lg">
+                  <ShareButtons url={space.pageUrl} title={`${space.name} — ${headline}`} />
+                </div>
+              </div>
             </StaggerReveal>
           </div>
         </section>
@@ -454,19 +466,24 @@ export function WorkingHoursBlock({ space }: { space: ActivityPublicSpace }) {
     );
   }
   return (
-    <ul className="grid gap-2 sm:grid-cols-2">
-      {space.workingHours.map((hour) => (
-        <li
-          key={hour.weekday}
-          className="public-card flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm hover:border-brand-cyan/40"
-        >
-          <span className="font-semibold text-slate-700">{WEEKDAY_NAMES_AR[hour.weekday] ?? WEEKDAY_NAMES_EN[hour.weekday] ?? '—'}</span>
-          <span className="text-slate-500" dir="ltr">
-            {formatTime(hour.start_time)} — {formatTime(hour.end_time)}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-4">
+      <div className="flex justify-center">
+        <HoursStatusBadge slug={space.slug} />
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {space.workingHours.map((hour) => (
+          <li
+            key={hour.weekday}
+            className="public-card flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm hover:border-brand-cyan/40"
+          >
+            <span className="font-semibold text-slate-700">{WEEKDAY_NAMES_AR[hour.weekday] ?? WEEKDAY_NAMES_EN[hour.weekday] ?? '—'}</span>
+            <span className="text-slate-500" dir="ltr">
+              {formatTime(hour.start_time)} — {formatTime(hour.end_time)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
