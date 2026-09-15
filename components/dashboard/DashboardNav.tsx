@@ -37,6 +37,8 @@ const BASE_NAV: NavModule[] = [
   { module: 'knowledge-base', label: 'قاعدة المعرفة' },
   { module: 'public-page', label: 'الصفحة العامة' },
   { module: 'public-content', label: 'محتوى الصفحة العامة' },
+  { module: 'before-after', label: 'قبل / بعد' },
+  { module: 'badges', label: 'شارات الإنجازات' },
   { module: 'profile', label: 'الملف الشخصي' },
   { module: 'ai-settings', label: 'إعدادات الذكاء الاصطناعي' },
   { module: 'communication-settings', label: 'إعدادات التواصل' },

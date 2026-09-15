@@ -49,7 +49,9 @@ describe('GET /api/booking/availability', () => {
       '11111111-1111-1111-1111-111111111111',
       '22222222-2222-2222-2222-222222222222',
       '2026-07-20',
-      10,
+      // Route schema default (max=200 — a full working day of short imaging
+      // slots spans >100 entries; the route always passes an explicit limit).
+      200,
       undefined
     );
   });

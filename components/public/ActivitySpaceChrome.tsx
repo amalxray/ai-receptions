@@ -7,6 +7,7 @@ import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ShareSection } from '@/components/public/ShareSection';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
+import BeforeAfterSlider from '@/components/public/BeforeAfterSlider';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
@@ -357,6 +358,21 @@ export function ActivitySpaceChrome({
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
         <PublicMediaGallery space={space} />
 
+        {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
+        {on('beforeAfter') && space.beforeAfter.length > 0 && (
+          <section id="before-after" className="mx-auto w-full max-w-7xl px-4 pt-12">
+            <div className="mb-6 text-center">
+              <h2 className="text-xl font-bold text-slate-800">قبل وبعد</h2>
+              <p className="mt-1 text-sm text-slate-500">نتائج حقيقية — اسحب المقارنة لترى الفرق</p>
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {space.beforeAfter.map((c) => (
+                <BeforeAfterSlider key={c.id} before={c.before_url} after={c.after_url} title={c.title} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* PHASE L — achievements trust cards (right after the gallery) */}
         {on('achievements') && space.achievements.length > 0 && (
           <section id="achievements" className="mx-auto w-full max-w-7xl px-4 pt-12">
@@ -375,6 +391,52 @@ export function ActivitySpaceChrome({
                   <p className="mt-1 text-sm font-semibold text-white/90">{a.icon ? `${a.icon} ` : ''}{a.title}</p>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Phase 5 — verifiable achievement badges */}
+        {on('badges') && space.badges.length > 0 && (
+          <section id="badges" className="mx-auto w-full max-w-7xl px-4 pt-12">
+            <div className="mb-6 text-center">
+              <h2 className="text-xl font-bold text-slate-800">شهادات وإنجازات</h2>
+              <p className="mt-1 text-sm text-slate-500">اعتمادات موثّقة يمكن التحقق منها</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {space.badges.map((b) => {
+                const inner = (
+                  <>
+                    {b.icon_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={b.icon_url} alt={b.title} loading="lazy" className="h-12 w-12 rounded-xl object-cover" />
+                    ) : (
+                      <span aria-hidden className="text-3xl">🏅</span>
+                    )}
+                    <div className="min-w-0 text-right">
+                      <p className="truncate text-sm font-bold text-slate-800">{b.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {[b.issuer, b.year].filter(Boolean).join(' · ') || '—'}
+                      </p>
+                    </div>
+                  </>
+                );
+                return b.verify_url ? (
+                  <a
+                    key={b.id}
+                    href={b.verify_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="public-card flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-cyan/50 hover:shadow-md"
+                  >
+                    {inner}
+                    <span className="mr-auto text-[10px] font-semibold text-brand-cyan">تحقق ↗</span>
+                  </a>
+                ) : (
+                  <div key={b.id} className="public-card flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    {inner}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}

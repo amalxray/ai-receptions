@@ -48,6 +48,8 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   'clinic-setup': 'settings',
   'public-page': 'settings',
   'public-content': 'settings',
+  'before-after': 'ops',
+  badges: 'ops',
   profile: 'settings',
 };
 

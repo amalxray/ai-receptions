@@ -66,6 +66,8 @@ const SECTION_LABELS: Record<string, string> = {
   hours: 'ساعات العمل',
   offers: 'العروض',
   gallery: 'الصور',
+  beforeAfter: 'قبل / بعد',
+  badges: 'شارات الإنجازات',
   contact: 'التواصل',
   bookingCta: 'زر الحجز',
   aiCta: 'زر المساعد الذكي',

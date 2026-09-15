@@ -25,6 +25,8 @@ export type PublicSectionKey =
   | 'hours'
   | 'offers'
   | 'gallery'
+  | 'beforeAfter'
+  | 'badges'
   | 'contact'
   | 'bookingCta'
   | 'aiCta'
@@ -297,19 +299,22 @@ export function defaultPublicPageSections(activityType: ActivityType): Record<Pu
     case 'imaging_center':
       return {
         hero: true, about: true, services: true, providers: false, hours: true,
-        offers: false, gallery: false, contact: true, bookingCta: true, aiCta: true, qrShare: true,
+        offers: false, gallery: false, beforeAfter: true, badges: true, contact: true,
+        bookingCta: true, aiCta: true, qrShare: true,
         achievements: false, testimonials: false, articles: false, news: false,
       };
     case 'dental_lab':
       return {
         hero: true, about: true, services: true, providers: false, hours: true,
-        offers: false, gallery: false, contact: true, bookingCta: true, aiCta: true, qrShare: true,
+        offers: false, gallery: false, beforeAfter: true, badges: true, contact: true,
+        bookingCta: true, aiCta: true, qrShare: true,
         achievements: false, testimonials: false, articles: false, news: false,
       };
     default:
       return {
         hero: true, about: true, services: true, providers: true, hours: true,
-        offers: true, gallery: false, contact: true, bookingCta: true, aiCta: true, qrShare: true,
+        offers: true, gallery: false, beforeAfter: true, badges: true, contact: true,
+        bookingCta: true, aiCta: true, qrShare: true,
         achievements: false, testimonials: false, articles: false, news: false,
       };
   }

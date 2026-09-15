@@ -85,6 +85,10 @@ export type ActivityPublicSpace = {
     alt_text: string | null;
     category: 'clinic' | 'team' | 'equipment' | 'cases' | 'other';
   }[];
+  /** Phase 4 — enabled before/after cases (patient consent enforced at creation). */
+  beforeAfter: { id: string; title: string; description: string | null; before_url: string; after_url: string }[];
+  /** Phase 5 — enabled verifiable achievement badges (text/URL only — no raw HTML). */
+  badges: { id: string; type: string; title: string; issuer: string | null; year: number | null; icon_url: string | null; verify_url: string | null }[];
   /** PHASE L — bounded theme (hex colors/enums; renderer maps to safe classes). */
   theme: PublicThemeSettings;
   /** PHASE L — owner-managed public content (enabled rows only). */
@@ -259,6 +263,40 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     text_color: n.text_color ?? '#ffffff',
   }));
 
+  // Phase 4 — enabled before/after cases (patient consent enforced at creation).
+  const { data: baRows } = await supabaseAdmin
+    .from('clinic_before_after')
+    .select('id, title, description, before_url, after_url')
+    .eq('clinic_id', clinic.id)
+    .eq('enabled', true)
+    .order('display_order', { ascending: true })
+    .limit(12);
+  const beforeAfter = (baRows ?? []).map((c) => ({
+    id: c.id,
+    title: c.title,
+    description: c.description ?? null,
+    before_url: c.before_url,
+    after_url: c.after_url,
+  }));
+
+  // Phase 5 — enabled verifiable achievement badges (text/URL rendering only).
+  const { data: badgeRows } = await supabaseAdmin
+    .from('clinic_badges')
+    .select('id, type, title, issuer, year, icon_url, verify_url')
+    .eq('clinic_id', clinic.id)
+    .eq('enabled', true)
+    .order('display_order', { ascending: true })
+    .limit(24);
+  const badges = (badgeRows ?? []).map((b) => ({
+    id: b.id,
+    type: b.type,
+    title: b.title,
+    issuer: b.issuer ?? null,
+    year: b.year ?? null,
+    icon_url: b.icon_url ?? null,
+    verify_url: b.verify_url ?? null,
+  }));
+
   return {
     slug: profile.slug,
     clinicId: clinic.id,
@@ -291,6 +329,8 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     display: profile.display,
     theme: profile.theme,
     media,
+    beforeAfter,
+    badges,
     achievements,
     testimonials,
     articles,
