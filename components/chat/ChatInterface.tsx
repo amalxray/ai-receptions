@@ -4,11 +4,15 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { freshConversationState, conversationStorageKeysToPurge } from '@/lib/chat/conversationReset';
 import { applyPendingBookingContext, type PendingBookingContext, type BookingUiProjection } from '@/lib/ai/bookingContextBridge';
 import { validateBookingPhone } from '@/lib/booking/bookingPhone';
+import type { ChatInteractive } from '@/lib/ai/chatInteractive';
+import { QuickReplyChips, OptionCards, BookingProgress } from './InteractiveReplies';
 
 type ChatMessage = {
   id?: string;
   role: 'assistant' | 'user' | 'patient' | 'staff' | 'system';
   text: string;
+  /** طبقة تفاعلية مشتقة خادمياً (أزرار/بطاقات/تقدّم) — على آخر رسالة مساعد فقط. */
+  interactive?: ChatInteractive;
 };
 
 type Props = {
@@ -162,11 +166,24 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             const payload = await response.json();
             const items = Array.isArray(payload?.data) ? payload.data : [];
             if (items.length > 0) {
-              setMessages(items.map((item: any) => ({
-                id: item.id,
-                role: item.role === 'assistant' ? 'assistant' : 'user',
-                text: item.content,
-              })));
+              const restored = items.map((item: any) => ({
+                id: item.id as string | undefined,
+                role: (item.role === 'assistant' ? 'assistant' : 'user') as ChatMessage['role'],
+                text: item.content as string,
+                interactive: undefined as ChatInteractive | undefined,
+              }));
+              // الطبقة التفاعلية تُشتق خادمياً للمحادثة كاملة (أحدث خطوة معلّقة)
+              // وتُرفق بآخر رسالة مساعد فقط — لا أزرار قديمة من localStorage.
+              const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
+              if (serverInteractive) {
+                for (let i = restored.length - 1; i >= 0; i -= 1) {
+                  if (restored[i].role === 'assistant') {
+                    restored[i].interactive = serverInteractive;
+                    break;
+                  }
+                }
+              }
+              setMessages(restored);
               setConversationId(effectiveConvId);
               setShowSuggested(false);
               // STEP 7: restore canonical booking state into the UI after reload
@@ -207,9 +224,9 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
   }, [conversationId, storageKey]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = draft.trim();
+  async function handleSubmit(event: FormEvent<HTMLFormElement> | null, overrideText?: string) {
+    if (event) event.preventDefault();
+    const trimmed = (overrideText ?? draft).trim();
 
     // Empty / whitespace-only validation
     if (!trimmed) {
@@ -305,7 +322,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       if (payload?.booking_context?.recommended_provider_id) {
         setRecommendedProviderId(payload.booking_context.recommended_provider_id);
       }
-      setMessages((current) => [...current, { role: 'assistant', text: assistantText }]);
+      const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
+      setMessages((current) => [
+        ...current,
+        { role: 'assistant', text: assistantText, interactive: serverInteractive ?? undefined },
+      ]);
       applyBookingContextToUi(payload?.booking_context ?? null);
 
       // If assistant returned structured metadata suggesting booking intent, prepare services
@@ -653,6 +674,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
   }
 
+  // الطبقة التفاعلية لآخر رسالة مساعد فقط: شريط تقدّم لاصق + أزرار قابلة للنقر.
+  // الرسائل الأقدم تبقى نصاً خالصاً — لا أزرار عتيقة.
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const lastInteractive = lastMessage?.role === 'assistant' ? lastMessage.interactive ?? null : null;
+
   return (
     <div
       className={`flex flex-col rounded-[2rem] border border-slate-800 bg-slate-900/80 shadow-xl shadow-slate-950/30 ${
@@ -680,6 +706,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           </button>
         )}
       </div>
+      {lastInteractive?.progress?.length ? <BookingProgress steps={lastInteractive.progress} /> : null}
       <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
         {statusMessage ? (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{statusMessage}</div>
@@ -702,6 +729,35 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                 }`}
               >
                 <p className="text-sm leading-6 whitespace-pre-wrap">{message.text}</p>
+                {index === messages.length - 1 && message.role === 'assistant' && message.interactive ? (
+                  <>
+                    {message.interactive.card_group && message.interactive.card_group.items.length > 0 ? (
+                      <div>
+                        <p className="mt-3 text-xs font-semibold text-slate-300">{message.interactive.card_group.label}</p>
+                        <OptionCards
+                          options={message.interactive.card_group.items.map((o) => ({
+                            id: o.id,
+                            title: o.title,
+                            subtitle: o.subtitle,
+                            meta: o.price,
+                            icon: o.icon,
+                            value: o.value ?? o.title,
+                          }))}
+                          onSelect={(value) => { void handleSubmit(null, value); }}
+                          disabled={isSubmitting}
+                          columns={message.interactive?.card_group?.kind === 'time' ? 3 : 2}
+                        />
+                      </div>
+                    ) : null}
+                    {message.interactive.quick_replies && message.interactive.quick_replies.length > 0 ? (
+                      <QuickReplyChips
+                        replies={message.interactive.quick_replies}
+                        onSelect={(value) => { void handleSubmit(null, value); }}
+                        disabled={isSubmitting}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             ))}
 

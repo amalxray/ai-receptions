@@ -92,7 +92,7 @@ export default function FloatingChatWidget({
         {open && (
           <motion.div
             key="panel"
-            className="pointer-events-auto fixed bottom-0 left-0 z-50 w-full sm:bottom-6 sm:left-6 sm:w-[26rem]"
+            className="pointer-events-auto fixed bottom-0 left-0 z-50 w-full sm:bottom-6 sm:left-6 sm:w-[28rem] md:w-[32rem] lg:w-[34rem]"
             initial={{ opacity: 0, y: 60, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 60, scale: 0.95 }}
@@ -102,15 +102,21 @@ export default function FloatingChatWidget({
               {/* Panel header */}
               <div className="flex items-center justify-between bg-gradient-to-l from-cyan-600/25 to-violet-500/25 px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-white">
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-white shadow-lg shadow-cyan-500/20">
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M17 8h1a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4h-8a4 4 0 0 1 0-8h1" />
                       <path d="M15 12v-1a3 3 0 0 0-3-3H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5z" />
                     </svg>
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-white">موظفة الاستقبال الافتراضية</p>
-                    <p className="text-xs text-emerald-300">متاحة الآن · تجيبك فورًا</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-bold text-white sm:text-lg">موظفة الاستقبال الافتراضية</p>
+                    {/* Unified status line: emerald dot carries the "online" signal,
+                        the text stays light-on-dark for readable contrast (was
+                        text-emerald-300 on a cyan/violet wash → barely legible). */}
+                    <p className="mt-0.5 flex items-center gap-2 text-sm text-slate-200">
+                      <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                      متاحة الآن — تجيبك فورًا
+                    </p>
                   </div>
                 </div>
                 <button

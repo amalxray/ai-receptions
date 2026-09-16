@@ -51,6 +51,45 @@ export const EMPTY_OPERATING_DATA: ClinicOperatingData = {
   hasProviders: false,
   usable: false,
 };
+
+const ARABIC_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
+
+/**
+ * Phase 4 — real working hours for the AI prompt, read from provider_schedules
+ * (active rows only). Empty result (no schedules) is a valid outcome: the
+ * prompt section is simply omitted and the AI keeps answering from context.
+ */
+export async function loadClinicWorkingHours(clinicId: string) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('provider_schedules')
+      .select('weekday, start_time, end_time')
+      .eq('clinic_id', clinicId)
+      .eq('is_active', true)
+      .order('weekday', { ascending: true });
+    if (error) {
+      logEvent('clinic_working_hours_error', { clinic_id: clinicId, error: error.message }, 'error');
+      return null;
+    }
+    const days = (data ?? []) as Array<{ weekday: number; start_time: string; end_time: string }>;
+    const now = new Date();
+    const todayWeekday = now.getDay(); // 0 = Sunday, matches DB weekday
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const today = days.find((d) => Number(d.weekday) === todayWeekday) ?? null;
+    const isOpenNow = Boolean(today && currentTime >= today.start_time.slice(0, 5) && currentTime < today.end_time.slice(0, 5));
+    return {
+      days,
+      todayName: ARABIC_DAYS[todayWeekday] ?? '',
+      todayWeekday,
+      currentTime,
+      isOpenNow,
+    };
+  } catch (err) {
+    logEvent('clinic_working_hours_exception', { clinic_id: clinicId, error: err instanceof Error ? err.message : String(err) }, 'error');
+    return null;
+  }
+}
+
 export async function loadClinicOperatingData(clinicId: string): Promise<ClinicOperatingData> {
   try {
     const [servicesRes, providersRes, assignmentsRes] = await Promise.all([
@@ -141,6 +180,8 @@ export type ClinicProfile = {
   phone: string | null;
   website: string | null;
   timezone: string | null;
+  /** Business activity (clinic / imaging_center / dental_lab) — drives the AI persona. */
+  activityType: string | null;
   hasProfile: boolean;
 };
 
@@ -152,6 +193,7 @@ export const EMPTY_CLINIC_PROFILE: ClinicProfile = {
   phone: null,
   website: null,
   timezone: null,
+  activityType: null,
   hasProfile: false,
 };
 
@@ -159,7 +201,7 @@ export async function loadClinicProfile(clinicId: string): Promise<ClinicProfile
   try {
     const { data, error } = await supabaseAdmin
       .from('clinics')
-      .select('id, slug, name, address, phone, website, settings')
+      .select('id, slug, name, address, phone, website, settings, activity_type')
       .eq('id', clinicId)
       .maybeSingle();
     if (error || !data) {
@@ -174,6 +216,7 @@ export async function loadClinicProfile(clinicId: string): Promise<ClinicProfile
       phone: (data.phone as string | null) ?? null,
       website: (data.website as string | null) ?? null,
       timezone: (settings.timezone as string | null) ?? null,
+      activityType: (data.activity_type as string | null) ?? null,
       hasProfile: true,
     };
   } catch {

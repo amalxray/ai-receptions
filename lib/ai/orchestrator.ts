@@ -17,6 +17,7 @@ import type { AssembledContext, SourceCitation } from '@/lib/services/knowledge/
 import type { RetrievalResult } from '@/lib/services/knowledge/retrieval';
 import {
   loadClinicOperatingData,
+  loadClinicWorkingHours,
   loadReceptionistConversationState,
   loadClinicProfile,
   persistReceptionistSlot,
@@ -235,7 +236,10 @@ export async function handleIncomingMessage(opts: {
     // the AI can recommend/correct/complete bookings even when the Knowledge
     // Base is empty. Cross-clinic leakage is impossible: every query is
     // filtered by clinic_id.
-    const operatingData = await loadClinicOperatingData(clinicId);
+    const [operatingData, workingHours] = await Promise.all([
+      loadClinicOperatingData(clinicId),
+      loadClinicWorkingHours(clinicId),
+ ]);
     const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
     // Authoritative clinic identity/profile from the `clinics` table. This is
     // the ONLY source of the clinic's real name/address/phone — never inferred
@@ -517,6 +521,8 @@ export async function handleIncomingMessage(opts: {
       const promptOptionsWithoutContext = {
         confidenceThreshold: effectiveConfidenceThreshold,
         operatingData,
+        activityType: clinicProfile?.activityType ?? null,
+        workingHours,
         receptionistState: promptReceptionState,
         clinicInfo: buildClinicInfo(clinicProfile),
         safetyRules: [
@@ -595,6 +601,8 @@ export async function handleIncomingMessage(opts: {
     const promptOptions = {
       confidenceThreshold: configuredConfidenceThreshold,
       operatingData,
+      activityType: clinicProfile?.activityType ?? null,
+      workingHours,
       receptionistState: promptReceptionState,
       clinicInfo: buildClinicInfo(clinicProfile),
       safetyRules: [

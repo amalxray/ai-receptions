@@ -55,6 +55,38 @@ export interface PromptOptions {
    * question and never repeat known information.
    */
   receptionistState?: ReceptionistConversationState | null;
+  /**
+   * Business activity type (clinic / imaging_center / dental_lab). Switches
+   * the receptionist persona and vocabulary (Phase 3 of the conversational
+   * booking command): an imaging center has NO doctors — technicians only.
+   */
+  activityType?: string | null;
+  /**
+   * Real working hours read from provider_schedules (Phase 4). Presented as
+   * clinic hours; `today` grounds the AI in the actual current moment so it
+   * can answer «متى تفتحون؟» and «بدي موعد الجمعة» truthfully.
+   */
+  workingHours?: ClinicWorkingHoursData | null;
+}
+
+/** One day of clinic opening hours, as read from provider_schedules. */
+export type ClinicWorkingHoursDay = {
+  /** 0 = Sunday … 6 = Saturday (same as provider_schedules.weekday). */
+  weekday: number;
+  start_time: string;
+  end_time: string;
+};
+
+export type ClinicWorkingHoursData = {
+  days: ClinicWorkingHoursDay[];
+  /** Arabic weekday name of "now". */
+  todayName: string;
+  /** Weekday index of "now" (0=Sunday). */
+  todayWeekday: number;
+  /** Server local time HH:mm (24h). */
+  currentTime: string;
+  /** Whether the clinic is open at the moment this data was loaded. */
+  isOpenNow: boolean;
 }
 
 /**
@@ -194,6 +226,8 @@ export function buildPrompt(
     patientContextSection,
     buildOperatingDataSection(options?.operatingData),
     buildReceptionistModeSection(options?.receptionistState),
+    buildActivityPersonaSection(options?.activityType),
+    buildWorkingHoursSection(options?.workingHours),
     citationInstructionsSection,
   ].filter(Boolean).join('\n\n');
 
@@ -358,6 +392,61 @@ function buildPatientContextSection(patientContext?: PromptOptions['patientConte
  * clinic offers, straight from the DB (not the Knowledge Base). The AI must
  * treat this as the source of truth and never invent a service/provider.
  */
+/**
+ * Phase 3 — activity-aware persona. The receptionist of an imaging center is
+ * NOT a dental-clinic receptionist: different vocabulary (بانوراما/CBCT vs
+ * كشف/حشو), different staff (فنيو أشعة vs أطباء), different delivery flow.
+ */
+export function buildActivityPersonaSection(activityType?: string | null): string {
+  switch ((activityType ?? '').toLowerCase()) {
+    case 'imaging_center':
+    case 'imaging':
+      return `Business Activity: IMAGING CENTER (مركز تصوير أشعة).
+Receptionist persona rules (mandatory):
+- You are the receptionist of a dental RADIOLOGY / IMAGING center.
+- Use imaging vocabulary: بانوراما، CBCT (تصوير طبقي ثلاثي الأبعاد)، مقطعية، Sections، تقرير، تسليم الصور.
+- NEVER mention "doctors" doing treatments — the staff are radiology TECHNICIANS (فنيو تصوير). Referring doctors are external.
+- Explain preparation when relevant (remove metal objects/jewelry, pregnant patients must inform the center).
+- Mention image/report delivery channels when asked (WhatsApp / email / DICOM / printed) and typical delivery time ONLY if present in the clinic context.
+- Booking = imaging session; duration comes from the service duration in Clinic Operating Data.`;
+    case 'dental_lab':
+      return `Business Activity: DENTAL LAB (مختبر أسنان).
+Receptionist persona rules (mandatory):
+- You are the receptionist of a dental laboratory.
+- Use lab vocabulary: تركيبة، تاج، جسر، طقم، تقويم شفاف، طبقة، Zircon، E-max.
+- Cases usually come from referring dentists — ask for the referring doctor/clinic details when relevant.
+- Clarify delivery/pickup timelines from the clinic context only; never invent them.`;
+    default:
+      return `Business Activity: DENTAL CLINIC (عيادة أسنان).
+Receptionist persona rules (mandatory):
+- You are the receptionist of a dental clinic.
+- Use clinical vocabulary naturally: كشف، حشو، علاج عصب، تنظيف، تقويم، زراعة، خلع.
+- Recommend the appropriate provider/specialty from Clinic Operating Data when the patient describes a problem.
+- Mention preparation instructions for appointments only when they exist in the clinic context.`;
+  }
+}
+
+const ARABIC_WEEKDAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
+
+/**
+ * Phase 4 — real working hours from provider_schedules, grounded in "now".
+ * Lets the AI answer «متى تفتحون؟» / «بدي موعد الجمعة» truthfully and refuse
+ * impossible days (e.g. Friday when the clinic is closed).
+ */
+export function buildWorkingHoursSection(workingHours?: ClinicWorkingHoursData | null): string {
+  if (!workingHours || workingHours.days.length === 0) return '';
+  const byDay = new Map<number, ClinicWorkingHoursDay>();
+  for (const d of workingHours.days) byDay.set(d.weekday, d);
+  const lines: string[] = ['Real Clinic Working Hours (source of truth — NEVER contradict these):'];
+  for (let weekday = 0; weekday < 7; weekday += 1) {
+    const day = byDay.get(weekday);
+    lines.push(day ? `- ${ARABIC_WEEKDAY_NAMES[weekday]}: ${day.start_time.slice(0, 5)} - ${day.end_time.slice(0, 5)}` : `- ${ARABIC_WEEKDAY_NAMES[weekday]}: closed`);
+  }
+  lines.push(`- Now: ${workingHours.todayName}, ${workingHours.currentTime} — clinic is ${workingHours.isOpenNow ? 'OPEN' : 'CLOSED'} right now.`);
+  lines.push('- If the patient asks for a day/time outside these hours, say it is not available and suggest the nearest open day instead.');
+  return lines.join('\n');
+}
+
 function buildOperatingDataSection(operatingData?: ClinicOperatingData | null): string {
   if (!operatingData || operatingData.services.length === 0) return '';
 

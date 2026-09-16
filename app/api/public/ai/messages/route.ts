@@ -8,6 +8,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { RateLimiter, getClientId } from '@/lib/services/gateway/security/rate-limiter';
 import { logEvent } from '@/lib/server/logging';
 import { buildPendingBookingContext } from '@/lib/ai/bookingContextBridge';
+import { buildChatInteractive } from '@/lib/ai/chatInteractive';
 
 const bodySchema = z.object({
   clinic_slug: z.string().min(1).max(200).optional(),
@@ -84,16 +85,23 @@ export async function POST(req: Request) {
     };
     const updatedConversation = await getConversationById(convId, clinic.id);
     const metadata = (updatedConversation as any)?.metadata ?? {};
+    const conversationState = (updatedConversation as any)?.conversation_state ?? null;
+    // STEP 7: canonical booking projection derived from one source. The UI
+    // reflects only these server-verified fields (service/provider ids from
+    // operating data, and slot from real availability) — never invents.
+    // STEP 10C: suppress entirely once the conversation is handed off to staff.
+    const bookingContext = buildPendingBookingContext(metadata, { conversationState });
     return NextResponse.json({
       conversation_id: convId,
       user_message: userMessage,
       assistant_message: safeAssistant,
-      // STEP 7: canonical booking projection derived from one source. The UI
-      // reflects only these server-verified fields (service/provider ids from
-      // operating data, and slot from real availability) — never invents.
-      // STEP 10C: suppress entirely once the conversation is handed off to staff.
-      booking_context: buildPendingBookingContext(metadata, {
-        conversationState: (updatedConversation as any)?.conversation_state ?? null,
+      booking_context: bookingContext,
+      // الردود التفاعلية (أزرار سريعة + بطاقات + مؤشر تقدّم) — مشتقة من
+      // الحالة الخادمية فقط: slot محقَّق من التوفر + نية الحجز في metadata.
+      interactive: buildChatInteractive({
+        bookingContext,
+        conversationState: { state: conversationState },
+        metadata,
       }),
     });
   } catch (err: any) {
@@ -142,11 +150,17 @@ export async function GET(req: Request) {
     // unless the user changes them) instead of empty stale localStorage.
     const conv = await getConversationById(convId, clinic.id);
     const metadata = (conv as any)?.metadata ?? {};
+    const conversationState = (conv as any)?.conversation_state ?? null;
+    const bookingContext = buildPendingBookingContext(metadata, { conversationState });
     return NextResponse.json({
       data: messages ?? [],
       // STEP 10C: suppress pending-booking projection for staff-handoff conversations.
-      booking_context: buildPendingBookingContext(metadata, {
-        conversationState: (conv as any)?.conversation_state ?? null,
+      booking_context: bookingContext,
+      // نفس الحمولة التفاعلية بعد إعادة التحميل — تُشتق من الخادم لا من localStorage.
+      interactive: buildChatInteractive({
+        bookingContext,
+        conversationState: { state: conversationState },
+        metadata,
       }),
     });
   } catch (err: any) {
