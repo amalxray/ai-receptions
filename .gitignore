@@ -10,3 +10,20 @@ ChatGPT Image 6 سبتمبر 2026، 08_39_33 م.png
 .restore-drill/
 .xgrok/
 *.swp
+
+# ── Personal dotfiles (never track) ──
+.bashrc
+.bash_profile
+.zshrc
+.zprofile
+.profile
+.gitconfig
+
+# ── Build artifacts & binary deliverables ──
+*.log
+*.exit
+build.log
+build.exit
+*.zip
+migrations.zip
+ai-solutions-deliverables.zip
