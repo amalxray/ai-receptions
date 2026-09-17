@@ -443,6 +443,10 @@ export function buildWorkingHoursSection(workingHours?: ClinicWorkingHoursData |
     lines.push(day ? `- ${ARABIC_WEEKDAY_NAMES[weekday]}: ${day.start_time.slice(0, 5)} - ${day.end_time.slice(0, 5)}` : `- ${ARABIC_WEEKDAY_NAMES[weekday]}: closed`);
   }
   lines.push(`- Now: ${workingHours.todayName}, ${workingHours.currentTime} — clinic is ${workingHours.isOpenNow ? 'OPEN' : 'CLOSED'} right now.`);
+  // Fix [2]: the open-days list is injected verbatim so the model can never
+  // hallucinate a suggestion on a closed day (e.g. Friday when disabled in DB).
+  const openDays = workingHours.days.map((d) => ARABIC_WEEKDAY_NAMES[d.weekday]).join('، ');
+  lines.push(`- Open days ONLY: ${openDays}. NEVER suggest or offer a day marked closed above. If the patient asks for a closed day, offer the nearest open day BY NAME.`);
   lines.push('- If the patient asks for a day/time outside these hours, say it is not available and suggest the nearest open day instead.');
   return lines.join('\n');
 }
@@ -519,7 +523,7 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
     lines.push('- The patient has a recommendation. Confirm the service + doctor and ask whether they want to book (one clear yes/no question).');
   }
   if (receptionistState.state === 'BOOKING') {
-    lines.push('- Booking in progress. Collect missing details conversationally: patient full name, phone number, then preferred day/time. Confirm the slot before finalizing. When all details are known and the patient confirms, say the booking is complete and mention the scheduled day/time.');
+    lines.push('- Booking in progress. Collect missing details conversationally: patient full name, then preferred day/time. Phone is OPTIONAL — ask ONCE politely; if the patient declines or ignores it, proceed WITHOUT it (never block the booking on a phone number). Confirm the slot before finalizing. IMPORTANT: never say the booking is complete unless THIS turn\'s booking note explicitly says a real appointment was created — if details are still missing, ask only for the next missing one.');
   }
   if (receptionistState.booking_issue) {
     lines.push(`- Booking note for this turn: ${receptionistState.booking_issue}`);

@@ -27,6 +27,8 @@ import {
 } from '@/lib/ai/clinicDataContext';
 import { attemptConversationBooking } from '@/lib/ai/conversationBooking';
 import { findEarliestAvailableSlot, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
+import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
+import { format12h, englishDayName } from '@/lib/time/format';
 import { understandMessage, applyUnderstandingToState } from '@/lib/ai/understanding';
 import { saveConversationContext, type ConversationContext } from '@/lib/ai/conversationContext';
 import { buildDiscoveryGuidance } from '@/lib/ai/discoveryGuidance';
@@ -317,11 +319,21 @@ export async function handleIncomingMessage(opts: {
           if (currentState) {
             currentState.booking.slot = availability.slot;
           }
+          // Fix [1]: day name computed SERVER-SIDE from real data — the model
+          // must never compute weekdays itself (it hallucinated "الجمعة" for a Saturday).
+          // Fix [3]: verified same-day alternatives replace the old "9:00 only" ban.
+          const noteZone = clinicProfile?.timezone ?? 'Asia/Jerusalem';
+          const slotWeekday = zonedParts(clinicLocalToInstant(availability.date, '12:00', noteZone), noteZone).weekday;
+          const altTimes = (availability.alternatives ?? [])
+            .map((alt) => /T(\d{2}:\d{2})/.exec(alt)?.[1])
+            .filter((t): t is string => Boolean(t))
+            .slice(0, 6);
           availabilityNote =
-            `REAL AVAILABILITY (queried from the booking system — NEVER invent any other slot): ` +
-            `the earliest available slot is ${availability.date} at ${availability.time} with the recommended provider. ` +
-            `Present this exact day/time to the patient and ask for confirmation to book it. ` +
-            `Do NOT offer any other time or date.`;
+            `REAL AVAILABILITY (queried from the booking system): the earliest available slot is ` +
+            `${englishDayName(slotWeekday)} (${ARABIC_WEEKDAYS[slotWeekday]}) ${availability.date} at ${availability.time} clinic-local ` +
+            `with the recommended provider. Other VERIFIED same-day options: ${altTimes.length > 0 ? altTimes.join(', ') : 'none'}. ` +
+            `Present the earliest slot and ask for confirmation to book it; you may also offer up to 3 of the verified alternatives. ` +
+            `Use the day name EXACTLY as written here — NEVER compute weekdays yourself. Do NOT offer any time not listed in this note.`;
           logEvent('receptionist_real_slot_resolved', {
             clinic_id: clinicId,
             conversation_id: conversationId,
@@ -382,7 +394,12 @@ export async function handleIncomingMessage(opts: {
         operatingData,
       });
       if (attempt.action === 'booked') {
-        bookingNote = `Booking confirmed for this conversation (appointment ${attempt.appointment.id}, scheduled ${attempt.appointment.scheduled_at}). Reply with a warm Arabic confirmation that mentions the scheduled day and time.`;
+        // Fix [1]: server-computed clinic-local day/time — the model repeats it verbatim.
+        const bookedAt = zonedParts(new Date(attempt.appointment.scheduled_at), clinicProfile?.timezone ?? 'Asia/Jerusalem');
+        bookingNote =
+          `Booking confirmed for this conversation (appointment ${attempt.appointment.id}). ` +
+          `Scheduled: ${englishDayName(bookedAt.weekday)} (${ARABIC_WEEKDAYS[bookedAt.weekday]}) ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
+          `Reply with a warm Arabic confirmation using EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
       } else if (attempt.action === 'already_booked') {
         bookingNote = `This conversation already has a booking (appointment ${attempt.appointment_id}). Reply confirming it warmly.`;
       } else if (attempt.action === 'need_more_info') {

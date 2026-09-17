@@ -11,6 +11,7 @@ import WaitlistManager from '@/components/dashboard/clinic/WaitlistManager';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { dashboardStatus } from '@/lib/i18n';
 import { getWeekDays, localIsoDate, mondayIndex, type WeekDay } from '@/lib/calendar/weeks';
+import { format12h } from '@/lib/time/format';
 
 type Appointment = {
   id: number;
@@ -580,7 +581,7 @@ export default function AppointmentsPage() {
                         {/* Line 1: patient + time + service + doctor */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                           <p className="text-sm font-bold text-white">{appointment.patient_name}</p>
-                          <span className="flex items-center gap-1 text-xs text-slate-300"><Clock3 size={12} />{appointment.appointment_time}</span>
+                          <span className="flex items-center gap-1 text-xs text-slate-300"><Clock3 size={12} />{format12h(appointment.appointment_time)}</span>
                           <span className="text-xs text-slate-300">🦷 {appointment.service}</span>
                           {appointment.provider_name && <span className="text-xs text-slate-400">👨‍⚕️ {appointment.provider_name}</span>}
                         </div>

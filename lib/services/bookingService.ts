@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
-import { normalizeTime, timeToMinutes } from './clinicClock';
+import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 import { checkSlotAvailability, suggestFreeSlots, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
 
@@ -440,9 +440,21 @@ function generateBookingToken(): { token: string; tokenHash: string } {
  * optional leading "+", spaces, dashes, parentheses). Rejects null, blank,
  * and values that look nothing like a phone number.
  */
+/**
+ * Phone validity for the booking flow (fix [5] — phone is OPTIONAL).
+ * ABSENT (null / undefined / empty / whitespace) is VALID: a booking must never
+ * be blocked for a missing phone. A PROVIDED value must still be a plausible
+ * phone (5–30 chars, digits with optional leading + and common separators) so
+ * garbage like "call me" is rejected and never stored.
+ * NOTE: `lib/booking/bookingPhone.ts` is the strict legacy-form mirror — the
+ * public booking form still requires a phone; only the AI conversation path
+ * treats absence as acceptable.
+ */
 export function isValidBookingPhone(value: unknown): value is string {
+  if (value === null || value === undefined) return true;
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
+  if (trimmed.length === 0) return true;
   if (trimmed.length < 5 || trimmed.length > 30) return false;
   // Digits with optional leading + and common separators; no letters/symbols.
   return /^\+?[0-9()[\]\s-]{4,29}$/.test(trimmed) && /\d/.test(trimmed);
@@ -463,8 +475,17 @@ export async function createBooking(params: {
   serviceId?: string;
   conversationId?: string | null;
   durationMinutes?: number;
+  /**
+   * Clinic IANA zone (e.g. "Asia/Hebron"). When supplied, `date`+`time` are
+   * treated as CLINIC-LOCAL wall clock and converted to the matching UTC
+   * instant — fixing the wall-clock-as-UTC bug where a spoken "9:00" was
+   * stored as 09:00Z (= 12:00 in Palestine). Omitted → legacy UTC composition
+   * (the public booking route keeps its current contract until it migrates
+   * deliberately).
+   */
+  timeZone?: string;
 }): Promise<{ id: string; scheduled_at: string; status: string; booking_token: string }> {
-  const { clinicId, providerId, service, date, time, patientId, serviceId, conversationId, durationMinutes } = params;
+  const { clinicId, providerId, service, date, time, patientId, serviceId, conversationId, durationMinutes, timeZone } = params;
 
   // A chat-originated booking may carry its source conversation. Verify its
   // clinic ownership before persisting the link; the public booking page can
@@ -504,17 +525,32 @@ export async function createBooking(params: {
     }
   }
 
-  const startsAt = `${date}T${time}:00.000Z`;
+  // F2 fix (wall-clock-as-UTC): with the clinic zone, the spoken local time is
+  // stored as the TRUE instant (09:00 Asia/Hebron ⇒ 06:00Z), and the
+  // availability re-check decodes that instant in CLINIC-local time.
+  const startsAt = timeZone
+    ? clinicLocalToInstant(date, time, timeZone).toISOString()
+    : `${date}T${time}:00.000Z`;
   const holiday = await isClinicHoliday(clinicId, date);
   const existingAppointments = await loadExistingAppointments(clinicId, providerId, date);
 
-  // Re-check availability at booking time
+  // Re-check availability at booking time (with an explicit audit trail).
+  logEvent('booking_insert_attempt', {
+    clinic_id: clinicId,
+    provider_id: providerId,
+    patient_id: patientId,
+    date,
+    time,
+    starts_at: startsAt,
+    duration_minutes: resolvedDuration,
+  });
   const availability = checkSlotAvailability({
     startsAt,
     durationMinutes: resolvedDuration,
     schedule,
     existingAppointments,
     holiday,
+    timeZone,
   });
 
   if (!availability.available) {
@@ -542,12 +578,14 @@ export async function createBooking(params: {
     .single();
 
   if (error) {
+    logEvent('booking_insert_failure', { clinic_id: clinicId, provider_id: providerId, patient_id: patientId, starts_at: startsAt, error: error.message }, 'error');
     // Detect unique constraint violation (race condition — slot was booked concurrently)
     if (error.code === '23505' || /duplicate key/i.test(error.message)) {
       throw new Error('Slot unavailable: concurrent booking');
     }
     throw new Error('Failed to create appointment');
   }
+  logEvent('booking_insert_success', { clinic_id: clinicId, appointment_id: data.id, starts_at: startsAt });
 
   // Keep a public-safe booking summary in the conversation metadata in
   // addition to the relational `conversation_id` link. This lets the chat

@@ -39,32 +39,26 @@ function missingOf(res: Awaited<ReturnType<typeof attemptConversationBooking>>):
   return res.action === 'need_more_info' ? (res.missing as string[]) : [];
 }
 
-describe('isValidBookingPhone (server-side phone requirement)', () => {
+describe('isValidBookingPhone (phone is OPTIONAL — fix [5])', () => {
   it('accepts a valid phone', () => {
     expect(isValidBookingPhone('0599123456')).toBe(true);
     expect(isValidBookingPhone('+972599123456')).toBe(true);
     expect(isValidBookingPhone('0599 123 456')).toBe(true);
   });
-  it('rejects missing phone', () => {
-    expect(isValidBookingPhone(undefined)).toBe(false);
+  it('accepts missing/null/empty phone — optional, never blocks', () => {
+    expect(isValidBookingPhone(undefined)).toBe(true);
+    expect(isValidBookingPhone(null)).toBe(true);
+    expect(isValidBookingPhone('')).toBe(true);
+    expect(isValidBookingPhone('   ')).toBe(true);
   });
-  it('rejects null phone', () => {
-    expect(isValidBookingPhone(null)).toBe(false);
-  });
-  it('rejects empty string phone', () => {
-    expect(isValidBookingPhone('')).toBe(false);
-  });
-  it('rejects whitespace-only phone', () => {
-    expect(isValidBookingPhone('   ')).toBe(false);
-  });
-  it('rejects invalid phone (letters / too short)', () => {
+  it('rejects INVALID phone (letters / too short) so garbage is never stored', () => {
     expect(isValidBookingPhone('abc')).toBe(false);
     expect(isValidBookingPhone('123')).toBe(false);
     expect(isValidBookingPhone('call me')).toBe(false);
   });
 });
 
-describe('conversation booking path — phone is a hard requirement', () => {
+describe('conversation booking path — phone is optional (user decision)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -78,44 +72,39 @@ describe('conversation booking path — phone is a hard requirement', () => {
     expect(svc.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: '0599123456' }));
   });
 
-  it('confirmed + real slot + missing phone → NOT ready (need phone), no patient/appointment created', async () => {
+  it('confirmed + real slot + MISSING phone → still books (phone optional)', async () => {
     const res = await attemptConversationBooking({
       clinicId: CLINIC, conversationId: CONV, state: 'BOOKING', patientConfirmedBooking: true,
       booking: bookedBooking(undefined), operatingData,
     });
-    expect(res.action).toBe('need_more_info');
-    expect(missingOf(res)).toContain('phone');
-    expect(svc.findOrCreatePatient).not.toHaveBeenCalled();
-    expect(svc.createBooking).not.toHaveBeenCalled();
+    expect(res.action).toBe('booked');
+    expect(svc.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: null }));
   });
 
-  it('confirmed + real slot + empty phone → NOT booked', async () => {
+  it('confirmed + real slot + empty phone → still books, phone normalised to null', async () => {
     const res = await attemptConversationBooking({
       clinicId: CLINIC, conversationId: CONV, state: 'BOOKING', patientConfirmedBooking: true,
       booking: bookedBooking(''), operatingData,
     });
-    expect(res.action).toBe('need_more_info');
-    expect(missingOf(res)).toContain('phone');
-    expect(svc.findOrCreatePatient).not.toHaveBeenCalled();
-    expect(svc.createBooking).not.toHaveBeenCalled();
+    expect(res.action).toBe('booked');
+    expect(svc.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: null }));
   });
 
-  it('confirmed + real slot + whitespace-only phone → NOT booked', async () => {
+  it('confirmed + real slot + whitespace-only phone → still books, phone null', async () => {
     const res = await attemptConversationBooking({
       clinicId: CLINIC, conversationId: CONV, state: 'BOOKING', patientConfirmedBooking: true,
       booking: bookedBooking('   '), operatingData,
     });
-    expect(res.action).toBe('need_more_info');
-    expect(svc.createBooking).not.toHaveBeenCalled();
+    expect(res.action).toBe('booked');
+    expect(svc.createBooking).toHaveBeenCalled();
   });
 
-  it('confirmed + real slot + invalid phone format → NOT booked', async () => {
+  it('confirmed + real slot + invalid phone format → still books, garbage never stored', async () => {
     const res = await attemptConversationBooking({
       clinicId: CLINIC, conversationId: CONV, state: 'BOOKING', patientConfirmedBooking: true,
       booking: bookedBooking('call me'), operatingData,
     });
-    expect(res.action).toBe('need_more_info');
-    expect(missingOf(res)).toContain('phone');
-    expect(svc.createBooking).not.toHaveBeenCalled();
+    expect(res.action).toBe('booked');
+    expect(svc.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: null }));
   });
 });

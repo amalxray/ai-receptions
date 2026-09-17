@@ -19,6 +19,8 @@ export type OptionCard = {
   meta?: string;
   icon?: string;
   value: string;
+  /** غير متاح (محجوز): يُعرض باهتاً بلا تفاعل — قيمة خادمية حصراً. */
+  disabled?: boolean;
 };
 
 /** A chip row — short answers: نعم / لا / وقت محدد / خدمة. */
@@ -70,7 +72,7 @@ export function OptionCards({
         <button
           key={o.id}
           type="button"
-          disabled={disabled}
+          disabled={disabled || o.disabled}
           onClick={() => onSelect(o.value)}
           className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-3 text-right transition hover:-translate-y-0.5 hover:border-cyan-400/60 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
         >

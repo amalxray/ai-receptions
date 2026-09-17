@@ -306,6 +306,14 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const uploadFile = async (file: File) => {
     if (!clinicId) return;
+    // F — حد جسم الطلب على Vercel هو 4.5MB: نرفض مبكراً برسالة عربية واضحة
+    // بدلاً من 413 نصيّ من الحافة كان يفجّر res.json() ("Unexpected token 'R'").
+    const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setActionError(`الملف كبير جداً (${(file.size / 1024 / 1024).toFixed(1)}MB) — الحد الأقصى 4MB، ارفع نسخة أصغر أو مضغوطة`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     setUploadBusy(true);
     setActionError(null);
     setActionSuccess(null);
@@ -319,8 +327,22 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         headers,
         body: form,
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'فشل رفع الملف');
+      // قراءة نصية آمنة أولاً: أي خطأ حافة (413/502) يعيد HTML نصاً وليس JSON.
+      const text = await res.text();
+      let json: { error?: string } | null = null;
+      try {
+        json = text ? (JSON.parse(text) as { error?: string }) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) {
+        throw new Error(
+          res.status === 413
+            ? 'الملف تجاوز الحد المسموح (4MB) — ارفع نسخة أصغر'
+            : json?.error || `فشل رفع الملف (${res.status})`
+        );
+      }
+      if (!json) throw new Error('استجابة غير صالحة من الخادم');
       setActionSuccess('تم رفع الملف الطبي ✓');
       await loadAll();
     } catch (err) {

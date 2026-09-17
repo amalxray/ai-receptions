@@ -46,16 +46,22 @@ describe('FIX C — booking phone contract (client-side guard mirrors API)', () 
     expect(validateBookingPhone('+970 (59) 912-3456')).toBe('+970 (59) 912-3456');
   });
 
-  it('stays in sync with the API predicate (isValidBookingPhone) on a boundary corpus', () => {
+  it('stays in sync with the API predicate on PROVIDED values (absence is intentionally divergent)', () => {
     const corpus = [
-      null, undefined, '', '   ', 'abc', '123', '12345', '0599123456',
+      'abc', '123', '12345', '0599123456',
       '+970599123456', '+970 (59) 912-3456', '1'.repeat(30), '1'.repeat(31),
       '0599-123-456', '0599123456ext', '①②③④⑤',
     ];
     for (const raw of corpus) {
       const client = validateBookingPhone(raw);
-      const api = typeof raw === 'string' ? isValidBookingPhone(raw) : false;
+      const api = isValidBookingPhone(raw);
       expect(Boolean(client), `mismatch for ${JSON.stringify(raw)?.slice(0, 6)}…`).toBe(api);
     }
+    // Fix [5] — documented divergence for ABSENT values: the API treats a
+    // missing phone as VALID (the AI conversation path books without one),
+    // while the client mirror stays strict because the legacy public form must
+    // reject a missing phone BEFORE any POST. Intentional, not a bug.
+    expect(isValidBookingPhone('')).toBe(true);
+    expect(validateBookingPhone('')).toBeNull();
   });
 });

@@ -4,6 +4,25 @@ import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/s
 import type { ClinicOperatingData } from './clinicDataContext';
 
 /**
+ * Arabic/English confirmation words (fix [4]). The state machine's
+ * `patient_confirmed_booking` never fired for plain spoken Arabic ("طيب",
+ * "تمام", "احجز"), so the booking never executed while the model still CLAIMED
+ * it was done — the exact "fake confirmation" bug. This local gate runs on the
+ * RAW user message (no LLM) as a second consent path.
+ */
+const CONFIRMATION_WORDS = [
+  'نعم', 'أكيد', 'اكيد', 'أكد', 'اكد', 'موافق', 'أوافق', 'تمام', 'طيب', 'احجز', 'احجزي',
+  'ok', 'okay', 'yes', 'confirm', 'yep', 'sure',
+] as const;
+
+/** True when the raw message contains any confirmation word (diacritics-insensitive). */
+export function containsConfirmationWord(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const normalized = text.toLowerCase().replace(/[\u064B-\u0652\u0670]/g, '').trim();
+  return CONFIRMATION_WORDS.some((word) => normalized.includes(word));
+}
+
+/**
  * Conversational booking execution — completes a booking INSIDE the AI
  * conversation when (and only when) the state machine says:
  *   state === 'BOOKING' && patient_confirmed_booking
@@ -37,7 +56,7 @@ export function missingBookingFields(state: {
   if (!state.booking.service_id) missing.push('service');
   if (!state.booking.provider_id) missing.push('provider');
   if (!state.booking.patient_name || !state.booking.patient_name.trim()) missing.push('patient_name');
-  if (!state.booking.phone || !state.booking.phone.trim()) missing.push('phone');
+  // Phone is OPTIONAL (user decision, fix [5]) — never a blocking field.
   if (!state.booking.slot) missing.push('slot');
   return missing;
 }
@@ -48,8 +67,10 @@ export async function attemptConversationBooking(params: {
   patientConfirmedBooking: boolean;
   booking: { service_id: string | null; provider_id: string | null; slot: string | null; patient_name: string | null; phone: string | null; email?: string | null };
   operatingData: ClinicOperatingData;
+  /** Clinic IANA zone — required so the stored UTC instant matches the wall-clock slot (fix [4]). */
+  timeZone?: string | null;
 }): Promise<BookingAttemptResult> {
-  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData } = params;
+  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, timeZone } = params;
 
   if (state !== 'BOOKING' || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
@@ -78,12 +99,11 @@ export async function attemptConversationBooking(params: {
     return { action: 'need_more_info', missing };
   }
 
-  // Hard phone rule: an appointment may only be created once a VALID phone is
-  // present. A malformed phone is treated as missing so the AI asks for it and
-  // never reaches findOrCreatePatient / createBooking on this path either.
-  if (!isValidBookingPhone(booking.phone)) {
-    return { action: 'need_more_info', missing: ['phone'] };
-  }
+  // Phone is OPTIONAL (user decision, fix [5]) — never a blocking field. A
+  // missing, empty, or malformed phone is normalised to null (treated as "no
+  // phone"): never blocks the booking, never stores garbage.
+  const rawPhone = typeof booking.phone === 'string' ? booking.phone.trim() : null;
+  const phone = rawPhone && isValidBookingPhone(rawPhone) ? rawPhone : null;
 
   // Verify recommended resources actually exist in THIS clinic before creating.
   const serviceExists = operatingData.services.some((s) => s.id === booking.service_id);
@@ -96,13 +116,12 @@ export async function attemptConversationBooking(params: {
       provider_id: booking.provider_id,
     }, 'error');
     return { action: 'failed', reason: 'recommendation_out_of_clinic' };
-
-}
+  }
   try {
     const patientId = await findOrCreatePatient({
       clinicId,
       name: (booking.patient_name as string).trim(),
-      phone: booking.phone,
+      phone, // normalised above: invalid/empty → null (never stored garbage)
       email: booking.email ?? null,
     });
 
@@ -120,6 +139,9 @@ export async function attemptConversationBooking(params: {
       serviceId: service?.id,
       conversationId,
       durationMinutes: service?.duration_minutes ?? undefined,
+      // Fix [4]: store the REAL UTC instant for the clinic-local wall clock
+      // (09:00 in Asia/Hebron = 06:00Z), not wall-clock-as-UTC (was 12:00 local).
+      timeZone: timeZone ?? undefined,
     });
 
     logEvent('conversation_booking_created', {

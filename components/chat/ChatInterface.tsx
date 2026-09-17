@@ -379,6 +379,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                             meta: o.price,
                             icon: o.icon,
                             value: o.value ?? o.title,
+                            disabled: o.disabled,
                           }))}
                           onSelect={(value) => { void handleSubmit(null, value); }}
                           disabled={isSubmitting}

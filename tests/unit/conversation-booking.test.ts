@@ -77,11 +77,13 @@ async function runAttempt(booking: any, override: any = {}) {
 describe('conversationBooking', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('lists all missing booking fields for an empty booking', () => {
+  it('lists all missing booking fields for an empty booking (phone is OPTIONAL)', () => {
     const missing = missingBookingFields({
       booking: { service_id: null, provider_id: null, slot: null, patient_name: '', phone: '' },
     });
-    for (const f of ['service', 'provider', 'patient_name', 'phone', 'slot']) expect(missing).toContain(f);
+    for (const f of ['service', 'provider', 'patient_name', 'slot']) expect(missing).toContain(f);
+    // Fix [5]: phone is optional — never listed as missing.
+    expect(missing).not.toContain('phone');
   });
 
   it('is not ready unless state=BOOKING AND patient confirmed', async () => {
@@ -98,22 +100,30 @@ describe('conversationBooking', () => {
     expect(mocks.createBooking).not.toHaveBeenCalled();
   });
 
-  it('asks only for what is still missing (name/phone not yet collected)', async () => {
-    mocks.supabaseAdmin.from.mockReturnValue(metadataQuery(metaResult({ metadata: null })));
-    const r = await runAttempt({ ...fullBooking, patient_name: null, phone: null });
-    expect(r.action).toBe('need_more_info');
-    expect((r as any).missing).toEqual(['patient_name', 'phone']);
-  });
-
-  it('completes a booking inside the conversation and returns the appointment', async () => {
+  it('completes a booking WITHOUT a phone (phone is optional) and never stores garbage', async () => {
     mocks.supabaseAdmin.from.mockReturnValue(metadataQuery(metaResult({ metadata: null })));
     mocks.findOrCreatePatient.mockResolvedValue('patient-1');
     mocks.createBooking.mockResolvedValue({ id: 'appt-9', scheduled_at: '2026-09-01T10:00:00.000Z', status: 'tentative' });
-    const r = await runAttempt(fullBooking);
+    const r = await runAttempt({ ...fullBooking, patient_name: 'محمد', phone: null });
     expect(r.action).toBe('booked');
-    expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({
-      clinicId, providerId: 'p1', service: 'زراعة أسنان', serviceId: 's1', conversationId,
-    }));
+    expect(mocks.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: null }));
+  });
+
+  it('normalises a malformed phone to null instead of blocking the booking', async () => {
+    mocks.supabaseAdmin.from.mockReturnValue(metadataQuery(metaResult({ metadata: null })));
+    mocks.findOrCreatePatient.mockResolvedValue('patient-1');
+    mocks.createBooking.mockResolvedValue({ id: 'appt-9', scheduled_at: '2026-09-01T10:00:00.000Z', status: 'tentative' });
+    const r = await runAttempt({ ...fullBooking, phone: 'call me' });
+    expect(r.action).toBe('booked');
+    expect(mocks.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: null }));
+  });
+
+  it('passes a VALID phone through untouched (stored, not dropped)', async () => {
+    mocks.supabaseAdmin.from.mockReturnValue(metadataQuery(metaResult({ metadata: null })));
+    mocks.findOrCreatePatient.mockResolvedValue('patient-1');
+    mocks.createBooking.mockResolvedValue({ id: 'appt-9', scheduled_at: '2026-09-01T10:00:00.000Z', status: 'tentative' });
+    await runAttempt(fullBooking); // phone: '0599999999'
+    expect(mocks.findOrCreatePatient).toHaveBeenCalledWith(expect.objectContaining({ phone: '0599999999' }));
   });
 
   it('maps a concurrent booking race to slot_unavailable (safe failure, one winner)', async () => {

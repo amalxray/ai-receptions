@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
+import ExpenseDialog from '@/components/dashboard/ExpenseDialog';
 import { useClinicContext } from '@/lib/useClinicContext';
 
 /**
@@ -82,6 +83,9 @@ export default function FinancialIntelligencePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [months, setMonths] = useState(6);
+  // G — "+ مصروف": إعادة تحميل المؤشرات بعد تسجيل مصروف جديد، وفتح النافذة.
+  const [reloadKey, setReloadKey] = useState(0);
+  const [expenseOpen, setExpenseOpen] = useState(false);
 
   useEffect(() => {
     if (!clinicId) {
@@ -112,7 +116,7 @@ export default function FinancialIntelligencePage() {
     return () => {
       isMounted = false;
     };
-  }, [clinicId, authHeaders, months]);
+  }, [clinicId, authHeaders, months, reloadKey]);
 
   const kpis = data?.kpis;
   const kpiCards = useMemo(() => {
@@ -154,7 +158,16 @@ export default function FinancialIntelligencePage() {
         title="الذكاء المالي"
         subtitle="مؤشرات واتجاهات وتحذيرات مالية مشتقة من سجلات العيادة (قراءة فقط — لا إجراءات تلقائية)."
         action={
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {clinicId ? (
+              <button
+                type="button"
+                onClick={() => setExpenseOpen(true)}
+                className="rounded-full bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400"
+              >
+                + مصروف
+              </button>
+            ) : null}
             {PERIOD_OPTIONS.map((option) => (
               <button
                 key={option.months}
@@ -202,6 +215,15 @@ export default function FinancialIntelligencePage() {
           </div>
         ) : null}
       </DashboardSection>
+
+      {/* G — نافذة المصروفات: مركّبة هنا لأن هذا المكوّن صاحب الحالة (clinicId/expenseOpen/reloadKey). */}
+      <ExpenseDialog
+        clinicId={clinicId as string}
+        authHeaders={authHeaders}
+        open={expenseOpen}
+        onClose={() => setExpenseOpen(false)}
+        onSaved={() => setReloadKey((key) => key + 1)}
+      />
     </div>
   );
 }

@@ -18,6 +18,11 @@ export type OptionCard = {
   icon?: string;
   /** القيمة النصية المُرسلة عند الضغط (إن لم تُحدد تُستخدم title). */
   value?: string;
+  /**
+   * B — خيار غير متاح (وقت محجوز مثلاً): يُعرض باهتاً ولا يقبل الضغط.
+   * يأتي دائماً من بيانات خادمية (day_slots)، لا يُحسب في الواجهة أبداً.
+   */
+  disabled?: boolean;
 };
 
 export type OptionCardGroup = {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { format12h } from '@/lib/time/format';
 
 /**
  * LIVE HOURS BADGE — "مفتوح الآن / مغلق" pill for the public page.
@@ -41,8 +42,8 @@ export default function HoursStatusBadge({ slug }: { slug: string }) {
           <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
           <span className="font-bold text-emerald-600">مفتوح الآن</span>
           {status.todaySchedule && (
-            <span className="text-slate-500" dir="ltr">
-              {status.todaySchedule.start} – {status.todaySchedule.end}
+            <span className="text-slate-500" dir="rtl">
+              {format12h(status.todaySchedule.start)} – {format12h(status.todaySchedule.end)}
             </span>
           )}
         </>
@@ -52,7 +53,7 @@ export default function HoursStatusBadge({ slug }: { slug: string }) {
           <span className="font-bold text-rose-600">مغلق الآن</span>
           {status.nextOpening && (
             <span className="text-slate-500">
-              · يفتح {status.nextOpening.day} الساعة <span dir="ltr">{status.nextOpening.time}</span>
+              · يفتح {status.nextOpening.day} الساعة <span dir="rtl">{format12h(status.nextOpening.time)}</span>
             </span>
           )}
         </>

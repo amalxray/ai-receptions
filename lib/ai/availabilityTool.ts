@@ -28,6 +28,13 @@ export type EarliestSlotResult = {
   time?: string;
   providerId?: string;
   serviceId?: string;
+  /**
+   * Fix [3] "9:00 only": additional VERIFIED slots for the SAME day (same
+   * constraints already applied), so the AI can present several real options
+   * (morning + afternoon via multi-shift windows) instead of a single forced
+   * time. Every entry is engine-verified — still never invented.
+   */
+  alternatives?: string[];
   reason?: 'service_unavailable' | 'no_slots' | 'error';
   message?: string;
 };
@@ -161,6 +168,28 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         }
 
         const endTime = addMinutesToTime(slotTime, service.duration_minutes);
+        // Fix [3]: collect the rest of THIS day's matching slots as verified
+        // alternatives (morning + afternoon), then stop scanning later days.
+        const alternatives: string[] = [];
+        for (const other of slots) {
+          if (other === slot) continue;
+          const om = other.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+          if (!om) continue;
+          const otherDate = om[1];
+          const otherTime = om[2];
+          if (otherDate < todayLocal) continue;
+          if (otherDate === todayLocal && otherTime <= nowTimeLocal) continue;
+          if (preferredTimeRange) {
+            const from = preferredTimeRange.from ?? '00:00';
+            const to = preferredTimeRange.to ?? '23:59';
+            if (otherTime < from || otherTime > to) continue;
+          }
+          if (preferredTimeOptions && preferredTimeOptions.length > 0) {
+            if (!preferredTimeOptions.includes(otherTime)) continue;
+          }
+          alternatives.push(other);
+          if (alternatives.length >= 7) break;
+        }
         return {
           found: true,
           slot,
@@ -170,6 +199,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
           time: slotTime,
           providerId,
           serviceId,
+          alternatives,
         };
       }
     } catch (err) {
