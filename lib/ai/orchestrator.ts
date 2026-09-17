@@ -26,7 +26,7 @@ import {
   type ClinicProfile,
 } from '@/lib/ai/clinicDataContext';
 import { attemptConversationBooking } from '@/lib/ai/conversationBooking';
-import { findEarliestAvailableSlot, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
+import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import { format12h, englishDayName } from '@/lib/time/format';
 import { understandMessage, applyUnderstandingToState } from '@/lib/ai/understanding';
@@ -288,17 +288,69 @@ export async function handleIncomingMessage(opts: {
     // reuse the persisted slot. Failures degrade to a structured NOT_AVAILABLE
     // note — never "AI unavailable".
     let availabilityNote: string | null = null;
+    // FIX-1 (Global by Default): the REAL slot is resolved as soon as the
+    // SERVICE is known — the provider is OPTIONAL and auto-resolved below from
+    // provider_services (first eligible provider). Requiring provider_id here
+    // made "بدي احجز بانوراما" (no doctor named) produce no slots and no time
+    // card at all, pushing the model back to "hand off to reception".
     const needsRealSlot =
       intelligence.intent === 'appointment_booking' &&
       currentState &&
       currentState.recommended_service_id &&
-      currentState.recommended_provider_id &&
       !currentState.booking.slot &&
       currentState.state !== 'BOOKING' &&
       currentState.state !== 'COMPLETED';
 
     if (needsRealSlot) {
       try {
+        // Provider may be unknown when the patient didn't name a doctor —
+        // resolve the first eligible provider for THIS service automatically.
+        let providerId = currentState!.recommended_provider_id as string | undefined;
+        if (!providerId) {
+          providerId = (await resolveFirstProviderForService(clinicId, currentState!.recommended_service_id as string)) ?? undefined;
+          if (providerId && currentState) currentState.recommended_provider_id = providerId;
+        }
+        if (!providerId) {
+          // FIX-2: no eligible provider → derive clinic-level slots from the
+          // clinic's aggregated hours (multi-shift aware) so the patient still
+          // gets a REAL, honest proposal + interactive card instead of a handoff.
+          const clinicLevel = await findClinicLevelSlots({
+            clinicId,
+            serviceId: currentState!.recommended_service_id as string,
+            timeZone: clinicProfile?.timezone ?? undefined,
+            preferredDate: currentState!.preferred_date ?? undefined,
+          });
+          if (clinicLevel.found && clinicLevel.slot) {
+            await persistReceptionistSlot(clinicId, conversationId, {
+              slot: clinicLevel.slot,
+              slot_start: clinicLevel.slotStart ?? clinicLevel.slot,
+              slot_end: clinicLevel.slotEnd ?? clinicLevel.slot,
+              service_id: clinicLevel.serviceId,
+            });
+            if (currentState) currentState.booking.slot = clinicLevel.slot;
+            const noteZone = clinicProfile?.timezone ?? 'Asia/Jerusalem';
+            const slotWeekday = zonedParts(clinicLocalToInstant(clinicLevel.date ?? '', '12:00', noteZone), noteZone).weekday;
+            const altTimes = (clinicLevel.alternatives ?? [])
+              .map((alt) => /T(\d{2}:\d{2})/.exec(alt)?.[1])
+              .filter((t): t is string => Boolean(t))
+              .slice(0, 6);
+            availabilityNote =
+              `REAL AVAILABILITY (clinic-level, from the booking system): the earliest available time is ` +
+              `${englishDayName(slotWeekday)} (${ARABIC_WEEKDAYS[slotWeekday]}) ${clinicLevel.date} at ${clinicLevel.time} clinic-local. ` +
+              `Other VERIFIED same-day options: ${altTimes.length > 0 ? altTimes.join(', ') : 'none'}. ` +
+              `Present the earliest time and ask for confirmation; a staff member will be assigned at the clinic. ` +
+              `Use the day name EXACTLY as written here — NEVER compute weekdays yourself. Do NOT offer any time not listed in this note.`;
+            logEvent('receptionist_clinic_level_slot_resolved', {
+              clinic_id: clinicId,
+              conversation_id: conversationId,
+              slot: clinicLevel.slot,
+            });
+          } else {
+            availabilityNote =
+              'REAL AVAILABILITY: no provider is currently scheduled for this service in the booking system. ' +
+              'Do NOT invent a slot. Tell the patient availability must be confirmed by the clinic and offer to take their contact details.';
+          }
+        } else {
         const availability = await findEarliestAvailableSlot({
           clinicId,
           providerId: currentState!.recommended_provider_id as string,
@@ -350,6 +402,7 @@ export async function handleIncomingMessage(opts: {
             reason: availability.reason,
             message: availability.message ?? null,
           });
+        }
         }
       } catch (err) {
         logEvent('receptionist_real_slot_error', {

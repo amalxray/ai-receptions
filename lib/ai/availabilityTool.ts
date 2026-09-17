@@ -1,5 +1,6 @@
-import { getAvailableSlots, getActiveServiceById } from '@/lib/services/bookingService';
+import { getAvailableSlots, getActiveServiceById, getActiveProviders } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
+import { getClinicHours, clinicLocalToInstant, timeToMinutes, zonedParts } from '@/lib/services/clinicHours';
 import { dateInTimeZone, timeInTimeZone, addDaysIso } from '@/lib/ai/understanding';
 import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
 
@@ -218,4 +219,105 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
   }
 
   return { found: false, reason: 'no_slots', message: 'no real slot found matching constraints' };
+}
+
+/**
+ * FIX-1 (Global by Default): when the patient names a service but NO provider
+ * ("بدي احجز بانوراما"), the booking flow must not stall waiting for one.
+ * Resolves the FIRST provider of this clinic that (a) is assigned to the
+ * service via provider_services when assignments exist, and (b) has real
+ * provider_schedules — reusing getActiveProviders so eligibility rules stay in
+ * ONE place. Returns null when nothing qualifies (caller degrades gracefully).
+ */
+export async function resolveFirstProviderForService(clinicId: string, serviceId: string): Promise<string | null> {
+  try {
+    const providers = await getActiveProviders(clinicId, serviceId);
+    return providers[0]?.id ?? null;
+  } catch (err) {
+    logEvent('availability_resolve_provider_failed', {
+      clinic_id: clinicId,
+      service_id: serviceId,
+      error: err instanceof Error ? err.message : String(err),
+    }, 'warn');
+    return null;
+  }
+}
+
+/**
+ * FIX-2 — CLINIC-LEVEL slot fallback (Global by Default).
+ *
+ * When NO provider is eligible at all (e.g. an imaging centre whose service is
+ * bookable clinic-wide), availability is derived directly from the clinic's
+ * aggregated hours (`getClinicHours` — multi-shift aware) and the REAL service
+ * duration. These slots are engine-shaped (`YYYY-MM-DDTHH:MM:00.000Z`, encoded
+ * clinic-local like the booking engine) and are only PROPOSALS: the guarded
+ * booking route re-validates with checkSlotAvailability before persisting.
+ * Never called when a real provider exists — the provider path always wins.
+ */
+export async function findClinicLevelSlots(params: {
+  clinicId: string;
+  serviceId: string;
+  timeZone?: string;
+  preferredDate?: string;
+  now?: Date;
+  lookaheadDays?: number;
+  limitPerDay?: number;
+}): Promise<EarliestSlotResult> {
+  const { clinicId, serviceId } = params;
+  const now = params.now ?? new Date();
+  const timeZone = params.timeZone ?? 'Asia/Jerusalem';
+  try {
+    const service = await getActiveServiceById(clinicId, serviceId).catch(() => null);
+    if (!service) return { found: false, reason: 'service_unavailable', message: 'service not available for this clinic' };
+
+    const hours = await getClinicHours(clinicId);
+    if (!hours.hasHours) return { found: false, reason: 'no_slots', message: 'clinic has no working hours' };
+
+    const { date: todayLocal, time: nowTimeLocal } = zonedParts(now, timeZone);
+    const days: string[] = params.preferredDate
+      ? [params.preferredDate]
+      : Array.from({ length: params.lookaheadDays ?? 14 }, (_, i) => addDaysIso(todayLocal, i));
+    const limitPerDay = params.limitPerDay ?? 5;
+
+    for (const day of days) {
+      const { weekday } = zonedParts(clinicLocalToInstant(day, '12:00', timeZone), timeZone);
+      const dayHours = hours.days.find((d) => d.weekday === weekday);
+      if (!dayHours) continue;
+
+      const daySlots: string[] = [];
+      for (const period of dayHours.periods) {
+        const startMin = timeToMinutes(period.start);
+        const endMin = timeToMinutes(period.end);
+        for (let cursor = startMin; cursor + service.duration_minutes <= endMin; cursor += service.duration_minutes) {
+          const time = `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
+          if (day === todayLocal && time <= nowTimeLocal) continue;
+          // Engine-shaped encoding: clinic-local wall clock carried as the UTC clock.
+          daySlots.push(`${day}T${time}:00.000Z`);
+          if (daySlots.length >= limitPerDay) break;
+        }
+        if (daySlots.length >= limitPerDay) break;
+      }
+      if (daySlots.length === 0) continue;
+
+      const [slotDate, slotTime] = daySlots[0].split('T');
+      return {
+        found: true,
+        slot: daySlots[0],
+        slotStart: daySlots[0],
+        slotEnd: daySlots[0],
+        date: slotDate,
+        time: slotTime.slice(0, 5),
+        serviceId,
+        alternatives: daySlots.slice(1),
+      };
+    }
+    return { found: false, reason: 'no_slots', message: 'no clinic-level slot found matching constraints' };
+  } catch (err) {
+    logEvent('availability_clinic_level_error', {
+      clinic_id: clinicId,
+      service_id: serviceId,
+      error: err instanceof Error ? err.message : String(err),
+    }, 'warn');
+    return { found: false, reason: 'error', message: 'clinic-level availability failed' };
+  }
 }

@@ -502,6 +502,11 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
 
   const lines: string[] = ['RECEPTIONIST OPERATING MODE (follow strictly):'];
   lines.push('- Drive the conversation proactively. Understand the patient in ANY Arabic phrasing (colloquial or formal) from MEANING, not keyword matching. Talk naturally in Arabic (mirror the patient\'s style), keep replies short and warm.');
+  // FIX-3 (anti-handoff-default): human handoff must never be the default
+  // answer when a real slot/time card exists — that default made the AI
+  // deflect patients who were one click away from booking.
+  lines.push('- HUMAN HANDOFF IS A LAST RESORT ONLY: offer it ONLY when (a) the REAL AVAILABILITY note for this turn says no slot exists at all, or (b) the patient explicitly asks for a human. Whenever a REAL AVAILABILITY note or interactive time card is present, present/point to those options and WAIT for the patient\'s choice — never deflect to reception instead.');
+  lines.push('- When the conversation context shows an interactive time card was already sent, do NOT repeat the times textually; the card displays them. Ask the patient to tap a time on the card (or say one aloud).');
   lines.push('- Ask ONLY the single next missing question. Never ask again for something the patient already gave in this conversation.');
   lines.push(`- Current conversation stage: ${receptionistState.state}.`);
   if (receptionistState.recommended_service_id) {
