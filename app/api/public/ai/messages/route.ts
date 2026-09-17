@@ -10,6 +10,11 @@ import { logEvent } from '@/lib/server/logging';
 import { buildPendingBookingContext } from '@/lib/ai/bookingContextBridge';
 import { buildChatInteractive } from '@/lib/ai/chatInteractive';
 
+// AI generation on the Free Tier can legitimately take 10–30s (measured up to
+// 25s); the platform default (~10s on serverless) was cutting successful
+// generations short.
+export const maxDuration = 60;
+
 const bodySchema = z.object({
   clinic_slug: z.string().min(1).max(200).optional(),
   clinic_id: z.string().uuid().optional(),

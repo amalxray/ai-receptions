@@ -31,6 +31,7 @@ async function providerError(response: Response): Promise<Error> {
   const body = await response.text().catch(() => 'response body unavailable');
   const safeBody = body
     .replace(/AIza[A-Za-z0-9_-]{20,}/g, 'AIza***')
+    .replace(/AQ\.[A-Za-z0-9_-]{20,}/g, 'AQ.***')
     .slice(0, 500);
   const type = response.status === 401 || response.status === 403
     ? 'Authentication failed'
@@ -42,12 +43,19 @@ async function providerError(response: Response): Promise<Error> {
   return new Error(`${type} (${response.status}) during generate: ${safeBody}`);
 }
 
-export const GeminiProvider: AIProvider = {
-  id: 'gemini',
+/**
+ * Builds a Gemini provider bound to a specific API-key env var. The primary
+ * instance reads GEMINI_API_KEY; a second instance (`gemini-fallback`) reads
+ * GEMINI_API_KEY_FALLBACK so a dead or rate-limited primary key fails over to
+ * another Gemini credential instead of a placeholder third-party provider.
+ */
+export function createGeminiProvider(id: string, keyEnv: string): AIProvider {
+  return {
+  id,
 
   async generate({ prompt, maxTokens = 1024, temperature = 0.2 }): Promise<GenerateResult> {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error('Gemini API key is not configured. Set GEMINI_API_KEY in the environment.');
+    const key = process.env[keyEnv];
+    if (!key) throw new Error(`Gemini API key is not configured. Set ${keyEnv} in the environment.`);
 
     const model = process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
     const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
@@ -90,8 +98,8 @@ export const GeminiProvider: AIProvider = {
   },
 
   async embed(input: string): Promise<EmbedResult> {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error('Gemini API key is not configured.');
+    const key = process.env[keyEnv];
+    if (!key) throw new Error(`Gemini API key is not configured. Set ${keyEnv} in the environment.`);
 
     const model = process.env.GEMINI_EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
     const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:embedContent?key=${encodeURIComponent(key)}`;
@@ -118,7 +126,10 @@ export const GeminiProvider: AIProvider = {
 
     return { embedding, raw: json };
   },
-};
+  } as AIProvider;
+}
+
+export const GeminiProvider: AIProvider = createGeminiProvider('gemini', 'GEMINI_API_KEY');
 
 export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);

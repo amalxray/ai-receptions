@@ -261,5 +261,8 @@ export const AnthropicProvider: AIProvider = {
  * Never returns the key itself.
  */
 export function isAnthropicConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  const key = process.env.ANTHROPIC_API_KEY;
+  // Placeholder credentials (e.g. "your-anthropic-key") must never count as
+  // "configured" — they guarantee a 401 and poison the failover chain.
+  return typeof key === 'string' && key.startsWith('sk-ant-');
 }

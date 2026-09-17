@@ -11,7 +11,7 @@ import { logEvent } from '@/lib/server/logging';
  *
  * Fix (bounded, no new credentials, fits the existing registry):
  *  1. Limited retries per provider for TRANSIENT errors with exponential
- *     backoff (300ms → 900ms).
+ *     backoff (1s → 3s).
  *  2. Failover to the NEXT configured registered provider before giving up.
  *  3. Non-transient errors (auth/permission/malformed request) skip retries
  *     and move straight to failover.
@@ -24,7 +24,9 @@ import { logEvent } from '@/lib/server/logging';
  */
 
 const MAX_ATTEMPTS_PER_PROVIDER = 2;
-const BACKOFF_MS = [300, 900];
+// Free-tier Gemini wobbles (429/overloaded) need a real pause before the
+// retry — 300/900ms were too fast to outlive a rate-limit window.
+const BACKOFF_MS = [1000, 3000];
 
 /** Matches transient provider/HTTP failures worth retrying or failing over. */
 const TRANSIENT_ERROR = /timed?\s*out|timeout|rate limit|429|too many requests|internal error|500|bad gateway|502|unavailable|503|504|overloaded|aborted|abort|network|econn|socket|fetch failed|temporarily/i;
