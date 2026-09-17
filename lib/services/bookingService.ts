@@ -1,8 +1,39 @@
 import { randomBytes, createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 import { checkSlotAvailability, suggestFreeSlots, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
+
+/**
+ * `provider_schedules.shifts` (migration 20260827) holds EXTRA working periods
+ * [{ start: "15:00", end: "20:00" }], while start_time/end_time stay
+ * authoritative for shift #1. Returns the FULL window list so a split-shift day
+ * offers afternoon/evening slots instead of only the first shift's morning —
+ * the root cause of the "9:00 only" symptom. Empty array → the engine falls back
+ * to start→end, so clinics without `shifts` behave exactly as before.
+ */
+function schedulePeriods(row: {
+  start_time?: string | null;
+  end_time?: string | null;
+  shifts?: unknown;
+}): Array<{ start: string; end: string }> {
+  const periods: Array<{ start: string; end: string }> = [];
+  const start = normalizeTime(row.start_time);
+  const end = normalizeTime(row.end_time);
+  if (start && end && timeToMinutes(end) > timeToMinutes(start)) periods.push({ start, end });
+  if (Array.isArray(row.shifts)) {
+    for (const entry of row.shifts) {
+      if (!entry || typeof entry !== 'object') continue;
+      const record = entry as Record<string, unknown>;
+      const shiftStart = normalizeTime(record.start ?? record.start_time);
+      const shiftEnd = normalizeTime(record.end ?? record.end_time);
+      if (!shiftStart || !shiftEnd || timeToMinutes(shiftEnd) <= timeToMinutes(shiftStart)) continue;
+      periods.push({ start: shiftStart, end: shiftEnd });
+    }
+  }
+  return periods.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+}
 
 /**
  * Loads a provider's schedule for a given clinic from the database.
@@ -50,6 +81,8 @@ export async function loadProviderSchedule(clinicId: string, providerId: string)
     start: row.start_time,
     end: row.end_time,
     breaks: Array.isArray(row.breaks) ? row.breaks : [],
+    // Multi-shift (F6): shift #1 + every extra `shifts` window.
+    periods: schedulePeriods(row),
   }));
 
   const appointmentDurationMinutes = scheduleRows?.[0]?.appointment_duration_minutes ?? 30;

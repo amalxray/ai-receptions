@@ -236,15 +236,17 @@ export async function handleIncomingMessage(opts: {
     // the AI can recommend/correct/complete bookings even when the Knowledge
     // Base is empty. Cross-clinic leakage is impossible: every query is
     // filtered by clinic_id.
-    const [operatingData, workingHours] = await Promise.all([
+    const [operatingData, clinicProfile] = await Promise.all([
       loadClinicOperatingData(clinicId),
-      loadClinicWorkingHours(clinicId),
- ]);
-    const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
+      loadClinicProfile(clinicId),
+    ]);
     // Authoritative clinic identity/profile from the `clinics` table. This is
     // the ONLY source of the clinic's real name/address/phone — never inferred
-    // from the patient's location or invented by the model.
-    const clinicProfile = await loadClinicProfile(clinicId);
+    // from the patient's location or invented by the model. It is resolved
+    // BEFORE the hours because its IANA timezone drives them (F2): the server
+    // clock is UTC on Vercel while the clinic lives in Asia/Hebron (UTC+3).
+    const workingHours = await loadClinicWorkingHours(clinicId, clinicProfile.timezone);
+    const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───

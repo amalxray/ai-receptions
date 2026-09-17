@@ -428,12 +428,14 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
 
             {aiUnavailable && (
               <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                <p>يمكنك ترك رقم هاتفك هنا وسيتواصل معك فريق العيادة.</p>
-                <input
-                  type="tel"
-                  placeholder="رقم الهاتف (اختياري)"
-                  className="mt-2 w-full rounded-md bg-slate-800 px-3 py-2 text-slate-100"
-                />
+                {/*
+                  F5: the `<input type="tel">` that used to live here was DEAD —
+                  no value/onChange/name and no submit handler, so it silently
+                  discarded whatever the visitor typed. The honest instruction is
+                  to type the number into the chat, which the real form below
+                  (the only input wired to handleSubmit) actually sends.
+                */}
+                <p>يمكنك كتابة رقم هاتفك في الرسالة أدناه وسيتواصل معك فريق العيادة.</p>
               </div>
             )}
 

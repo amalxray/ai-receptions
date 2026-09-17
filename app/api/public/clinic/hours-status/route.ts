@@ -11,12 +11,10 @@
  */
 import { NextResponse } from 'next/server';
 import { resolvePublicClinic } from '@/lib/services/clinics';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getClinicHours, isOpenNow, nextOpening } from '@/lib/services/clinicHours';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
-
-const DAYS_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
 export async function GET(req: Request) {
   try {
@@ -27,57 +25,23 @@ export async function GET(req: Request) {
     const clinic = await resolvePublicClinic({ slug });
     if (!clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
 
-    const { data: scheduleRows, error } = await supabaseAdmin
-      .from('provider_schedules')
-      .select('weekday, start_time, end_time')
-      .eq('clinic_id', clinic.id)
-      .eq('enabled', true);
-    if (error) throw new Error(error.message);
-
-    // Merge per weekday (same policy as clinicPublicProfile workingHours).
-    const byWeekday = new Map<number, { start: string; end: string }>();
-    for (const row of scheduleRows ?? []) {
-      if (typeof row.weekday !== 'number' || !row.start_time || !row.end_time) continue;
-      const existing = byWeekday.get(row.weekday);
-      if (!existing) {
-        byWeekday.set(row.weekday, { start: row.start_time, end: row.end_time });
-      } else {
-        if (row.start_time < existing.start) existing.start = row.start_time;
-        if (row.end_time > existing.end) existing.end = row.end_time;
-      }
-    }
-
-    const now = new Date();
-    const today = now.getDay();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const todaySchedule = byWeekday.get(today) ?? null;
-    const isOpen = Boolean(
-      todaySchedule && currentTime >= todaySchedule.start && currentTime < todaySchedule.end
-    );
-
-    // Next opening: today (before opening time) → غداً → first scheduled day after.
-    let nextOpening: { day: string; time: string } | null = null;
-    if (!isOpen) {
-      for (let i = 0; i <= 7 && !nextOpening; i++) {
-        const wd = (today + i) % 7;
-        const sched = byWeekday.get(wd);
-        if (!sched) continue;
-        if (i === 0 && currentTime >= sched.start) continue; // today's window already passed/ongoing
-        nextOpening = {
-          day: i === 0 ? 'اليوم' : i === 1 ? 'غداً' : DAYS_AR[wd],
-          time: sched.start.slice(0, 5),
-        };
-      }
-    }
+    // SINGLE SOURCE OF TRUTH (F2): hours + "open now" + "next opening" all come
+    // from lib/services/clinicHours, which merges provider_schedules per weekday
+    // (earliest start / latest end, `shifts` included) and evaluates the clock in
+    // the CLINIC's IANA timezone. Previously this route used `now.getHours()` —
+    // the SERVER clock (UTC on Vercel) — so an Asia/Hebron clinic reported the
+    // wrong status for 3 hours of every day.
+    const hours = await getClinicHours(clinic.id);
+    const status = await isOpenNow(hours);
+    const opening = status.isOpen ? null : await nextOpening(hours);
 
     return NextResponse.json({
       data: {
-        isOpen,
-        todaySchedule: todaySchedule
-          ? { start: todaySchedule.start.slice(0, 5), end: todaySchedule.end.slice(0, 5) }
-          : null,
-        nextOpening,
-        currentTime,
+        isOpen: status.isOpen,
+        todaySchedule: status.day ? { start: status.day.start, end: status.day.end } : null,
+        nextOpening: opening ? { day: opening.day, time: opening.time } : null,
+        currentTime: status.currentTime,
+        timezone: status.timezone,
       },
     });
   } catch (err) {

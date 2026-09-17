@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { getClinicHours, toClinicWorkingHoursData } from '@/lib/services/clinicHours';
 
 /**
  * Clinic Operating Data — the SINGLE source of truth for the AI receptionist
@@ -52,38 +53,28 @@ export const EMPTY_OPERATING_DATA: ClinicOperatingData = {
   usable: false,
 };
 
-const ARABIC_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
-
 /**
- * Phase 4 — real working hours for the AI prompt, read from provider_schedules
- * (active rows only). Empty result (no schedules) is a valid outcome: the
- * prompt section is simply omitted and the AI keeps answering from context.
+ * Phase 4 — real working hours for the AI prompt.
+ *
+ * FIXED in Phase 1 (two real bugs):
+ *  1. The old query filtered `provider_schedules.is_active` — a column that
+ *     DOES NOT EXIST. The real column is `enabled` (see migration
+ *     `20260723_appointment_engine.sql`), so the query always errored out and
+ *     the working-hours section silently vanished from the AI prompt.
+ *  2. `now.getHours()` / `now.getDay()` read the SERVER clock (UTC on Vercel),
+ *     so a clinic in Asia/Hebron (UTC+3) was reported CLOSED at 10:00 local.
+ *     Time is now derived in the CLINIC's IANA zone.
+ *
+ * All hours logic lives in `lib/services/clinicHours` (single source of truth)
+ * and extra `shifts` periods are honoured too. `timezone` is the clinic's
+ * `settings.timezone` from `loadClinicProfile`; when omitted, clinicHours
+ * resolves it from the DB itself. Empty result (no schedules) stays a valid
+ * outcome: the prompt section is simply omitted.
  */
-export async function loadClinicWorkingHours(clinicId: string) {
+export async function loadClinicWorkingHours(clinicId: string, timezone?: string | null) {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('provider_schedules')
-      .select('weekday, start_time, end_time')
-      .eq('clinic_id', clinicId)
-      .eq('is_active', true)
-      .order('weekday', { ascending: true });
-    if (error) {
-      logEvent('clinic_working_hours_error', { clinic_id: clinicId, error: error.message }, 'error');
-      return null;
-    }
-    const days = (data ?? []) as Array<{ weekday: number; start_time: string; end_time: string }>;
-    const now = new Date();
-    const todayWeekday = now.getDay(); // 0 = Sunday, matches DB weekday
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const today = days.find((d) => Number(d.weekday) === todayWeekday) ?? null;
-    const isOpenNow = Boolean(today && currentTime >= today.start_time.slice(0, 5) && currentTime < today.end_time.slice(0, 5));
-    return {
-      days,
-      todayName: ARABIC_DAYS[todayWeekday] ?? '',
-      todayWeekday,
-      currentTime,
-      isOpenNow,
-    };
+    const hours = await getClinicHours(clinicId, { timezone });
+    return toClinicWorkingHoursData(hours);
   } catch (err) {
     logEvent('clinic_working_hours_exception', { clinic_id: clinicId, error: err instanceof Error ? err.message : String(err) }, 'error');
     return null;
