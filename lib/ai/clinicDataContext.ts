@@ -233,6 +233,11 @@ export async function persistReceptionistSlot(
     patient_name?: string | null;
     phone?: string | null;
     email?: string | null;
+    /** P2: the confirmed flag + state stage live at the metadata ROOT (see body). */
+    patient_confirmed_booking?: boolean;
+    state?: string;
+    /** P1: verified same-day alternative slots for the interactive time card. */
+    alternatives?: string[];
   }
 ): Promise<void> {
   try {
@@ -253,6 +258,12 @@ export async function persistReceptionistSlot(
     if (fields.patient_name !== undefined) booking.patient_name = fields.patient_name;
     if (fields.phone !== undefined) booking.phone = fields.phone;
     if (fields.email !== undefined) booking.email = fields.email;
+    // P2: consent + state stage live at the metadata ROOT (loadReceptionist-
+    // ConversationState reads meta.patient_confirmed_booking / meta.state), so
+    // persisting them here keeps the confirmation alive across turns — the
+    // booking gate must still fire after the patient answers "what's your name?".
+    if (fields.patient_confirmed_booking !== undefined) meta.patient_confirmed_booking = fields.patient_confirmed_booking;
+    if (fields.state !== undefined) meta.state = fields.state;
     await supabaseAdmin
       .from('conversations')
       .update({ metadata: { ...meta, booking } })

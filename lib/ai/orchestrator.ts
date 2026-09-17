@@ -25,7 +25,7 @@ import {
   type ReceptionistConversationState,
   type ClinicProfile,
 } from '@/lib/ai/clinicDataContext';
-import { attemptConversationBooking } from '@/lib/ai/conversationBooking';
+import { attemptConversationBooking, containsConfirmationWord } from '@/lib/ai/conversationBooking';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import { format12h, englishDayName } from '@/lib/time/format';
@@ -422,45 +422,69 @@ export async function handleIncomingMessage(opts: {
     // existing, concurrency-safe `createBooking`. Results are passed to the
     // LLM as an instruction note so the reply stays natural.
     let bookingNote: string | null = null;
-    if (receptionState?.state === 'BOOKING' && receptionState.patient_confirmed_booking) {
+    // P2 ROOT FIX: the gate MUST use the post-transition state (`currentState`)
+    // — the old code tested `receptionState`, the PRE-TURN snapshot, so a plain
+    // "طيب احجز" that transitions to BOOKING *in this turn* never entered this
+    // branch: nothing was saved while the model still said "تم تأكيد موعدك".
+    // A raw-text confirmation word (no LLM) is accepted as the consent path too.
+    const postTurnState = currentState ?? receptionState;
+    const rawConfirmation = containsConfirmationWord(text);
+    const bookingConfirmed = Boolean(postTurnState?.patient_confirmed_booking) ||
+      (postTurnState?.state === 'BOOKING' && rawConfirmation);
+    if (postTurnState?.state === 'BOOKING' && bookingConfirmed) {
+      logEvent('booking_attempt', {
+        clinic_id: clinicId,
+        conversation_id: conversationId,
+        confirmed_via: postTurnState.patient_confirmed_booking ? 'state_machine' : 'raw_text',
+        slot: postTurnState.booking.slot,
+      });
+      if (rawConfirmation && !postTurnState.patient_confirmed_booking) {
+        // Keep the consent alive for the next turns (metadata root).
+        postTurnState.patient_confirmed_booking = true;
+        await persistReceptionistSlot(clinicId, conversationId, { patient_confirmed_booking: true });
+      }
       // Carry any patient name/phone/email collected in THIS turn into the
       // booking state so the patient doesn't have to repeat it and the booking
       // can complete. Persisted so later turns keep it too.
       const ap = intelligence.appointment;
-      if (ap?.patientName && !receptionState.booking.patient_name) receptionState.booking.patient_name = ap.patientName;
-      if (ap?.phone && !receptionState.booking.phone) receptionState.booking.phone = ap.phone;
-      if (ap?.email && !receptionState.booking.email) receptionState.booking.email = ap.email;
+      if (ap?.patientName && !postTurnState.booking.patient_name) postTurnState.booking.patient_name = ap.patientName;
+      if (ap?.phone && !postTurnState.booking.phone) postTurnState.booking.phone = ap.phone;
+      if (ap?.email && !postTurnState.booking.email) postTurnState.booking.email = ap.email;
       const hasCollected = Boolean(ap?.patientName || ap?.phone || ap?.email);
       if (hasCollected) {
         await persistReceptionistSlot(clinicId, conversationId, {
-          patient_name: receptionState.booking.patient_name,
-          phone: receptionState.booking.phone,
-          email: receptionState.booking.email,
+          patient_name: postTurnState.booking.patient_name,
+          phone: postTurnState.booking.phone,
+          email: postTurnState.booking.email,
         });
       }
       const attempt = await attemptConversationBooking({
         clinicId,
         conversationId,
-        state: receptionState.state,
-        patientConfirmedBooking: receptionState.patient_confirmed_booking,
-        booking: receptionState.booking,
+        state: postTurnState.state,
+        patientConfirmedBooking: bookingConfirmed,
+        booking: postTurnState.booking,
         operatingData,
+        // Fix [4]: real UTC instant for the clinic-local wall clock.
+        timeZone: clinicProfile?.timezone ?? undefined,
       });
       if (attempt.action === 'booked') {
         // Fix [1]: server-computed clinic-local day/time — the model repeats it verbatim.
         const bookedAt = zonedParts(new Date(attempt.appointment.scheduled_at), clinicProfile?.timezone ?? 'Asia/Jerusalem');
+        // P2: the [BOOKING_SAVED] tag is the ONLY proof of persistence the model
+        // may cite — promptManager forbids claiming confirmation without it.
         bookingNote =
-          `Booking confirmed for this conversation (appointment ${attempt.appointment.id}). ` +
+          `[BOOKING_SAVED: ${attempt.appointment.id}] Booking CONFIRMED and SAVED to the appointments calendar. ` +
           `Scheduled: ${englishDayName(bookedAt.weekday)} (${ARABIC_WEEKDAYS[bookedAt.weekday]}) ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
           `Reply with a warm Arabic confirmation using EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
       } else if (attempt.action === 'already_booked') {
-        bookingNote = `This conversation already has a booking (appointment ${attempt.appointment_id}). Reply confirming it warmly.`;
+        bookingNote = `[BOOKING_SAVED: ${attempt.appointment_id}] This conversation already has a confirmed booking. Reply confirming it warmly with its day/time.`;
       } else if (attempt.action === 'need_more_info') {
-        bookingNote = `Booking in progress. Still missing: ${attempt.missing.join(', ')}. Ask for exactly these details, one at a time.`;
+        bookingNote = `Booking NOT saved yet — nothing is confirmed. Still missing: ${attempt.missing.join(', ')}. Ask for exactly these details, one at a time.`;
       } else if (attempt.action === 'slot_unavailable') {
-        bookingNote = 'The requested slot is no longer available. Apologize and invite the patient to choose another day or time (do not confirm a booking).';
+        bookingNote = 'Booking NOT saved: the requested slot is no longer available. Apologize and invite the patient to choose another day or time (do not confirm a booking).';
       } else if (attempt.action === 'failed') {
-        bookingNote = 'A system issue prevented completing the booking. Do not confirm — offer human help instead.';
+        bookingNote = 'Booking NOT saved: a system issue prevented completing it. Do not confirm — offer human help instead.';
       }
     }
     // STEP 5 — Network Discovery Mode: computed ONLY when the patient

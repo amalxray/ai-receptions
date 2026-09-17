@@ -127,7 +127,10 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     timeZone = 'UTC',
     now = new Date(),
     lookaheadDays = 14,
-    limitPerDay = 5,
+    // P1 (Global by Default): 5 capped every clinic's day at 5 slots. A full
+    // day for a 30-minute service inside a 9→17 schedule is 16 — the engine's
+    // own per-day iteration is the only sane ceiling, not an arbitrary 5.
+    limitPerDay = 20,
   } = params;
 
   const service = await getActiveServiceById(clinicId, serviceId).catch(() => null);
@@ -189,7 +192,8 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
             if (!preferredTimeOptions.includes(otherTime)) continue;
           }
           alternatives.push(other);
-          if (alternatives.length >= 7) break;
+          // P1: enough room for a FULL day (16+ slots) instead of 4 visible times.
+          if (alternatives.length >= 15) break;
         }
         return {
           found: true,

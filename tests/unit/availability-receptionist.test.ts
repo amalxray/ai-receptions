@@ -81,7 +81,9 @@ describe('findEarliestAvailableSlot — STEP 3 constraints & timezone', () => {
       now: FIXED_NOW,
     });
     expect(result.found).toBe(true);
-    expect(bookingMocks.getAvailableSlots).toHaveBeenCalledWith('c1', 'p1', '2026-08-28', 5, 'svc');
+    // P1: the per-day cap is a full day (20), not the old arbitrary 5 that hid
+    // real afternoon slots for every clinic.
+    expect(bookingMocks.getAvailableSlots).toHaveBeenCalledWith('c1', 'p1', '2026-08-28', 20, 'svc');
     expect(result.date).toBe('2026-08-28');
   });
 

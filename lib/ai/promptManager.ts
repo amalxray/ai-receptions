@@ -561,6 +561,9 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   lines.push('- STRICT GROUNDING: State ONLY clinic facts that appear in Clinic Information / Operating Data. NEVER add descriptive words like "متميز", "خبير", "الأفضل", "الأشهر" unless they appear VERBATIM in clinic data. NEVER invent a clinic name/address/phone, doctors, titles, services, prices, policies, or dates.');
   lines.push('- LOCATION: NEVER infer the clinic location from the patient\'s city/area. If the patient says they live in a city, that is about THEM, not the clinic. The clinic location is ONLY the address in Clinic Information (if any); otherwise say it is not currently available.');
   lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time and ask for confirmation. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');
+  // P2: "تم تأكيد موعدك" must never be a hallucination — the [BOOKING_SAVED]
+  // tag in the booking note is the ONLY proof the appointment was persisted.
+  lines.push("- BOOKING CONFIRMATION RULE: NEVER say the booking is confirmed/saved (\"تم الحجز\"/\"تم تأكيد موعدك\") unless the booking note contains the tag [BOOKING_SAVED: <id>] for THIS conversation. A proposed slot is NOT a booking — ask for confirmation. When [BOOKING_SAVED] IS present, confirm warmly using exactly its day/time.");
   lines.push('- PROVIDERS: only list doctors that appear in Clinic Operating Data, with exactly their recorded title. Do not invent credentials or specialties.');
 
   return lines.join('\n');

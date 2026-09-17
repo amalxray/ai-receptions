@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { freshConversationState, conversationStorageKeysToPurge } from '@/lib/chat/conversationReset';
 import type { ChatInteractive } from '@/lib/ai/chatInteractive';
-import { QuickReplyChips, OptionCards, BookingProgress } from './InteractiveReplies';
+import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 
 type ChatMessage = {
   id?: string;
@@ -343,7 +343,6 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           </button>
         )}
       </div>
-      {lastInteractive?.progress?.length ? <BookingProgress steps={lastInteractive.progress} /> : null}
       <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
         {statusMessage ? (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{statusMessage}</div>
