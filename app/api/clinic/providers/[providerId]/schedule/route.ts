@@ -3,12 +3,29 @@ import { z } from 'zod';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { normalizeTimeInput } from '@/lib/server/scheduleTime';
+
+/**
+ * FIX (cause C of "Invalid schedule payload"): Postgres `time` columns are
+ * serialised as "09:00:00" while this route only accepted a strict "HH:MM",
+ * so every dashboard load→save round-trip of Working Hours failed with 400.
+ * Times are now normalised through the shared `normalizeTimeInput()` (accepts
+ * HH:MM and HH:MM(:SS)(.fraction)) and canonicalised to "HH:MM" before the DB.
+ */
+const timeField = z.string().transform((value, ctx) => {
+  const normalized = normalizeTimeInput(value);
+  if (!normalized) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `time must be HH:MM, received "${value}"` });
+    return z.NEVER;
+  }
+  return normalized;
+});
 
 const scheduleRowSchema = z.object({
   weekday: z.number().int().min(0).max(6),
   enabled: z.boolean(),
-  start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'start_time must be HH:MM'),
-  end_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'end_time must be HH:MM'),
+  start_time: timeField,
+  end_time: timeField,
   appointment_duration_minutes: z.number().int().min(5).max(480).optional(),
   max_appointments_per_day: z.number().int().min(1).max(500).optional().nullable(),
 });
