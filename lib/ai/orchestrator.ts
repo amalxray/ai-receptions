@@ -416,22 +416,49 @@ export async function handleIncomingMessage(opts: {
       }
     }
 
+    // ── P1 UNLOCK: when the patient confirms (احجز/نعم/تمام...) while the state
+    // machine is parked at AWAITING_BOOKING_CONFIRMATION with a persisted slot,
+    // promote the state LOCALLY to BOOKING + confirmed BEFORE the booking gate:
+    // derive date/time from the saved slot and carry the conversation forward.
+    // (Previously the gate required state==='BOOKING' which never arrived, so
+    // attemptConversationBooking never ran and nothing was saved.)
+    if (currentState && currentState.state === 'AWAITING_BOOKING_CONFIRMATION' && containsConfirmationWord(text)) {
+      const slotString = currentState.booking?.slot ?? null;
+      if (slotString) {
+        // The loader always builds `booking`; this fallback keeps legacy rows
+        // (no metadata.booking yet) type-safe without a bare `{}` assignment.
+        currentState.booking = currentState.booking ?? {
+          service_id: null,
+          provider_id: null,
+          slot: slotString,
+          patient_name: null,
+          phone: null,
+          email: null,
+        };
+        currentState.state = 'BOOKING';
+        currentState.patient_confirmed_booking = true;
+        // `slot` is the SINGLE source of truth — conversationBooking derives
+        // date/time from it via parseSlot; no parallel date/time fields exist.
+        logEvent('booking_gate_unlocked', { clinic_id: clinicId, conversation_id: conversationId, slot: slotString });
+      }
+    }
     // --- Conversational booking execution ---
     // When the state machine reached BOOKING and the patient explicitly
     // confirmed, try to complete the booking INSIDE the conversation using the
     // existing, concurrency-safe `createBooking`. Results are passed to the
     // LLM as an instruction note so the reply stays natural.
     let bookingNote: string | null = null;
-    // P2 ROOT FIX: the gate MUST use the post-transition state (`currentState`)
-    // — the old code tested `receptionState`, the PRE-TURN snapshot, so a plain
-    // "طيب احجز" that transitions to BOOKING *in this turn* never entered this
-    // branch: nothing was saved while the model still said "تم تأكيد موعدك".
+    // P1/P2 ROOT FIX: the gate MUST use the post-transition state (`currentState`)
+    // and MUST accept `AWAITING_BOOKING_CONFIRMATION` — that is the state the
+    // state machine actually stores after "طيب احجز" (BOOKING is reserved for the
+    // final confirmed step), so the old `=== 'BOOKING'` check never opened the
+    // gate and nothing was saved while the model said "تم تأكيد موعدك".
     // A raw-text confirmation word (no LLM) is accepted as the consent path too.
     const postTurnState = currentState ?? receptionState;
     const rawConfirmation = containsConfirmationWord(text);
-    const bookingConfirmed = Boolean(postTurnState?.patient_confirmed_booking) ||
-      (postTurnState?.state === 'BOOKING' && rawConfirmation);
-    if (postTurnState?.state === 'BOOKING' && bookingConfirmed) {
+    const inBookingFlow = postTurnState?.state === 'BOOKING' || postTurnState?.state === 'AWAITING_BOOKING_CONFIRMATION';
+    const bookingConfirmed = Boolean(postTurnState?.patient_confirmed_booking) || (inBookingFlow && rawConfirmation);
+    if (inBookingFlow && bookingConfirmed) {
       logEvent('booking_attempt', {
         clinic_id: clinicId,
         conversation_id: conversationId,
