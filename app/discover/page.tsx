@@ -86,8 +86,8 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         <header className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-white">دليل الأطباء</h1>
           <p className="mt-2 text-sm text-stone-400">
-            ابحث عن طبيب أسنان مشترك على المنصة، وادخل إلى ملفه المهني لتحجز أو تتحدث مع
-            الاستقبال الذكي.
+            ابحث عن طبيب أسنان مشترك على المنصة، وادخل إلى ملفه المهني لتحجز موعدك.
+            {/* تم إخفاء «أو تتحدث مع الاستقبال الذكي» — re-enable by uncommenting */}
           </p>
         </header>
 

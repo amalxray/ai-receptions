@@ -49,9 +49,10 @@ export async function generateMetadata({
   if (!resolved) {
     return { title: 'العيادة غير موجودة', robots: { index: false, follow: false } };
   }
+  // تم إخفاء الاستقبال الذكي من العرض (revert: أضِف «أو تحدث مع الاستقبال.» بعد «احجز موعدك»)
   const description =
     resolved.description ??
-    `صفحة عيادة ${resolved.name} — احجز موعدك أو تحدث مع الاستقبال.`;
+    `صفحة عيادة ${resolved.name} — احجز موعدك.`;
   const canonical = activitySpaceUrl(resolved.slug);
   return {
     title: resolved.name,
@@ -121,12 +122,14 @@ export default async function ClinicPublicPage({ params }: ClinicPublicPageProps
           >
             احجز موعدًا
           </a>
+          {/* AI Chat hidden — re-enable by uncommenting
           <a
             href={profile.chatUrl}
             className="rounded-lg border border-stone-600 px-6 py-3 font-semibold text-stone-200 transition hover:border-stone-400"
           >
             تحدث مع الاستقبال
           </a>
+          */}
         </div>
 {/* Services */}
         <section className="mb-10">

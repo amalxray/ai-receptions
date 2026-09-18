@@ -57,11 +57,12 @@ export async function generateMetadata({
   const title = profile.specialty
     ? `${profile.name} — ${profile.specialty}`
     : profile.name;
+  // تم إخفاء الاستقبال الذكي من العرض (revert: أضِف «أو تحدث مع الاستقبال الذكي» بعد «احجز موعدك»)
   const description =
     profile.bio?.slice(0, 160) ??
     (profile.specialty
-      ? `${profile.specialty} في ${profile.clinic.name} — احجز موعدك أو تحدث مع الاستقبال الذكي.`
-      : `${profile.clinic.name} — احجز موعدك أو تحدث مع الاستقبال الذكي.`);
+      ? `${profile.specialty} في ${profile.clinic.name} — احجز موعدك.`
+      : `${profile.clinic.name} — احجز موعدك.`);
   const canonical = doctorPublicUrl(profile.slug);
   return {
     title,
@@ -92,12 +93,14 @@ function HeroCtas({ bookingUrl, chatUrl }: { bookingUrl: string; chatUrl: string
         >
           احجز موعدًا
         </a>
+        {/* AI Chat hidden — re-enable by uncommenting (chatUrl param kept for revert)
         <a
           href={chatUrl}
           className="rounded-lg border border-stone-600 px-8 py-3 text-center font-semibold text-stone-100 transition hover:border-stone-400"
         >
           تحدث مع الاستقبال الذكي
         </a>
+        */}
       </div>
       <p className="mt-3 text-center text-xs text-stone-500">
         الحجز يتم عبر نظام العيادة مباشرة — بدون مكالمات أو انتظار، ويعمل على مدار الساعة.

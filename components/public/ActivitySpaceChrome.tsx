@@ -163,7 +163,8 @@ export function ActivitySpaceChrome({
 }) {
   const locationBits = [space.city, space.area].filter(Boolean) as string[];
   const hasAddress = Boolean(space.address);
-  const ctaLabel = space.activityType === 'clinic' ? 'احجز موعدًا' : 'اطلب خدمة';
+  // Rebrand: «اطلب خدمة» → «احجز موعد» (revert: space.activityType === 'clinic' ? 'احجز موعدًا' : 'اطلب خدمة')
+  const ctaLabel = space.activityType === 'clinic' ? 'احجز موعدًا' : 'احجز موعد';
   /** Section visibility toggle (default: visible when unset) — owner-controlled. */
   const on = (key: string) => space.sections?.[key] !== false;
   const showBooking = on('bookingCta') || on('hero');
@@ -329,6 +330,7 @@ export function ActivitySpaceChrome({
                 >
                   {ctaLabel}
                 </a>
+                {/* AI Chat hidden — re-enable by uncommenting
                 {showAi && (
                   <button
                     type="button"
@@ -338,6 +340,7 @@ export function ActivitySpaceChrome({
                     💬 تحدث مع الاستقبال الذكي
                   </button>
                 )}
+                */}
               </div>
             </StaggerReveal>
             <StaggerReveal delay={380}>
@@ -513,7 +516,9 @@ export function ActivitySpaceChrome({
       </main>
 
       {/* Public Chat UX (Phase 8): embedded in the SAME page, not a redirect. */}
+      {/* AI Chat hidden — re-enable by uncommenting
       {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={space.name} externalOpenSignal={chatSignal} activityType={space.activityType} />}
+      */}
 
     </div>
   );

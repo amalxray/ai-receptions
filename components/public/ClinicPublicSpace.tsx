@@ -85,7 +85,8 @@ export function ClinicPublicSpace({ space }: { space: ActivityPublicSpace }) {
               </div>
             ) : (
               <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                لا توجد خدمات منشورة بعد — تحدث مع الاستقبال للاستفسار.
+                {/* تم إخفاء «تحدث مع الاستقبال للاستفسار.» مع إخفاء زر المحادثة — re-enable by uncommenting */}
+                لا توجد خدمات منشورة بعد — للاستفسار تواصل مع العيادة مباشرة.
               </p>
             )}
           </section>
