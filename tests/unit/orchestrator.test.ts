@@ -21,6 +21,10 @@ const mockClinicDataContext = vi.hoisted(() => ({
   loadClinicOperatingData: vi.fn(),
   loadReceptionistConversationState: vi.fn(),
   loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, hasProfile: true })),
+  // Mock drift repair: the orchestrator resolves the clinic's working hours
+  // (unified hours source) BEFORE the reception state; without this export every
+  // RAG-pipeline test in this file crashed before reaching its assertions.
+  loadClinicWorkingHours: vi.fn(async () => ({ hours: [], summary: '' })),
   persistReceptionistSlot: vi.fn(async () => {}),
   OPERATIVE_CONVERSATION_INTENTS: new Set(['appointment_booking','appointment_reschedule','appointment_cancellation','patient_complaint','dental_general_question','general_question','greeting','goodbye','human_handoff','unknown']),
 }));
@@ -49,6 +53,11 @@ vi.mock('@/lib/ai/understanding', async (importOriginal) => {
 
 const mockConversationBooking = vi.hoisted(() => ({
   attemptConversationBooking: vi.fn(),
+  // Full public API of the module — the orchestrator's booking gate calls these
+  // two directly (raw-text consent detection + deterministic service lookup), so
+  // the mock must expose them or the RAG-pipeline tests crash before asserting.
+  containsConfirmationWord: vi.fn(() => false),
+  matchServiceByName: vi.fn(() => undefined),
 }));
 vi.mock('@/lib/ai/conversationBooking', () => mockConversationBooking);
 vi.mock('@/lib/supabase', () => mockSupabase);

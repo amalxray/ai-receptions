@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
-import type { ClinicOperatingData } from './clinicDataContext';
+import type { ClinicOperatingData, ClinicServiceForAI } from './clinicDataContext';
 
 /**
  * Arabic/English confirmation words (fix [4]). The state machine's
@@ -60,6 +60,32 @@ export function missingBookingFields(state: {
   if (!state.booking.slot) missing.push('slot');
   return missing;
 }
+
+/** Normalises an Arabic/English service name so tolerant matching is possible. */
+function normalizeServiceName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\s\-_،,()]+/g, '')
+    .replace(/^ال/, '');
+}
+
+/**
+ * Deterministic name → service resolution inside THIS clinic's catalog (the same
+ * spirit as `resolveServiceByName`, additionally tolerant of the "ال" article).
+ * Returns undefined when nothing matches, so a booking degrades to
+ * `need_more_info` instead of ever inventing a service.
+ */
+export function matchServiceByName(hint: string, services: ClinicServiceForAI[]): ClinicServiceForAI | undefined {
+  const needle = normalizeServiceName(hint);
+  if (!needle) return undefined;
+  return (
+    services.find((s) => normalizeServiceName(s.name) === needle) ??
+    services.find(
+      (s) => normalizeServiceName(s.name).includes(needle) || needle.includes(normalizeServiceName(s.name))
+    )
+  );
+}
+
 export async function attemptConversationBooking(params: {
   clinicId: string;
   conversationId: string;
@@ -67,10 +93,15 @@ export async function attemptConversationBooking(params: {
   patientConfirmedBooking: boolean;
   booking: { service_id: string | null; provider_id: string | null; slot: string | null; patient_name: string | null; phone: string | null; email?: string | null };
   operatingData: ClinicOperatingData;
-  /** Clinic IANA zone — required so the stored UTC instant matches the wall-clock slot (fix [4]). */
-  timeZone?: string | null;
+  /**
+   * Last-chance service hint (the name the patient asked for). Used ONLY when
+   * `booking.service_id` is empty, so a chat booking is never blocked because
+   * the model failed to store `recommended_service_id` — the exact divergence
+   * between the AI path and the (working) public "request service" path.
+   */
+  serviceNameHint?: string | null;
 }): Promise<BookingAttemptResult> {
-  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, timeZone } = params;
+  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint } = params;
 
   if (state !== 'BOOKING' || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
@@ -94,7 +125,17 @@ export async function attemptConversationBooking(params: {
     // Non-fatal: proceed, bookingService also guards duplicates via constraints.
   }
 
-  const missing = missingBookingFields({ booking });
+  // Resolve the SERVICE exactly like the public booking page does (it always
+  // books a real, clinic-scoped service): use the AI's pinned id when present,
+  // otherwise match the name the patient asked for against this clinic's real
+  // catalog — deterministic, no LLM, never invented.
+  const service =
+    (booking.service_id ? operatingData.services.find((s) => s.id === booking.service_id) : undefined) ??
+    (serviceNameHint ? matchServiceByName(serviceNameHint, operatingData.services) : undefined);
+
+  const missing = missingBookingFields({
+    booking: { ...booking, service_id: service?.id ?? booking.service_id },
+  });
   if (missing.length > 0) {
     return { action: 'need_more_info', missing };
   }
@@ -105,15 +146,16 @@ export async function attemptConversationBooking(params: {
   const rawPhone = typeof booking.phone === 'string' ? booking.phone.trim() : null;
   const phone = rawPhone && isValidBookingPhone(rawPhone) ? rawPhone : null;
 
-  // Verify recommended resources actually exist in THIS clinic before creating.
-  const serviceExists = operatingData.services.some((s) => s.id === booking.service_id);
+  // Verify the service + provider actually exist in THIS clinic before creating
+  // (the same tenant invariant the public route is bound by).
   const providerExists = operatingData.providers.some((p) => p.id === booking.provider_id);
-  if (!serviceExists || !providerExists) {
+  if (!service || !providerExists) {
     logEvent('conversation_booking_invalid_recommendation', {
       clinic_id: clinicId,
       conversation_id: conversationId,
-      service_id: booking.service_id,
+      service_id: service?.id ?? booking.service_id,
       provider_id: booking.provider_id,
+      service_resolved_by_name: Boolean(!booking.service_id && service),
     }, 'error');
     return { action: 'failed', reason: 'recommendation_out_of_clinic' };
   }
@@ -125,23 +167,27 @@ export async function attemptConversationBooking(params: {
       email: booking.email ?? null,
     });
 
-    const service = operatingData.services.find((s) => s.id === booking.service_id);
     const slot = booking.slot as string; // validated non-null above
     const [date, time] = parseSlot(slot);
 
     const created = await createBooking({
       clinicId,
       providerId: booking.provider_id as string,
-      service: service?.name ?? 'Dental service',
+      service: service.name,
       date,
       time,
       patientId,
-      serviceId: service?.id,
+      serviceId: service.id,
       conversationId,
-      durationMinutes: service?.duration_minutes ?? undefined,
-      // Fix [4]: store the REAL UTC instant for the clinic-local wall clock
-      // (09:00 in Asia/Hebron = 06:00Z), not wall-clock-as-UTC (was 12:00 local).
-      timeZone: timeZone ?? undefined,
+      durationMinutes: service.duration_minutes ?? undefined,
+      // UNIFIED SAVE PATH: no `timeZone` here on purpose — the availability
+      // engine already emits wall-clock-as-UTC slots ("2026-09-19T09:00:00Z"
+      // means 09:00 AT THE CLINIC), which is the convention the public
+      // "request service" path writes and the one the dashboard
+      // (`toISOString().slice(11,16)`) and booking emails (`getUTCHours()`)
+      // read back. Passing `timeZone` made the SAME createBooking() store a
+      // different instant (09:00 local → 06:00Z) and shifted every
+      // chat-originated appointment by the UTC offset.
     });
 
     logEvent('conversation_booking_created', {

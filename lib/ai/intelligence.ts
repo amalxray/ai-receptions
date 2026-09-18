@@ -55,8 +55,23 @@ const RULES: Rule[] = [
     /تأجيل|تغيير الموعد|تعديل الموعد|بدي غير موعدي|بدي اغير الموعد|ارحل الموعد|نقل الموعد/i
   ]},
   { intent: 'appointment_booking', weight: 0.9, terms: [
-    /book|appointment|schedule|available slot/i,
-    /حجز|موعد|احجز|ابدي احجز|بدي حجز|بدي موعد|اريد موعد|ريد موعد|عايز حجز|بدي دكتور|بدي اشوف دكتور/i
+    /book|appointment|schedule|available slot|scan|x-?ray|panorama/i,
+    /حجز|موعد|احجز|ابدي احجز|بدي حجز|بدي موعد|اريد موعد|ريد موعد|عايز حجز|بدي دكتور|بدي اشوف دكتور/i,
+    // UNIFIED-PATH ROOT FIX: service-request phrasings of non-dental activities
+    // (imaging centers: "بدي اتصور بانوراما", "أريد تصوير أشعة"). Without these
+    // the classifier returned `unknown`, so no service/slot was ever resolved,
+    // the booking gate never opened and NOTHING was saved — while the model
+    // still claimed «تم تثبيت موعدك». `تصوير` alone is deliberately NOT listed
+    // (it appears in pricing questions like "قديش سعر التصوير؟").
+    /بدي اتصور|بديتصور|أتصور|بدي تصوير|بدي صور|اريد تصوير|أريد تصوير|بدي اعمل تصوير/i
+  ]},
+  // Modality/service NAMES alone are a WEAKER booking signal than an explicit
+  // request verb: weight 0.8 keeps them BELOW pricing_inquiry (0.82), so
+  // "قديش سعر البانوراما؟" is still classified as pricing, while a bare
+  // "بانوراما" / "أشعة" is understood as a booking desire.
+  { intent: 'appointment_booking', weight: 0.8, terms: [
+    /panorama|cbct|x-?ray|scan/i,
+    /بانوراما|بنوراما|cbct|سي بي سي تي|سكان|أشعة|اشعة|صورة اشعة|صورة أشعة|تصوير اشعة|تصوير أشعة/i
   ]},
   { intent: 'pricing_inquiry', weight: 0.82, terms: [
     /price|pricing|cost|how much|fee/i,
@@ -106,14 +121,35 @@ function firstMatch(text: string, expressions: RegExp[]) {
   return expressions.find((expression) => expression.test(text)) ?? null;
 }
 
+/**
+ * A candidate patient name extracted from free text is only accepted when it
+ * contains no request/booking/price vocabulary — otherwise "أنا بدي احجز"
+ * would be stored as a patient name (and then created as a patient record).
+ */
+const NAME_STOPWORDS = /حجز|احجز|موعد|بدي|اريد|أريد|تصوير|اتصور|أتصور|سعر|كم|شو|متى|وين|أشعة|اشعة|بانوراما/i;
+
+function cleanPatientName(raw: string | undefined): string | null {
+  const value = raw?.trim().replace(/[\s،,]+$/g, '');
+  if (!value || NAME_STOPWORDS.test(value)) return null;
+  return value;
+}
+
 function extractAppointment(text: string): AppointmentExtraction {
   const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? null;
   const phone = text.match(/(?:\+?\d[\d\s().-]{7,}\d)/g)?.map((candidate) => candidate.trim()).find((candidate) => !/^20\d{2}[-/]\d{1,2}[-/]\d{1,2}$/.test(candidate) && !/^\d{1,2}[-/]\d{1,2}[-/]20\d{2}$/.test(candidate)) ?? null;
   const date = text.match(/\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b/)?.[0] ?? null;
   const time = text.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\s?(?:am|pm)?\b|\b(?:1[0-2]|0?[1-9])\s?(?:am|pm)\b/i)?.[0] ?? null;
-  const name = text.match(/(?:my name is|i am|this is|اسمي|أنا)\s+([^,.\n]{2,60})/i)?.[1]?.trim() ?? null;
+  // `باسم` / `بسم` are the Palestinian phrasings for introducing one's own name
+  // ("نعم باسم طلال ابو جميل") and were missing here, so the name the patient
+  // DID give never reached `booking.patient_name` → the booking gate returned
+  // `need_more_info` and nothing was saved.
+  const name = cleanPatientName(
+    text.match(/(?:my name is|i am|this is|اسمي|أنا|انا|باسم|بسم)\s+([^,.\n]{2,60})/i)?.[1]
+  );
   const service = text.match(/(?:for|need|service|لـ|اريد|أريد)\s+(?:to\s+book\s+)?(?:an?\s+)?([^,.\n]{2,40}?)(?=\s+(?:on|at|my|and|يوم|بتاريخ|الساعة)|[,.]|$)/i)?.[1]?.trim()
     ?? text.match(/\bbook\s+(?:an?\s+)?([^,.\n]{2,40}?)(?=\s+(?:on|at|my|and)|[,.]|$)/i)?.[1]?.trim()
+    // Service-request phrasing ("بدي اتصور بانوراما يوم الاحد") → "بانوراما".
+    ?? text.match(/(?:بدي اتصور|بديتصور|أتصور|بدي تصوير|بدي اعمل تصوير|اريد تصوير|أريد تصوير|بدي صورة|حابب اتصور|حابة اتصور)\s+(?:ال)?([^,.\n]{2,40}?)(?=\s+(?:يوم|بتاريخ|الساعة|الساعه|على|عند|مع|on|at|my|and)|[,.]|$)/i)?.[1]?.trim()
     ?? null;
 
   return { patientName: name, phone, email, preferredDate: date, preferredTime: time, requestedService: service };

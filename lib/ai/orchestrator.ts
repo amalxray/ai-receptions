@@ -25,7 +25,8 @@ import {
   type ReceptionistConversationState,
   type ClinicProfile,
 } from '@/lib/ai/clinicDataContext';
-import { attemptConversationBooking, containsConfirmationWord } from '@/lib/ai/conversationBooking';
+import { attemptConversationBooking, containsConfirmationWord, matchServiceByName } from '@/lib/ai/conversationBooking';
+import { extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import { format12h } from '@/lib/time/format';
@@ -278,6 +279,31 @@ export async function handleIncomingMessage(opts: {
         const prov = resolveProviderByName(currentState.preferred_provider, operatingData);
         if (prov) currentState.recommended_provider_id = prov.id;
       }
+      // UNIFIED SAVE PATH — deterministic SERVICE resolution (no LLM). The
+      // public "request service" button always books a real service chosen from
+      // the catalog; the chat path previously depended on the model storing
+      // `recommended_service_id`. When it didn't, no slot was resolved, the
+      // state machine never left INITIAL and NOTHING was saved (while the model
+      // claimed «تم تثبيت موعدك»). Resolving + persisting the service here lets
+      // the SAME createBooking() run for both entry points.
+      if (!currentState.recommended_service_id) {
+        const serviceHint =
+          intelligence.appointment?.requestedService ??
+          currentState.requested_service ??
+          extractRequestedServiceFromText(text) ??
+          null;
+        const svc = serviceHint ? matchServiceByName(serviceHint, operatingData.services) : undefined;
+        if (svc) {
+          currentState.recommended_service_id = svc.id;
+          await persistReceptionistSlot(clinicId, conversationId, { service_id: svc.id });
+          logEvent('receptionist_service_resolved_by_name', {
+            clinic_id: clinicId,
+            conversation_id: conversationId,
+            service_id: svc.id,
+            hint: serviceHint,
+          });
+        }
+      }
     }
 
     // --- REAL availability resolution (grounded booking) ---
@@ -293,8 +319,18 @@ export async function handleIncomingMessage(opts: {
     // provider_services (first eligible provider). Requiring provider_id here
     // made "بدي احجز بانوراما" (no doctor named) produce no slots and no time
     // card at all, pushing the model back to "hand off to reception".
+    // UNIFIED SAVE PATH: a real slot is resolved whenever there is ANY
+    // deterministic booking signal — the classifier's booking intent, an
+    // explicit service request the patient stated, or a plain confirmation word
+    // — instead of requiring the LLM to label the turn `appointment_booking`.
+    // Without this, "بدي اتصور بانوراما" (classified `unknown`) produced no
+    // slot, the state machine never advanced and nothing was ever saved.
+    const bookingSignal =
+      intelligence.intent === 'appointment_booking' ||
+      Boolean(intelligence.appointment?.requestedService) ||
+      containsConfirmationWord(text);
     const needsRealSlot =
-      intelligence.intent === 'appointment_booking' &&
+      bookingSignal &&
       currentState &&
       currentState.recommended_service_id &&
       !currentState.booking.slot &&
@@ -461,7 +497,18 @@ export async function handleIncomingMessage(opts: {
     // A raw-text confirmation word (no LLM) is accepted as the consent path too.
     const postTurnState = currentState ?? receptionState;
     const rawConfirmation = containsConfirmationWord(text);
-    const inBookingFlow = postTurnState?.state === 'BOOKING' || postTurnState?.state === 'AWAITING_BOOKING_CONFIRMATION';
+    // UNIFIED SAVE PATH: the gate also opens on an EXPLICIT confirmation when
+    // the conversation already carries a real service + a real (availability-
+    // verified) slot, even if the state machine is parked earlier because the
+    // classifier returned `unknown`. This mirrors the public form's contract:
+    // the patient chose a real service/slot and confirmed ⇒ SAVE.
+    const hasBookableSelection = Boolean(
+      (postTurnState?.recommended_service_id ?? postTurnState?.booking.service_id) && postTurnState?.booking.slot
+    );
+    const inBookingFlow =
+      postTurnState?.state === 'BOOKING' ||
+      postTurnState?.state === 'AWAITING_BOOKING_CONFIRMATION' ||
+      (rawConfirmation && hasBookableSelection);
     const bookingConfirmed = Boolean(postTurnState?.patient_confirmed_booking) || (inBookingFlow && rawConfirmation);
     if (inBookingFlow && bookingConfirmed) {
       logEvent('booking_attempt', {
@@ -474,6 +521,35 @@ export async function handleIncomingMessage(opts: {
         // Keep the consent alive for the next turns (metadata root).
         postTurnState.patient_confirmed_booking = true;
         await persistReceptionistSlot(clinicId, conversationId, { patient_confirmed_booking: true });
+      }
+      // Mirror the resolved ids into the booking record: `missingBookingFields`
+      // (the same invariant set the public route is bound by) reads them from
+      // `booking`, while the availability step writes them as recommendations.
+      if (!postTurnState.booking.service_id && postTurnState.recommended_service_id) {
+        postTurnState.booking.service_id = postTurnState.recommended_service_id;
+      }
+      if (!postTurnState.booking.provider_id && postTurnState.recommended_provider_id) {
+        postTurnState.booking.provider_id = postTurnState.recommended_provider_id;
+      }
+      if (!postTurnState.booking.provider_id && postTurnState.booking.service_id) {
+        // Same auto-resolution the availability step uses: the FIRST provider
+        // actually assigned to this service (never an invented one).
+        const autoProvider = await resolveFirstProviderForService(clinicId, postTurnState.booking.service_id);
+        if (autoProvider) {
+          postTurnState.booking.provider_id = autoProvider;
+          postTurnState.recommended_provider_id = autoProvider;
+          await persistReceptionistSlot(clinicId, conversationId, {
+            provider_id: autoProvider,
+            service_id: postTurnState.booking.service_id,
+          });
+        }
+      }
+      // `attemptConversationBooking` (and the state machine) execute a booking in
+      // the BOOKING stage only. When consent + a real service/slot arrived while
+      // the state was still parked earlier, promote + persist it now.
+      if (postTurnState.state !== 'BOOKING') {
+        postTurnState.state = 'BOOKING';
+        await persistReceptionistSlot(clinicId, conversationId, { state: 'BOOKING' });
       }
       // Carry any patient name/phone/email collected in THIS turn into the
       // booking state so the patient doesn't have to repeat it and the booking
@@ -497,12 +573,22 @@ export async function handleIncomingMessage(opts: {
         patientConfirmedBooking: bookingConfirmed,
         booking: postTurnState.booking,
         operatingData,
-        // Fix [4]: real UTC instant for the clinic-local wall clock.
-        timeZone: clinicProfile?.timezone ?? undefined,
+        // Deterministic last-chance service resolution by the name the patient
+        // actually used ("بانوراما" → "تصوير بانوراما") — the same catalog
+        // lookup the public booking page performs before POST /api/booking.
+        serviceNameHint:
+          intelligence.appointment?.requestedService ??
+          extractRequestedServiceFromText(text) ??
+          postTurnState.requested_service ??
+          null,
       });
       if (attempt.action === 'booked') {
-        // Fix [1]: server-computed clinic-local day/time — the model repeats it verbatim.
-        const bookedAt = zonedParts(new Date(attempt.appointment.scheduled_at), clinicProfile?.timezone ?? 'Asia/Jerusalem');
+        // Fix [1]: server-computed day/time — the model repeats it verbatim.
+        // The stored `scheduled_at` follows the SAME wall-clock-as-UTC convention
+        // as the public booking path, so the day/time the patient must be told is
+        // read back in UTC (converting the clinic zone here would announce a time
+        // 3h off what the dashboard and the confirmation emails show).
+        const bookedAt = zonedParts(new Date(attempt.appointment.scheduled_at), 'UTC');
         // P2: the [BOOKING_SAVED] tag is the ONLY proof of persistence the model
         // may cite — promptManager forbids claiming confirmation without it.
         bookingNote =
