@@ -28,7 +28,7 @@ import {
 import { attemptConversationBooking, containsConfirmationWord } from '@/lib/ai/conversationBooking';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
-import { format12h, englishDayName } from '@/lib/time/format';
+import { format12h } from '@/lib/time/format';
 import { understandMessage, applyUnderstandingToState } from '@/lib/ai/understanding';
 import { saveConversationContext, type ConversationContext } from '@/lib/ai/conversationContext';
 import { buildDiscoveryGuidance } from '@/lib/ai/discoveryGuidance';
@@ -333,10 +333,13 @@ export async function handleIncomingMessage(opts: {
             const altTimes = (clinicLevel.alternatives ?? [])
               .map((alt) => /T(\d{2}:\d{2})/.exec(alt)?.[1])
               .filter((t): t is string => Boolean(t))
-              .slice(0, 6);
+              .slice(0, 6)
+              .map((t) => format12h(t));
+            // Fix [2]: Arabic day name ONLY. Emitting "Saturday (السبت)" made the model
+            // echo "السبت (السبت)" when answering in Arabic. Fix [3]: 12-hour display.
             availabilityNote =
               `REAL AVAILABILITY (clinic-level, from the booking system): the earliest available time is ` +
-              `${englishDayName(slotWeekday)} (${ARABIC_WEEKDAYS[slotWeekday]}) ${clinicLevel.date} at ${clinicLevel.time} clinic-local. ` +
+              `${ARABIC_WEEKDAYS[slotWeekday]} ${clinicLevel.date} at ${format12h(clinicLevel.time)} clinic-local. ` +
               `Other VERIFIED same-day options: ${altTimes.length > 0 ? altTimes.join(', ') : 'none'}. ` +
               `Present the earliest time and ask for confirmation; a staff member will be assigned at the clinic. ` +
               `Use the day name EXACTLY as written here — NEVER compute weekdays yourself. Do NOT offer any time not listed in this note.`;
@@ -379,10 +382,12 @@ export async function handleIncomingMessage(opts: {
           const altTimes = (availability.alternatives ?? [])
             .map((alt) => /T(\d{2}:\d{2})/.exec(alt)?.[1])
             .filter((t): t is string => Boolean(t))
-            .slice(0, 6);
+            .slice(0, 6)
+            .map((t) => format12h(t));
+          // Fix [2]/[3]: Arabic-only day name + 12-hour display (same as the clinic-level path).
           availabilityNote =
             `REAL AVAILABILITY (queried from the booking system): the earliest available slot is ` +
-            `${englishDayName(slotWeekday)} (${ARABIC_WEEKDAYS[slotWeekday]}) ${availability.date} at ${availability.time} clinic-local ` +
+            `${ARABIC_WEEKDAYS[slotWeekday]} ${availability.date} at ${format12h(availability.time)} clinic-local ` +
             `with the recommended provider. Other VERIFIED same-day options: ${altTimes.length > 0 ? altTimes.join(', ') : 'none'}. ` +
             `Present the earliest slot and ask for confirmation to book it; you may also offer up to 3 of the verified alternatives. ` +
             `Use the day name EXACTLY as written here — NEVER compute weekdays yourself. Do NOT offer any time not listed in this note.`;
@@ -502,7 +507,7 @@ export async function handleIncomingMessage(opts: {
         // may cite — promptManager forbids claiming confirmation without it.
         bookingNote =
           `[BOOKING_SAVED: ${attempt.appointment.id}] Booking CONFIRMED and SAVED to the appointments calendar. ` +
-          `Scheduled: ${englishDayName(bookedAt.weekday)} (${ARABIC_WEEKDAYS[bookedAt.weekday]}) ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
+          `Scheduled: ${ARABIC_WEEKDAYS[bookedAt.weekday]} ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
           `Reply with a warm Arabic confirmation using EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
       } else if (attempt.action === 'already_booked') {
         bookingNote = `[BOOKING_SAVED: ${attempt.appointment_id}] This conversation already has a confirmed booking. Reply confirming it warmly with its day/time.`;

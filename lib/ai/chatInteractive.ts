@@ -158,13 +158,40 @@ function formatPrice(item: AnyRecord): string | undefined {
   return undefined;
 }
 
+/**
+ * القيمة المُرسلة عند الضغط على بطاقة وقت.
+ *
+ * النقر في الواجهة يُرسل `value` كرسالة نصية، فيجب أن تكون وقتاً صريحاً بصيغة
+ * HH:MM (نفس صيغة provider_schedules) ليفهمها المحلّل الخادمي. بدونها كان
+ * `undefined` يُرسَل فيقول الـ AI «غير واضح».
+ */
+function toSendableTime(raw: unknown): string | undefined {
+  const text = typeof raw === 'string' ? raw.trim() : undefined;
+  if (!text) return undefined;
+  const match = text.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return undefined;
+  const hours = Number(match[1]);
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23) return undefined;
+  return `${String(hours).padStart(2, '0')}:${match[2]}`;
+}
+
 function toCard(kind: OptionCardGroup['kind'], item: unknown, index: number): OptionCard | null {
   if (!isRecord(item)) return null;
   const id = firstString(item, ['id', 'uuid', 'slug']) ?? `${kind}-${index}`;
   if (kind === 'time') {
     const value = formatTime(item.time) ?? formatTime(item.start_time) ?? formatTime(item.start) ?? formatTime(item.slot);
     if (!value) return null;
-    return { id, title: value, subtitle: formatTime(item.end_time) ?? formatTime(item.end) };
+    const sendValue =
+      toSendableTime(item.time) ??
+      toSendableTime(item.start_time) ??
+      toSendableTime(item.start) ??
+      toSendableTime(item.slot);
+    return {
+      id,
+      title: value,
+      subtitle: formatTime(item.end_time) ?? formatTime(item.end),
+      value: sendValue ?? value,
+    };
   }
   if (kind === 'day') {
     const weekday = typeof item.weekday === 'number' ? item.weekday : undefined;
