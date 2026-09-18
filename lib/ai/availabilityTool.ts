@@ -442,9 +442,13 @@ export async function findClinicLevelSlots(params: {
       if (!dayHours) return [];
       const daySlots: string[] = [];
       for (const period of dayHours.periods) {
-        const startMin = timeToMinutes(period.start);
         const endMin = timeToMinutes(period.end);
-        for (let cursor = startMin; cursor + service.duration_minutes <= endMin; cursor += service.duration_minutes) {
+        // Full-hour starts only (9:00, 10:00, …) — a 5-minute catalog duration
+        // used to flood the day with 09:00/09:05/09:10 proposals. The REAL
+        // duration still governs the slot end + the guarded booking
+        // re-validation before persisting.
+        let cursor = Math.ceil(timeToMinutes(period.start) / 60) * 60;
+        for (; cursor + service.duration_minutes <= endMin; cursor += 60) {
           const time = `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
           // Engine-shaped encoding: clinic-local wall clock carried as the UTC clock.
           const slot = `${day}T${time}:00.000Z`;

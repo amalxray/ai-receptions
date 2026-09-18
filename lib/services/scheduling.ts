@@ -153,6 +153,14 @@ export function suggestFreeSlots(params: {
   intervalMinutes?: number;
   limit?: number;
   /**
+   * Display contract (Global by Default): present FULL-HOUR starts only
+   * (9:00, 10:00, 11:00 …) regardless of the catalog duration. The REAL
+   * `appointmentDurationMinutes` still governs the session end + overlap
+   * validation — only the offered STARTS are hour-aligned. Opt-in so internal
+   * flows (smartScheduling, appointmentEngine) keep their legacy behavior.
+   */
+  hourlyOnly?: boolean;
+  /**
    * Clinic IANA zone (e.g. "Asia/Hebron"). When supplied, every generated slot is
    * converted from clinic-local wall clock to its matching UTC instant, so 09:00
    * means 09:00 AT THE CLINIC instead of 09:00 UTC (which is 12:00 locally).
@@ -165,6 +173,10 @@ export function suggestFreeSlots(params: {
   if (!day?.enabled) return [];
   const interval = params.intervalMinutes ?? params.schedule.appointmentDurationMinutes;
   const duration = params.schedule.appointmentDurationMinutes;
+  // hourlyOnly: snap the FIRST candidate to the next full hour ≥ period start,
+  // then walk in 60-minute steps (9:00 → 10:00 → …). Never aligned → never
+  // 09:05/09:10 floods from a 5-minute catalog duration.
+  const step = params.hourlyOnly ? 60 : interval;
   const limit = params.limit ?? 10;
   const toInstant = (time: string) =>
     params.timeZone
@@ -174,7 +186,8 @@ export function suggestFreeSlots(params: {
   // F6: walk EVERY open window of the day (multi-shift), using the clinic's REAL
   // appointment duration, and let checkSlotAvailability drop breaks/overlaps.
   for (const period of dayPeriods(day)) {
-    for (let cursor = minutes(period.start); cursor + duration <= minutes(period.end); cursor += interval) {
+    let cursor = params.hourlyOnly ? Math.ceil(minutes(period.start) / 60) * 60 : minutes(period.start);
+    for (; cursor + duration <= minutes(period.end); cursor += step) {
       const time = `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
       const startsAt = toInstant(time);
       const result = checkSlotAvailability({

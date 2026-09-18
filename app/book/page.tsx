@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { format12h } from '@/lib/time/format';
 
 type Service = { id: string; name: string; description: string | null; duration_minutes: number; price: number | null };
 type Provider = { id: string; name: string; title: string | null };
@@ -213,14 +214,10 @@ function BookingForm() {
     setStep('patient');
   };
 
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    const h24 = d.getUTCHours();
-    const m = d.getUTCMinutes();
-    const period = h24 >= 12 ? 'م' : 'ص';
-    const h = h24 % 12 === 0 ? 12 : h24 % 12;
-    return `${h}:${m.toString().padStart(2, '0')} ${period}`;
-  };
+  // Shared 12-hour Arabic formatter (single source of truth — lib/time/format).
+  // Slot instants carry clinic-local wall clock, so the UTC HH:MM slice IS the
+  // clinic time (same convention the old local implementation used).
+  const formatTime = (iso: string) => format12h(new Date(iso).toISOString().slice(11, 16));
 
   /** Wire format (24h HH:MM) for the booking API — display stays 12h above. */
   const formatTimeApi = (iso: string) => {
