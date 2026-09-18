@@ -140,10 +140,14 @@ function firstString(item: AnyRecord, keys: string[]): string | undefined {
 }
 
 /** "09:30:00" → "09:30" (ويترك القيم غير المعروفة كما هي). */
+/**
+ * يستخرج الوقت من أي نص: "09:00" أو ISO مثل "2026-09-20T09:00:00+03:00".
+ * أي نص غير وقتي (مثل "صباحاً") يُعاد كما هو للعرض كعنوان فقط.
+ */
 function formatTime(value: unknown): string | undefined {
   const raw = str(value);
   if (!raw) return undefined;
-  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(raw);
+  const match = /(\d{1,2}):(\d{2})(?::\d{2})?/.exec(raw);
   if (!match) return raw;
   return `${match[1].padStart(2, '0')}:${match[2]}`;
 }
@@ -168,28 +172,45 @@ function formatPrice(item: AnyRecord): string | undefined {
 function toSendableTime(raw: unknown): string | undefined {
   const text = typeof raw === 'string' ? raw.trim() : undefined;
   if (!text) return undefined;
-  const match = text.match(/^(\d{1,2}):(\d{2})/);
+  const match = text.match(/(\d{1,2}):(\d{2})/);
   if (!match) return undefined;
   const hours = Number(match[1]);
-  if (!Number.isInteger(hours) || hours < 0 || hours > 23) return undefined;
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23 || minutes > 59) return undefined;
   return `${String(hours).padStart(2, '0')}:${match[2]}`;
 }
 
 function toCard(kind: OptionCardGroup['kind'], item: unknown, index: number): OptionCard | null {
+  // عناصر نصية خام (مثل slots: string[] أو ISO) — كانت تُهمَل فتختفي بطاقة الوقت
+  // كلياً فلا يوجد ما يُنقر. نحوّلها إلى بطاقة وقت بقيمة 24h قابلة للإرسال.
+  if (typeof item === 'string') {
+    if (kind !== 'time') return null;
+    const clock = toSendableTime(item);
+    if (!clock) return null;
+    return { id: `time-${index}`, title: clock, value: clock };
+  }
   if (!isRecord(item)) return null;
   const id = firstString(item, ['id', 'uuid', 'slug']) ?? `${kind}-${index}`;
   if (kind === 'time') {
-    const value = formatTime(item.time) ?? formatTime(item.start_time) ?? formatTime(item.start) ?? formatTime(item.slot);
+    const value =
+      formatTime(item.time) ??
+      formatTime(item.start_time) ??
+      formatTime(item.start) ??
+      formatTime(item.starts_at) ??
+      formatTime(item.slot);
     if (!value) return null;
     const sendValue =
       toSendableTime(item.time) ??
       toSendableTime(item.start_time) ??
       toSendableTime(item.start) ??
+      toSendableTime(item.starts_at) ??
       toSendableTime(item.slot);
     return {
       id,
       title: value,
       subtitle: formatTime(item.end_time) ?? formatTime(item.end),
+      // FIX-1: القيمة المُرسلة عند النقر دائماً 24h (HH:MM) ليفهمها parseSlot.
+      // بدونها كان النقر يُرسل undefined فيقول الـ AI «غير واضح».
       value: sendValue ?? value,
     };
   }
