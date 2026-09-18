@@ -143,12 +143,38 @@ export function extractPreferredProvider(text: string): string | undefined {
 }
 
 /** Extracts "اليوم"/"بكرة"/"بعد بكرة" → clinic-local ISO date. */
+/**
+ * Arabic weekday names → JS weekday index (0 = Sunday), the SAME convention the
+ * engine stores in `provider_schedules.weekday`. Hamza-less Levantine spellings
+ * are included because "يوم الاحد" is how patients actually type.
+ *
+ * FIX-A ROOT CAUSE: this table did not exist, so "بدي اتصور بانوراما يوم الاحد
+ * الساعة 2" produced NO preferred_date → the availability scan started from
+ * today and returned the earliest slot (Saturday) instead of the requested day.
+ */
+const WEEKDAY_NAMES: Array<{ pattern: RegExp; weekday: number }> = [
+  { pattern: /الأحد|الاحد/, weekday: 0 },
+  { pattern: /الاثنين|الإثنين|الاتنين/, weekday: 1 },
+  { pattern: /الثلاثاء|الثلاثا|التلاتا/, weekday: 2 },
+  { pattern: /الأربعاء|الاربعاء|الاربعا/, weekday: 3 },
+  { pattern: /الخميس/, weekday: 4 },
+  { pattern: /الجمعة|الجمعه/, weekday: 5 },
+  { pattern: /السبت/, weekday: 6 },
+];
+
 export function extractPreferredDate(text: string, now: Date, timeZone: string): string | undefined {
   const t = toLatinDigits(text);
   const today = dateInTimeZone(now, timeZone);
   if (/بعد\s*بكرة|بعد\s*بكره/.test(t)) return addDaysIso(today, 2);
   if (/بكرة|بكره|غدا|غداً/.test(t)) return addDaysIso(today, 1);
   if (/اليوم/.test(t)) return today;
+  // An explicit weekday name → the NEXT occurrence of that day (today when it is
+  // the same weekday, so "اليوم الأحد" style requests still land on today).
+  const todayWeekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  for (const { pattern, weekday } of WEEKDAY_NAMES) {
+    if (!pattern.test(t)) continue;
+    return addDaysIso(today, (weekday - todayWeekday + 7) % 7);
+  }
   return undefined;
 }
 
@@ -200,6 +226,31 @@ export function extractTimeOptions(text: string): string[] | undefined {
   return [a, b];
 }
 
+/**
+ * Clock QUESTIONS are not booking preferences ("كم الساعة؟", "أي ساعة؟").
+ * Guarding these keeps a bare-hour fallback from constraining real availability.
+ */
+const CLOCK_QUESTION_RE = /كم\s*الساعة|كم\s*الساعه|أي\s*ساعة|اي\s*ساعة|قديش\s*الساعة|قديش\s*الساعه|شو\s*الساعة|بأي\s*ساعة/i;
+
+/**
+ * FIX-A: a BARE requested hour — "بدي يوم الاحد الساعة 2" — must become an
+ * at-or-after constraint (14:00), so the engine returns 14:00 itself or the
+ * nearest later slot THAT DAY instead of jumping to another day/early morning.
+ * Levantine PM default: 1–11 → +12, 12 → noon, 13–23 → as typed.
+ */
+function extractBareHour(t: string): { from: string; to: string } | undefined {
+  if (CLOCK_QUESTION_RE.test(t)) return undefined;
+  // Trailing lookahead avoids consuming the "1 أو 4" style options list and the
+  // minutes of a "الساعة 2:30" (handled explicitly below).
+  const m = t.match(/(?:الساعة|الساعه)\s*(\d{1,2})(?::([0-5]\d))?(?!\s*(?:أو|او|ولا))/i);
+  if (!m) return undefined;
+  const hour = Number(m[1]);
+  if (!Number.isInteger(hour) || hour < 1 || hour > 23) return undefined;
+  const hour24 = hour >= 13 ? hour : hour === 12 ? 12 : hour + 12;
+  const from = `${String(hour24).padStart(2, '0')}:${m[2] ?? '00'}`;
+  return { from, to: '23:59' };
+}
+
 /** Extracts a time range (constraint, not a slot). */
 export function extractPreferredTimeRange(text: string): { from: string; to: string } | undefined {
   const t = toLatinDigits(text);
@@ -214,7 +265,8 @@ export function extractPreferredTimeRange(text: string): { from: string; to: str
   for (const [period, range] of ordered) {
     if (t.includes(period)) return range;
   }
-  return undefined;
+  // FIX-A: only AFTER the explicit forms above, honour a bare requested hour.
+  return extractBareHour(t);
 }
 
 const BOOKING_INTENT_RE = /بدي\s*[أا]حجز|بدي\s*حجز|بدي\s*موعد|أحجزلي|احجزلي|احجز\s*لي|اريد\s*[أا]حجز|أريد\s*[أا]حجز|ابدي\s*[أا]حجز|شو\s*في\s*مواعيد|شو\s*فيه\s*مواعيد|عندكم\s*مواعيد|ممكن\s*(أحجز|احجز|موعد)/i;

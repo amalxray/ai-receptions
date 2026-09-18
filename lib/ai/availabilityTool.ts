@@ -1,8 +1,15 @@
-import { getAvailableSlots, getActiveServiceById, getActiveProviders } from '@/lib/services/bookingService';
+import { getAvailableSlots, getActiveServiceById, getActiveProviders, isClinicHoliday, loadProviderSchedule } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { getClinicHours, clinicLocalToInstant, timeToMinutes, zonedParts } from '@/lib/services/clinicHours';
 import { dateInTimeZone, timeInTimeZone, addDaysIso } from '@/lib/ai/understanding';
 import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
+
+/**
+ * FIX-B: durations BELOW this are almost certainly misconfigured catalog data
+ * (a 5-minute imaging session produces slots 9:00, 9:05, 9:10…). Such a value is
+ * surfaced as a WARNING instead of being applied silently.
+ */
+export const MIN_REALISTIC_DURATION_MINUTES = 10;
 
 /**
  * REAL AVAILABILITY TOOL (receptionist)
@@ -36,6 +43,17 @@ export type EarliestSlotResult = {
    * time. Every entry is engine-verified — still never invented.
    */
   alternatives?: string[];
+  /**
+   * FIX-A: set when the patient's REQUESTED day was searched first and had no
+   * free slot — the caller must explain the day and (only then) offer another.
+   */
+  requestedDateUnavailable?: boolean;
+  /** FIX-A: why the requested day had nothing — closed, holiday, or fully booked. */
+  dayStatus?: 'closed' | 'holiday' | 'fully_booked';
+  /** FIX-A: first REAL slot after the requested day (same constraints), for an explained alternative. */
+  nextAvailable?: { date: string; time: string; slot: string };
+  /** FIX-B: the catalog duration is below `MIN_REALISTIC_DURATION_MINUTES` (misconfigured data). */
+  unrealisticDurationMinutes?: number;
   reason?: 'service_unavailable' | 'no_slots' | 'error';
   message?: string;
 };
@@ -57,6 +75,101 @@ export type AvailabilityQuery = {
   lookaheadDays?: number;
   limitPerDay?: number;
 };
+
+/** FIX-B: warn (never silently apply) on a misconfigured service duration. */
+function warnOnUnrealisticDuration(params: {
+  clinicId: string;
+  providerId?: string | null;
+  serviceId: string;
+  durationMinutes: number;
+}): number | undefined {
+  if (params.durationMinutes >= MIN_REALISTIC_DURATION_MINUTES) return undefined;
+  logEvent('availability_unrealistic_service_duration', {
+    clinic_id: params.clinicId,
+    provider_id: params.providerId ?? null,
+    service_id: params.serviceId,
+    duration_minutes: params.durationMinutes,
+    threshold_minutes: MIN_REALISTIC_DURATION_MINUTES,
+    guidance: 'clinic_services.duration_minutes looks misconfigured — the engine generates near-identical slots (09:00, 09:05…). Fix the catalog value.',
+  }, 'warn');
+  return params.durationMinutes;
+}
+
+type SlotConstraints = {
+  todayLocal: string;
+  nowTimeLocal: string;
+  preferredTimeRange?: { from?: string | null; to?: string | null };
+  preferredTimeOptions?: string[];
+};
+
+/** Shared constraint filter (past guard + time range + explicit options). */
+function slotMatchesConstraints(slot: string, c: SlotConstraints): boolean {
+  const m = slot.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  if (!m) return false;
+  const slotDate = m[1];
+  const slotTime = m[2];
+  if (slotDate < c.todayLocal) return false;
+  if (slotDate === c.todayLocal && slotTime <= c.nowTimeLocal) return false;
+  if (c.preferredTimeRange) {
+    const from = c.preferredTimeRange.from ?? '00:00';
+    const to = c.preferredTimeRange.to ?? '23:59';
+    if (slotTime < from || slotTime > to) return false;
+  }
+  if (c.preferredTimeOptions && c.preferredTimeOptions.length > 0) {
+    if (!c.preferredTimeOptions.includes(slotTime)) return false;
+  }
+  return true;
+}
+
+/**
+ * FIX-A: when the REQUESTED day yields nothing, explain WHY and find the first
+ * real slot AFTER it. Another day is never proposed without a reason, and no
+ * candidate is invented — every one comes from the booking engine.
+ */
+async function describeUnavailableRequestedDay(params: {
+  clinicId: string;
+  providerId: string;
+  serviceId: string;
+  requestedDate: string;
+  constraints: SlotConstraints;
+  lookaheadDays: number;
+}): Promise<{ dayStatus: 'closed' | 'holiday' | 'fully_booked'; nextAvailable?: { date: string; time: string; slot: string } }> {
+  let dayStatus: 'closed' | 'holiday' | 'fully_booked' = 'fully_booked';
+  try {
+    const holiday = await isClinicHoliday(params.clinicId, params.requestedDate);
+    if (holiday) {
+      dayStatus = 'holiday';
+    } else {
+      const schedule = await loadProviderSchedule(params.clinicId, params.providerId);
+      const weekday = new Date(`${params.requestedDate}T00:00:00Z`).getUTCDay();
+      const day = schedule?.days?.find((item) => item.weekday === weekday);
+      const onVacation = schedule?.vacationDates?.includes(params.requestedDate) ?? false;
+      if (!day?.enabled || onVacation) dayStatus = 'closed';
+    }
+  } catch {
+    // Conservative default ('fully_booked') — this lookup must never break the search.
+  }
+
+  let nextAvailable: { date: string; time: string; slot: string } | undefined;
+  try {
+    for (let i = 1; i <= params.lookaheadDays; i += 1) {
+      const nextDay = addDaysIso(params.requestedDate, i);
+      const slots = await getAvailableSlots(params.clinicId, params.providerId, nextDay, 20, params.serviceId);
+      // The slot must really belong to the scanned day (the engine never mixes days).
+      const first = (slots ?? []).find(
+        (slot) => slot.startsWith(`${nextDay}T`) && slotMatchesConstraints(slot, params.constraints)
+      );
+      if (first) {
+        nextAvailable = { date: nextDay, time: (first.split('T')[1] ?? '').slice(0, 5), slot: first };
+        break;
+      }
+    }
+  } catch {
+    // No alternative is fine — the caller falls back to an honest handoff.
+  }
+
+  return { dayStatus, nextAvailable };
+}
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -138,9 +251,20 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     return { found: false, reason: 'service_unavailable', message: 'service not available for this clinic' };
   }
 
+  // FIX-B: a 5-minute catalog duration is surfaced as a warning (never silent).
+  const unrealisticDurationMinutes = warnOnUnrealisticDuration({
+    clinicId,
+    providerId,
+    serviceId,
+    durationMinutes: service.duration_minutes,
+  });
+
   // Days to scan: the requested date only, or a lookahead from clinic-local today.
   const todayLocal = dateInTimeZone(now, timeZone);
   const nowTimeLocal = timeInTimeZone(now, timeZone);
+  const constraints: SlotConstraints = { todayLocal, nowTimeLocal, preferredTimeRange, preferredTimeOptions };
+  // FIX-A: an explicit requested day is a HARD constraint — the patient's day is
+  // searched first and only a day that has nothing is explained + replaced.
   const days: string[] = preferredDate
     ? [preferredDate]
     : Array.from({ length: lookaheadDays }, (_, i) => addDaysIso(todayLocal, i));
@@ -151,25 +275,11 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
       if (!slots || slots.length === 0) continue;
 
       for (const slot of slots) {
+        if (!slotMatchesConstraints(slot, constraints)) continue;
         const m = slot.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
         if (!m) continue;
         const slotDate = m[1];
         const slotTime = m[2];
-
-        // Past-slot guard (clinic-local wall clock, matching how the engine encodes slots).
-        if (slotDate < todayLocal) continue;
-        if (slotDate === todayLocal && slotTime <= nowTimeLocal) continue;
-
-        // preferred_time_range constraint (inclusive).
-        if (preferredTimeRange) {
-          const from = preferredTimeRange.from ?? '00:00';
-          const to = preferredTimeRange.to ?? '23:59';
-          if (slotTime < from || slotTime > to) continue;
-        }
-        // preferred_time_options constraint.
-        if (preferredTimeOptions && preferredTimeOptions.length > 0) {
-          if (!preferredTimeOptions.includes(slotTime)) continue;
-        }
 
         const endTime = addMinutesToTime(slotTime, service.duration_minutes);
         // Fix [3]: collect the rest of THIS day's matching slots as verified
@@ -177,20 +287,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         const alternatives: string[] = [];
         for (const other of slots) {
           if (other === slot) continue;
-          const om = other.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
-          if (!om) continue;
-          const otherDate = om[1];
-          const otherTime = om[2];
-          if (otherDate < todayLocal) continue;
-          if (otherDate === todayLocal && otherTime <= nowTimeLocal) continue;
-          if (preferredTimeRange) {
-            const from = preferredTimeRange.from ?? '00:00';
-            const to = preferredTimeRange.to ?? '23:59';
-            if (otherTime < from || otherTime > to) continue;
-          }
-          if (preferredTimeOptions && preferredTimeOptions.length > 0) {
-            if (!preferredTimeOptions.includes(otherTime)) continue;
-          }
+          if (!slotMatchesConstraints(other, constraints)) continue;
           alternatives.push(other);
           // P1: enough room for a FULL day (16+ slots) instead of 4 visible times.
           if (alternatives.length >= 15) break;
@@ -205,6 +302,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
           providerId,
           serviceId,
           alternatives,
+          ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
         };
       }
     } catch (err) {
@@ -222,7 +320,44 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     }
   }
 
-  return { found: false, reason: 'no_slots', message: 'no real slot found matching constraints' };
+  // FIX-A: the patient's day was searched first and had NOTHING. Explain why
+  // (closed / holiday / fully booked) and offer the first REAL day after it —
+  // never a silent day switch, never an invented slot.
+  if (preferredDate) {
+    const { dayStatus, nextAvailable } = await describeUnavailableRequestedDay({
+      clinicId,
+      providerId,
+      serviceId,
+      requestedDate: preferredDate,
+      constraints,
+      lookaheadDays,
+    });
+    logEvent('availability_requested_day_unavailable', {
+      clinic_id: clinicId,
+      provider_id: providerId,
+      service_id: serviceId,
+      requested_date: preferredDate,
+      day_status: dayStatus,
+      next_available_date: nextAvailable?.date ?? null,
+      next_available_time: nextAvailable?.time ?? null,
+    }, 'warn');
+    return {
+      found: false,
+      reason: 'no_slots',
+      message: 'no real slot on the requested day',
+      requestedDateUnavailable: true,
+      dayStatus,
+      ...(nextAvailable ? { nextAvailable } : {}),
+      ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
+    };
+  }
+
+  return {
+    found: false,
+    reason: 'no_slots',
+    message: 'no real slot found matching constraints',
+    ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
+  };
 }
 
 /**
@@ -263,6 +398,10 @@ export async function findClinicLevelSlots(params: {
   serviceId: string;
   timeZone?: string;
   preferredDate?: string;
+  /** FIX-A: requested time-of-day constraint (inclusive), honored on the requested day. */
+  preferredTimeRange?: { from?: string | null; to?: string | null };
+  /** FIX-A: explicit time preferences (e.g. ["13:00","16:00"]). */
+  preferredTimeOptions?: string[];
   now?: Date;
   lookaheadDays?: number;
   limitPerDay?: number;
@@ -274,33 +413,52 @@ export async function findClinicLevelSlots(params: {
     const service = await getActiveServiceById(clinicId, serviceId).catch(() => null);
     if (!service) return { found: false, reason: 'service_unavailable', message: 'service not available for this clinic' };
 
+    // FIX-B: same non-silent warning as the provider path.
+    const unrealisticDurationMinutes = warnOnUnrealisticDuration({
+      clinicId,
+      serviceId,
+      durationMinutes: service.duration_minutes,
+    });
+
     const hours = await getClinicHours(clinicId);
     if (!hours.hasHours) return { found: false, reason: 'no_slots', message: 'clinic has no working hours' };
 
     const { date: todayLocal, time: nowTimeLocal } = zonedParts(now, timeZone);
+    const constraints: SlotConstraints = {
+      todayLocal,
+      nowTimeLocal,
+      preferredTimeRange: params.preferredTimeRange ?? undefined,
+      preferredTimeOptions: params.preferredTimeOptions,
+    };
+    // FIX-A: the requested day is a hard constraint here too.
     const days: string[] = params.preferredDate
       ? [params.preferredDate]
       : Array.from({ length: params.lookaheadDays ?? 14 }, (_, i) => addDaysIso(todayLocal, i));
     const limitPerDay = params.limitPerDay ?? 5;
 
-    for (const day of days) {
+    const buildDaySlots = (day: string): string[] => {
       const { weekday } = zonedParts(clinicLocalToInstant(day, '12:00', timeZone), timeZone);
       const dayHours = hours.days.find((d) => d.weekday === weekday);
-      if (!dayHours) continue;
-
+      if (!dayHours) return [];
       const daySlots: string[] = [];
       for (const period of dayHours.periods) {
         const startMin = timeToMinutes(period.start);
         const endMin = timeToMinutes(period.end);
         for (let cursor = startMin; cursor + service.duration_minutes <= endMin; cursor += service.duration_minutes) {
           const time = `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
-          if (day === todayLocal && time <= nowTimeLocal) continue;
           // Engine-shaped encoding: clinic-local wall clock carried as the UTC clock.
-          daySlots.push(`${day}T${time}:00.000Z`);
+          const slot = `${day}T${time}:00.000Z`;
+          if (!slotMatchesConstraints(slot, constraints)) continue;
+          daySlots.push(slot);
           if (daySlots.length >= limitPerDay) break;
         }
         if (daySlots.length >= limitPerDay) break;
       }
+      return daySlots;
+    };
+
+    for (const day of days) {
+      const daySlots = buildDaySlots(day);
       if (daySlots.length === 0) continue;
 
       const [slotDate, slotTime] = daySlots[0].split('T');
@@ -313,9 +471,40 @@ export async function findClinicLevelSlots(params: {
         time: slotTime.slice(0, 5),
         serviceId,
         alternatives: daySlots.slice(1),
+        ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
       };
     }
-    return { found: false, reason: 'no_slots', message: 'no clinic-level slot found matching constraints' };
+
+    // FIX-A: explain the requested day (closed vs full) + first real day after it.
+    if (params.preferredDate) {
+      const requestedSlots = buildDaySlots(params.preferredDate);
+      const dayStatus: 'closed' | 'fully_booked' = requestedSlots.length === 0 ? 'closed' : 'fully_booked';
+      let nextAvailable: { date: string; time: string; slot: string } | undefined;
+      for (let i = 1; i <= (params.lookaheadDays ?? 14); i += 1) {
+        const day = addDaysIso(params.preferredDate, i);
+        const slots = buildDaySlots(day);
+        if (slots.length > 0) {
+          nextAvailable = { date: day, time: (slots[0].split('T')[1] ?? '').slice(0, 5), slot: slots[0] };
+          break;
+        }
+      }
+      return {
+        found: false,
+        reason: 'no_slots',
+        message: 'no clinic-level slot on the requested day',
+        requestedDateUnavailable: true,
+        dayStatus,
+        ...(nextAvailable ? { nextAvailable } : {}),
+        ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
+      };
+    }
+
+    return {
+      found: false,
+      reason: 'no_slots',
+      message: 'no clinic-level slot found matching constraints',
+      ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
+    };
   } catch (err) {
     logEvent('availability_clinic_level_error', {
       clinic_id: clinicId,

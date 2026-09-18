@@ -151,6 +151,81 @@ function hasRecentSimilarQuestion(history: HistoryMessage[], currentQuestion: st
   });
 }
 
+/**
+ * FIX-B: a misconfigured catalog duration (e.g. 5 minutes) makes the engine emit
+ * near-identical times (09:00, 09:05, 09:10…). Verified slots are NEVER changed —
+ * only THINNED for display, so the patient sees genuinely distinct options.
+ */
+const MIN_PRESENTABLE_SPACING_MINUTES = 30;
+
+function presentableAlternativeTimes(slots: string[], limit = 6): string[] {
+  const out: string[] = [];
+  let lastMinutes: number | null = null;
+  for (const slot of slots) {
+    const m = /T(\d{2}):(\d{2})/.exec(slot);
+    if (!m) continue;
+    const minutes = Number(m[1]) * 60 + Number(m[2]);
+    if (lastMinutes !== null && minutes - lastMinutes < MIN_PRESENTABLE_SPACING_MINUTES) continue;
+    out.push(format12h(`${m[1]}:${m[2]}`));
+    lastMinutes = minutes;
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Server-computed Arabic weekday name for a clinic-local calendar date (never the model's). */
+function arabicWeekdayForDate(date: string, timeZone: string): string {
+  const { weekday } = zonedParts(clinicLocalToInstant(date, '12:00', timeZone), timeZone);
+  return ARABIC_WEEKDAYS[weekday] ?? '';
+}
+
+/** FIX-A: states that the slot below IS on the day the patient explicitly asked for. */
+function requestedDayHonoredNote(preferredDate: string | null | undefined, timeZone: string): string {
+  if (!preferredDate) return '';
+  return `The patient explicitly asked for ${arabicWeekdayForDate(preferredDate, timeZone)} ${preferredDate} — the slot below IS on that day. `;
+}
+
+/**
+ * FIX-A: the ONLY place where a DIFFERENT day may be proposed — always with the
+ * verified reason (closed/holiday/fully booked). Never a silent day switch.
+ */
+function alternativeDayNote(params: {
+  requestedDate: string;
+  dayStatus?: 'closed' | 'holiday' | 'fully_booked';
+  nextAvailable?: { date: string; time: string };
+  timeZone: string;
+  subject: string;
+}): string {
+  const requestedDay = arabicWeekdayForDate(params.requestedDate, params.timeZone);
+  const reason =
+    params.dayStatus === 'closed'
+      ? `${params.subject} is CLOSED on ${requestedDay} ${params.requestedDate} (working hours/vacation)`
+      : params.dayStatus === 'holiday'
+        ? `${requestedDay} ${params.requestedDate} is a CLINIC HOLIDAY`
+        : `every verified time on ${requestedDay} ${params.requestedDate} is already booked`;
+  if (!params.nextAvailable) {
+    return (
+      `REAL AVAILABILITY: ${reason}, and no alternative day is available in the near future either. ` +
+      `Do NOT invent a date/time — say honestly that availability must be confirmed by the clinic and offer human help.`
+    );
+  }
+  const nextDay = arabicWeekdayForDate(params.nextAvailable.date, params.timeZone);
+  return (
+    `REAL AVAILABILITY: ${reason}. The nearest available day is ${nextDay} ${params.nextAvailable.date} at ${format12h(params.nextAvailable.time)}. ` +
+    `Tell the patient the requested day is NOT available AND give the exact reason above, then offer this verified alternative and ask for confirmation. ` +
+    `Use the day names EXACTLY as written — NEVER compute weekdays yourself. Do NOT offer any day/time not listed in this note.`
+  );
+}
+
+/** FIX-B: internal, non-patient-facing data warning attached to the availability note. */
+function unrealisticDurationNote(minutes: number | undefined): string {
+  if (minutes === undefined) return '';
+  return (
+    ` INTERNAL DATA NOTE (never mention this to the patient): this service's catalog duration is ${minutes} minutes, ` +
+    `so the booking system generates closely-spaced times. Present at most 3 distinct times and do NOT read out the spacing.`
+  );
+}
+
 export async function handleIncomingMessage(opts: {
   clinicId: string;
   conversationId?: string | null;
@@ -355,6 +430,8 @@ export async function handleIncomingMessage(opts: {
             serviceId: currentState!.recommended_service_id as string,
             timeZone: clinicProfile?.timezone ?? undefined,
             preferredDate: currentState!.preferred_date ?? undefined,
+            preferredTimeRange: currentState!.preferred_time_range ?? undefined,
+            preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
           });
           if (clinicLevel.found && clinicLevel.slot) {
             await persistReceptionistSlot(clinicId, conversationId, {
@@ -383,6 +460,17 @@ export async function handleIncomingMessage(opts: {
               clinic_id: clinicId,
               conversation_id: conversationId,
               slot: clinicLevel.slot,
+            });
+          } else if (clinicLevel.requestedDateUnavailable) {
+            // FIX-A: the requested day had NOTHING — explain WHY (closed / full)
+            // and offer the first REAL day after it. Never a silent day switch.
+            const noteZone = clinicProfile?.timezone ?? 'Asia/Jerusalem';
+            availabilityNote = alternativeDayNote({
+              requestedDate: currentState!.preferred_date as string,
+              dayStatus: clinicLevel.dayStatus,
+              nextAvailable: clinicLevel.nextAvailable,
+              timeZone: noteZone,
+              subject: 'the clinic',
             });
           } else {
             availabilityNote =
@@ -413,20 +501,21 @@ export async function handleIncomingMessage(opts: {
           // Fix [1]: day name computed SERVER-SIDE from real data — the model
           // must never compute weekdays itself (it hallucinated "الجمعة" for a Saturday).
           // Fix [3]: verified same-day alternatives replace the old "9:00 only" ban.
+          // FIX-A: the requested day is stated explicitly, and the same-day
+          // alternatives are THINNED (FIX-B) when the catalog duration is absurd.
           const noteZone = clinicProfile?.timezone ?? 'Asia/Jerusalem';
           const slotWeekday = zonedParts(clinicLocalToInstant(availability.date, '12:00', noteZone), noteZone).weekday;
-          const altTimes = (availability.alternatives ?? [])
-            .map((alt) => /T(\d{2}:\d{2})/.exec(alt)?.[1])
-            .filter((t): t is string => Boolean(t))
-            .slice(0, 6)
-            .map((t) => format12h(t));
+          const altTimes = presentableAlternativeTimes(availability.alternatives ?? []);
           // Fix [2]/[3]: Arabic-only day name + 12-hour display (same as the clinic-level path).
           availabilityNote =
-            `REAL AVAILABILITY (queried from the booking system): the earliest available slot is ` +
+            `REAL AVAILABILITY (queried from the booking system): ` +
+            requestedDayHonoredNote(currentState?.preferred_date, noteZone) +
+            `the earliest available slot is ` +
             `${ARABIC_WEEKDAYS[slotWeekday]} ${availability.date} at ${format12h(availability.time)} clinic-local ` +
             `with the recommended provider. Other VERIFIED same-day options: ${altTimes.length > 0 ? altTimes.join(', ') : 'none'}. ` +
             `Present the earliest slot and ask for confirmation to book it; you may also offer up to 3 of the verified alternatives. ` +
-            `Use the day name EXACTLY as written here — NEVER compute weekdays yourself. Do NOT offer any time not listed in this note.`;
+            `Use the day name EXACTLY as written here — NEVER compute weekdays yourself. Do NOT offer any time not listed in this note.` +
+            unrealisticDurationNote(availability.unrealisticDurationMinutes);
           logEvent('receptionist_real_slot_resolved', {
             clinic_id: clinicId,
             conversation_id: conversationId,
@@ -443,6 +532,19 @@ export async function handleIncomingMessage(opts: {
             reason: availability.reason,
             message: availability.message ?? null,
           });
+          if (availability.requestedDateUnavailable && currentState?.preferred_date) {
+            // FIX-A: the patient's requested day had NOTHING — state the verified
+            // reason (closed / holiday / fully booked) and offer the first REAL
+            // day after it. Never a silent day switch, never an invented slot.
+            const noteZone = clinicProfile?.timezone ?? 'Asia/Jerusalem';
+            availabilityNote = alternativeDayNote({
+              requestedDate: currentState.preferred_date,
+              dayStatus: availability.dayStatus,
+              nextAvailable: availability.nextAvailable,
+              timeZone: noteZone,
+              subject: 'this service',
+            });
+          }
         }
         }
       } catch (err) {
