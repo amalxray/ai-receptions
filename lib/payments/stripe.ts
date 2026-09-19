@@ -56,7 +56,10 @@ export const stripeRequestWithHeaders = stripeRequest;
 function toForm(data: Record<string, unknown>): string {
   const p = new URLSearchParams();
   // Stripe expects nested structures in PHP-style bracket notation
-  // (e.g. line_items[0][price]=...). Flatten recursively.
+  // (e.g. line_items[0][price]=..., subscription_data[metadata][plan_id]=...).
+  // Flatten recursively for EVERY top-level value — plain objects included
+  // (metadata becomes metadata[key]; subscription_data.metadata becomes
+  // subscription_data[metadata][key], which is exactly Stripe's documented form).
   const walk = (prefix: string, value: unknown) => {
     if (value === undefined || value === null) return;
     if (Array.isArray(value)) {
@@ -67,17 +70,7 @@ function toForm(data: Record<string, unknown>): string {
       p.append(prefix, String(value));
     }
   };
-  for (const [k, v] of Object.entries(data)) {
-    if (v === undefined || v === null) continue;
-    if (Array.isArray(v)) {
-      v.forEach((item, i) => walk(`${k}[${i}]`, item));
-    } else if (typeof v === 'object' && k === 'metadata') {
-      // Stripe accepts metadata[key] flat pairs at top level.
-      for (const [mk, mv] of Object.entries(v as Record<string, string>)) p.append(`metadata[${mk}]`, String(mv));
-    } else {
-      p.append(k, String(v));
-    }
-  }
+  for (const [k, v] of Object.entries(data)) walk(k, v);
   return p.toString();
 }
 
@@ -100,6 +93,9 @@ export async function createCheckoutSession(params: CreateCheckoutParams): Promi
       cancel_url: params.cancelUrl,
       client_reference_id: params.clientReferenceId,
       metadata: params.metadata ?? {},
+      // Mirror clinic/plan identity onto the created SUBSCRIPTION itself
+      // (duplicate-prevention contract — see tests/unit/stripe-checkout-form.test.ts).
+      subscription_data: params.metadata ? { metadata: params.metadata } : undefined,
     }),
   });
   return { url: session.url, id: session.id };

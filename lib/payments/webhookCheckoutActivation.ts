@@ -82,13 +82,17 @@ export async function handleCheckoutCompleted(checkout: Record<string, unknown>)
 
   const now = new Date();
   const periodEnd = new Date(now);
-  periodEnd.setMonth(now.getMonth() + 1);
+  // v2 — monthly vs yearly comes from the server-set checkout metadata, so a
+  // yearly tier grants a 12-month period instead of a 1-month one.
+  const isYearly = metadata?.billing_interval === 'year';
+  if (isYearly) periodEnd.setFullYear(now.getFullYear() + 1);
+  else periodEnd.setMonth(now.getMonth() + 1);
 
   const payload = {
     clinic_id: clinicId,
     plan_id: planId,
     status: 'active' as const,
-    billing_status: 'monthly',
+    billing_status: isYearly ? 'yearly' : 'monthly',
     current_period_start: now.toISOString(),
     current_period_end: periodEnd.toISOString(),
     cancel_at_period_end: false,

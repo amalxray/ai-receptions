@@ -47,6 +47,12 @@ async function handleCheckoutCompleted(checkout: any) {
   const customer: string | undefined = checkout?.customer;
   const stripeSubscription: string | undefined = checkout?.subscription;
   if (!clinicId || !sessionId) return;
+  // v2 — a session without plan metadata is never activated (the old hard-coded
+  // 'growth' default would now grant limits for a plan that no longer exists).
+  if (!planMeta) {
+    logEvent('payment_webhook_missing_plan_metadata', { clinic_id: clinicId, session_id: sessionId }, 'error');
+    return;
+  }
 
   // Idempotency: skip ONLY if this session was already fully processed
   // (activated). A pre-created pending row from the checkout route shares the
@@ -59,15 +65,19 @@ async function handleCheckoutCompleted(checkout: any) {
     .maybeSingle();
   if (existing?.stripe_checkout_session_id === sessionId && existing?.status === 'active') return;
 
+  // v2 — monthly vs yearly comes from the checkout metadata (set server-side by
+  // POST /api/payments/checkout), never from client input.
+  const isYearly = checkout?.metadata?.billing_interval === 'year';
   const now = new Date();
   const periodEnd = new Date(now);
-  periodEnd.setMonth(now.getMonth() + 1);
+  if (isYearly) periodEnd.setFullYear(now.getFullYear() + 1);
+  else periodEnd.setMonth(now.getMonth() + 1);
 
   const payload = {
     clinic_id: clinicId,
-    plan_id: planMeta ?? 'growth',
+    plan_id: planMeta,
     status: 'active' as const,
-    billing_status: 'monthly',
+    billing_status: isYearly ? 'yearly' : 'monthly',
     current_period_start: now.toISOString(),
     current_period_end: periodEnd.toISOString(),
     cancel_at_period_end: false,

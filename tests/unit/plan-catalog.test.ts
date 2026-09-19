@@ -22,12 +22,12 @@ vi.mock('@/lib/supabase/admin', () => ({
   },
 }));
 
-const GROWTH_ROW = {
-  plan_id: 'growth',
+const ADVANCED_ROW = {
+  plan_id: 'advanced',
   name: 'النمو',
   name_en: 'Growth',
-  currency: 'ils',
-  price_per_month: 12000,
+  currency: 'usd',
+  price_per_month: 6900,
   billing_interval: 'month',
   trial_days: null,
   stripe_price_id: 'price_fromdb123',
@@ -46,56 +46,56 @@ describe('planCatalog — STEP 15B source of truth', () => {
     delete mockState.row;
     mockState.row = null;
     mockState.error = null;
-    delete process.env.STRIPE_PRICE_GROWTH_MONTHLY;
+    delete process.env.STRIPE_PRICE_ADVANCED_MONTHLY;
   });
 
   it('returns the DB row as the plan when billing_plans is available', async () => {
-    mockState.row = GROWTH_ROW;
-    const plan = await getPlanOrFallback('growth');
-    expect(plan.id).toBe('growth');
-    expect(plan.pricePerMonth).toBe(12000);
-    expect(plan.currency).toBe('ils');
+    mockState.row = ADVANCED_ROW;
+    const plan = await getPlanOrFallback('advanced');
+    expect(plan.id).toBe('advanced');
+    expect(plan.pricePerMonth).toBe(6900);
+    expect(plan.currency).toBe('usd');
     expect(plan.priceId).toBe('price_fromdb123');
     expect(plan.features).toContain('3 عيادات');
   });
 
   it('falls back to the static plans.ts when the table is unavailable (error)', async () => {
     mockState.error = { message: 'relation "billing_plans" does not exist' };
-    delete process.env.STRIPE_PRICE_GROWTH_MONTHLY;
-    const plan = await getPlanOrFallback('growth');
-    expect(plan.id).toBe('growth');
-    expect(plan.pricePerMonth).toBe(12000); // static growth
+    delete process.env.STRIPE_PRICE_ADVANCED_MONTHLY;
+    const plan = await getPlanOrFallback('advanced');
+    expect(plan.id).toBe('advanced');
+    expect(plan.pricePerMonth).toBe(6900); // static growth
     expect(plan.priceId).toBe(null);
   });
 
   it('falls back when the row is missing', async () => {
     mockState.row = null;
-    const plan = await getPlanOrFallback('pro');
-    expect(plan.id).toBe('pro');
-    expect(plan.pricePerMonth).toBe(30000);
+    const plan = await getPlanOrFallback('center');
+    expect(plan.id).toBe('center');
+    expect(plan.pricePerMonth).toBe(11900);
   });
 
   it('loads all active plans ordered by display_order', async () => {
-    mockState.row = [GROWTH_ROW, { ...GROWTH_ROW, plan_id: 'pro', display_order: 40 }, { ...GROWTH_ROW, plan_id: 'founding', display_order: 20 }];
+    mockState.row = [ADVANCED_ROW, { ...ADVANCED_ROW, plan_id: 'center', display_order: 40 }, { ...ADVANCED_ROW, plan_id: 'advanced_yearly', display_order: 20 }];
     // loadBillingPlansAll reads a LIST — but our chain resolves a single row; simulate via error fallback instead:
     mockState.error = { message: 'no list' };
     const plans = await loadBillingPlansAll();
-    // static fallback still contains the five canonical plans
-    expect(plans.length).toBe(5);
+    // static fallback still contains the seven canonical v2 plans
+    expect(plans.length).toBe(7);
     expect(plans[0].id).toBe('free_trial');
   });
 
   it('prefers the catalog Stripe price id and falls back to env otherwise', async () => {
-    mockState.row = GROWTH_ROW;
-    expect(await getStripePriceIdAsync('growth')).toBe('price_fromdb123');
+    mockState.row = ADVANCED_ROW;
+    expect(await getStripePriceIdAsync('advanced')).toBe('price_fromdb123');
 
-    mockState.row = { ...GROWTH_ROW, stripe_price_id: null };
-    process.env.STRIPE_PRICE_GROWTH_MONTHLY = 'price_envfallback99';
-    expect(await getStripePriceIdAsync('growth')).toBe('price_envfallback99');
+    mockState.row = { ...ADVANCED_ROW, stripe_price_id: null };
+    process.env.STRIPE_PRICE_ADVANCED_MONTHLY = 'price_envfallback99';
+    expect(await getStripePriceIdAsync('advanced')).toBe('price_envfallback99');
   });
 
   it('planRequiresPayment reflects catalog price', () => {
-    expect(planRequiresPayment({ pricePerMonth: 5000 } as any)).toBe(true);
+    expect(planRequiresPayment({ pricePerMonth: 3900 } as any)).toBe(true);
     expect(planRequiresPayment({ pricePerMonth: 0 } as any)).toBe(false);
   });
 });

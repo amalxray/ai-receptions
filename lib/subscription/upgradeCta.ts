@@ -20,18 +20,20 @@ export const RESOURCE_LABEL_AR: Record<EntitlementResource, string> = {
 };
 
 /**
- * Approved upgrade suggestion per resource (owner-approved matrix).
- *   * non-null  -> the plan that resolves the limit for that resource,
+ * Approved upgrade suggestion per resource (v2 4-tier matrix).
+ *   * non-null  -> a SELLABLE plan that resolves the limit for that resource,
  *   * null      -> the resource is unlimited on every plan — never offer an upgrade.
+ * Only sellable plan ids may appear here (basic / advanced / center and their
+ * *_yearly variants) — never `limited`, which is the degraded fallback itself.
  */
 export const UPGRADE_SUGGESTIONS: Record<EntitlementResource, string | null> = {
-  ai_messages: 'growth', // 5 → 100 → unlimited (growth+)
-  bookings: 'growth',    //  50 → 50 → unlimited (growth+)
-  patients: 'starter',   //  5 (trial only) → unlimited from starter
-  providers: 'growth',   //  2 → 2 → unlimited (growth+)
-  users: 'growth',       //  2 → 2 → 10 → unlimited (pro)
-  knowledge_docs: 'growth', // 5 → 3 → unlimited (growth+)
-  conversations: null,   // unlimited on every plan — no upgrade
+  ai_messages: 'advanced',    // limited 10 → advanced unlimited
+  bookings: 'advanced',       // limited 50 → advanced unlimited
+  patients: 'basic',          // limited 5  → basic 500 → advanced/center unlimited
+  providers: 'advanced',      // limited 2  → advanced 4 → center 10
+  users: 'center',            // limited 2  → basic 1 / advanced 4 / center 10
+  knowledge_docs: 'advanced', // limited 3  → advanced unlimited
+  conversations: null,        // unlimited on every plan — no upgrade
 };
 
 /** Human Arabic message for an entitlement block (admin-facing). */

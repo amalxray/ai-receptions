@@ -48,13 +48,20 @@ describe('Clinic subscription API — STEP 15A self-grant closure', () => {
     expect(res.status).toBe(200);
   });
 
-  it('allows starter (free) via the records endpoint', async () => {
-    const res = await POST(makeReq({ plan_id: 'starter' }));
+  it('allows free_trial (free) via the records endpoint', async () => {
+    const res = await POST(makeReq({ plan_id: 'free_trial' }));
     expect(res.status).toBe(200);
   });
 
+  it('rejects limited (non-sellable fallback) with 400 INVALID_PLAN', async () => {
+    const res = await POST(makeReq({ plan_id: 'limited' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('INVALID_PLAN');
+  });
+
   it('rejects growth (paid) with 400 PAID_PLAN_NEEDS_CHECKOUT', async () => {
-    const res = await POST(makeReq({ plan_id: 'growth' }));
+    const res = await POST(makeReq({ plan_id: 'advanced' }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe('PAID_PLAN_NEEDS_CHECKOUT');
@@ -63,12 +70,12 @@ describe('Clinic subscription API — STEP 15A self-grant closure', () => {
   });
 
   it('rejects pro (paid) with 400 PAID_PLAN_NEEDS_CHECKOUT', async () => {
-    const res = await POST(makeReq({ plan_id: 'pro' }));
+    const res = await POST(makeReq({ plan_id: 'center' }));
     expect(res.status).toBe(400);
   });
 
   it('rejects founding (paid) with 400 PAID_PLAN_NEEDS_CHECKOUT', async () => {
-    const res = await POST(makeReq({ plan_id: 'founding' }));
+    const res = await POST(makeReq({ plan_id: 'advanced_yearly' }));
     expect(res.status).toBe(400);
   });
 

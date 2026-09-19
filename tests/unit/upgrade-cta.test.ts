@@ -10,24 +10,24 @@ import { resolvePendingSelectedPlan } from '@/lib/subscription/pendingPlan';
 
 describe('15G-C — resolvePendingSelectedPlan', () => {
   it('pro + unpaid → Professional is pending payment', () => {
-    expect(resolvePendingSelectedPlan({ plan_id: 'pro', status: 'unpaid' })).toBe('pro');
+    expect(resolvePendingSelectedPlan({ plan_id: 'center', status: 'unpaid' })).toBe('center');
   });
 
   it('founding + unpaid → Founding is pending payment', () => {
-    expect(resolvePendingSelectedPlan({ plan_id: 'founding', status: 'unpaid' })).toBe('founding');
+    expect(resolvePendingSelectedPlan({ plan_id: 'advanced_yearly', status: 'unpaid' })).toBe('advanced_yearly');
   });
 
   it('starter + unpaid → nothing pending (starter needs no checkout)', () => {
-    expect(resolvePendingSelectedPlan({ plan_id: 'starter', status: 'unpaid' })).toBeNull();
+    expect(resolvePendingSelectedPlan({ plan_id: 'limited', status: 'unpaid' })).toBeNull();
   });
 
   it('pro + active → nothing pending (plan already effective)', () => {
-    expect(resolvePendingSelectedPlan({ plan_id: 'pro', status: 'active' })).toBeNull();
+    expect(resolvePendingSelectedPlan({ plan_id: 'center', status: 'active' })).toBeNull();
   });
 
   it('other statuses (trialing/canceled) are never "pending payment"', () => {
-    expect(resolvePendingSelectedPlan({ plan_id: 'pro', status: 'trialing' })).toBeNull();
-    expect(resolvePendingSelectedPlan({ plan_id: 'pro', status: 'canceled' })).toBeNull();
+    expect(resolvePendingSelectedPlan({ plan_id: 'center', status: 'trialing' })).toBeNull();
+    expect(resolvePendingSelectedPlan({ plan_id: 'center', status: 'canceled' })).toBeNull();
   });
 
   it('null/empty subscription or plan → null', () => {
@@ -50,26 +50,26 @@ import {
 
 describe('15G-B — buildUpgradeHref', () => {
   it('builds /dashboard/subscription?upgrade=1&resource=...&plan=... from the suggestion', () => {
-    expect(buildUpgradeHref('ai_messages')).toBe('/dashboard/subscription?upgrade=1&resource=ai_messages&plan=growth');
-    expect(buildUpgradeHref('users')).toBe('/dashboard/subscription?upgrade=1&resource=users&plan=growth');
-    expect(buildUpgradeHref('patients')).toBe('/dashboard/subscription?upgrade=1&resource=patients&plan=starter');
+    expect(buildUpgradeHref('ai_messages')).toBe('/dashboard/subscription?upgrade=1&resource=ai_messages&plan=advanced');
+    expect(buildUpgradeHref('users')).toBe('/dashboard/subscription?upgrade=1&resource=users&plan=center');
+    expect(buildUpgradeHref('patients')).toBe('/dashboard/subscription?upgrade=1&resource=patients&plan=basic');
   });
 
   it('honours an explicit plan (contextual CTA) over the suggestion', () => {
-    expect(buildUpgradeHref('ai_messages', 'pro')).toBe('/dashboard/subscription?upgrade=1&resource=ai_messages&plan=pro');
+    expect(buildUpgradeHref('ai_messages', 'center')).toBe('/dashboard/subscription?upgrade=1&resource=ai_messages&plan=center');
   });
 
   it('is tenant-scoped when a clinicSlug is provided (tenant routing)', () => {
     expect(buildUpgradeHref('ai_messages', null, 'amal-clinic'))
-      .toBe('/dashboard/amal-clinic/subscription?upgrade=1&resource=ai_messages&plan=growth');
-    expect(buildUpgradeHref('users', 'pro', 'amal-clinic'))
-      .toBe('/dashboard/amal-clinic/subscription?upgrade=1&resource=users&plan=pro');
+      .toBe('/dashboard/amal-clinic/subscription?upgrade=1&resource=ai_messages&plan=advanced');
+    expect(buildUpgradeHref('users', 'center', 'amal-clinic'))
+      .toBe('/dashboard/amal-clinic/subscription?upgrade=1&resource=users&plan=center');
     // null slug keeps the legacy flat fallback (transition compatibility only).
     expect(buildUpgradeHref('patients', null, null))
-      .toBe('/dashboard/subscription?upgrade=1&resource=patients&plan=starter');
+      .toBe('/dashboard/subscription?upgrade=1&resource=patients&plan=basic');
     // The slug is URL-encoded — never injects raw path segments.
     expect(buildUpgradeHref('ai_messages', null, '../admin'))
-      .toBe('/dashboard/..%2Fadmin/subscription?upgrade=1&resource=ai_messages&plan=growth');
+      .toBe('/dashboard/..%2Fadmin/subscription?upgrade=1&resource=ai_messages&plan=advanced');
   });
 
   it('returns null for a resource that is unlimited everywhere (conversations)', () => {
@@ -79,7 +79,7 @@ describe('15G-B — buildUpgradeHref', () => {
 
   it('suggestedPlanFor is null only for unlimited resources', () => {
     expect(suggestedPlanFor('conversations')).toBeNull();
-    expect(suggestedPlanFor('bookings')).toBe('growth');
+    expect(suggestedPlanFor('bookings')).toBe('advanced');
     // Every key in the map is one of the seven canonical resources.
     expect(Object.keys(UPGRADE_SUGGESTIONS).sort()).toEqual([
       'ai_messages', 'bookings', 'conversations', 'knowledge_docs', 'patients', 'providers', 'users',

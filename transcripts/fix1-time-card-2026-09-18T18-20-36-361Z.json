@@ -1,0 +1,72 @@
+{
+  "base": "https://ai-receptions.vercel.app",
+  "slug": "hala-clinic",
+  "conversation_id": "5f4a3e02-7376-4682-9e6f-3202ed44319a",
+  "note": "",
+  "transcript": [
+    {
+      "label": "step 1 — «بدي احجز علاج عصب»",
+      "text": "بدي احجز علاج عصب",
+      "status": 200,
+      "assistant": "أهلاً بك. بالنسبة لعلاج العصب، فهو متوفر في العيادة مع د. حلا (طبيبة اسنان)، ويتضمن علاج عصب ورقعة تجميلية. \n\nهل تواجه أي أعراض حالياً مثل ألم مستمر أو حساسية، لنتمكن من متابعة حجز الموعد لك؟",
+      "card": null,
+      "booking_context": null
+    },
+    {
+      "label": "step 5 — name",
+      "text": "اسمي سامي تجريبي",
+      "status": 200,
+      "assistant": "أهلاً بك يا أستاذ سامي. \n\nيسعدنا استقبالك في عيادة hala-clinic. لقد ذكرت أنك بحاجة إلى علاج عصب، وهو متوفر فعلاً مع د. حلا (طبيبة اسنان). \n\nهل تواجه أي أعراض حالياً مثل ألم مستمر أو حساسية، لنتمكن من متابعة ترتيب الموعد المناسب لك؟",
+      "card": null,
+      "booking_context": null
+    },
+    {
+      "label": "step 6 — refuse phone",
+      "text": "ما بحب أعطي رقم هاتفي",
+      "status": 200,
+      "assistant": "لا تقلق يا أستاذ سامي، ليس هناك أي إجبار على مشاركة رقم الهاتف؛ نحترم رغبتك تماماً. \n\nلن نتمكن من حجز موعد رسمي بدون رقم الهاتف، ولكن يسعدنا مساعدتك في الإجابة عن أي استفسار طبي أو تقديم المعلومات التي تحتاجها حول العلاج. هل ترغب في معرفة المزيد من التفاصيل عن علاج العصب؟",
+      "card": null,
+      "booking_context": null
+    },
+    {
+      "label": "step 7 — «طيب احجز»",
+      "text": "طيب احجز",
+      "status": 200,
+      "assistant": "أهلاً بك يا أستاذ سامي. \n\nبما أنك لا ترغب في مشاركة رقم هاتفك، فنحن نحترم رغبتك تماماً، ولكن للأسف لا يمكننا إتمام حجز موعد رسمي بدون رقم الهاتف للتواصل. \n\nإذا كنت ترغب في متابعة الحجز، فيرجى تزويدنا برقم الهاتف، أو يمكننا الإجابة عن أي استفسار آخر لديك حول علاج العصب أو الخدمات الأخرى المتاحة في عيادة hala-clinic. كيف يمكننا مساعدتك أكثر؟",
+      "card": null,
+      "booking_context": null
+    }
+  ],
+  "results": [
+    {
+      "name": "conversation created",
+      "ok": true,
+      "extra": "http 200 conv=5f4a3e02"
+    },
+    {
+      "name": "time card rendered",
+      "ok": false,
+      "extra": "no kind=time card group"
+    },
+    {
+      "name": "booking confirmed by the AI flow",
+      "ok": false,
+      "extra": "confirmed=undefined missing=[]"
+    },
+    {
+      "name": "appointment persisted in DB",
+      "ok": false,
+      "extra": "no row"
+    },
+    {
+      "name": "no duplicated day name «السبت (السبت)» (FIX-2)",
+      "ok": true,
+      "extra": "clean"
+    },
+    {
+      "name": "server note uses 12h without leading zero (FIX-3)",
+      "ok": false,
+      "extra": "no note persisted"
+    }
+  ]
+}

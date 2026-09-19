@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({
   clinic: { data: { activity_type: 'imaging_center' }, error: null } as any,
-  subscription: { data: { plan_id: 'growth', status: 'active', trial_end: null }, error: null } as any,
+  subscription: { data: { plan_id: 'advanced', status: 'active', trial_end: null }, error: null } as any,
   caps: [] as any[],
   capsError: null as any,
   usage: [] as any[],
@@ -66,7 +66,7 @@ const imagingCaps = [{ capability_key: 'imaging_requests_limit', limit_value: 20
 beforeEach(() => {
   vi.clearAllMocks();
   state.clinic = { data: { activity_type: 'imaging_center' }, error: null };
-  state.subscription = { data: { plan_id: 'growth', status: 'active', trial_end: null }, error: null };
+  state.subscription = { data: { plan_id: 'advanced', status: 'active', trial_end: null }, error: null };
   state.caps = imagingCaps;
   state.capsError = null;
   state.usage = [];
@@ -94,7 +94,7 @@ describe('PHASE 1A — plan/capability mapping + limits (allowed path)', () => {
     const r = await assertActivityEntitlement(CID, 'imaging_requests_limit');
     expect(r.allowed).toBe(true);
     expect(r.limit).toBe(200);
-    expect(r.planId).toBe('growth');
+    expect(r.planId).toBe('advanced');
     expect(r.activityType).toBe('imaging_center');
     expect(mockDb.rpc).toHaveBeenCalledWith('check_and_increment_entitlement', {
       p_clinic_id: CID,
@@ -105,10 +105,10 @@ describe('PHASE 1A — plan/capability mapping + limits (allowed path)', () => {
   });
 
   it('maps degraded subscriptions to starter plan caps (plan mapping)', async () => {
-    state.subscription = { data: { plan_id: 'pro', status: 'past_due', trial_end: null }, error: null };
+    state.subscription = { data: { plan_id: 'center', status: 'past_due', trial_end: null }, error: null };
     state.caps = [{ capability_key: 'imaging_requests_limit', limit_value: 50 }];
     const r = await assertActivityEntitlement(CID, 'imaging_requests_limit');
-    expect(r.planId).toBe('starter');
+    expect(r.planId).toBe('limited');
     expect(r.limit).toBe(50);
   });
 
@@ -195,7 +195,7 @@ describe('PHASE 1A — usage, release, wrapper, response mapping', () => {
     ];
     const s = await getActivityEntitlementState(CID);
     expect(s.activityType).toBe('imaging_center');
-    expect(s.planId).toBe('growth');
+    expect(s.planId).toBe('advanced');
     const req = s.capabilities.find((c) => c.capabilityKey === 'imaging_requests_limit')!;
     expect(req.entitled).toBe(true);
     expect(req.limit).toBe(200);

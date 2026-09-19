@@ -39,6 +39,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { effectivePlanIdFor, loadSubscriptionRow } from './entitlements';
+import { FALLBACK_PLAN_ID } from './plans';
 import { ACTIVITY_TYPES, isActivityType, type ActivityType } from '../services/activityTypes';
 
 // ─── Capability registry (mirrors activity_capabilities seed, migration 20260916) ───
@@ -217,7 +218,9 @@ export async function resolveActivityEntitlement(
     reason,
     capabilityKey,
     limit: null,
-    planId: 'starter',
+    // v2 — denial payloads never report a legacy plan id; the honest value for
+    // pre-resolution denials is the catalog fallback (limited).
+    planId: FALLBACK_PLAN_ID,
     activityType: null,
   });
 

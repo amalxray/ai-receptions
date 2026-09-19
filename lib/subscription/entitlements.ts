@@ -7,15 +7,22 @@
  *   - `entitlement_usage` + `check_and_increment_entitlement()` (15C migration,
  *     additive, atomic/race-safe via SECURITY DEFINER)
  *
- * Approved policy (owner decisions, 15C + 15G-A):
+ * Approved policy (owner decisions, 15C + 15G-A + subscription v2):
  *   active                        -> current plan limits
- *   trialing (inside trial)       -> free_trial plan limits ($ approved 15G-A:
- *                                    'trialing' with an active trial window maps
- *                                    to the free_trial plan and its limits)
- *   trialing (trial expired)      -> Starter limits (degraded)
- *   past_due / unpaid / canceled  -> Starter limits (soft downgrade)
- *   no subscription row           -> Starter limits (safe default)
+ *   trialing (inside trial)       -> free_trial plan limits (30-day trial, v2)
+ *   trialing (trial expired)      -> 'limited' limits (degraded)
+ *   past_due / unpaid / canceled  -> 'limited' limits (soft downgrade)
+ *   no subscription row           -> 'limited' limits (safe default)
  *   patients / conversations      -> NULL (unlimited) — gate stays data-driven
+ *
+ * v2 migration (migration 20260922 + docs/SUBSCRIPTION_PLANS.md):
+ *   - the catalog is USD with 4 sellable tiers (free_trial/basic/advanced/center)
+ *     plus the non-sellable `limited` fallback, and yearly twins (*_yearly);
+ *   - legacy plan_ids (starter/growth/pro) stay in the DB for historical
+ *     subscriptions and are mapped to their successor by LEGACY_PLAN_ALIASES so a
+ *     live clinic is never silently downgraded by a rename;
+ *   - the hard-coded fallback limits below now describe `limited`, which is the
+ *     single documented post-trial / unconfigured-plan state.
  *
  * Canonical limit keys (billing_plans.limits): ai_messages, bookings, patients,
  * providers, users, knowledge_docs, conversations. Legacy/none-canonical keys in
@@ -29,6 +36,8 @@
  * Never import from a client component.
  */
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { isPaidPlanId } from './plans';
+
 import { logEvent } from '@/lib/server/logging';
 
 export type EntitlementResource =
@@ -61,16 +70,65 @@ export const RESOURCE_LABELS_AR: Record<EntitlementResource, string> = {
   conversations: 'المحادثات',
 };
 
-/** Starter limits (PROJECT_STATUS §3 FREE/STARTER + 15C owner decisions). */
-export const STARTER_LIMITS: Record<EntitlementResource, number | null> = {
-  ai_messages: 100,
+/**
+ * Hard-coded fallback limits, used when the catalog row/key is missing (DB
+ * unreachable, migration not applied, plan_id unknown). Mirrors the `limited`
+ * plan (v2): the post-trial state and the safe default for unknown states.
+ *
+ * Renamed from STARTER_LIMITS in v2; STARTER_LIMITS is kept as a deprecated alias
+ * so existing imports/mocks keep compiling.
+ */
+export const FALLBACK_LIMITS: Record<EntitlementResource, number | null> = {
+  ai_messages: 10,
   bookings: 50,
-  patients: null,
+  patients: 5,
   providers: 2,
   users: 2,
   knowledge_docs: 3,
   conversations: null,
 };
+
+/** @deprecated v2 — use FALLBACK_LIMITS ('limited' plan). */
+export const STARTER_LIMITS: Record<EntitlementResource, number | null> = FALLBACK_LIMITS;
+
+/**
+ * Legacy plan_ids → v2 successor. A clinic whose subscription row still carries
+ * a v1 plan_id keeps the entitlements it already pays for:
+ *   starter ($0 tier) -> limited     growth ($120) -> advanced     pro ($300) -> center
+ */
+export const LEGACY_PLAN_ALIASES: Record<string, string> = {
+  starter: 'limited',
+  growth: 'advanced',
+  pro: 'center',
+};
+
+/** Applied when a PAID plan id cannot be resolved in the catalog. */
+export const UNRESOLVED_PAID_PLAN_ID = 'advanced';
+
+/** Plan ids the v2 catalog can serve limits for (monthly + yearly + limited). */
+const CATALOG_PLAN_IDS: readonly string[] = [
+  'free_trial',
+  'limited',
+  'basic',
+  'advanced',
+  'center',
+  'basic_yearly',
+  'advanced_yearly',
+  'center_yearly',
+];
+
+/**
+ * Maps any plan_id observed in the DB to a catalog plan whose limits can be
+ * served. Unknown ids for known PAID plans fall back to `advanced` (never
+ * silently to the 5-patient `limited` state); a total unknown keeps its own id so
+ * the caller's lookup fails loudly into FALLBACK_LIMITS.
+ */
+export function canonicalCatalogPlanId(planId: string | null | undefined): string {
+  if (!planId) return 'limited';
+  if (CATALOG_PLAN_IDS.includes(planId)) return planId;
+  const alias = LEGACY_PLAN_ALIASES[planId];
+  return alias ?? planId;
+}
 
 export function isEntitlementResource(value: unknown): value is EntitlementResource {
   return typeof value === 'string' && (ENTITLEMENT_RESOURCES as readonly string[]).includes(value);
@@ -82,23 +140,28 @@ type SubscriptionRow = {
   trial_end: string | null;
 };
 
-/** Approved 15C/15G-A status policy → the plan whose limits apply. */
+/** Approved 15C/15G-A/v2 status policy → the plan whose limits apply. */
 export function effectivePlanIdFor(row: SubscriptionRow | null): { planId: string; degraded: boolean } {
-  if (!row || !row.plan_id) return { planId: 'starter', degraded: false };
+  if (!row || !row.plan_id) return { planId: 'limited', degraded: false };
   const status = (row.status ?? '').toLowerCase();
-  if (status === 'active') return { planId: row.plan_id, degraded: false };
-  // STEP 15G-A — approved trial mapping: 'trialing' (the DB enum value) — and the
-  // legacy literal 'free_trial' for old rows — with an active trial window resolve
-  // to the free_trial plan limits. Once the window passes the clinic lands on
-  // Starter (degraded), matching the soft-downgrade policy.
+  if (status === 'active') {
+    // v2 — resolve legacy ids to their successor (pro -> center, growth ->
+    // advanced, starter -> limited) so history keeps paying exactly what it did.
+    return { planId: canonicalCatalogPlanId(row.plan_id), degraded: false };
+  }
+  // STEP 15G-A / v2 — approved trial mapping: 'trialing' (the DB enum value) —
+  // and the legacy literal 'free_trial' for old rows — with an active trial
+  // window resolve to the free_trial plan limits (now a 30-day trial). Once the
+  // window passes the clinic lands on 'limited' (degraded), matching the
+  // approved soft-downgrade policy.
   if (status === 'trialing' || status === 'free_trial') {
     const trialEnd = row.trial_end ? new Date(row.trial_end) : null;
     const trialExpired = trialEnd !== null && !Number.isNaN(trialEnd.getTime()) && trialEnd.getTime() < Date.now();
-    if (trialExpired) return { planId: 'starter', degraded: true };
+    if (trialExpired) return { planId: 'limited', degraded: true };
     return { planId: 'free_trial', degraded: false };
   }
-  // past_due / unpaid / canceled / unknown → Starter limits (soft downgrade).
-  return { planId: 'starter', degraded: true };
+  // past_due / unpaid / canceled / unknown → 'limited' limits (soft downgrade).
+  return { planId: 'limited', degraded: true };
 }
 
 /**
@@ -120,27 +183,46 @@ export function extractLimit(limits: unknown, resource: EntitlementResource): nu
   return Math.floor(n);
 }
 
-/** Reads the limit for a plan from billing_plans (catalog-first), else Starter fallback. */
+/** Reads the limit for a plan from billing_plans (catalog-first), else the fallback. */
 export async function getPlanResourceLimit(
   planId: string,
   resource: EntitlementResource
 ): Promise<{ limit: number | null; fromCatalog: boolean }> {
+  // v2 — a legacy plan id (starter/growth/pro) resolves to its successor row so
+  // the clinic keeps the limits it was paying for.
+  const resolvedPlanId = canonicalCatalogPlanId(planId);
   try {
     const { data, error } = await supabaseAdmin
       .from('billing_plans')
       .select('limits')
-      .eq('plan_id', planId)
-      .eq('is_active', true)
-      .limit(1)
+      .eq('plan_id', resolvedPlanId)
       .maybeSingle();
     if (!error && data) {
       const extracted = extractLimit((data as { limits?: unknown }).limits, resource);
       if (extracted !== undefined) return { limit: extracted, fromCatalog: true };
     }
   } catch {
-    // fall through to Starter fallback
+    // fall through to the hard-coded fallback
   }
-  return { limit: STARTER_LIMITS[resource], fromCatalog: false };
+  // A paid catalog plan whose row/key is missing must never fall back to the
+  // 5-patient `limited` state — use the smallest paid tier instead (fail-open on
+  // infrastructure, never a silent downgrade below what the clinic pays for).
+  if (isPaidPlanId(resolvedPlanId)) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('billing_plans')
+        .select('limits')
+        .eq('plan_id', UNRESOLVED_PAID_PLAN_ID)
+        .maybeSingle();
+      if (!error && data) {
+        const extracted = extractLimit((data as { limits?: unknown }).limits, resource);
+        if (extracted !== undefined) return { limit: extracted, fromCatalog: true };
+      }
+    } catch {
+      // fall through to the hard-coded fallback
+    }
+  }
+  return { limit: FALLBACK_LIMITS[resource], fromCatalog: false };
 }
 
 type SubscriptionState = { limit: number | null; planId: string; status: string | null; degraded: boolean };

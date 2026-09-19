@@ -4,9 +4,11 @@ import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { SUBSCRIPTION_PLANS } from '@/lib/subscription/plans';
-import { FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { resolveCheckoutPlan } from '@/lib/subscription/planCatalog';
 import { createCheckoutSession, getStripeConfig } from '@/lib/payments/stripe';
 
+// v2 — the sellable catalog is the STATIC list (free_trial + basic/advanced/center
+// monthly and yearly). `limited` is deliberately absent: it can never be bought.
 const bodySchema = z.object({
   plan_id: z.enum(SUBSCRIPTION_PLANS.map((p) => p.id) as [string, ...string[]]),
   return_url: z.string().url().optional(),
@@ -30,36 +32,24 @@ export async function POST(req: Request) {
     const parsed = bodySchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: 'INVALID_PLAN', details: parsed.error.errors }, { status: 400 });
 
-    // Resolve the plan SERVER-SIDE. The amount/price is never taken from client input.
-    const plan = SUBSCRIPTION_PLANS.find((p) => p.id === parsed.data.plan_id)!;
-    if (plan.pricePerMonth === 0 || !plan.priceId) {
+    // Resolve the plan + its Stripe Price ID SERVER-SIDE from the catalog
+    // (billing_plans first, env fallback). The amount/price is never taken from
+    // client input, and a missing/malformed Price ID fails loudly.
+    const { plan, priceId, interval } = await resolveCheckoutPlan(parsed.data.plan_id);
+    if (plan.pricePerMonth === 0) {
       return NextResponse.json({ error: 'هذه الباقة لا تتطلب دفعاً' }, { status: 400 });
     }
-
-    // Founding plan eligibility is enforced SERVER-SIDE from the database:
-    // the clinic must carry is_founding_member=true AND the founding cohort
-    // must not exceed FOUNDING_SLOTS_TOTAL. Never trusted from the client.
-    if (plan.id === 'founding') {
-      const { data: clinicRow } = await supabaseAdmin
-        .from('clinics')
-        .select('is_founding_member')
-        .eq('id', clinicId)
-        .is('deleted_at', null)
-        .maybeSingle();
-      const { count } = await supabaseAdmin
-        .from('clinics')
-        .select('id', { count: 'exact', head: true })
-        .eq('is_founding_member', true)
-        .is('deleted_at', null);
-      const foundingFull = (count ?? 0) >= FOUNDING_SLOTS_TOTAL;
-      if (!clinicRow?.is_founding_member || foundingFull) {
-        logEvent('payment_checkout_founding_rejected', { clinic_id: clinicId, founding_full: foundingFull });
-        return NextResponse.json(
-          { error: 'FOUNDING_UNAVAILABLE', message: 'باقة التأسيس غير متاحة لهذه العيادة (المقاعد التأسيسية مكتملة).' },
-          { status: 409 }
-        );
-      }
+    if (!priceId) {
+      logEvent('payment_checkout_price_not_configured', { clinic_id: clinicId, plan_id: plan.id }, 'error');
+      return NextResponse.json(
+        { error: 'PAYMENT_NOT_CONFIGURED', message: 'لم يتم إعداد سعر Stripe لهذه الباقة بعد.' },
+        { status: 503 }
+      );
     }
+
+    // v2 — the founding tier is legacy (hidden, not sellable): the checkout schema
+    // above already rejects unknown ids, so no founding-eligibility gate is needed
+    // here. Grandfathered founding subscriptions keep running via the legacy row.
 
     const config = getStripeConfig();
     if (config.mode === 'unconfigured') {
@@ -72,15 +62,15 @@ export async function POST(req: Request) {
 
     const returnUrl = parsed.data.return_url ?? `${new URL(req.url).origin}/dashboard/subscription`;
     const session = await createCheckoutSession({
-      priceId: plan.priceId,
+      priceId,
       successUrl: `${returnUrl}?session_id={CHECKOUT_SESSION_ID}&clinic_id=${clinicId}`,
       cancelUrl: returnUrl,
       clientReferenceId: clinicId,
-      metadata: { plan_id: plan.id, clinic_id: clinicId },
+      metadata: { plan_id: plan.id, clinic_id: clinicId, billing_interval: interval },
     });
 
     // Store an idempotency/processing marker (a pending subscription row keyed by session).
-    await recordPendingSubscription(clinicId, plan.id, session.id);
+    await recordPendingSubscription(clinicId, plan.id, session.id, interval);
 
     logEvent('payment_checkout_created', { clinic_id: clinicId, plan_id: plan.id, mode: config.mode, session_id: session.id });
     return NextResponse.json({ url: session.url, session_id: session.id, mode: config.mode });
@@ -91,7 +81,12 @@ export async function POST(req: Request) {
   }
 }
 
-async function recordPendingSubscription(clinicId: string, planId: string, sessionId: string) {
+async function recordPendingSubscription(
+  clinicId: string,
+  planId: string,
+  sessionId: string,
+  interval: 'month' | 'year' | 'trial'
+) {
   const { data: existing } = await supabaseAdmin
     .from('subscriptions')
     .select('id')
@@ -102,7 +97,8 @@ async function recordPendingSubscription(clinicId: string, planId: string, sessi
     clinic_id: clinicId,
     plan_id: planId,
     status: 'unpaid' as const,
-    billing_status: 'monthly',
+    // v2 — mirrors the purchased interval (monthly vs yearly), not a hard-coded value.
+    billing_status: interval === 'year' ? 'yearly' : 'monthly',
     stripe_checkout_session_id: sessionId,
     deleted_at: null,
   };

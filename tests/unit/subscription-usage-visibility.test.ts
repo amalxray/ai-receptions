@@ -75,7 +75,7 @@ function makeReq() {
 }
 
 function planFor(id: string) {
-  return { id, name: id, nameEn: id, pricePerMonth: 0, currency: 'ils', interval: 'month', trialDays: null, priceId: null, features: [] };
+  return { id, name: id, nameEn: id, pricePerMonth: 0, currency: 'usd', interval: 'month', trialDays: null, priceId: null, features: [] };
 }
 
 const FUTURE = '2026-09-30T00:00:00.000Z';
@@ -91,9 +91,9 @@ beforeEach(() => {
 
 describe('STEP 15G-A — GET subscription visibility', () => {
   it('returns usage for all seven canonical resources with numeric limits and remaining', async () => {
-    mockDb.__subRow = { plan_id: 'growth', status: 'active', billing_status: 'monthly', current_period_end: '2026-09-30T00:00:00.000Z', billing_customer_id: 'cus_secretXYZ' };
+    mockDb.__subRow = { plan_id: 'advanced', status: 'active', billing_status: 'monthly', current_period_end: '2026-09-30T00:00:00.000Z', billing_customer_id: 'cus_secretXYZ' };
     mockDb.__limitsRow = { limits: mockApproved.growth };
-    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('growth'));
+    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('advanced'));
 
     const res = await GET(makeReq());
     expect(res.status).toBe(200);
@@ -113,18 +113,18 @@ describe('STEP 15G-A — GET subscription visibility', () => {
     expect(users.labelAr.length).toBeGreaterThan(0);
 
     // Effective plan comes from entitlements (server-side), not the raw plan_id.
-    expect(entitlements.planId).toBe('growth');
+    expect(entitlements.planId).toBe('advanced');
     expect(entitlements.status).toBe('active');
     expect(entitlements.degraded).toBe(false);
     expect(entitlements.periodStart).toMatch(/^\d{4}-\d{2}-01$/);
     expect(body.data.billingPeriodLabel.length).toBeGreaterThan(0);
-    expect(subscription.plan_id).toBe('growth');
+    expect(subscription.plan_id).toBe('advanced');
   });
 
   it('treats a null limit as unlimited — never 0 and never a fallback', async () => {
-    mockDb.__subRow = { plan_id: 'growth', status: 'active', billing_status: 'monthly', current_period_end: null };
+    mockDb.__subRow = { plan_id: 'advanced', status: 'active', billing_status: 'monthly', current_period_end: null };
     mockDb.__limitsRow = { limits: mockApproved.growth };
-    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('growth'));
+    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('advanced'));
 
     const body = await (await GET(makeReq())).json();
     const ais = body.data.usage.find((u: any) => u.resource === 'ai_messages');
@@ -151,20 +151,20 @@ describe('STEP 15G-A — GET subscription visibility', () => {
   it('trialing expired degrades to starter', async () => {
     mockDb.__subRow = { plan_id: 'free_trial', status: 'trialing', trial_end: PAST, billing_status: 'trial', current_period_end: PAST };
     mockDb.__limitsRow = { limits: mockApproved.starter };
-    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('starter'));
+    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('limited'));
 
     const body = await (await GET(makeReq())).json();
-    expect(body.data.entitlements.planId).toBe('starter');
+    expect(body.data.entitlements.planId).toBe('limited');
     expect(body.data.entitlements.degraded).toBe(true);
     const ais = body.data.usage.find((u: any) => u.resource === 'ai_messages');
     expect(ais.limit).toBe(100);
   });
 
   it('clamps remaining at 0 when usage is over the numeric limit', async () => {
-    mockDb.__subRow = { plan_id: 'starter', status: 'active', billing_status: 'monthly', current_period_end: null };
+    mockDb.__subRow = { plan_id: 'limited', status: 'active', billing_status: 'monthly', current_period_end: null };
     mockDb.__limitsRow = { limits: mockApproved.starter };
     mockDb.__usage = [{ resource: 'ai_messages', used_count: 150 }];
-    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('starter'));
+    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('limited'));
 
     const body = await (await GET(makeReq())).json();
     const ais = body.data.usage.find((u: any) => u.resource === 'ai_messages');
@@ -173,9 +173,9 @@ describe('STEP 15G-A — GET subscription visibility', () => {
   });
 
   it('never leaks stripe ids, metadata or internal subscription columns', async () => {
-    mockDb.__subRow = { plan_id: 'growth', status: 'active', billing_status: 'monthly', billing_customer_id: 'cus_secretXYZ', stripe_subscription_id: 'sub_secretXYZ', current_period_end: null };
+    mockDb.__subRow = { plan_id: 'advanced', status: 'active', billing_status: 'monthly', billing_customer_id: 'cus_secretXYZ', stripe_subscription_id: 'sub_secretXYZ', current_period_end: null };
     mockDb.__limitsRow = { limits: mockApproved.growth, metadata: { internal: true } };
-    mockCatalog.getPlanOrFallback.mockResolvedValue({ ...planFor('growth'), priceId: 'price_secret123' });
+    mockCatalog.getPlanOrFallback.mockResolvedValue({ ...planFor('advanced'), priceId: 'price_secret123' });
 
     const res = await GET(makeReq());
     const text = await res.text();
@@ -196,9 +196,9 @@ describe('STEP 15G-A — GET subscription visibility', () => {
   });
 
   it('filters soft-deleted subscription rows server-side', async () => {
-    mockDb.__subRow = { plan_id: 'growth', status: 'active', billing_status: 'monthly', current_period_end: null };
+    mockDb.__subRow = { plan_id: 'advanced', status: 'active', billing_status: 'monthly', current_period_end: null };
     mockDb.__limitsRow = { limits: mockApproved.growth };
-    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('growth'));
+    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('advanced'));
 
     await GET(makeReq());
     expect(mockDb.__chains.subscriptions?.is).toHaveBeenCalledWith('deleted_at', null);
@@ -207,10 +207,10 @@ describe('STEP 15G-A — GET subscription visibility', () => {
   it('returns a whitelisted plan without raw limits or stripe ids even on fallback', async () => {
     mockDb.__subRow = null;
     mockDb.__limitsRow = { limits: mockApproved.starter };
-    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('starter'));
+    mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('limited'));
 
     const body = await (await GET(makeReq())).json();
-    expect(body.data.entitlements.planId).toBe('starter'); // no subscription -> safe default starter
+    expect(body.data.entitlements.planId).toBe('limited'); // no subscription -> safe default starter
     const keys = Object.keys(body.data.plan);
     expect(keys).not.toContain('priceId');
     expect(keys).not.toContain('limits');

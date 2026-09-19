@@ -34,7 +34,7 @@ describe('Checkout API', () => {
 
   it('returns 503 PAYMENT_NOT_CONFIGURED for a paid plan with no Stripe key', async () => {
     delete process.env.STRIPE_SECRET_KEY;
-    const res = await POST(makeReq({ plan_id: 'growth' }));
+    const res = await POST(makeReq({ plan_id: 'advanced' }));
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.error).toBe('PAYMENT_NOT_CONFIGURED');
@@ -42,7 +42,7 @@ describe('Checkout API', () => {
 
   it('returns 403 when not authorized', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
-    const res = await POST(makeReq({ plan_id: 'growth' }));
+    const res = await POST(makeReq({ plan_id: 'advanced' }));
     expect(res.status).toBe(403);
   });
 

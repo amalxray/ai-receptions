@@ -198,17 +198,21 @@ export const landingCopy = {
 
   pricing: {
     title: 'كل شي محتاجه عيادتك، بمكان واحد',
-    founding: {
-      badge: 'عرض التأسيس — أول 100 طبيب',
-      price: '$50',
+    basic: {
+      badge: 'للبداية',
+      price: '$39',
       per: 'شهرياً',
-      note: 'ثابت للأبد طالما اشتراكك مستمر',
+      note: 'عيادة واحدة — يمكنك الإلغاء في أي وقت',
     },
-    standard: {
-      price: '$120',
+    advanced: {
+      badge: '⭐ الأكثر طلباً',
+      price: '$69',
       per: 'شهرياً',
-      note: 'نفس كل الميزات، بدون خصم التأسيس',
+      note: 'عيادات متعددة — الأشهر لعيادات الأسنان',
     },
+    /** Yearly discount honoured by every paid tier (2 months free). */
+    yearlyNote: 'أو وفّر شهرين بالاشتراك السنوي: $399 / $699 / $1199',
+    trialNote: '30 يوماً مجاناً بكل ميزات المتقدمة — بدون بطاقة',
     slotsRemaining: '⏳ باقي',
     slotsSuffix: 'مكان بس من أصل 100',
     featuresTable: [

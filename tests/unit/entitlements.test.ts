@@ -36,7 +36,7 @@ vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: mockDb }));
 vi.mock('@/lib/server/logging', () => ({ logEvent: vi.fn() }));
 
 import {
-  STARTER_LIMITS,
+  FALLBACK_LIMITS,
   effectivePlanIdFor,
   extractLimit,
   isEntitlementResource,
@@ -51,18 +51,21 @@ const CID = '11111111-1111-1111-1111-111111111111';
 
 describe('15C — status policy (approved decisions)', () => {
   it.each([
-    ['active → plan limits', { plan_id: 'growth', status: 'active', trial_end: null }, 'growth', false],
+    ['active → plan limits', { plan_id: 'advanced', status: 'active', trial_end: null }, 'advanced', false],
+    // Legacy paid ids resolve to their v2 successors (approved mapping).
+    ['legacy growth → advanced', { plan_id: 'growth', status: 'active', trial_end: null }, 'advanced', false],
+    ['legacy pro → center', { plan_id: 'pro', status: 'active', trial_end: null }, 'center', false],
     // STEP 15G-A — approved trial mapping: 'trialing' (DB enum) during the window → free_trial limits.
     [
       'trialing inside window → free_trial limits',
-      { plan_id: 'growth', status: 'trialing', trial_end: new Date(Date.now() + 86400000).toISOString() },
+      { plan_id: 'advanced', status: 'trialing', trial_end: new Date(Date.now() + 86400000).toISOString() },
       'free_trial',
       false,
     ],
     [
-      'trialing expired → starter (soft downgrade)',
-      { plan_id: 'growth', status: 'trialing', trial_end: new Date(Date.now() - 86400000).toISOString() },
-      'starter',
+      'trialing expired → limited (soft downgrade)',
+      { plan_id: 'advanced', status: 'trialing', trial_end: new Date(Date.now() - 86400000).toISOString() },
+      'limited',
       true,
     ],
     [
@@ -77,11 +80,11 @@ describe('15C — status policy (approved decisions)', () => {
       'free_trial',
       false,
     ],
-    ['past_due → starter', { plan_id: 'growth', status: 'past_due', trial_end: null }, 'starter', true],
-    ['unpaid → starter', { plan_id: 'founding', status: 'unpaid', trial_end: null }, 'starter', true],
-    ['canceled → starter', { plan_id: 'pro', status: 'canceled', trial_end: null }, 'starter', true],
-    ['no row → starter safe default', null, 'starter', false],
-    ['no plan_id → starter', { plan_id: null, status: 'active', trial_end: null }, 'starter', false],
+    ['past_due → limited', { plan_id: 'advanced', status: 'past_due', trial_end: null }, 'limited', true],
+    ['unpaid → limited', { plan_id: 'founding', status: 'unpaid', trial_end: null }, 'limited', true],
+    ['canceled → limited', { plan_id: 'pro', status: 'canceled', trial_end: null }, 'limited', true],
+    ['no row → limited safe default', null, 'limited', false],
+    ['no plan_id → limited', { plan_id: null, status: 'active', trial_end: null }, 'limited', false],
   ])('%s', (_name, row, expectedPlan, degraded) => {
     expect(effectivePlanIdFor(row as any)).toEqual({ planId: expectedPlan, degraded });
   });
@@ -103,11 +106,11 @@ describe('15C — limit extraction (canonical keys only)', () => {
     expect(extractLimit({ ai_messages: null }, 'ai_messages')).toBeNull();
     expect(extractLimit({ users: 10 }, 'users')).toBe(10);
   });
-  it('starter defaults match approved decisions (patients/conversations unlimited)', () => {
-    expect(STARTER_LIMITS).toEqual({
-      ai_messages: 100,
+  it('fallback (limited) defaults match the approved v2 matrix', () => {
+    expect(FALLBACK_LIMITS).toEqual({
+      ai_messages: 10,
       bookings: 50,
-      patients: null,
+      patients: 5,
       providers: 2,
       users: 2,
       knowledge_docs: 3,
@@ -129,7 +132,7 @@ describe('15C — catalog-first limit resolution', () => {
 
   it('uses billing_plans.limits when the catalog has the canonical key', async () => {
     mockDb.__subs.maybeSingle.mockImplementationOnce(() => ({
-      data: { plan_id: 'growth', status: 'active', trial_end: null },
+      data: { plan_id: 'advanced', status: 'active', trial_end: null },
       error: null,
     }));
     mockDb.__billing.maybeSingle.mockImplementationOnce(() => ({
@@ -138,15 +141,15 @@ describe('15C — catalog-first limit resolution', () => {
     }));
     const { getEffectiveLimit } = await import('@/lib/subscription/entitlements');
     const state = await getEffectiveLimit(CID, 'ai_messages');
-    expect(state).toEqual({ limit: 5000, planId: 'growth', status: 'active', degraded: false });
+    expect(state).toEqual({ limit: 5000, planId: 'advanced', status: 'active', degraded: false });
     expect(mockDb.from).toHaveBeenCalledWith('billing_plans');
   });
 
-  it('falls back to STARTER_LIMITS when the catalog lacks the key / table missing', async () => {
+  it('falls back to FALLBACK_LIMITS when the catalog lacks the key / table missing', async () => {
     mockDb.__billing.maybeSingle.mockImplementation(() => ({ data: null, error: null }));
     const { getEffectiveLimit } = await import('@/lib/subscription/entitlements');
     const state = await getEffectiveLimit(CID, 'users');
-    expect(state.limit).toBe(STARTER_LIMITS.users);
+    expect(state.limit).toBe(FALLBACK_LIMITS.users);
   });
 });
 
@@ -154,7 +157,7 @@ describe('15C — atomic gate (rpc check_and_increment)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDb.__subs.maybeSingle.mockImplementation(() => ({
-      data: { plan_id: 'growth', status: 'active', trial_end: null },
+      data: { plan_id: 'advanced', status: 'active', trial_end: null },
       error: null,
     }));
     mockDb.__billing.maybeSingle.mockImplementation(() => ({

@@ -61,12 +61,22 @@ const STATUS_AR: Record<string, string> = {
   unpaid: 'غير مدفوع',
 };
 
+// v2 catalog (USD) + the legacy ids still present on historical subscriptions
+// (starter/growth/pro/founding rows are mapped to their successors server-side).
 const PLAN_NAME_AR: Record<string, string> = {
-  free_trial: 'تجربة مجانية',
-  starter: 'الباقة الابتدائية',
-  founding: 'باقة التأسيس',
-  growth: 'النمو',
-  pro: 'الاحترافية',
+  free_trial: 'تجريبي',
+  limited: 'محدودة',
+  basic: 'أساسية',
+  advanced: 'متقدمة',
+  center: 'مركز',
+  basic_yearly: 'أساسية سنوي',
+  advanced_yearly: 'متقدمة سنوي',
+  center_yearly: 'مركز سنوي',
+  // legacy
+  starter: 'محدودة (سابقة)',
+  growth: 'متقدمة (سابقة)',
+  pro: 'مركز (سابقة)',
+  founding: 'التأسيس (مدى الحياة)',
 };
 
 function statusTone(status: string | null, degraded: boolean): 'success' | 'warning' | 'danger' | 'neutral' {

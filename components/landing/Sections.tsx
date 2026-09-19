@@ -232,16 +232,16 @@ export function Pricing() {
           <FadeUp>
             <div className="relative overflow-hidden rounded-3xl border-2 border-landing-indigo bg-white p-8 shadow-landing-btn">
               <span className="absolute left-0 top-6 rounded-r-full bg-gradient-to-l from-landing-amber to-landing-amber/80 px-4 py-1 text-xs font-bold text-landing-dark">
-                {copy.pricing.founding.badge}
+                {copy.pricing.advanced.badge}
               </span>
               <div className="mt-8 flex items-end gap-2">
-                <span className="font-mono text-5xl font-bold text-landing-text">{copy.pricing.founding.price}</span>
-                <span className="mb-1 text-sm text-landing-text/60">{copy.pricing.founding.per}</span>
+                <span className="font-mono text-5xl font-bold text-landing-text">{copy.pricing.advanced.price}</span>
+                <span className="mb-1 text-sm text-landing-text/60">{copy.pricing.advanced.per}</span>
               </div>
-              <p className="mt-2 text-sm font-semibold text-landing-indigo">{copy.pricing.founding.note}</p>
+              <p className="mt-2 text-sm font-semibold text-landing-indigo">{copy.pricing.advanced.note}</p>
               <div className="mt-6">
-                <LandingButton href="#founding" size="lg" className="w-full">
-                  احجز مكانك
+                <LandingButton href="/register?plan=advanced" size="lg" className="w-full">
+                  اشترك الآن
                 </LandingButton>
               </div>
             </div>
@@ -251,15 +251,15 @@ export function Pricing() {
           <FadeUp delay={0.1}>
             <div className="rounded-3xl border border-landing-indigo/10 bg-white p-8 shadow-sm">
               <div className="flex items-end gap-2">
-                <span className="font-mono text-5xl font-bold text-landing-text">{copy.pricing.standard.price}</span>
-                <span className="mb-1 text-sm text-landing-text/60">{copy.pricing.standard.per}</span>
+                <span className="font-mono text-5xl font-bold text-landing-text">{copy.pricing.basic.price}</span>
+                <span className="mb-1 text-sm text-landing-text/60">{copy.pricing.basic.per}</span>
               </div>
-              <p className="mt-2 text-sm font-semibold text-landing-text/70">{copy.pricing.standard.note}</p>
-              {/* Standard card — "ابدأ الآن" leads to the existing registration
-                  flow (per product spec: registration-first, no new checkout
-                  path). "احجز مكانك" above stays a founding lead-form CTA. */}
+              <p className="mt-2 text-sm font-semibold text-landing-text/70">{copy.pricing.basic.note}</p>
+              <p className="mt-3 text-xs font-semibold text-landing-indigo">{copy.pricing.yearlyNote}</p>
+              <p className="mt-1 text-xs font-semibold text-landing-text/70">{copy.pricing.trialNote}</p>
+              {/* Standard card — leads to the existing registration flow */}
               <div className="mt-6">
-                <LandingButton href="/register" variant="secondary" size="lg" className="w-full">
+                <LandingButton href="/register?plan=basic" variant="secondary" size="lg" className="w-full">
                   ابدأ الآن
                 </LandingButton>
               </div>
