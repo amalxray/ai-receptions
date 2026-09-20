@@ -26,7 +26,13 @@ const updateSchema = z
   })
   .refine((v) => v.status !== undefined || v.notes !== undefined, { message: 'Nothing to update' });
 
-const SELECT_COLS = 'id, requested_service, case_ref, patient_ref, status, notes';
+// Per-table select columns: imaging_requests has patient_ref, lab_cases has
+// case_ref — a shared select breaks BOTH (column does not exist on the other
+// table's PostgREST query → 500).
+const SELECT_COLS: Record<RequestTable, string> = {
+  imaging_requests: 'id, requested_service, patient_ref, status, notes',
+  lab_cases: 'id, requested_service, case_ref, status, notes',
+};
 
 export async function PATCH(req: Request, { params }: { params: { requestId: string } }) {
   try {
@@ -90,7 +96,7 @@ export async function PATCH(req: Request, { params }: { params: { requestId: str
 
     const { data, error } = await supabaseAdmin
       .from(t)
-      .select(SELECT_COLS)
+      .select(SELECT_COLS[t])
       .eq('id', params.requestId)
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
