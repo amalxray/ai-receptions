@@ -104,6 +104,8 @@ export default function SubscriptionPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState(readQuery);
+  // Billing period toggle — one control drives the whole pricing grid.
+  const [period, setPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   async function load() {
     if (!clinicId) return null;
@@ -228,6 +230,13 @@ export default function SubscriptionPage() {
     ? query.plan
     : null;
   const suggestedPlan = upgradeResource ? (upgradePlan ?? suggestedPlanFor(upgradeResource)) : null;
+
+  // Trial is a standalone card (no toggle applies to it); the three paid tiers
+  // are driven by the monthly/yearly toggle only.
+  const trialPlan = SUBSCRIPTION_PLANS.find((p) => p.interval === 'trial') ?? null;
+  const tierPlans = SUBSCRIPTION_PLANS.filter((p) =>
+    period === 'yearly' ? p.interval === 'year' : p.interval === 'month' && p.pricePerMonth > 0
+  );
   const upgradeUsage = upgradeResource
     ? (data?.usage?.find((u) => u.resource === upgradeResource) ?? null)
     : null;
@@ -325,9 +334,55 @@ export default function SubscriptionPage() {
         <UsageMeter usage={data?.usage ?? []} />
       </div>
 
-      {/* Plan picker (unchanged behavior) */}
+      {/* Billing period toggle — one control for the whole pricing grid. */}
+      <div className="mb-6 flex items-center justify-center">
+        <div className="inline-flex rounded-full border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="دورة الفوترة">
+          {(['monthly', 'yearly'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setPeriod(mode)}
+              className={`rounded-full px-6 py-2 text-sm font-semibold transition ${period === mode ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:text-white'}`}
+            >
+              {mode === 'monthly' ? 'شهري' : 'سنوي'}
+            </button>
+          ))}
+        </div>
+        {period === 'yearly' && <span className="ms-3 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">وفّر شهرين</span>}
+      </div>
+
+      {/* Trial card — standalone: the monthly/yearly toggle never applies to it. */}
+      {trialPlan ? (
+        <article
+          className={`mb-4 rounded-[1.5rem] border p-5 ${appliedPlanId === trialPlan.id ? 'border-cyan-500/70 bg-cyan-500/10' : 'border-slate-800 bg-slate-950/70'}`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-lg font-semibold text-white">{trialPlan.name}</p>
+              <p className="mt-1 text-2xl font-semibold text-cyan-300">{formatPrice(trialPlan)}</p>
+              {trialPlan.trialDays ? (
+                <p className="mt-1 text-xs text-slate-400">تجربة {trialPlan.trialDays} يوماً — كل ميزات المتقدمة</p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              disabled={busy || appliedPlanId === trialPlan.id}
+              onClick={() => choose(trialPlan.id)}
+              className="rounded-full bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
+            >
+              {appliedPlanId === trialPlan.id ? 'الباقة الحالية' : 'ابدأ التجربة'}
+            </button>
+          </div>
+          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-300">
+            {trialPlan.features.map((f) => <li key={f}>• {f}</li>)}
+          </ul>
+        </article>
+      ) : null}
+
+
+      {/* Plan picker — trial card separate, then 3 tier cards driven by the toggle. */}
       <div className="grid gap-4 md:grid-cols-3">
-        {SUBSCRIPTION_PLANS.map((plan) => {
+        {tierPlans.map((plan) => {
           const active = plan.id === appliedPlanId;
           const suggested = query.upgrade && suggestedPlan && plan.id === suggestedPlan;
           return (
@@ -342,7 +397,6 @@ export default function SubscriptionPage() {
               <p className="mt-1 text-2xl font-semibold text-cyan-300">
                 {formatPrice(plan)}
               </p>
-              {plan.interval === 'trial' && <p className="mt-1 text-xs text-slate-400">تجربة {plan.trialDays} يوم</p>}
               <ul className="mt-4 space-y-1 text-sm text-slate-300">
                 {plan.features.map((f) => <li key={f}>• {f}</li>)}
               </ul>
