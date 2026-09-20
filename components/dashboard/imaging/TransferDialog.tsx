@@ -20,7 +20,8 @@ import { useEffect, useMemo, useState } from 'react';
 type PartnerOrg = {
   id: string;
   name: string;
-  relationship_status?: string | null;
+  /** Shape returned by /api/clinic/partner-orgs (listPartnerOrgsWithStatus). */
+  relationship?: { status: string } | null;
 };
 
 type ServiceOption = {
@@ -52,7 +53,7 @@ export default function TransferDialog({ clinicId, authHeaders, target, onClose,
   const [error, setError] = useState<string | null>(null);
 
   const acceptedCenters = useMemo(
-    () => (centers ?? []).filter((c) => c.relationship_status === 'accepted'),
+    () => (centers ?? []).filter((c) => c.relationship?.status === 'accepted'),
     [centers],
   );
 
@@ -177,7 +178,7 @@ export default function TransferDialog({ clinicId, authHeaders, target, onClose,
               {(acceptedCenters.length > 0 ? acceptedCenters : centers ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
-                  {c.relationship_status && c.relationship_status !== 'accepted' ? ' (غير مرتبط)' : ''}
+                  {c.relationship && c.relationship.status !== 'accepted' ? ' (غير مرتبط)' : ''}
                 </option>
               ))}
             </select>

@@ -49,9 +49,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ requestId: str
     if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // The request must be owned by the caller's clinic (the imaging center).
+    // patient_id = the REFERRING clinic's patient (set at referral time) —
+    // never treated as the center's own file. The center-side file lives in
+    // patient_id_center.
     const { data: request } = await supabaseAdmin
       .from('imaging_requests')
-      .select('id, clinic_id, patient_id, patient_ref, status')
+      .select('id, clinic_id, patient_id, patient_id_center, patient_ref, status')
       .eq('id', requestId)
       .is('deleted_at', null)
       .maybeSingle();
@@ -59,7 +62,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ requestId: str
     if (request.clinic_id !== centerId) {
       return NextResponse.json({ error: 'طلب التصوير لا يتبع مركزك' }, { status: 403 });
     }
-    if (request.patient_id) {
+    if (request.patient_id_center) {
       return NextResponse.json({ error: 'الطلب مرتبط بملف مريض مسبقاً' }, { status: 409 });
     }
 
@@ -74,7 +77,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ requestId: str
 
     const { error: linkError } = await supabaseAdmin
       .from('imaging_requests')
-      .update({ patient_id: patientId })
+      .update({ patient_id_center: patientId })
       .eq('id', requestId)
       .is('deleted_at', null);
     if (linkError) throw new Error(linkError.message);
@@ -83,6 +86,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ requestId: str
       imaging_center_id: centerId,
       request_id: requestId,
       patient_id: patientId,
+      had_referrer_patient: Boolean(request.patient_id),
       matched_by_phone: Boolean(phone),
     });
     return NextResponse.json({ data: { patient_id: patientId, linked: true } }, { status: 201 });

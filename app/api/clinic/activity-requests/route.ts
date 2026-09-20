@@ -43,7 +43,7 @@ function parseFor(table: RequestTable, body: unknown) {
 }
 
 const SELECT_COLS: Record<RequestTable, string> = {
-  imaging_requests: 'id, patient_ref, requested_service, status, notes, created_at',
+  imaging_requests: 'id, patient_ref, requested_service, status, notes, created_at, patient_id_center',
   lab_cases: 'id, case_ref, referring_clinic, requested_service, status, notes, created_at',
 };
 

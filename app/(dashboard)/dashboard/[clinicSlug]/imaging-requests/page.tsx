@@ -13,6 +13,7 @@ type Row = {
   clinic_id: string;
   referring_clinic_id: string | null;
   patient_id: string | null;
+  patient_id_center: string | null;
   patient_ref: string | null;
   requested_service: string | null;
   status: string;
@@ -208,7 +209,8 @@ function RequestCard({
         <StatusPill tone={TONE[r.status] ?? 'neutral'}>{STATUS_AR[r.status] ?? r.status}</StatusPill>
       </div>
       {r.notes && <p className="mt-2 text-sm text-slate-300">{r.notes}</p>}
-      {!r.patient_id && clinicId && (
+      {/* patient_id = the REFERRING clinic's patient; patient_id_center = OUR file */}
+      {!r.patient_id_center && clinicId && (
         <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -231,6 +233,9 @@ function RequestCard({
           {createMsg && <p className="mt-2 text-xs text-emerald-400">{createMsg}</p>}
           {createErr && <p className="mt-2 text-xs text-red-400">{createErr}</p>}
         </div>
+      )}
+      {r.patient_id_center && (
+        <p className="mt-2 text-xs text-emerald-400">ملف مركز التصوير: مرتبط ✓</p>
       )}
       <p className="mt-2 text-xs text-slate-500">{r.created_at ? new Date(r.created_at).toLocaleString('ar') : ''}</p>
       {nexts.length > 0 && !busy && (
