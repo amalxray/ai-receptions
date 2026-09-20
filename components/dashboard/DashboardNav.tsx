@@ -1,10 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { groupNavLinks, type NavModule } from '@/lib/services/dashboardNavModel';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import {
+  getLockedFeatures,
+  getRequiredPlanNameAr,
+  type FeatureKey,
+} from '@/lib/subscription/featureGate';
 
 /**
  * TENANT-ISOLATED DASHBOARD — Arabic, grouped, role-gated sidebar navigation.
@@ -92,6 +97,21 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
 // in the API (roleDenied) and RLS.
 const ADMIN_ONLY_MODULES = new Set(['providers', 'services', 'ai-settings', 'subscription', 'team', 'setup']);
 
+/**
+ * PHASE 2 — module → subscription feature. A module whose feature is not
+ * unlocked by the clinic's plan renders as a 🔒 upsell link (and the API for
+ * that module returns 402 anyway — the sidebar lock is convenience only).
+ * Modules absent from this map are never locked.
+ */
+const MODULE_FEATURES: Partial<Record<string, FeatureKey>> = {
+  'financial-intelligence': 'analytics',
+  analytics: 'analytics',
+  growth: 'analytics',
+  'before-after': 'before-after',
+  badges: 'badges',
+  team: 'team',
+};
+
 /** localStorage key remembering open/collapsed sidebar groups. */
 const OPEN_STATE_KEY = 'dashnav_open_groups_v1';
 
@@ -106,10 +126,39 @@ function readOpenState(): Record<string, boolean> {
 }
 
 export default function DashboardNav() {
-  const { role, clinicSlug, activityType } = useClinicContext();
+  const { role, clinicSlug, activityType, authHeaders } = useClinicContext();
   const isAdmin = role === 'owner' || role === 'manager';
   const groups = groupNavLinks(getActivityNavigation(activityType));
   const firstGroupId = groups.length > 0 ? groups[0].id : undefined;
+
+  // Subscription-driven locks. `planId === undefined` means "still resolving" —
+  // the sidebar fails OPEN while loading (no lock flash); the API routes keep
+  // enforcing 402 regardless of what the UI shows.
+  const [planId, setPlanId] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch('/api/clinic/subscription', { headers });
+        if (!res.ok) return; // fail open — 402 enforcement lives server-side
+        const json = await res.json().catch(() => null);
+        const pid = json?.data?.entitlements?.planId;
+        if (alive && typeof pid === 'string') setPlanId(pid);
+      } catch {
+        /* network unavailable — stay unlocked in the UI, server still gates */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [authHeaders]);
+
+  const lockedFeatures = useMemo(
+    () => (planId === undefined ? new Set<FeatureKey>() : new Set(getLockedFeatures(planId))),
+    [planId]
+  );
 
   // Open/closed state: persisted in localStorage; the FIRST group (التشغيل
   // اليومي) is open by default unless the user collapsed it before.
@@ -154,15 +203,32 @@ export default function DashboardNav() {
               </span>
             </summary>
             <div className="space-y-1 px-2 pb-2 pt-1">
-              {items.map((item) => (
-                <Link
-                  key={item.module}
-                  href={hrefFor(item.module)}
-                  className="block rounded-xl px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800/70 hover:text-white"
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {items.map((item) => {
+                const feature = MODULE_FEATURES[item.module];
+                const locked = feature !== undefined && lockedFeatures.has(feature);
+                if (locked) {
+                  return (
+                    <Link
+                      key={item.module}
+                      href={`/dashboard/upgrade/${feature}`}
+                      title={`متاح في باقة ${getRequiredPlanNameAr(feature)}`}
+                      className="flex items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-500 transition hover:bg-slate-800/70 hover:text-slate-300"
+                    >
+                      <span>{item.label}</span>
+                      <span aria-hidden="true">🔒</span>
+                    </Link>
+                  );
+                }
+                return (
+                  <Link
+                    key={item.module}
+                    href={hrefFor(item.module)}
+                    className="block rounded-xl px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800/70 hover:text-white"
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
             </div>
           </details>
         );

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { featureGateForClinic } from '@/lib/subscription/featureGateServer';
 import { z } from 'zod';
 import {
   authorizeClinicRequest,
@@ -33,6 +34,16 @@ export async function GET(req: Request) {
       );
     }
 
+
+    // Feature gate (v2) — tier-restricted feature.
+    const gate = await featureGateForClinic(clinicId, 'badges');
+    if (!gate.allowed) {
+      logEvent('feature_gate_denied', { clinic_id: clinicId, feature: 'badges', plan_id: gate.planId });
+      return NextResponse.json(
+        { error: 'FEATURE_LOCKED', required_plan: gate.requiredPlan, plan_name_ar: gate.planNameAr },
+        { status: 402 }
+      );
+    }
     const data = await listClinicBadges(clinicId);
     return NextResponse.json({ data });
   } catch (err) {
@@ -65,6 +76,16 @@ export async function POST(req: Request) {
       );
     }
 
+
+    // Feature gate (v2) — tier-restricted feature.
+    const gate = await featureGateForClinic(clinicId, 'badges');
+    if (!gate.allowed) {
+      logEvent('feature_gate_denied', { clinic_id: clinicId, feature: 'badges', plan_id: gate.planId });
+      return NextResponse.json(
+        { error: 'FEATURE_LOCKED', required_plan: gate.requiredPlan, plan_name_ar: gate.planNameAr },
+        { status: 402 }
+      );
+    }
     const result = await createClinicBadge(clinicId, {
       type: parsed.data.type,
       title: parsed.data.title,

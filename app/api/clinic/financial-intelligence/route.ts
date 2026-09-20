@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { featureGateForClinic } from '@/lib/subscription/featureGateServer';
 import { authorizeClinicRequest, roleDenied, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
 import { getFinancialIntelligence } from '@/lib/services/financialIntelligence';
 
@@ -26,6 +27,15 @@ export async function GET(req: Request) {
       );
     }
 
+
+    // Feature gate (v2) — tier-restricted feature.
+    const gate = await featureGateForClinic(clinicId, 'analytics');
+    if (!gate.allowed) {
+      return NextResponse.json(
+        { error: 'FEATURE_LOCKED', required_plan: gate.requiredPlan, plan_name_ar: gate.planNameAr },
+        { status: 402 }
+      );
+    }
     const data = await getFinancialIntelligence(clinicId, {
       fromMonth: url.searchParams.get('from_month') ?? undefined,
       toMonth: url.searchParams.get('to_month') ?? undefined,

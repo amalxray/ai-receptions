@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { featureGateForClinic } from '@/lib/subscription/featureGateServer';
 import {
   authorizeClinicRequest,
   roleDenied,
@@ -23,6 +24,16 @@ export async function GET(req: Request) {
       );
     }
 
+
+    // Feature gate (v2) — tier-restricted feature.
+    const gate = await featureGateForClinic(clinicId, 'before-after');
+    if (!gate.allowed) {
+      logEvent('feature_gate_denied', { clinic_id: clinicId, feature: 'before-after', plan_id: gate.planId });
+      return NextResponse.json(
+        { error: 'FEATURE_LOCKED', required_plan: gate.requiredPlan, plan_name_ar: gate.planNameAr },
+        { status: 402 }
+      );
+    }
     const data = await listClinicBeforeAfter(clinicId);
     return NextResponse.json({ data });
   } catch (err) {
@@ -61,6 +72,16 @@ export async function POST(req: Request) {
     const description = String(form.get('description') ?? '').trim();
     const consent = String(form.get('patient_consent') ?? '') === 'true';
 
+
+    // Feature gate (v2) — tier-restricted feature.
+    const gate = await featureGateForClinic(clinicId, 'before-after');
+    if (!gate.allowed) {
+      logEvent('feature_gate_denied', { clinic_id: clinicId, feature: 'before-after', plan_id: gate.planId });
+      return NextResponse.json(
+        { error: 'FEATURE_LOCKED', required_plan: gate.requiredPlan, plan_name_ar: gate.planNameAr },
+        { status: 402 }
+      );
+    }
     const result = await createClinicBeforeAfter(clinicId, {
       title,
       description,
