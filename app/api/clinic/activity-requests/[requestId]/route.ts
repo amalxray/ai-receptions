@@ -101,7 +101,10 @@ export async function PATCH(req: Request, { params }: { params: { requestId: str
     return NextResponse.json({ data, transition: fromStatus ? { from: fromStatus, to: toStatus } : undefined });
   } catch (err) {
     logEvent('activity_requests_patch_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
-    return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'حدث خطأ غير متوقع', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }
 
@@ -133,6 +136,9 @@ export async function DELETE(req: Request, { params }: { params: { requestId: st
     return NextResponse.json({ data: { success: true } });
   } catch (err) {
     logEvent('activity_requests_delete_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
-    return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'حدث خطأ غير متوقع', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }

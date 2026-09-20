@@ -54,6 +54,28 @@ const NEXT: Record<string, string[]> = {
   ready: ['delivered', 'completed', 'cancelled'],
 };
 
+/** WORKFLOW_TRANSITION_INVALID reasons → Arabic, so staff see real causes. */
+const WORKFLOW_REASON_AR: Record<string, string> = {
+  transition_conflict: 'تعارض في الحالة — عُدّل الطلب من جهاز آخر، أعد تحميل الصفحة',
+  entity_not_found: 'الطلب غير موجود',
+  unknown_entity: 'نوع طلب غير معروف',
+  unknown_state: 'حالة غير معروفة',
+  wrong_activity: 'هذا الطلب لا يتبع نشاط مركز التصوير',
+  clinic_unresolvable: 'تعذر التحقق من نشاط العيادة',
+  infra_error: 'خطأ مؤقت في قاعدة البيانات — أعد المحاولة',
+};
+
+function describeApiError(body: Record<string, unknown> | undefined, fallback: string): string {
+  const b = (body ?? {}) as { error?: string; reason?: string; from_status?: string; to_status?: string; detail?: string };
+  if (b.error === 'WORKFLOW_TRANSITION_INVALID') {
+    const base = WORKFLOW_REASON_AR[b.reason ?? ''] ?? 'انتقال حالة غير مسموح';
+    return b.from_status ? `${base} (${b.from_status} → ${b.to_status})` : base;
+  }
+  const msg = b.error ?? fallback;
+  // 500s now carry the real underlying message in `detail` — surface it.
+  return b.detail ? `${msg} — ${b.detail}` : msg;
+}
+
 export default function ImagingRequestsPage() {
   const { clinicId, authHeaders, loading, error: clinicError } = useClinicContext();
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -66,7 +88,7 @@ export default function ImagingRequestsPage() {
     const res = await fetch(`/api/clinic/activity-requests?clinic_id=${encodeURIComponent(clinicId)}&table=imaging_requests`, { headers });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setErr(body?.error ?? 'تعذر تحميل طلبات التصوير');
+      setErr(describeApiError(body, 'تعذر تحميل طلبات التصوير'));
       setRows([]);
       return;
     }
@@ -91,7 +113,7 @@ export default function ImagingRequestsPage() {
         body: JSON.stringify({ status: toStatus }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? 'تعذر تحديث الحالة');
+      if (!res.ok) throw new Error(describeApiError(body, 'تعذر تحديث الحالة'));
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'حدث خطأ');

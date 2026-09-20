@@ -82,8 +82,10 @@ export async function POST(request: Request) {
     id: crypto.randomUUID(),
     clinic_id: body.clinic_id ?? '00000000-0000-0000-0000-000000000000',
     name: body.name ?? body.full_name ?? 'مريض جديد',
-    email: body.email ?? '',
-    phone: body.phone ?? body.phone_number ?? '',
+    // '' would collide with other email-less patients under the unique index
+    // (clinic_id, lower(email)); store NULL for "no email" instead.
+    email: (body.email ?? '').trim() || null,
+    phone: (body.phone ?? body.phone_number ?? '').trim() || null,
     source: body.source ?? 'موقع الويب',
     status: body.status ?? 'جديد',
     notes: body.notes ?? null,

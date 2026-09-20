@@ -72,7 +72,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ data: data ?? [] });
   } catch (err) {
     logEvent('activity_requests_get_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
-    return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'حدث خطأ غير متوقع', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }
 
@@ -112,6 +115,9 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     logEvent('activity_requests_post_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
-    return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'حدث خطأ غير متوقع', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }

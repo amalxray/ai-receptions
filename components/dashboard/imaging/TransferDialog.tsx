@@ -77,8 +77,11 @@ export default function TransferDialog({ clinicId, authHeaders, target, onClose,
     };
   }, [clinicId, authHeaders]);
 
-  // Load the TARGET center's own service catalog — the referrals API rejects
-  // service_id values that do not belong to the target (route.ts:74-87).
+  // Load the TARGET center's service catalog through the partner-scoped
+  // endpoint: /api/clinic/services requires membership of the TARGET center
+  // (403 for a referring clinic → empty dropdown), while this endpoint
+  // authorizes OUR clinic + the accepted relationship and returns the
+  // center's active services — the exact set /api/imaging/referrals accepts.
   useEffect(() => {
     setServiceId('');
     setServices([]);
@@ -88,9 +91,10 @@ export default function TransferDialog({ clinicId, authHeaders, target, onClose,
     (async () => {
       try {
         const headers = await authHeaders();
-        const res = await fetch(`/api/clinic/services?clinic_id=${encodeURIComponent(centerId)}`, {
-          headers,
-        });
+        const res = await fetch(
+          `/api/imaging/partner-services?clinic_id=${encodeURIComponent(clinicId)}&center_id=${encodeURIComponent(centerId)}`,
+          { headers },
+        );
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error ?? 'تعذر تحميل خدمات المركز');
         if (!cancelled) setServices(Array.isArray(json.data) ? json.data : []);
@@ -103,7 +107,7 @@ export default function TransferDialog({ clinicId, authHeaders, target, onClose,
     return () => {
       cancelled = true;
     };
-  }, [centerId, authHeaders]);
+  }, [centerId, clinicId, authHeaders]);
 
   const submit = async () => {
     setError(null);
