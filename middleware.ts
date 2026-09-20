@@ -1,24 +1,64 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSupabaseCoreConfig } from '@/lib/supabase/config';
+import { tenantSlugFromHostname, tenantPathRewrite } from '@/lib/vercel/domains';
 
 /**
- * SUPABASE SSR SESSION REFRESH — middleware.
+ * SUPABASE SSR SESSION REFRESH + TENANT SUBDOMAIN ROUTING — middleware.
  *
  * Responsibilities (STRICT scope):
  *   - Refresh the Supabase auth cookies on EVERY request (rotate refresh token,
  *     keep `getUser()` coherent for Server Components / Route Handlers).
+ *   - Rewrite tenant subdomains to their public space path:
+ *     hala-clinic.dentairec.com → /hala-clinic (same page as the apex path).
  *   - NEVER performs authorization. Tenant + membership authorization stays in
  *     `resolveTenantAccess()` (dashboard layout) and `authorizeClinicRequest()`
- *     (API routes). No redirects are issued here — public tenant routes, booking,
- *     AI chat and auth routes keep working without forced login.
+ *     (API routes). The subdomain rewrite grants nothing: it only maps a host to
+ *     the SAME public page that already exists on the canonical domain, and the
+ *     slug must be a valid, non-reserved tenant label.
+ *   - No redirects are issued for public routes — booking, AI chat and auth
+ *     routes keep working without forced login.
  *
  * The `matcher` below excludes static assets so they are never processed.
  */
+/**
+ * Host used for tenant detection. Behind Vercel the public host is in
+ * `x-forwarded-host`; `host` is the fallback for local/self-hosted runs.
+ */
+function hostHeader(request: NextRequest): string {
+  return request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
+}
+
+/**
+ * Builds the rewrite target for a tenant host, or null when the request must
+ * keep its own path (platform surfaces, crawler/static files, or nothing to
+ * rewrite).
+ *
+ * NOTE: only `/` and public paths are rewritten. Deeper tenant paths
+ * (`/hala-clinic/about`) have no route yet, so they resolve to 404 rather than
+ * silently serving an unrelated page. The rule itself lives in
+ * `lib/vercel/domains.ts` (`tenantPathRewrite`) so it stays unit-tested next to
+ * the rest of the host/slug contract.
+ */
+function tenantRewrite(request: NextRequest, slug: string): URL | null {
+  const target = tenantPathRewrite(slug, request.nextUrl.pathname);
+  if (!target) return null;
+  const url = request.nextUrl.clone();
+  url.pathname = target;
+  return url;
+}
+
 export async function middleware(request: NextRequest) {
   const { supabaseUrl, anonKey } = getSupabaseCoreConfig();
+  const { pathname } = request.nextUrl;
 
-  let response = NextResponse.next({ request });
+  // --- Tenant subdomain routing (pure host math; no DB, no authorization) ---
+  const tenantSlug = tenantSlugFromHostname(hostHeader(request));
+  const rewrite = tenantSlug ? tenantRewrite(request, tenantSlug) : null;
+  const buildResponse = () =>
+    rewrite ? NextResponse.rewrite(rewrite, { request }) : NextResponse.next({ request });
+
+  let response = buildResponse();
 
   // Demo mode (no env): pass through untouched.
   if (!supabaseUrl || !anonKey) {
@@ -32,7 +72,9 @@ export async function middleware(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
+        // Rebuild the SAME kind of response (rewrite or next) so a tenant
+        // rewrite is not silently dropped when cookies are refreshed.
+        response = buildResponse();
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options)
         );
@@ -51,7 +93,6 @@ export async function middleware(request: NextRequest) {
     // No session → treated as unauthenticated below.
   }
 
-  const { pathname } = request.nextUrl;
   // Admin page guard: /admin/* requires a session (the admin LAYOUT then
   // re-verifies the platform_admins row server-side before rendering).
   if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
