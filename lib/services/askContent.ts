@@ -25,7 +25,7 @@ export async function listPublishedArticles(opts: { category?: string | null; li
 export async function getPublishedArticle(slug: string) {
   const { error: err, data: article } = await supabaseAdmin
     .from('platform_articles')
-    .select('id, title, slug, excerpt, content, category, tags, is_featured, published_at, view_count, featured_image:featured_image_id(image_url, description, title)')
+    .select('id, title, slug, excerpt, content, category, tags, is_featured, published_at, updated_at, view_count, faq, featured_image:featured_image_id(image_url, description, title)')
     .eq('slug', slug)
     .eq('status', 'published')
     .maybeSingle();

@@ -32,6 +32,11 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
   await incrementArticleViews(String(article.id));
 
   const img = (article.featured_image as { image_url?: string } | null)?.image_url ?? null;
+  const faqItems = Array.isArray(article.faq)
+    ? (article.faq as Array<Record<string, unknown>>).filter(
+        (item) => item && typeof item.question === 'string' && typeof item.answer === 'string',
+      )
+    : [];
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl bg-slate-950 px-4 py-12 text-slate-100" dir="rtl">
@@ -51,6 +56,22 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
           }),
         }}
       />
+      {faqItems.length > 0 && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              mainEntity: faqItems.map((item) => ({
+                '@type': 'Question',
+                name: String(item.question),
+                acceptedAnswer: { '@type': 'Answer', text: String(item.answer) },
+              })),
+            }),
+          }}
+        />
+      )}
       <Link href="/ask/articles" className="text-sm text-cyan-400">← كل المقالات</Link>
       <h1 className="mt-4 text-3xl font-black">{String(article.title)}</h1>
       <p className="mt-2 text-xs text-slate-500">
@@ -65,6 +86,19 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
         html={String(article.content)}
         className="prose prose-invert mt-6 leading-8 [&_h1]:mt-8 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_img]:cursor-zoom-in [&_img]:rounded-xl [&_li]:mr-4 [&_ol]:list-decimal [&_p]:mb-4 [&_ul]:list-disc"
       />
+      {faqItems.length > 0 && (
+        <section className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <h2 className="text-xl font-bold text-slate-100">أسئلة شائعة</h2>
+          <div className="mt-4 space-y-4">
+            {faqItems.map((item, index) => (
+              <div key={index}>
+                <h3 className="font-bold text-cyan-300">{String(item.question)}</h3>
+                <p className="mt-1 text-slate-300 leading-7">{String(item.answer)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="mt-8"><ShareButtons url={`/ask/article/${params.slug}`} title={`${String(article.title)} | سنّي`} /></div>
       <p className="mt-6 text-sm"><Link href="/ask" className="text-cyan-400">💬 استشارة ذكية جديدة</Link></p>
     </main>
