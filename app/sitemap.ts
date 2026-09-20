@@ -23,6 +23,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const entries: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'weekly', priority: 1 },
+    { url: `${base}/book`, changeFrequency: 'weekly', priority: 0.9 },
+    { url: `${base}/discover`, changeFrequency: 'weekly', priority: 0.9 },
   ];
 
   // /ask public surfaces (Digital Care Assistant)

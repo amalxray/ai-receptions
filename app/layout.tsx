@@ -24,14 +24,41 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app'),
   title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
   description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
 };
 
+/** AEO/GEO — platform-level Organization entity (answer engines + AI crawlers). */
+function OrganizationJsonLd() {
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app';
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'AI-Receptions',
+    alternateName: 'سنّي',
+    url: base,
+    logo: `${base}/icons/icon-512.png`,
+    description:
+      'منصة موظفة استقبال ذكية للعيادات ومراكز التصوير الطبي في فلسطين — حجز مواعيد تلقائي وإدارة مرضى 24/7.',
+    areaServed: { '@type': 'AdministrativeArea', name: 'فلسطين' },
+    knowsLanguage: ['ar', 'en'],
+  };
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
+    />
+  );
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ar" dir="rtl" className={`${tajawal.variable} ${ibmPlexArabic.variable} ${ibmPlexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <OrganizationJsonLd />
+        {children}
+      </body>
     </html>
   );
 }

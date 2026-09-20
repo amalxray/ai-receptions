@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getActivityPublicSpace, activitySpaceUrl } from '@/lib/services/activityPublicSpace';
+import { getActivityPublicSpace, activitySpaceUrl, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
@@ -51,17 +51,77 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
   };
 }
 
+/** AEO/GEO — per-tenant structured data: MedicalClinic (clinic / imaging
+ *  center) or MedicalBusiness (dental lab), built ONLY from public fields. */
+function buildSpaceJsonLd(space: ActivityPublicSpace) {
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app';
+  const social = Object.values(space.socialLinks ?? {}).filter((v): v is string => Boolean(v));
+  const node: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    // activity_type is the single discriminator (Digital Healthcare Space):
+    '@type': space.activityType === 'dental_lab' ? 'MedicalBusiness' : 'MedicalClinic',
+    name: space.name,
+    url: activitySpaceUrl(space.slug),
+    ...(space.description ? { description: space.description } : {}),
+    ...(space.tagline ? { slogan: space.tagline } : {}),
+    ...(space.logo ? { image: space.logo } : {}),
+    ...(space.city || space.area || space.address
+      ? {
+          address: {
+            '@type': 'PostalAddress',
+            addressCountry: 'PS',
+            ...(space.city ? { addressLocality: space.city } : {}),
+            ...(space.area ? { addressRegion: space.area } : {}),
+            ...(space.address ? { streetAddress: space.address } : {}),
+          },
+        }
+      : {}),
+    ...(space.phone ? { telephone: space.phone } : {}),
+    areaServed: { '@type': 'AdministrativeArea', name: 'فلسطين' },
+    ...(space.activityType === 'imaging_center'
+      ? { medicalSpecialty: 'Radiology' }
+      : space.activityType === 'clinic'
+        ? { medicalSpecialty: 'Dentistry' }
+        : {}),
+    ...(social.length > 0 ? { sameAs: social } : {}),
+    knowsLanguage: ['ar', 'en'],
+  };
+  return JSON.stringify(node).replace(/</g, '\\u003c');
+}
+
 export default async function ActivitySpacePage({ params }: ActivitySpacePageProps) {
   const space = await getActivityPublicSpace(params.slug);
   if (!space) {
     notFound();
   }
+  const jsonLd = buildSpaceJsonLd(space);
+  const schemaScript = (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: jsonLd }}
+    />
+  );
   switch (space.activityType) {
     case 'imaging_center':
-      return <ImagingPublicSpace space={space} />;
+      return (
+        <>
+          {schemaScript}
+          <ImagingPublicSpace space={space} />
+        </>
+      );
     case 'dental_lab':
-      return <DentalLabPublicSpace space={space} />;
+      return (
+        <>
+          {schemaScript}
+          <DentalLabPublicSpace space={space} />
+        </>
+      );
     default:
-      return <ClinicPublicSpace space={space} />;
+      return (
+        <>
+          {schemaScript}
+          <ClinicPublicSpace space={space} />
+        </>
+      );
   }
 }
