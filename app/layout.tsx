@@ -27,6 +27,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app'),
   title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
   description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
+  // Bing Webmaster verification → renders <meta name="msvalidate.01" content="…">
+  verification: {
+    other: {
+      'msvalidate.01': 'AB6893BB9C46704C823CBA7063CE0B53',
+    },
+  },
 };
 
 /** AEO/GEO — platform-level Organization entity (answer engines + AI crawlers). */
