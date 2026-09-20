@@ -42,6 +42,12 @@ export function normalizeActivityType(value: unknown): ActivityType {
  * tenant slug colliding with a static route would be unreachable at /{slug}.
  * Registration validates against this list; legacy `/c/{slug}` still resolves
  * those (rare) legacy tenants safely.
+ *
+ * INVARIANT: every static route directly under `app/` (including routes inside
+ * route groups such as `(auth)/login`) MUST appear here — otherwise the route
+ * shadows the tenant space AND, worse, the matching subdomain label is treated
+ * as a tenant host by the middleware. `tests/unit/tenant-subdomains.test.ts`
+ * derives the list from the filesystem and fails when a route is missing.
  */
 export const RESERVED_PUBLIC_SLUGS = new Set([
   'api',
@@ -59,6 +65,10 @@ export const RESERVED_PUBLIC_SLUGS = new Set([
   'setup',
   'login',
   'register',
+  'reset-password',
+  'forgot-password',
+  'admin',
+  'ask',
   'robots.txt',
   'sitemap.xml',
   'error',

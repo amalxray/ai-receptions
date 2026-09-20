@@ -102,47 +102,23 @@ export function tenantSlugFromHostname(hostname: string): string | null {
 }
 
 /**
- * Path branches owned by the platform itself (never a tenant public space).
- * Mirrors the middleware contract; kept here so the routing rules are pure,
- * Edge-safe and unit-testable in one place.
- */
-export const PLATFORM_PATH_PREFIXES: readonly string[] = [
-  '/api',
-  '/dashboard',
-  '/admin',
-  '/auth',
-  '/login',
-  '/register',
-  '/portal',
-  '/_next',
-];
-
-/**
- * File-like paths are platform-owned static/metadata surfaces
- * (`/robots.txt`, `/sitemap.xml`, `/llms.txt`, the IndexNow key file, images).
- * A tenant space only exists at `/{slug}`, so rewriting these would guarantee a
- * 404 (`/hala-clinic/robots.txt`) and hide the platform's crawler files from
- * tenant hosts.
- */
-export function isFileLikePath(pathname: string): boolean {
-  return /\.[a-z0-9]+$/i.test(pathname);
-}
-
-/**
- * Computes the tenant rewrite target for a host label + path, or null when the
- * request must keep its own path.
+ * Computes the tenant rewrite target for a host label + path.
  *
- * Returns the rewritten path (e.g. `/hala-clinic`, `/hala-clinic/book`) or
- * null for: platform prefixes, file-like paths, and paths already carrying the
- * tenant prefix.
+ * ONLY the tenant root maps to the tenant public space (`/` → `/{slug}`).
+ * Every other path keeps its own meaning and is handled by the platform router
+ * — `/book`, `/discover`, `/ask`, `/dashboard`, `/api/*`, crawler files
+ * (`/robots.txt`), static assets…
+ *
+ * Why not prefix other paths with the slug: those nested routes do not exist,
+ * so prefixing produced guaranteed 404s. Concretely, the clinic public space
+ * renders its booking CTA as a RELATIVE `/book?slug=…`; on a tenant host that
+ * was rewritten to `/{slug}/book` and every patient landing on the subdomain
+ * hit a 404 when trying to book. Leaving non-root paths untouched also keeps
+ * crawler/static surfaces (`/robots.txt`, `/llms.txt`, `/sitemap.xml`) and the
+ * deep-link routes (`/c/{slug}`, `/d/{slug}`) working on tenant hosts.
  */
 export function tenantPathRewrite(slug: string, pathname: string): string | null {
-  if (PLATFORM_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-    return null;
-  }
-  if (isFileLikePath(pathname)) return null;
-  if (pathname.startsWith(`/${slug}/`)) return null; // already rewritten
-  return pathname === '/' ? `/${slug}` : `/${slug}${pathname}`;
+  return pathname === '/' ? `/${slug}` : null;
 }
 
 export type SubdomainResult =

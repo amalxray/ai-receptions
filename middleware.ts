@@ -11,6 +11,10 @@ import { tenantSlugFromHostname, tenantPathRewrite } from '@/lib/vercel/domains'
  *     keep `getUser()` coherent for Server Components / Route Handlers).
  *   - Rewrite tenant subdomains to their public space path:
  *     hala-clinic.dentairec.com → /hala-clinic (same page as the apex path).
+ *     ONLY the tenant root is rewritten. Every other path on a tenant host keeps
+ *     its own meaning (platform router): the clinic page's relative booking CTA
+ *     `/book?slug=…`, `/discover`, crawler files, etc. Prefixing those with the
+ *     slug pointed at routes that do not exist and 404'd real patient journeys.
  *   - NEVER performs authorization. Tenant + membership authorization stays in
  *     `resolveTenantAccess()` (dashboard layout) and `authorizeClinicRequest()`
  *     (API routes). The subdomain rewrite grants nothing: it only maps a host to
@@ -31,14 +35,15 @@ function hostHeader(request: NextRequest): string {
 
 /**
  * Builds the rewrite target for a tenant host, or null when the request must
- * keep its own path (platform surfaces, crawler/static files, or nothing to
- * rewrite).
+ * keep its own path (platform surfaces, public pages, crawler/static files, or
+ * nothing to rewrite).
  *
- * NOTE: only `/` and public paths are rewritten. Deeper tenant paths
- * (`/hala-clinic/about`) have no route yet, so they resolve to 404 rather than
- * silently serving an unrelated page. The rule itself lives in
- * `lib/vercel/domains.ts` (`tenantPathRewrite`) so it stays unit-tested next to
- * the rest of the host/slug contract.
+ * NOTE: only the tenant ROOT maps to the tenant space. Non-root paths are left
+ * untouched so platform routes keep working on tenant hosts — the clinic space
+ * links to the relative booking CTA `/book?slug=…`, which must reach the
+ * booking page instead of a non-existent `/{slug}/book` (404).
+ * The rule lives in `lib/vercel/domains.ts` (`tenantPathRewrite`) so it stays
+ * unit-tested next to the rest of the host/slug contract.
  */
 function tenantRewrite(request: NextRequest, slug: string): URL | null {
   const target = tenantPathRewrite(slug, request.nextUrl.pathname);
