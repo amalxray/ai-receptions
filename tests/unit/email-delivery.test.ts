@@ -140,9 +140,23 @@ describe('buildBookingActionUrl', () => {
     expect(url).toBe('https://www.dentairec.com');
   });
 
-  it('prefers an explicit override over the production default', () => {
-    const url = getAppBaseUrl({ VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://staging.example.com/' });
-    expect(url).toBe('https://staging.example.com');
+  it('production canonical identity wins over a stale legacy env value', () => {
+    // Regression: a leftover NEXT_PUBLIC_APP_URL=*.vercel.app in the Vercel
+    // project must not re-point canonical/OG/sitemap away from the official
+    // domain (this is what shipped as live canonical before the fix).
+    const url = getAppBaseUrl({
+      VERCEL_ENV: 'production',
+      NEXT_PUBLIC_APP_URL: 'https://ai-receptions.vercel.app',
+    });
+    expect(url).toBe('https://www.dentairec.com');
+  });
+
+  it('non-production deployments still honour an explicit override', () => {
+    const url = getAppBaseUrl({
+      VERCEL_ENV: 'preview',
+      NEXT_PUBLIC_APP_URL: 'https://preview-abc.vercel.app/',
+    });
+    expect(url).toBe('https://preview-abc.vercel.app');
   });
 });
 

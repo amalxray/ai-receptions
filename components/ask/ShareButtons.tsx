@@ -1,13 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-
-const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://www.dentairec.com';
+import { useEffect, useState } from 'react';
+import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
 
 /** Share row: native share, WhatsApp, Facebook, X — with clipboard fallback. */
 export default function ShareButtons({ url, title, compact = false }: { url: string; title: string; compact?: boolean }) {
   const [copied, setCopied] = useState(false);
-  const full = url.startsWith('http') ? url : `${BASE}${url}`;
+  // Canonical domain for SSR/first paint, then the origin the visitor is
+  // actually on. Never a stale build-time NEXT_PUBLIC_APP_URL value.
+  const [base, setBase] = useState(PRODUCTION_BASE_URL);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.origin) setBase(window.location.origin);
+  }, []);
+  const full = url.startsWith('http') ? url : `${base}${url}`;
 
   const share = async () => {
     if (navigator.share) {

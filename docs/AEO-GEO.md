@@ -83,3 +83,22 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://api.indexnow.org/index
 - `https://www.dentairec.com/sitemap.xml` — يشمل /book و/discover
 - Rich Results Test على `/{slug}` → MedicalClinic
 - schema.org validator على `/d/{slug}` → Physician
+
+## 9) هوية الـ Canonical (مصدر واحد للحقيقة)
+`lib/communications/links.ts` هو المصدر الوحيد لعنوان الموقع العام:
+
+| البيئة | القيمة المستخدمة |
+|---|---|
+| Vercel Production (`VERCEL_ENV=production`) | `PRODUCTION_BASE_URL` = `https://www.dentairec.com` — **حاكمة** |
+| Preview / تشغيل محلي | `NEXT_PUBLIC_APP_URL` ثم `APP_URL` |
+| لا شيء مضبوط | `http://localhost:3000` |
+
+القاعدة: في الإنتاج **لا يمكن** لأي متغير بيئة قديم (`NEXT_PUBLIC_APP_URL`)
+أن يُعيد توجيه canonical/OG/sitemap/robots نحو `*.vercel.app` — هذا كان يحدث
+فعلاً ويُشتّت إشارات الفهرسة. لتغيير الدومين الرسمي مستقبلاً: عدّل
+`PRODUCTION_BASE_URL` (مكان واحد)، ولا تعتمد على متغيرات البيئة لهوية الإنتاج.
+
+مكونات العميل (`ShareButtons` · `QRCodeCard` · JSON-LD في `AskClient`) تبدأ
+بالدومين الرسمي ثم تستبدله بـ `window.location.origin` بعد التحميل — فلا تظهر
+روابط مشاركة قديمة حتى لو حُقنت قيمة بناء قديمة في الحزمة.
+

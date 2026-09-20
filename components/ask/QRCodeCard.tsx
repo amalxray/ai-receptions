@@ -1,15 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import ShareButtons from './ShareButtons';
-
-const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://www.dentairec.com';
+import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
 
 /** Big QR card with download + copy + share (for /ask/qr and clinic sharing). */
 export default function QRCodeCard({ url, label }: { url: string; label: string }) {
   const [copied, setCopied] = useState(false);
-  const full = url.startsWith('http') ? url : `${BASE}${url}`;
+  // Canonical domain for SSR/first paint, then the visitor's actual origin.
+  const [base, setBase] = useState(PRODUCTION_BASE_URL);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.origin) setBase(window.location.origin);
+  }, []);
+  const full = url.startsWith('http') ? url : `${base}${url}`;
 
   const download = () => {
     const svg = document.querySelector('#qr-target svg') as unknown as SVGSVGElement | null;

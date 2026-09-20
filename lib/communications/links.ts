@@ -44,14 +44,17 @@ export const PRODUCTION_BASE_URL = 'https://www.dentairec.com';
 /**
  * Resolves the application base URL from the environment.
  *
- * Precedence: NEXT_PUBLIC_APP_URL → APP_URL → production default
- * (VERCEL_ENV=production) → http://localhost:3000 (local development).
+ * Precedence:
+ *   1. Vercel PRODUCTION deployment → PRODUCTION_BASE_URL (authoritative).
+ *      Canonical identity must not be re-pointable by a leftover/preview env
+ *      value: a stale NEXT_PUBLIC_APP_URL=*.vercel.app silently split
+ *      canonical/OG/sitemap signals away from the official domain.
+ *   2. NEXT_PUBLIC_APP_URL → APP_URL (local runs, staging, tests, previews).
+ *   3. http://localhost:3000 (local development).
  */
 export function getAppBaseUrl(env: Record<string, string | undefined> = process.env): string {
+  if (env.VERCEL_ENV === 'production') return PRODUCTION_BASE_URL;
   const explicit = env.NEXT_PUBLIC_APP_URL || env.APP_URL;
   if (explicit) return explicit.replace(/\/+$/, '');
-  // Production deploys without an explicit override must never advertise
-  // localhost in canonical/sitemap/robots output.
-  if (env.VERCEL_ENV === 'production') return PRODUCTION_BASE_URL;
   return 'http://localhost:3000';
 }

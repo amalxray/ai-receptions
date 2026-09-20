@@ -18,9 +18,11 @@ import { BlurFade } from '@/components/ui/blur-fade';
 import { ShineBorder } from '@/components/ui/shine-border';
 import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
+import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
 
-/** Public origin for structured data (build-time inlined NEXT_PUBLIC_*). */
-const SITE = process.env.NEXT_PUBLIC_APP_URL || 'https://www.dentairec.com';
+/** Canonical public origin for structured data — MUST stay the official domain
+ *  in SSR output so crawlers never see a stale/preview host in JSON-LD. */
+const SITE = PRODUCTION_BASE_URL;
 
 import StatsSection from './StatsSection';
 import ClinicsSection from './ClinicsSection';
