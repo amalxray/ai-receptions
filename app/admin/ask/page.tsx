@@ -68,7 +68,10 @@ export default function AdminAskSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value }),
       });
-      if (!res.ok) throw new Error('فشل الحفظ');
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.error ?? 'فشل الحفظ');
+      }
       setNotice(`✓ حُفظ «${key}»`);
       await load();
     } catch (e) {
