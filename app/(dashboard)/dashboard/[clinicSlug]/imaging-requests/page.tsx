@@ -113,15 +113,66 @@ export default function ImagingRequestsPage() {
       ) : (
         <div className="space-y-4">
           {rows.map((r) => (
-            <RequestCard key={r.id} r={r} busy={busyId === r.id} onTransition={transition} />
+            <RequestCard
+              key={r.id}
+              r={r}
+              busy={busyId === r.id}
+              onTransition={transition}
+              clinicId={clinicId}
+              authHeaders={authHeaders}
+              onLinked={load}
+            />
           ))}
         </div>
       )}
     </DashboardSection>
   );
-function RequestCard({ r, busy, onTransition }: { r: Row; busy: boolean; onTransition: (id: string, to: string) => void }) {
+function RequestCard({
+  r,
+  busy,
+  onTransition,
+  clinicId,
+  authHeaders,
+  onLinked,
+}: {
+  r: Row;
+  busy: boolean;
+  onTransition: (id: string, to: string) => void;
+  clinicId: string | null;
+  authHeaders: () => Promise<Record<string, string>>;
+  onLinked: () => Promise<void> | void;
+}) {
   const nexts = NEXT[r.status] ?? [];
   const refName = r.referring_clinic_id ? r.referring_clinic_id.slice(0, 8) + '…' : null;
+  const [phone, setPhone] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createMsg, setCreateMsg] = useState<string | null>(null);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+
+  // ONE-CLICK PATIENT FILE (Phase 7.4): creates the center-side patient file
+  // from the referral (phone → match existing, else create) then links it.
+  async function createPatientFile() {
+    if (!clinicId) return;
+    setCreating(true);
+    setCreateErr(null);
+    setCreateMsg(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/imaging/requests/${encodeURIComponent(r.id)}/create-patient`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify({ clinic_id: clinicId, phone: phone.trim() || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'تعذر إنشاء ملف المريض');
+      setCreateMsg('تم إنشاء/ربط ملف المريض ✅');
+      await onLinked();
+    } catch (e) {
+      setCreateErr(e instanceof Error ? e.message : 'حدث خطأ');
+    } finally {
+      setCreating(false);
+    }
+  }
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -135,6 +186,30 @@ function RequestCard({ r, busy, onTransition }: { r: Row; busy: boolean; onTrans
         <StatusPill tone={TONE[r.status] ?? 'neutral'}>{STATUS_AR[r.status] ?? r.status}</StatusPill>
       </div>
       {r.notes && <p className="mt-2 text-sm text-slate-300">{r.notes}</p>}
+      {!r.patient_id && clinicId && (
+        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={createPatientFile}
+              disabled={creating || busy}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {creating ? 'جارٍ الإنشاء…' : '➕ إنشاء ملف المريض'}
+            </button>
+            <input
+              type="tel"
+              dir="ltr"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="هاتف المريض (للربط بملف موجود)"
+              className="w-56 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+            />
+          </div>
+          {createMsg && <p className="mt-2 text-xs text-emerald-400">{createMsg}</p>}
+          {createErr && <p className="mt-2 text-xs text-red-400">{createErr}</p>}
+        </div>
+      )}
       <p className="mt-2 text-xs text-slate-500">{r.created_at ? new Date(r.created_at).toLocaleString('ar') : ''}</p>
       {nexts.length > 0 && !busy && (
         <div className="mt-3 flex flex-wrap gap-2">

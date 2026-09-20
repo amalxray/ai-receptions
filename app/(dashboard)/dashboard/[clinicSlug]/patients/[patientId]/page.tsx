@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
+import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
 
 /**
  * PATIENT DETAIL — full standalone page (/dashboard/{slug}/patients/{id}).
@@ -83,6 +84,8 @@ export default function PatientDetailPage() {
   const { clinicId, authHeaders, loading: clinicLoading } = useClinicContext();
 
   const [tab, setTab] = useState<TabKey>('overview');
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferMsg, setTransferMsg] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -179,7 +182,18 @@ export default function PatientDetailPage() {
         >
           ← العودة للمرضى
         </Link>
-        {patient && <h1 className="text-lg font-bold text-white">👤 {patient.name}</h1>}
+        <div className="flex flex-wrap items-center gap-2">
+          {patient && <h1 className="text-lg font-bold text-white">👤 {patient.name}</h1>}
+          {patient && clinicId && !clinicLoading && (
+            <button
+              type="button"
+              onClick={() => setShowTransfer(true)}
+              className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+            >
+              🩻 تحويل لمركز تصوير
+            </button>
+          )}
+        </div>
       </div>
 
       {loading && (
@@ -320,6 +334,25 @@ export default function PatientDetailPage() {
             )}
           </div>
         </>
+      )}
+
+      {transferMsg && (
+        <div
+          className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200"
+          role="status"
+        >
+          {transferMsg}
+        </div>
+      )}
+
+      {showTransfer && patient && clinicId && !clinicLoading && (
+        <TransferDialog
+          clinicId={clinicId}
+          authHeaders={authHeaders}
+          target={{ patientId: patient.id, patientName: patient.name }}
+          onClose={() => setShowTransfer(false)}
+          onDone={(r) => setTransferMsg(r.ok ? r.message : null)}
+        />
       )}
     </div>
   );
