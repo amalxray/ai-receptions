@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-const BASE = 'https://ai-receptions.vercel.app';
+const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://www.dentairec.com';
 
 /** Share row: native share, WhatsApp, Facebook, X — with clipboard fallback. */
 export default function ShareButtons({ url, title, compact = false }: { url: string; title: string; compact?: boolean }) {

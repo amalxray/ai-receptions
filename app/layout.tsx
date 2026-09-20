@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Tajawal, IBM_Plex_Sans_Arabic, IBM_Plex_Mono } from 'next/font/google';
+import { getAppBaseUrl } from '@/lib/communications/links';
 import './globals.css';
 
 const tajawal = Tajawal({
@@ -24,7 +25,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app'),
+  metadataBase: new URL(getAppBaseUrl()),
   title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
   description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
   // Bing Webmaster verification → renders <meta name="msvalidate.01" content="…">
@@ -37,7 +38,7 @@ export const metadata: Metadata = {
 
 /** AEO/GEO — platform-level Organization entity (answer engines + AI crawlers). */
 function OrganizationJsonLd() {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app';
+  const base = getAppBaseUrl();
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Organization',

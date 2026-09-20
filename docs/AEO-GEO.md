@@ -9,11 +9,11 @@
 Perplexity-User · ClaudeBot · Claude-User · anthropic-ai · Applebot-Extended ·
 Bytespider`
 - مستبعد من الفهرسة: `/dashboard/` · `/admin/` · `/portal/` · `/api/`
-- Sitemap: `https://ai-receptions.vercel.app/sitemap.xml`
+- Sitemap: `https://www.dentairec.com/sitemap.xml`
 
 ## 2) llms.txt (`public/llms.txt`)
 دليل موجّه للنماذج اللغوية: ما المنصة، لمن، الصفحات الرئيسية، ملاحظات
-(العملات، المنطقة، التسجيل). يُقدَّم على `https://ai-receptions.vercel.app/llms.txt`.
+(العملات، المنطقة، التسجيل). يُقدَّم على `https://www.dentairec.com/llms.txt`.
 
 ## 3) Schema.org (JSON-LD)
 | النوع | الموقع | الحالة |
@@ -34,23 +34,23 @@ Bytespider`
 
 ## 5) IndexNow (Bing + Yandex + Seznam — تحديث فوري)
 - **المفتاح:** `5e754e705e92a8b07dbe595c930ea146`
-- **ملف التحقق:** `https://ai-receptions.vercel.app/5e754e705e92a8b07dbe595c930ea146.txt`
+- **ملف التحقق:** `https://www.dentairec.com/5e754e705e92a8b07dbe595c930ea146.txt`
 - **التسجيل في Bing Webmaster Tools:**
   1. https://www.bing.com/webmasters → أضف الموقع → تحقق عبر XML/HTML أو CName
-  2. أرسل الـ sitemap: `https://ai-receptions.vercel.app/sitemap.xml`
+  2. أرسل الـ sitemap: `https://www.dentairec.com/sitemap.xml`
   3. IndexNow — أرسل دفعة أولى:
      ```
      POST https://api.indexnow.org/indexnow
      Content-Type: application/json
      {
-       "host": "ai-receptions.vercel.app",
+       "host": "www.dentairec.com",
        "key": "5e754e705e92a8b07dbe595c930ea146",
-       "keyLocation": "https://ai-receptions.vercel.app/5e754e705e92a8b07dbe595c930ea146.txt",
+       "keyLocation": "https://www.dentairec.com/5e754e705e92a8b07dbe595c930ea146.txt",
        "urlList": [
-         "https://ai-receptions.vercel.app",
-         "https://ai-receptions.vercel.app/ask",
-         "https://ai-receptions.vercel.app/discover",
-         "https://ai-receptions.vercel.app/book"
+         "https://www.dentairec.com",
+         "https://www.dentairec.com/ask",
+         "https://www.dentairec.com/discover",
+         "https://www.dentairec.com/book"
        ]
      }
      ```
@@ -73,13 +73,13 @@ Bytespider`
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://api.indexnow.org/indexnow" \
   -H "Content-Type: application/json" \
-  -d '{"host":"ai-receptions.vercel.app","key":"5e754e705e92a8b07dbe595c930ea146","keyLocation":"https://ai-receptions.vercel.app/5e754e705e92a8b07dbe595c930ea146.txt","urlList":["https://ai-receptions.vercel.app/ask/article/SLUG"]}'
+  -d '{"host":"www.dentairec.com","key":"5e754e705e92a8b07dbe595c930ea146","keyLocation":"https://www.dentairec.com/5e754e705e92a8b07dbe595c930ea146.txt","urlList":["https://www.dentairec.com/ask/article/SLUG"]}'
 ```
 **الدفعة الأولى المنشورة (2026):** أسعار زراعة الأسنان في فلسطين · ألم الضرس · البانوراما مقابل CBCT · اختيار طبيب أسنان في نابلس · 10 علامات لزيارة الطبيب.
 
 ## 8) فحوصات ما بعد النشر
-- `https://ai-receptions.vercel.app/robots.txt` — تظهر قواعد زواحف AI
-- `https://ai-receptions.vercel.app/llms.txt`
-- `https://ai-receptions.vercel.app/sitemap.xml` — يشمل /book و/discover
+- `https://www.dentairec.com/robots.txt` — تظهر قواعد زواحف AI
+- `https://www.dentairec.com/llms.txt`
+- `https://www.dentairec.com/sitemap.xml` — يشمل /book و/discover
 - Rich Results Test على `/{slug}` → MedicalClinic
 - schema.org validator على `/d/{slug}` → Physician

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getAppBaseUrl } from '@/lib/communications/links';
 
 /** /ask/rss.xml — published article feed (RFC 4287 RSS 2.0 + Atom self-link). */
 export async function GET() {
@@ -9,7 +10,7 @@ export async function GET() {
     .order('published_at', { ascending: false })
     .limit(20);
 
-  const baseUrl = 'https://ai-receptions.vercel.app';
+  const baseUrl = getAppBaseUrl();
   const esc = (s: unknown) =>
     String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 

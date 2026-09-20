@@ -32,9 +32,26 @@ export function buildBookingActionUrl(params: BookingLinkParams): string {
 }
 
 /**
+ * Canonical public origin of the platform in production.
+ *
+ * AEO/SEO single source of truth: canonical tags, sitemap.xml, robots.txt,
+ * RSS and JSON-LD must all advertise the OFFICIAL public domain — never the
+ * legacy `*.vercel.app` host (would split canonical signals) and never
+ * `localhost` (would be indexed as the site's identity).
+ */
+export const PRODUCTION_BASE_URL = 'https://www.dentairec.com';
+
+/**
  * Resolves the application base URL from the environment.
- * Falls back to http://localhost:3000 in development.
+ *
+ * Precedence: NEXT_PUBLIC_APP_URL → APP_URL → production default
+ * (VERCEL_ENV=production) → http://localhost:3000 (local development).
  */
 export function getAppBaseUrl(env: Record<string, string | undefined> = process.env): string {
-  return (env.NEXT_PUBLIC_APP_URL || env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const explicit = env.NEXT_PUBLIC_APP_URL || env.APP_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+  // Production deploys without an explicit override must never advertise
+  // localhost in canonical/sitemap/robots output.
+  if (env.VERCEL_ENV === 'production') return PRODUCTION_BASE_URL;
+  return 'http://localhost:3000';
 }

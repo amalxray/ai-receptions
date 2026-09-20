@@ -134,6 +134,16 @@ describe('buildBookingActionUrl', () => {
     const url = getAppBaseUrl({});
     expect(url).toBe('http://localhost:3000');
   });
+
+  it('falls back to the production domain on Vercel production (never localhost)', () => {
+    const url = getAppBaseUrl({ VERCEL_ENV: 'production' });
+    expect(url).toBe('https://www.dentairec.com');
+  });
+
+  it('prefers an explicit override over the production default', () => {
+    const url = getAppBaseUrl({ VERCEL_ENV: 'production', NEXT_PUBLIC_APP_URL: 'https://staging.example.com/' });
+    expect(url).toBe('https://staging.example.com');
+  });
 });
 
 describe('sendNotificationEmail', () => {

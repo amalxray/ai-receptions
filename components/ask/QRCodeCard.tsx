@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import ShareButtons from './ShareButtons';
 
-const BASE = 'https://ai-receptions.vercel.app';
+const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://www.dentairec.com';
 
 /** Big QR card with download + copy + share (for /ask/qr and clinic sharing). */
 export default function QRCodeCard({ url, label }: { url: string; label: string }) {

@@ -4,11 +4,12 @@ import ShareButtons from '@/components/ask/ShareButtons';
 import ArticleContentProse from '@/components/ask/ArticleContentProse';
 import { notFound } from 'next/navigation';
 import { getPublishedArticle, incrementArticleViews } from '@/lib/services/askContent';
+import { getAppBaseUrl } from '@/lib/communications/links';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-const BASE = 'https://ai-receptions.vercel.app';
+const BASE = getAppBaseUrl();
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const article = (await getPublishedArticle(params.slug)) as Record<string, unknown> | null;

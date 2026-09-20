@@ -30,7 +30,7 @@ _This file is being updated as part of the Clinic Registration & Authentication 
 - Stripe webhook secret (auto-activation) still needs the owner to add `whsec_...` on Vercel.
 ## 2026-09-11 — HARDENING + P0/P1 + PLATFORM ADMIN FOUNDATION (PHASE A)
 
-### Latest production state (ai-receptions.vercel.app — READY)
+### Latest production state (www.dentairec.com — READY)
 
 | Area | What changed | Files |
 |---|---|---|

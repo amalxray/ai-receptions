@@ -16,7 +16,7 @@ import fs from 'fs';
  * Usage: node scripts/fix1-time-card-live.mjs [baseUrl]
  */
 
-const BASE = process.argv[2] || process.env.E2E_BASE_URL || 'https://ai-receptions.vercel.app';
+const BASE = process.argv[2] || process.env.E2E_BASE_URL || 'https://www.dentairec.com';
 const SLUG = process.env.E2E_SLUG || 'hala-clinic';
 
 const env = Object.fromEntries(

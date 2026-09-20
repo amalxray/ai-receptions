@@ -19,6 +19,9 @@ import { ShineBorder } from '@/components/ui/shine-border';
 import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
 
+/** Public origin for structured data (build-time inlined NEXT_PUBLIC_*). */
+const SITE = process.env.NEXT_PUBLIC_APP_URL || 'https://www.dentairec.com';
+
 import StatsSection from './StatsSection';
 import ClinicsSection from './ClinicsSection';
 import GallerySection from './GallerySection';
@@ -64,7 +67,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
       <link rel="alternate" type="application/rss+xml" title="سنّي" href="/ask/rss.xml" />
       <link rel="manifest" href="/manifest.json" />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: 'https://ai-receptions.vercel.app/ask', logo: 'https://ai-receptions.vercel.app/icons/icon-512.png', description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
       <WhatsAppFloat />
 
       {/* ═══ HERO (Spotlight + Meteors + ShimmerWave + TextLoop + Magnetic) ═══ */}

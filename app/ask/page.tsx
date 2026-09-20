@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import AskClient from '@/components/ask/AskClient';
 import { getAskPageData } from '@/lib/services/askPageData';
+import { getAppBaseUrl } from '@/lib/communications/links';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -9,6 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const { settings } = await getAskPageData();
   const hero = (settings.hero ?? {}) as { title?: string; subtitle?: string };
   const ogTitle = hero.title || 'سنّي — مساعدك الذكي';
+  const base = getAppBaseUrl();
   return {
     title: ogTitle,
     description: hero.subtitle || undefined,
@@ -19,10 +21,10 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: 'سنّي',
       locale: 'ar_PS',
       type: 'website',
-      url: 'https://ai-receptions.vercel.app/ask',
+      url: `${base}/ask`,
     },
     twitter: { card: 'summary_large_image', title: ogTitle, description: hero.subtitle || undefined, images: ['/og/default.png'] },
-    alternates: { canonical: 'https://ai-receptions.vercel.app/ask' },
+    alternates: { canonical: `${base}/ask` },
   };
 }
 

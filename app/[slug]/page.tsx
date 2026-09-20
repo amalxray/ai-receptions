@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getActivityPublicSpace, activitySpaceUrl, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
+import { getAppBaseUrl } from '@/lib/communications/links';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
@@ -54,7 +55,7 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
 /** AEO/GEO — per-tenant structured data: MedicalClinic (clinic / imaging
  *  center) or MedicalBusiness (dental lab), built ONLY from public fields. */
 function buildSpaceJsonLd(space: ActivityPublicSpace) {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ai-receptions.vercel.app';
+  const base = getAppBaseUrl();
   const social = Object.values(space.socialLinks ?? {}).filter((v): v is string => Boolean(v));
   const node: Record<string, unknown> = {
     '@context': 'https://schema.org',

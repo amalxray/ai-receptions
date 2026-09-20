@@ -14,12 +14,12 @@
 - مختبرات الأسنان
 
 ## الصفحات الرئيسية
-- [الصفحة الرئيسية](https://ai-receptions.vercel.app): نظرة عامة على المنصة
-- [اسأل طبيبك](https://ai-receptions.vercel.app/ask): استفسارات طبية ومساعد ذكي
-- [ابحث عن عيادة](https://ai-receptions.vercel.app/discover): دليل العيادات والأطباء
-- [احجز موعد](https://ai-receptions.vercel.app/book): حجز مباشر
-- [الأسئلة الشائعة](https://ai-receptions.vercel.app/ask/faq): إجابات جاهزة للاستشهاد
-- [صفحات العيادات](https://ai-receptions.vercel.app/{slug}): كل عيادة/مركز لها صفحة عامة على /{slug}
+- [الصفحة الرئيسية](https://www.dentairec.com): نظرة عامة على المنصة
+- [اسأل طبيبك](https://www.dentairec.com/ask): استفسارات طبية ومساعد ذكي
+- [ابحث عن عيادة](https://www.dentairec.com/discover): دليل العيادات والأطباء
+- [احجز موعد](https://www.dentairec.com/book): حجز مباشر
+- [الأسئلة الشائعة](https://www.dentairec.com/ask/faq): إجابات جاهزة للاستشهاد
+- [صفحات العيادات](https://www.dentairec.com/{slug}): كل عيادة/مركز لها صفحة عامة على /{slug}
 
 ## معلومات الاتصال
 - الموقع: فلسطين (الضفة الغربية والقدس)
