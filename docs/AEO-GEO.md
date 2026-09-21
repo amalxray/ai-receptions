@@ -76,6 +76,10 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://api.indexnow.org/index
   -d '{"host":"www.dentairec.com","key":"5e754e705e92a8b07dbe595c930ea146","keyLocation":"https://www.dentairec.com/5e754e705e92a8b07dbe595c930ea146.txt","urlList":["https://www.dentairec.com/ask/article/SLUG"]}'
 ```
 **الدفعة الأولى المنشورة (2026):** أسعار زراعة الأسنان في فلسطين · ألم الضرس · البانوراما مقابل CBCT · اختيار طبيب أسنان في نابلس · 10 علامات لزيارة الطبيب.
+**الدفعة الثانية (10 مقالات — GEO/AEO):**
+- Amal X-Ray (5): `cbct-nablus-guide-2026` · `panorama-xray-when-needed` · `cbct-vs-panorama-difference` · `dental-imaging-prices-nablus-2026` · `choose-imaging-center-nablus` — كلها تُرِبط داخلياً بـ `/amal-x-ray-center`
+- عامة (5): `tooth-pain-when-serious` · `tooth-decay-symptoms-prevention` · `dental-implants-palestine-2026` · `root-canal-when-needed` · `dental-cleaning-every-6-months`
+كل مقال: كبسولة إجابة بعد H1 مباشرة + أقسام H2 بصيغة أسئلة + أسعار محددة (بانوراما 30₪، CBCT 70-300₪، تنظيف 80-150₪، عصب 120-250₪، زراعة 1500-3000$) + FAQ (4-5) في حقل `faq` + رابط داخلي لمقال شقيق و`/book`.
 
 ## 8) فحوصات ما بعد النشر
 - `https://www.dentairec.com/robots.txt` — تظهر قواعد زواحف AI
