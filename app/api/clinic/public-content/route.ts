@@ -38,9 +38,11 @@ export async function GET(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('public_content_get_error', { error: message }, 'error');
-    // TEMP DIAGNOSTIC: surface the real DB error to the caller instead of a
-    // blind "Internal error" (root-cause hunt for the testimonials failure).
-    // TODO: revert to { error: 'Internal error' } once the issue is fixed.
+    // #34 RESOLVED — the original outage (service_role was SELECT-only on the
+    // clinic_* content tables → `permission denied` on every create/update) is
+    // fixed by db/migrations/20261004_email_field_content_grants.sql. The real
+    // cause stays surfaced as `detail` (dashboards render it) so a future
+    // infrastructure failure is never an opaque "Internal error" again.
     return NextResponse.json({ error: 'Internal error', detail: message }, { status: 500 });
   }
 }
@@ -83,9 +85,8 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('public_content_create_error', { error: message }, 'error');
-    // TEMP DIAGNOSTIC: surface the real DB error to the caller instead of a
-    // blind "Internal error" (root-cause hunt for the testimonials failure).
-    // TODO: revert to { error: 'Internal error' } once the issue is fixed.
+    // #34 RESOLVED — same as GET: `detail` keeps the real cause visible to the
+    // dashboards (see the GET comment above for the outage history).
     return NextResponse.json({ error: 'Internal error', detail: message }, { status: 500 });
   }
 }

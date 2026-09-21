@@ -13,6 +13,7 @@ import { useClinicContext } from '@/lib/useClinicContext';
 export default function ProfilePage() {
   const { clinicName, role } = useClinicContext();
   const [email, setEmail] = useState<string | null>(null);
+  const [current, setCurrent] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +25,8 @@ export default function ProfilePage() {
   }, []);
 
   function humanizeError(message: string): string {
+    if (message.includes('Invalid login credentials'))
+      return 'كلمة المرور الحالية خاطئة.';
     if (message.includes('different from the old password'))
       return 'كلمة المرور الجديدة يجب أن تختلف عن الحالية.';
     if (message.toLowerCase().includes('at least 6'))
@@ -45,14 +48,29 @@ export default function ProfilePage() {
       setError('كلمتا المرور غير متطابقتين.');
       return;
     }
+    if (!email) {
+      setError('انتهت الجلسة. سجّل الدخول من جديد ثم أعد المحاولة.');
+      return;
+    }
     setBusy(true);
     try {
+      // #29 — إثبات الهوية: لا تغيير لكلمة المرور دون التحقق من الحالية.
+      // signInWithPassword يثبت الحالية وينشئ جلسة جديدة (يحل أيضاً "Auth session missing").
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: current,
+      });
+      if (signInError) {
+        setError(humanizeError(signInError.message));
+        return;
+      }
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) {
         setError(humanizeError(updateError.message));
         return;
       }
       setSuccess('تم تحديث كلمة المرور بنجاح ✓ استخدمها في تسجيل الدخول القادم.');
+      setCurrent('');
       setPassword('');
       setConfirm('');
     } catch {
@@ -88,6 +106,20 @@ export default function ProfilePage() {
 
       <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
         <h2 className="text-sm font-bold text-slate-200">تغيير كلمة المرور</h2>
+        <div>
+          <label htmlFor="current-password" className="block text-xs font-medium text-slate-300">
+            كلمة المرور الحالية
+          </label>
+          <PasswordInput
+            id="current-password"
+            value={current}
+            onChange={(v) => setCurrent(v)}
+            placeholder="••••••••"
+            className="mt-2"
+            autoComplete="current-password"
+            required
+          />
+        </div>
         <div>
           <label htmlFor="new-password" className="block text-xs font-medium text-slate-300">
             كلمة المرور الجديدة

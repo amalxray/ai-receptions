@@ -247,8 +247,9 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
       const headers = await api.authHeaders();
       const res = await fetch(`/api/clinic/public-content?clinic_id=${encodeURIComponent(api.clinicId)}&type=${type}`, { headers });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? `Failed to load (${res.status})`);
+        const body = (await res.json().catch(() => null)) as { error?: string; detail?: string } | null;
+        const parts = [body?.error, body?.detail].filter((v): v is string => Boolean(v));
+        throw new Error(parts.join(' — ') || `Failed to load (${res.status})`);
       }
       const { data } = (await res.json()) as { data: ItemRow[] };
       setItems(data ?? []);
@@ -303,8 +304,11 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, ...buildPayload(fields, form) }),
       });
-      const json = (await res.json().catch(() => null)) as { data?: ItemRow; error?: string } | null;
-      if (!res.ok || !json?.data) throw new Error(json?.error ?? 'تعذر الإضافة');
+      const json = (await res.json().catch(() => null)) as { data?: ItemRow; error?: string; detail?: string } | null;
+      if (!res.ok || !json?.data) {
+        const parts = [json?.error, json?.detail].filter((v): v is string => Boolean(v));
+        throw new Error(parts.join(' — ') || 'تعذر الإضافة');
+      }
       setItems((prev) => [...prev, { ...json.data as ItemRow }]);
       setForm({});
       setAdding(false);
@@ -330,8 +334,11 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, ...buildPayload(fields, editForm) }),
       });
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-      if (!res.ok || !json?.ok) throw new Error(json?.error ?? 'تعذر التحديث');
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; detail?: string } | null;
+      if (!res.ok || !json?.ok) {
+        const parts = [json?.error, json?.detail].filter((v): v is string => Boolean(v));
+        throw new Error(parts.join(' — ') || 'تعذر التحديث');
+      }
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...buildPayload(fields, editForm) } : it)));
       setEditingId(null);
       setEditForm({});

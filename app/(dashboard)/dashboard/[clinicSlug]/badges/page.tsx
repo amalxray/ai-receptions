@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
@@ -34,11 +35,27 @@ const TYPES: { value: Badge['type']; label: string; icon: string }[] = [
 
 const typeMeta = (t: Badge['type']) => TYPES.find((x) => x.value === t) ?? TYPES[0];
 
+/** Error body contract shared with /api/clinic/badges (error + optional detail / 402 gate fields). */
+type ApiErrorBody = { error?: string; detail?: string; required_plan?: string; plan_name_ar?: string };
+
+/** Joins error+detail so a server failure is never an opaque "Internal error" (#34). */
+function apiErrorMessage(body: ApiErrorBody | null | undefined, fallback: string): string {
+  const parts = [body?.error, body?.detail].filter((v): v is string => Boolean(v));
+  return parts.join(' — ') || fallback;
+}
+
+/** The plan gate rejected the call → the page must render the upgrade panel, not the form (#34). */
+function isGateLocked(res: Response, body: ApiErrorBody | null | undefined): boolean {
+  return res.status === 402 || body?.error === 'FEATURE_LOCKED';
+}
+
 export default function BadgesPage() {
   const { clinicId, authHeaders, loading, error: clinicError } = useClinicContext();
   const [rows, setRows] = useState<Badge[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** 402 FEATURE_LOCKED — the clinic's plan does not include badges; upgrade panel replaces the form. */
+  const [locked, setLocked] = useState<{ requiredPlan: string; planNameAr: string } | null>(null);
 
   const [form, setForm] = useState({
     type: 'certification' as Badge['type'],
@@ -54,12 +71,18 @@ export default function BadgesPage() {
     const headers = await authHeaders();
     const res = await fetch(`/api/clinic/badges?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setErr(body?.error ?? 'تعذر تحميل الشارات');
+      const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+      if (isGateLocked(res, body)) {
+        setLocked({ requiredPlan: body?.required_plan ?? '', planNameAr: body?.plan_name_ar ?? '' });
+        setErr(null);
+      } else {
+        setErr(apiErrorMessage(body, 'تعذر تحميل الشارات'));
+      }
       setRows([]);
       return;
     }
     const body = await res.json();
+    setLocked(null);
     setRows((body?.data ?? []) as Badge[]);
   }, [clinicId, authHeaders]);
 
@@ -87,8 +110,12 @@ export default function BadgesPage() {
           verify_url: form.verify_url.trim() || null,
         }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? 'تعذر حفظ الشارة');
+      const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+      if (isGateLocked(res, body)) {
+        setLocked({ requiredPlan: body?.required_plan ?? '', planNameAr: body?.plan_name_ar ?? '' });
+        return;
+      }
+      if (!res.ok) throw new Error(apiErrorMessage(body, 'تعذر حفظ الشارة'));
       setForm({ type: form.type, title: '', issuer: '', year: '', icon_url: '', verify_url: '' });
       await load();
     } catch (e2) {
@@ -131,6 +158,32 @@ export default function BadgesPage() {
 
   if (loading) return <Skeleton className="h-60" />;
   if (clinicError) return <EmptyState title="تعذر التحميل" description={clinicError} />;
+
+  // Plan gate (#34): badges are tier-restricted — show the upgrade path instead
+  // of a form that can only ever fail with a confusing error.
+  if (locked) {
+    return (
+      <DashboardSection
+        title="شارات الإنجازات"
+        subtitle="الشهادات والجوائز والعضويات التي تبني الثقة. تظهر في صفحتك العامة مع إمكانية رابط تحقق رسمي."
+      >
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-8 text-center">
+          <p className="text-3xl">🔒</p>
+          <h2 className="mt-2 text-lg font-bold text-amber-200">
+            ميزة «شارات الإنجازات» غير مضمّنة في خطتك الحالية
+          </h2>
+          <p className="mt-2 text-sm text-slate-300">
+            {locked.planNameAr
+              ? `الميزة متاحة في خطة «${locked.planNameAr}». ترقِ الخطت لتفعيل الشارات على صفحتك العامة.`
+              : 'ترقِ الخطت لتفعيل الشارات على صفحتك العامة.'}
+          </p>
+          <Link href="/dashboard/upgrade/badges" className="btn-primary mt-5 inline-block">
+            ⭐ عرض خيارات الترقية
+          </Link>
+        </div>
+      </DashboardSection>
+    );
+  }
 
   return (
     <DashboardSection

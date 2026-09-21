@@ -49,7 +49,9 @@ export async function GET(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('badges_get_error', { error: message }, 'error');
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    // #34 — never a blind "Internal error": `detail` lets the dashboard show
+    // the real cause (same convention as the public-content API).
+    return NextResponse.json({ error: 'Internal error', detail: message }, { status: 500 });
   }
 }
 
@@ -107,6 +109,8 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('badges_create_error', { error: message }, 'error');
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    // #34 — never a blind "Internal error": `detail` lets the dashboard show
+    // the real cause (same convention as the public-content API).
+    return NextResponse.json({ error: 'Internal error', detail: message }, { status: 500 });
   }
 }

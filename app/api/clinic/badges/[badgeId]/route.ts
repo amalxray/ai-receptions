@@ -50,8 +50,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
       resourceId: clinicId,
     });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: 'Internal error', detail: message }, { status: 500 });
   }
 }
 
@@ -80,7 +81,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
       resourceId: clinicId,
     });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: 'Internal error', detail: message }, { status: 500 });
   }
 }
