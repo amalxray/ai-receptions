@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -9,6 +9,21 @@ import { format12h } from '@/lib/time/format';
 type Service = { id: string; name: string; description: string | null; duration_minutes: number; price: number | null };
 type Provider = { id: string; name: string; title: string | null };
 type BookingStep = 'service' | 'provider' | 'date' | 'time' | 'patient' | 'confirm' | 'success';
+
+/**
+ * #39 — keep the booking selection in the URL (?step&service&provider&date&time)
+ * WITHOUT navigation (replaceState): a mobile reload / accidental back gesture
+ * lands the patient exactly where they were instead of restarting the flow.
+ */
+function syncBookingUrl(patch: Record<string, string | null>) {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null || value === '') url.searchParams.delete(key);
+    else url.searchParams.set(key, value);
+  }
+  window.history.replaceState(null, '', url.toString());
+}
 
 type ClinicResolution =
   | { status: 'loading'; clinic: null }
@@ -190,28 +205,92 @@ function BookingForm() {
 
   const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
+  // #39 — land every step at its heading. When a step's content swaps, the page
+  // height collapses and mobile Safari clamps the scroll mid-page, which reads
+  // as "thrown back to a previous step" even though the state is correct.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
+
+  // #39 — restore an in-flight booking from the URL (mobile Safari reloads tabs
+  // aggressively; the patient must never re-pick service/provider/date).
+  // Staged: service first (its effect loads providers), then provider + date,
+  // then the step clamped to ≤ 'time' ('patient'/'confirm' fall back to 'time' —
+  // the slot list is loaded there and the final tap is one touch away).
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (actionParam || appointmentIdParam || tokenParam) {
+      restoredRef.current = true; // deep-link lifecycle flows manage their own state
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const restoreStep = params.get('step') as BookingStep | null;
+    const serviceId = params.get('service');
+    const providerId = params.get('provider');
+    const restoreDate = params.get('date');
+    if (!restoreStep && !serviceId && !providerId && !restoreDate) {
+      restoredRef.current = true; // fresh visit — nothing to restore
+      return;
+    }
+    if (!services.length) return; // stage 1: wait for the services list
+    const service = serviceId ? services.find((s) => s.id === serviceId) ?? null : null;
+    if (serviceId && !service) {
+      restoredRef.current = true; // stale URL — start fresh
+      return;
+    }
+    if (service && !selectedService) setSelectedService(service);
+    if (providerId) {
+      if (!providers.length) return; // stage 2: providers arrive after the service
+      const provider = providers.find((p) => p.id === providerId) ?? null;
+      if (!provider) {
+        restoredRef.current = true;
+        return;
+      }
+      if (!selectedProvider) setSelectedProvider(provider);
+    }
+    if (restoreDate && !selectedDate) setSelectedDate(restoreDate);
+    if (restoreStep && restoreStep !== 'service') {
+      setStep(restoreStep === 'provider' || restoreStep === 'date' || restoreStep === 'time' ? restoreStep : 'time');
+    }
+    restoredRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, providers, selectedService, selectedProvider, selectedDate, actionParam, appointmentIdParam, tokenParam]);
+
   const selectService = (service: Service) => {
     setSelectedService(service);
     setSelectedProvider(null);
     setSelectedSlot('');
     setStep('provider');
+    syncBookingUrl({ service: service.id, provider: null, date: null, time: null, step: 'provider' });
   };
 
   const selectProvider = (provider: Provider) => {
     setSelectedProvider(provider);
     setSelectedSlot('');
     setStep('date');
+    syncBookingUrl({ provider: provider.id, date: null, time: null, step: 'date' });
   };
 
   const selectDate = (date: string) => {
+    // #39 — ROOT CAUSE: iOS native date pickers fire a change event with an
+    // EMPTY value (the wheel passes the blank entry / clear affordance).
+    // Committing that empty value wiped the date and force-jumped to the time
+    // step whose loader then showed "لا توجد أوقات متاحة في هذا التاريخ" — the
+    // user reads that as being thrown back to the dates page. Empty commits
+    // are ignored.
+    if (!date) return;
     setSelectedDate(date);
     setSelectedSlot('');
     setStep('time');
+    syncBookingUrl({ date, time: null, step: 'time' });
   };
 
   const selectSlot = (slot: string) => {
     setSelectedSlot(slot);
     setStep('patient');
+    syncBookingUrl({ time: formatTimeApi(slot), step: 'patient' });
   };
 
   // Shared 12-hour Arabic formatter (single source of truth — lib/time/format).
@@ -266,6 +345,7 @@ function BookingForm() {
             .then((b) => setSlots(b.data?.slots || []));
           setStep('time');
           setSelectedSlot('');
+          syncBookingUrl({ time: null, step: 'time' });
           return;
         }
         throw new Error(body.error || 'فشل الحجز');
@@ -350,6 +430,7 @@ function BookingForm() {
     setError(null);
     setLifecycleMessage(null);
     setLifecycleError(null);
+    syncBookingUrl({ service: null, provider: null, date: null, time: null, step: null });
   };
 
   return (
@@ -489,7 +570,7 @@ function BookingForm() {
                 </div>
               )}
 
-              <button onClick={resetBooking} className="mt-8 inline-flex items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400">
+              <button type="button" onClick={resetBooking} className="mt-8 inline-flex min-h-[44px] items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400">
                 حجز موعد آخر
               </button>
 
@@ -538,8 +619,9 @@ function BookingForm() {
                       {services.map((service) => (
                         <button
                           key={service.id}
+                          type="button"
                           onClick={() => selectService(service)}
-                          className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-left transition hover:border-cyan-500/70 hover:bg-slate-900"
+                          className="min-h-[44px] touch-manipulation select-none rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-left transition hover:border-cyan-500/70 hover:bg-slate-900 active:border-cyan-400/70"
                         >
                           <p className="font-semibold text-white">{service.name}</p>
                           {service.description && <p className="mt-1 text-sm text-slate-400">{service.description}</p>}
@@ -566,8 +648,9 @@ function BookingForm() {
                       {providers.map((provider) => (
                         <button
                           key={provider.id}
+                          type="button"
                           onClick={() => selectProvider(provider)}
-                          className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-left transition hover:border-cyan-500/70 hover:bg-slate-900"
+                          className="min-h-[44px] touch-manipulation select-none rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-left transition hover:border-cyan-500/70 hover:bg-slate-900 active:border-cyan-400/70"
                         >
                           <p className="font-semibold text-white">{provider.name}</p>
                           {provider.title && <p className="mt-1 text-sm text-slate-400">{provider.title}</p>}
@@ -589,7 +672,7 @@ function BookingForm() {
                     min={todayISO}
                     value={selectedDate}
                     onChange={(e) => selectDate(e.target.value)}
-                    className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
+                    className="mt-2 min-h-[48px] w-full touch-manipulation rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
                   />
                 </section>
               )}
@@ -599,17 +682,27 @@ function BookingForm() {
                 <section aria-labelledby="time-heading">
                   <h2 id="time-heading" className="text-xl font-semibold text-white">اختر الوقت المتاح</h2>
                   <p className="mt-1 text-sm text-slate-400">التاريخ المحدد: {selectedDate}</p>
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep('date')}
+                      className="min-h-[44px] touch-manipulation rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:border-cyan-500/70 hover:text-cyan-200"
+                    >
+                      ↩ تغيير التاريخ
+                    </button>
+                  </div>
                   {loading === 'slots' ? (
                     <Loading text="جاري تحميل الأوقات المتاحة..." />
                   ) : slots.length === 0 ? (
                     <Empty text="لا توجد أوقات متاحة في هذا التاريخ. يرجى اختيار تاريخ آخر." />
                   ) : (
-                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4">
                       {slots.map((slot) => (
                         <button
                           key={slot}
+                          type="button"
                           onClick={() => selectSlot(slot)}
-                          className="rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-center transition hover:border-cyan-500/70 hover:bg-slate-900"
+                          className="min-h-[48px] touch-manipulation select-none rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-center transition hover:border-cyan-500/70 hover:bg-slate-900 active:border-cyan-400/70 active:bg-cyan-500/10"
                         >
                           {formatTime(slot)}
                         </button>
@@ -632,6 +725,7 @@ function BookingForm() {
                         value={patientInfo.name}
                         onChange={(e) => setPatientInfo((p) => ({ ...p, name: e.target.value }))}
                         placeholder="مثال: محمد أحمد"
+                        autoComplete="name"
                         className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
                         required
                       />
@@ -644,7 +738,10 @@ function BookingForm() {
                         value={patientInfo.phone}
                         onChange={(e) => setPatientInfo((p) => ({ ...p, phone: e.target.value }))}
                         placeholder="مثال: 0501234567"
-                        className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                        autoComplete="tel"
+                        inputMode="tel"
+                        dir="ltr"
+                        className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-right text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
                         required
                       />
                     </div>
@@ -656,7 +753,10 @@ function BookingForm() {
                         value={patientInfo.email}
                         onChange={(e) => setPatientInfo((p) => ({ ...p, email: e.target.value }))}
                         placeholder="example@mail.com"
-                        className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                        autoComplete="email"
+                        inputMode="email"
+                        dir="ltr"
+                        className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-right text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
                       />
                     </div>
                   </div>

@@ -55,6 +55,7 @@ export default function LeadsPage() {
         </div>
 
         <div className="mt-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950/80">
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse text-right text-sm">
             <thead className="bg-slate-900/80 text-slate-400">
               <tr>
@@ -91,6 +92,7 @@ export default function LeadsPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 

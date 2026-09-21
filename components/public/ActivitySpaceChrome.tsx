@@ -125,14 +125,14 @@ export function InitialsBrandMark({
 function BrandLogo({ space, size = 'lg' }: { space: ActivityPublicSpace; size?: 'lg' | 'sm' }) {
   const cls =
     size === 'lg'
-      ? 'h-24 w-24 rounded-3xl border-2 border-teal-400/50 object-cover shadow-lg shadow-teal-500/10'
+      ? 'h-16 w-16 rounded-3xl border-2 border-teal-400/50 object-cover shadow-lg shadow-teal-500/10 aspect-square sm:h-24 sm:w-24'
       : 'h-12 w-12 rounded-xl border border-teal-400/40 object-cover';
   if (space.logo) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={space.logo} alt={`شعار ${space.name}`} className={cls} />;
   }
   return (
-    <InitialsBrandMark name={space.name} className={size === 'lg' ? 'h-24 w-24 text-3xl' : 'h-12 w-12 text-lg'} />
+    <InitialsBrandMark name={space.name} className={size === 'lg' ? 'h-16 w-16 text-2xl sm:h-24 sm:w-24 sm:text-3xl' : 'h-12 w-12 text-lg'} />
   );
 }
 

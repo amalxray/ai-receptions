@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Tajawal, IBM_Plex_Sans_Arabic, IBM_Plex_Mono } from 'next/font/google';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import './globals.css';
@@ -34,6 +34,15 @@ export const metadata: Metadata = {
       'msvalidate.01': 'AB6893BB9C46704C823CBA7063CE0B53',
     },
   },
+};
+
+// #40 — mobile viewport: explicit device-width, no layout-breaking zoom lock
+// (maximumScale keeps pinch-zoom accessible), safe-area aware for notched phones.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: 'cover',
 };
 
 /** AEO/GEO — platform-level Organization entity (answer engines + AI crawlers). */

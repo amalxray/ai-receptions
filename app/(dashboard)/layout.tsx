@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import DashboardAuthGuard from '@/components/auth/DashboardAuthGuard';
 import DashboardHeader from '@/components/auth/DashboardHeader';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
+import DashboardMobileNav from '@/components/dashboard/DashboardMobileNav';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -26,8 +27,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
           <DashboardHeader />
 
+          {/* #40 — mobile: the 27-module sidebar collapses into a hamburger drawer;
+              desktop keeps the static sidebar column below. */}
+          <DashboardMobileNav />
+
           <div className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="h-fit rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6 shadow-lg shadow-slate-950/20">
+            <aside className="hidden h-fit rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6 shadow-lg shadow-slate-950/20 lg:block">
               <DashboardSidebar />
             </aside>
             <section className="space-y-6">{children}</section>
