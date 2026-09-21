@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { format12h } from '@/lib/time/format';
+import { DatePicker } from '@/components/booking/DatePicker';
+import { formatArabicDate, monthKey, startOfDay, toISODate } from '@/lib/booking/calendar';
 
 type Service = { id: string; name: string; description: string | null; duration_minutes: number; price: number | null };
 type Provider = { id: string; name: string; title: string | null };
@@ -55,6 +57,15 @@ function BookingForm() {
   const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [lifecycleLoading, setLifecycleLoading] = useState<'confirm' | 'cancel' | null>(null);
+  // Step 3 calendar: the visible month (controlled) + the days the provider
+  // cannot work on, fetched per month from /api/booking/calendar.
+  const [calendarMonth, setCalendarMonth] = useState('');
+  const [closedDays, setClosedDays] = useState<string[]>([]);
+  const [workingWeekdays, setWorkingWeekdays] = useState<number[] | null>(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  // Last day that came back with zero free slots — surfaced on the calendar so
+  // the patient immediately knows why they landed back on the date step.
+  const [emptyDate, setEmptyDate] = useState('');
 
   // Resolve the public clinic first. Never falls back to a fake/default clinic.
   useEffect(() => {
@@ -192,7 +203,11 @@ function BookingForm() {
         return res.json();
       })
       .then((body) => {
-        if (!cancelled) setSlots(body.data.slots || []);
+        if (cancelled) return;
+        const nextSlots: string[] = body.data.slots || [];
+        setSlots(nextSlots);
+        // Remember the dead end so the calendar can explain it on the way back.
+        setEmptyDate(nextSlots.length === 0 ? selectedDate : '');
       })
       .catch(() => {
         if (!cancelled) setError('تعذر تحميل المواعيد المتاحة.');
@@ -203,7 +218,39 @@ function BookingForm() {
     return () => { cancelled = true; };
   }, [selectedProvider, selectedDate, selectedService, clinicId]);
 
-  const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => startOfDay(), []);
+  const todayISO = toISODate(today);
+
+  // Visible calendar month (controlled): defaults to the month of the day already
+  // chosen (URL restore) and follows the patient's month navigation.
+  const visibleMonth = calendarMonth || monthKey(selectedDate || todayISO);
+
+  // #39 — the calendar disables the days the provider cannot work on (clinic
+  // holidays, provider vacations, non-working weekdays) so a tap can never
+  // dead-end in "لا توجد أوقات متاحة في هذا التاريخ".
+  // FAIL-OPEN: a failed probe masks nothing — /api/booking/availability stays the
+  // single source of truth for what is actually bookable.
+  useEffect(() => {
+    if (!clinicId || !selectedProvider) return;
+    let cancelled = false;
+    setCalendarLoading(true);
+    fetch(
+      `/api/booking/calendar?clinic_id=${encodeURIComponent(clinicId)}&provider_id=${encodeURIComponent(selectedProvider.id)}&month=${encodeURIComponent(visibleMonth)}`
+    )
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (cancelled || !body || !body.data) return;
+        setClosedDays(Array.isArray(body.data.closed_days) ? body.data.closed_days : []);
+        setWorkingWeekdays(body.data.schedule_known ? body.data.working_weekdays ?? [] : null);
+      })
+      .catch(() => {
+        // Fail-open — nothing is masked; availability still validates the booking.
+      })
+      .finally(() => {
+        if (!cancelled) setCalendarLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [clinicId, selectedProvider, visibleMonth]);
 
   // #39 — land every step at its heading. When a step's content swaps, the page
   // height collapses and mobile Safari clamps the scroll mid-page, which reads
@@ -269,6 +316,10 @@ function BookingForm() {
   const selectProvider = (provider: Provider) => {
     setSelectedProvider(provider);
     setSelectedSlot('');
+    // Fresh provider → its closures/weekly pattern are unknown again (fail-open).
+    setClosedDays([]);
+    setWorkingWeekdays(null);
+    setCalendarMonth('');
     setStep('date');
     syncBookingUrl({ provider: provider.id, date: null, time: null, step: 'date' });
   };
@@ -427,6 +478,10 @@ function BookingForm() {
     setSelectedSlot('');
     setPatientInfo({ name: '', phone: '', email: '' });
     setBookingResult(null);
+    setCalendarMonth('');
+    setClosedDays([]);
+    setWorkingWeekdays(null);
+    setEmptyDate('');
     setError(null);
     setLifecycleMessage(null);
     setLifecycleError(null);
@@ -444,7 +499,7 @@ function BookingForm() {
           <p className="mt-2 text-slate-400">اختر الخدمة والطبيب والوقت المناسب لك</p>
         </header>
 
-        <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-6 shadow-xl shadow-slate-950/30 sm:p-8">
+        <div className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/30 sm:p-8">
           {deepLinkState.status === 'processing' && (
             <div className="flex items-center justify-center gap-3 py-12 text-slate-400" role="status">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
@@ -498,7 +553,7 @@ function BookingForm() {
               <p className="mt-2 text-slate-400">رقم الحجز: <span className="font-semibold text-slate-200">{bookingResult.appointment_id}</span></p>
               <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-left">
                 <Row label="الخدمة" value={bookingResult.service} />
-                <Row label="التاريخ" value={bookingResult.date} />
+                <Row label="التاريخ" value={formatArabicDate(bookingResult.date) || bookingResult.date} />
                 <Row label="الوقت" value={bookingResult.time} />
                 <Row label="الحالة" value={bookingResult.status === 'tentative' ? 'قيد الانتظار' : bookingResult.status === 'confirmed' ? 'مؤكد' : bookingResult.status === 'cancelled' ? 'ملغي' : bookingResult.status} />
               </div>
@@ -661,18 +716,21 @@ function BookingForm() {
                 </section>
               )}
 
-              {/* Step 3: Date */}
+              {/* Step 3: Date — custom RTL calendar (#39). The native
+                  `<input type="date">` showed no placeholder and its picker never
+                  opened on iOS Chrome/Safari, leaving the patient stuck here. */}
               {step === 'date' && (
                 <section aria-labelledby="date-heading">
                   <h2 id="date-heading" className="text-xl font-semibold text-white">اختر التاريخ</h2>
-                  <label htmlFor="booking-date" className="mt-4 block text-sm font-medium text-slate-300">التاريخ</label>
-                  <input
-                    id="booking-date"
-                    type="date"
-                    min={todayISO}
+                  <DatePicker
                     value={selectedDate}
-                    onChange={(e) => selectDate(e.target.value)}
-                    className="mt-2 min-h-[48px] w-full touch-manipulation rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
+                    onChange={selectDate}
+                    closedDays={closedDays}
+                    workingWeekdays={workingWeekdays}
+                    month={visibleMonth}
+                    onMonthChange={setCalendarMonth}
+                    loading={calendarLoading}
+                    hint={!calendarLoading && emptyDate ? `لا توجد أوقات متاحة في ${formatArabicDate(emptyDate) || emptyDate} — جرّب يومًا آخر.` : null}
                   />
                 </section>
               )}
@@ -681,7 +739,7 @@ function BookingForm() {
               {step === 'time' && (
                 <section aria-labelledby="time-heading">
                   <h2 id="time-heading" className="text-xl font-semibold text-white">اختر الوقت المتاح</h2>
-                  <p className="mt-1 text-sm text-slate-400">التاريخ المحدد: {selectedDate}</p>
+                  <p className="mt-1 text-sm text-slate-400">التاريخ المحدد: {formatArabicDate(selectedDate) || selectedDate}</p>
                   <div className="mt-2">
                     <button
                       type="button"
@@ -776,7 +834,7 @@ function BookingForm() {
                   <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
                     <Row label="الخدمة" value={selectedService?.name || ''} />
                     <Row label="الطبيب" value={selectedProvider?.name || ''} />
-                    <Row label="التاريخ" value={selectedDate} />
+                    <Row label="التاريخ" value={formatArabicDate(selectedDate) || selectedDate} />
                     <Row label="الوقت" value={formatTime(selectedSlot)} />
                     <Row label="المريض" value={patientInfo.name} />
                     <Row label="الهاتف" value={patientInfo.phone} />
