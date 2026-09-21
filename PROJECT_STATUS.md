@@ -296,3 +296,87 @@ The founding-slot count race condition (count-then-insert, non-atomic) is a **kn
 limitation at the current stage. A complex fix (atomic counter or advisory lock) is intentionally
 deferred and not a priority for the current single-instance architecture. No further investigation
 or remediation is planned for this issue at this time.
+
+## 📌 قائمة المهام والأخطاء — آخر تحديث: 2026-09-21
+
+> مصدر الحقيقة للمهام القادمة. مُوثّقة من جلسات الاختبار الفعلية.
+
+### 🔴 أخطاء حرجة (مُصلَحة)
+1. الحجز التفاعلي لا يكمل (AWAITING_BOOKING_CONFIRMATION)
+2. بطاقة الوقت لا ترسل value
+3. الحجز لا يظهر في لوحة التحكم
+4. needsRealSlot يشترط provider_id
+5. AI يخلط أيام الأسبوع
+6. AI يقترح الجمعة (مغلقة)
+7. AI يطلب الهاتف إجبارياً
+8. اسم اليوم مكرر (السبت (السبت))
+9. تنسيق 24 ساعة بدل 12
+10. is_active خطأ → الصحيح enabled
+11. توقيت UTC بدل فلسطين
+12. duration_minutes = 5 في DB
+13. الأوقات كل 5 دقائق
+14. الأوقات تنتهي 2 م
+15. رابط /dashboard/conversations/[id] → 404
+
+### 🟡 أخطاء مهمة (مُصلَحة)
+16. فشل حفظ /ask settings
+17. البريد الإلكتروني إجباري في DB (فهرس جزئي + '' → NULL)
+18. case_ref غير موجود (SELECT لكل جدول على حدة)
+19. "لا توجد ارتباط" رغم وجوده (فلترة relationship?.status)
+20. زر "إنشاء ملف" لا يظهر (patient_id_center منفصل)
+21. قائمة نوع التصوير فارغة (partner-services API + شفاء الكتالوج)
+22. 413 في رفع الملفات
+23. صفر خدمات amal-clinic
+
+### 🔵 أخطاء UI/UX (مُصلَحة)
+24. شريط الخطوات (الخدمة › المقدم...)
+25. زر "تحدث مع الاستقبال الذكي"
+26. "اطلب خدمة" → "احجز موعد"
+27. 7 بطاقات اشتراك → 3 + toggle
+28. 14 إشارة للدومين القديم (canonical موحّد على dentairec.com — الحاكم)
+
+### ⚠️ أخطاء معلّقة (من اختبار اليوم 2026-09-21)
+| # | الخطأ | الأولوية | الوقت المتوقع |
+|---|-------|----------|----------------|
+| 29 | تغيير كلمة المرور — لا يطلب الحالية | 🔴 حرج | 30 د |
+| 34 | إضافة إنجاز → Internal error | 🔴 حرج | 30 د |
+| 35 | لا نظام إشعارات واردة (Bell icon) | 🟡 مهم | 2 س |
+| 36 | قوالب الإشعارات لا تُحفظ | 🟡 مهم | 1 س |
+| 37 | WhatsApp/SMS غير مُفعّلة (Cloud API) | 🟡 مهم | 4 س |
+| 38 | إضافة عضو فريق تتطلب حساب مسبق | 🟡 مهم | 3 س |
+
+### 🟢 ميزات مؤجلة
+| # | الميزة | الوقت |
+|---|--------|--------|
+| 8 | PWA (تطبيق على شاشة الجوال) | يوم |
+| 9 | Onboarding Wizard | 4 س |
+| 13 | CSV Import/Export | 2 س |
+| 14 | Print Views | 2 س |
+| 15 | نظام التقييم الموثّق | 6 س |
+| 16 | نظام الفيدباك | 4 س |
+| 17 | باقي المقالات SEO | مستمر |
+| 18 | أدوات GEO التلقائية | $30-200/شهر |
+
+### 🔧 تنظيفات صغيرة
+- حذف VERCEL_API_TOKEN المكرر في .env.local (الأسطر 105 + 112)
+- إزالة ai-receptions.vercel.app من Vercel Domains
+- حذف التوكنات القديمة بعد الانتهاء (توكن DDL منتهي أصلاً — Supabase Management API يعيد 401)
+- حذف NEXT_PUBLIC_APP_URL القديم من Vercel env (الكود محصّن ضده الآن — الإنتاج حاكم عبر PRODUCTION_BASE_URL)
+
+### 🚀 مهام قريبة (بعد المقالات)
+1. **إصلاح الأخطاء 29 + 34** (فشل الحفظ)
+2. **نظام إشعارات واردة** (Bell icon + Email)
+3. **Facebook Integration** (Messenger + Auto-Post)
+4. **اختبار شامل** للموقع
+5. **Stripe Live** (بعد الاختبار)
+6. **PWA** (يوم واحد)
+
+### ✅ ما تم إنجازه (للتوثيق)
+- نظام الاشتراكات الكامل (4 طبقات + Stripe)
+- Email Routing (5 إيميلات + Catch-all) عبر Cloudflare API
+- الدومين الرسمي dentairec.com (+ DNS عبر Cloudflare، الشهادات تلقائية)
+- Subdomains للعيادات (hala-clinic.dentairec.com يعمل + wildcard DNS)
+- AEO + GEO أساسات (robots AI crawlers، llms.txt، Schema، sitemap، IndexNow — Bing مُوثّق)
+- توصيل الأتمتة: تسجيل عيادة → subdomain + بريد تلقائي (commit `574b4f2`)
+- **15 مقالاً منشوراً** (5 دفعة أولى + 10 GEO/AEO — كلها حية بـ HTTP 200 + FAQPage + IndexNow 200)
+- إصلاح is_active → enabled، التوقيت الفلسطيني، الفهرس الجزئي للبريد
