@@ -60,6 +60,18 @@ export const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set<string>([
   'preview',
   'dev',
   'test',
+  // Platform mailbox hosts: info/support/admin/noreply/billing@<root> are
+  // platform-owned addresses (see lib/cloudflare/email.ts). Their labels must
+  // never become tenant sites so the web and email namespaces stay conflict-free.
+  'info',
+  'support',
+  'admin',
+  'noreply',
+  'billing',
+  'postmaster',
+  'abuse',
+  'webmaster',
+  'hostmaster',
 ]);
 
 /**
@@ -121,9 +133,23 @@ export function tenantPathRewrite(slug: string, pathname: string): string | null
   return pathname === '/' ? `/${slug}` : null;
 }
 
-export type SubdomainResult =
-  | { success: true; domain: string; verified: boolean; alreadyExisted: boolean }
-  | { success: false; error: string; code?: string };
+/**
+ * Flat result shape (optional fields) — provisioning is best-effort and
+ * callers read only what they need (`success` + `domain`/`error`). A
+ * discriminated union forced narrowing gymnastics at every call site for no
+ * practical gain; optional fields keep both success and failure payloads
+ * expressible in one object.
+ */
+export type SubdomainResult = {
+  success: boolean;
+  /** Fully-qualified host, e.g. `hala-clinic.dentairec.com` (on success). */
+  domain?: string;
+  verified?: boolean;
+  alreadyExisted?: boolean;
+  /** Failure reason code/name, e.g. `INVALID_SLUG`, Vercel message. */
+  error?: string;
+  code?: string;
+};
 
 /** Vercel error shape (v9/v10 domain endpoints). */
 interface VercelErrorBody {

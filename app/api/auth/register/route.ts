@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { addClinicSubdomain } from '@/lib/vercel/domains';
+import { persistClinicProvisioning } from '@/lib/services/clinicProvisioning';
 
 const registerSchema = z.object({
   email: z.string().email('A valid email is required'),
@@ -162,6 +164,40 @@ export async function POST(req: Request) {
       if (memberError) throw new Error(memberError.message);
 
       logEvent('clinic_registered', { clinic_id: clinic.id, user_id: userId });
+
+      // Best-effort tenant provisioning: register `{slug}.dentairec.com` on the
+      // Vercel project and persist the state in settings.tenant. Must NEVER
+      // fail registration — every failure path is swallowed and logged.
+      try {
+        const sub = await addClinicSubdomain(clinic.slug);
+        if (sub.success) {
+          await persistClinicProvisioning(clinic.id, {
+            subdomain: sub.domain,
+            subdomain_status: 'active',
+          });
+        } else {
+          await persistClinicProvisioning(clinic.id, {
+            subdomain_status: 'failed',
+            subdomain_error: sub.error,
+          });
+        }
+        logEvent(
+          'clinic_subdomain_provisioned',
+          {
+            clinic_id: clinic.id,
+            subdomain: sub.success ? sub.domain : null,
+            ok: sub.success,
+            already_existed: sub.success ? sub.alreadyExisted : null,
+          },
+          sub.success ? 'info' : 'warn'
+        );
+      } catch (provisionErr) {
+        logEvent('clinic_subdomain_provisioning_error', {
+          clinic_id: clinic.id,
+          error: provisionErr instanceof Error ? provisionErr.message : String(provisionErr),
+        }, 'error');
+      }
+
       return NextResponse.json({ data: clinic }, { status: 201 });
     } catch (err) {
       // Rollback: remove the created auth user so no orphaned account remains
