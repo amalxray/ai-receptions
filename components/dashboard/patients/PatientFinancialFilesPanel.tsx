@@ -52,6 +52,34 @@ type MedicalFileRow = {
   created_at?: string | null;
 };
 
+/** One billable row of the clinic catalog. */
+type ServiceOption = {
+  id: string;
+  name: string;
+  price?: number | null;
+  price_min?: number | null;
+  active?: boolean;
+};
+
+/** A draft invoice line (all numeric inputs stay strings while editing). */
+type InvoiceLineDraft = {
+  key: string;
+  service_id: string;
+  description: string;
+  quantity: string;
+  unit_price: string;
+};
+
+/** Line item as returned by GET /api/clinic/accounting/invoices/[id]. */
+type InvoiceItemRow = {
+  id: string;
+  service_id?: string | null;
+  description?: string | null;
+  quantity: number | string;
+  unit_price: number | string;
+  line_total: number | string;
+};
+
 type Props = {
   patientId: string;
   patientName?: string | null;
@@ -65,12 +93,19 @@ const METHOD_AR: Record<string, string> = {
   other: 'أخرى',
 };
 
+/** Minimal HTML escaping for values interpolated into the print document. */
+const escapeHtml = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
 /** Strict UUID v4-shape guard — invoice ids must be UUIDs before hitting the RPC. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function PatientFinancialFilesPanel({ patientId, patientName }: Props) {
   const { clinicId, authHeaders, clinicName } = useClinicContext();
-
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [balances, setBalances] = useState<BalanceRow[]>([]);
@@ -81,9 +116,14 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
-  const [invDesc, setInvDesc] = useState('');
-  const [invAmount, setInvAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Line-item invoicing: the patient must see WHAT they paid for, so an invoice
+  // is built from catalog services (service_id + quantity + unit_price) rather
+  // than one free-text line.
+  const [services, setServices] = useState<ServiceOption[]>([]);
+  const [invLines, setInvLines] = useState<InvoiceLineDraft[]>([
+    { key: 'l1', service_id: '', description: '', quantity: '1', unit_price: '' },
+  ]);
 
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [payInvoiceId, setPayInvoiceId] = useState('');
@@ -103,17 +143,58 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const [uploadBusy, setUploadBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // ── Invoice line helpers ─────────────────────────────────────────────────
+  const serviceName = (serviceId: string): string =>
+    services.find((s) => s.id === serviceId)?.name ?? '';
+
+  const addLine = () => {
+    setInvLines((prev) => [
+      ...prev,
+      { key: `l${Date.now()}`, service_id: '', description: '', quantity: '1', unit_price: '' },
+    ]);
+  };
+
+  const removeLine = (key: string) => {
+    setInvLines((prev) => (prev.length === 1 ? prev : prev.filter((line) => line.key !== key)));
+  };
+
+  const updateLine = (key: string, patch: Partial<InvoiceLineDraft>) => {
+    setInvLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...patch } : line)));
+  };
+
+  /** Picking a catalog service prefills its price (editable, e.g. discounts). */
+  const pickService = (key: string, serviceId: string) => {
+    const service = services.find((s) => s.id === serviceId);
+    const suggested = service?.price ?? service?.price_min ?? null;
+    updateLine(key, {
+      service_id: serviceId,
+      description: service?.name ?? '',
+      unit_price: suggested != null && Number(suggested) > 0 ? String(suggested) : '',
+    });
+  };
+
+  const draftTotal = invLines.reduce((sum, line) => {
+    const quantity = Number(line.quantity);
+    const price = Number(line.unit_price);
+    if (!Number.isFinite(quantity) || !Number.isFinite(price) || quantity <= 0 || price <= 0) return sum;
+    return sum + quantity * price;
+  }, 0);
+
+
   const loadAll = useCallback(async () => {
     if (!clinicId) return;
     setLoading(true);
     setError(null);
     try {
       const headers = await authHeaders();
-      const [invRes, payRes, balRes, fileRes] = await Promise.all([
+      const [invRes, payRes, balRes, fileRes, svcRes] = await Promise.all([
         fetch(`/api/clinic/accounting/invoices?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/accounting/payments?clinic_id=${clinicId}`, { headers }),
         fetch(`/api/clinic/accounting/balances?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/medical-files/list?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
+        // Catalog for the invoice line items. A failure here must not break the
+        // panel: free-text lines stay available as a fallback.
+        fetch(`/api/clinic/services?clinic_id=${clinicId}`, { headers }),
       ]);
       const inv = await invRes.json();
       const pay = await payRes.json();
@@ -123,6 +204,12 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       if (!payRes.ok) throw new Error(pay.error || 'فشل تحميل المدفوعات');
       if (!balRes.ok) throw new Error(bal.error || 'فشل تحميل الرصيد');
       if (!fileRes.ok) throw new Error(fl.error || 'فشل تحميل الملفات');
+      if (svcRes.ok) {
+        const svc = await svcRes.json();
+        setServices(
+          ((svc.data ?? []) as ServiceOption[]).filter((s) => s.active !== false)
+        );
+      }
 
       const invoicesList: InvoiceRow[] = (inv.data ?? []).map((r: Record<string, unknown>) => ({
         ...r,
@@ -167,9 +254,24 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const issueInvoice = async () => {
     if (!clinicId) return;
-    const amount = Number(invAmount);
-    if (!invDesc.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setActionError('أدخل وصفاً ومبلغاً صحيحاً');
+    // Only complete lines are billable: a catalog pick OR a free-text label,
+    // plus a positive amount. `service_id` links the line to the catalog.
+    const items = invLines
+      .map((line) => ({
+        service_id: line.service_id || null,
+        description: line.description.trim() || serviceName(line.service_id),
+        quantity: Number(line.quantity),
+        unit_price: Number(line.unit_price),
+      }))
+      .filter(
+        (item) =>
+          Boolean(item.description) &&
+          Number.isFinite(item.quantity) && item.quantity > 0 &&
+          Number.isFinite(item.unit_price) && item.unit_price > 0
+      );
+
+    if (items.length === 0) {
+      setActionError('أضف بنداً واحداً على الأقل: اختر خدمة (أو اكتب وصفاً) وأدخل الكمية والسعر');
       return;
     }
     setSubmitting(true);
@@ -183,16 +285,15 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         body: JSON.stringify({
           clinic_id: clinicId,
           patient_id: patientId,
-          items: [{ description: invDesc.trim(), quantity: 1, unit_price: amount }],
+          items,
           notes: reissueFrom ? `إعادة إصدار من: ${reissueFrom}` : null,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل إصدار الفاتورة');
-      setActionSuccess(`تم إصدار الفاتورة ${json.data?.invoiceNumber ?? ''}`);
+      setActionSuccess(`تم إصدار الفاتورة ${json.data?.invoiceNumber ?? ''} بـ ${items.length} بند`);
       setShowInvoiceForm(false);
-      setInvDesc('');
-      setInvAmount('');
+      setInvLines([{ key: 'l1', service_id: '', description: '', quantity: '1', unit_price: '' }]);
       setReissueFrom(null);
       await loadAll();
     } catch (err) {
@@ -246,12 +347,20 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       const headers = await authHeaders();
       const res = await fetch(`/api/clinic/accounting/invoices/${inv.id}?clinic_id=${clinicId}`, { headers });
       const json = await res.json();
-      const items = Array.isArray(json?.data?.items) ? json.data.items : [];
-      const desc = typeof items[0]?.description === 'string' ? items[0].description : '';
-      const total = Number(inv.total_amount ?? inv.total ?? 0);
+      const items = Array.isArray(json?.data?.items) ? (json.data.items as InvoiceItemRow[]) : [];
+      // Prefill the line builder with the VOIDED invoice's own lines — the
+      // correction usually keeps the services and changes amounts.
+      const prefilled: InvoiceLineDraft[] = items.length > 0
+        ? items.map((item, index) => ({
+            key: `r${index}`,
+            service_id: item.service_id ?? '',
+            description: item.description ?? '',
+            quantity: String(Number(item.quantity) || 1),
+            unit_price: String(Number(item.unit_price) || ''),
+          }))
+        : [{ key: 'r0', service_id: '', description: '', quantity: '1', unit_price: String(Number(inv.total_amount ?? inv.total ?? 0) || '') }];
       setReissueFrom(inv.invoice_number ?? null);
-      setInvDesc(desc);
-      if (Number.isFinite(total) && total > 0) setInvAmount(String(total));
+      setInvLines(prefilled);
       setShowInvoiceForm(true);
       setActionSuccess(`إعادة إصدار من: ${inv.invoice_number ?? ''} — عدّل البيانات ثم أصدِر الفاتورة الجديدة`);
       if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -353,7 +462,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     }
   };
 
-  const printInvoice = (inv: InvoiceRow) => {
+  const printInvoice = async (inv: InvoiceRow) => {
     const total = Number(inv.total_amount ?? inv.total ?? inv.total_due ?? 0);
     const date = inv.created_at ? new Date(inv.created_at).toLocaleDateString('ar') : '—';
     const statusAr = inv.status === 'voided'
@@ -361,6 +470,25 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       : inv.status === 'paid'
         ? 'مدفوعة'
         : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة';
+
+    // The printable invoice must list WHAT was billed. Old invoices were issued
+    // before line items existed, so a missing/empty items list falls back to the
+    // generic label instead of printing an empty table.
+    let items: InvoiceItemRow[] = [];
+    if (clinicId && inv.id) {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`/api/clinic/accounting/invoices/${inv.id}?clinic_id=${clinicId}`, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          items = (json.data?.items ?? []) as InvoiceItemRow[];
+        }
+      } catch {
+        items = [];
+      }
+    }
+    const hasItems = items.length > 0;
+
     const w = window.open('', '_blank', 'width=760,height=800');
     if (!w) return;
     const title = `فاتورة ${inv.invoice_number ?? ''}`.trim();
@@ -387,9 +515,24 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     <tr><th>رقم الفاتورة</th><td>${inv.invoice_number ?? inv.id.slice(0, 8)}</td></tr>
     <tr><th>التاريخ</th><td>${date}</td></tr>
     <tr><th>الحالة</th><td>${statusAr}</td></tr>
-    <tr><th>الخدمة</th><td>فاتورة خدمات العيادة (حسب السجل المالي)</td></tr>
-    <tr class="total-row"><th>إجمالي المبلغ</th><td>${total.toFixed(2)} ₪</td></tr>
   </table>
+  ${hasItems
+    ? `<table>
+        <thead><tr><th>الخدمة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+        <tbody>
+          ${items.map((item) => `<tr>
+            <td>${escapeHtml(item.description ?? '—')}</td>
+            <td>${Number(item.quantity)}</td>
+            <td>${Number(item.unit_price).toFixed(2)}</td>
+            <td>${Number(item.line_total).toFixed(2)}</td>
+          </tr>`).join('')}
+          <tr class="total-row"><td colspan="3">إجمالي المبلغ</td><td>${total.toFixed(2)} ₪</td></tr>
+        </tbody>
+      </table>`
+    : `<table>
+        <tr><th>الخدمة</th><td>فاتورة خدمات العيادة (حسب السجل المالي)</td></tr>
+        <tr class="total-row"><th>إجمالي المبلغ</th><td>${total.toFixed(2)} ₪</td></tr>
+      </table>`}
   <div class="stamp">
     <p class="muted">تم الإصدار إلكترونياً من لوحة تحكم موظفة استقبال الأسنان الذكية.</p>
   </div>
@@ -492,23 +635,72 @@ return (
               الفاتورة الأصلية <span className="font-mono">{reissueFrom}</span> ملغاة — هذا نموذج مستقل يصدر فاتورة جديدة برقم تسلسلي جديد. عدّل المبلغ ثم أصدِر.
             </p>
           )}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <input
-              type="text"
-              value={invDesc}
-              onChange={(e) => setInvDesc(e.target.value)}
-              placeholder="وصف الخدمة (مثال: أشعة بانوراما)"
-              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none sm:col-span-2"
-            />
-            <input
-              type="number"
-              min="1"
-              step="0.01"
-              value={invAmount}
-              onChange={(e) => setInvAmount(e.target.value)}
-              placeholder="المبلغ (ILS)"
-              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
-            />
+          {/* Line items: the patient must see WHAT was billed, so each row is a
+              catalog service (or a free-text label) with qty × price. */}
+          <div className="space-y-2">
+            {invLines.map((line, index) => (
+              <div key={line.key} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
+                <div className="space-y-1">
+                  <select
+                    value={line.service_id}
+                    onChange={(e) => pickService(line.key, e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/70 focus:outline-none"
+                  >
+                    <option value="">— خدمة من القائمة (أو اكتب وصفاً أدناه) —</option>
+                    {services.map((service) => (
+                      <option key={service.id} value={service.id}>{service.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={line.description}
+                    onChange={(e) => updateLine(line.key, { description: e.target.value })}
+                    placeholder={`وصف البند ${index + 1} (يُملأ تلقائياً عند اختيار خدمة)`}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+                  />
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={line.quantity}
+                  onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
+                  placeholder="الكمية"
+                  className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={line.unit_price}
+                  onChange={(e) => updateLine(line.key, { unit_price: e.target.value })}
+                  placeholder="السعر"
+                  className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeLine(line.key)}
+                  disabled={invLines.length === 1}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-rose-500/60 hover:text-rose-300 disabled:opacity-40"
+                >
+                  حذف
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={addLine}
+              className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-200 hover:border-cyan-500/60"
+            >
+              + إضافة بند
+            </button>
+            <p className="text-sm text-slate-300">
+              الإجمالي قبل الإصدار:{' '}
+              <span className="font-bold text-cyan-300">{draftTotal.toFixed(2)} ₪</span>
+            </p>
           </div>
           <div className="mt-3 flex gap-2">
             <button
@@ -614,7 +806,7 @@ return (
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => printInvoice(inv)}
+                    onClick={() => void printInvoice(inv)}
                     className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
                     title="طباعة الفاتورة"
                   >
