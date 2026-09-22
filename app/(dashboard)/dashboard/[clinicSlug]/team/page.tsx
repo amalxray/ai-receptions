@@ -11,6 +11,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import StatusPill from '@/components/dashboard/StatusPill';
 import UpgradeCta from '@/components/dashboard/subscription/UpgradeCta';
+import TeamInvitations from '@/components/dashboard/clinic/TeamInvitations';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { parseEntitlementError } from '@/lib/subscription/upgradeCta';
 import type { EntitlementResource } from '@/lib/subscription/entitlements';
@@ -220,6 +221,9 @@ export default function TeamPage() {
           {busy ? '...' : 'إضافة عضو'}
         </button>
       </form>
+
+      {/* #38 — invite by email (works for people without an account) */}
+      <TeamInvitations clinicId={clinicId} authHeaders={authHeaders} />
 
       {/* Members list */}
       {loading ? (

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import PasswordInput from '@/components/ui/PasswordInput';
 import { supabase } from '@/lib/supabase';
-import { isSafeDashboardPath, isSafeAdminPath } from '@/lib/services/dashboardPaths';
+import { isSafeDashboardPath, isSafeAdminPath, isSafeInvitePath } from '@/lib/services/dashboardPaths';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,8 +48,11 @@ export default function LoginPage() {
         return;
       }
 
-      // `?next=` is honored only for safe internal dashboard paths (open-redirect guard).
+      // `?next=` is honored only for safe internal paths (open-redirect guard):
+      // dashboard destinations AND team-invitation links (/invite/{token}).
       const requested = new URLSearchParams(window.location.search).get('next');
+      const safeRequested =
+        isSafeDashboardPath(requested) || isSafeInvitePath(requested) ? requested : null;
 
       // Platform owner takes priority over any clinic membership → /admin.
       const { data: sessionData } = await supabase.auth.getSession();
@@ -73,12 +76,12 @@ export default function LoginPage() {
           .maybeSingle();
         const clinic = Array.isArray(membership?.clinic) ? membership?.clinic[0] : membership?.clinic;
         if (clinic?.slug) {
-          router.replace(isSafeDashboardPath(requested) ? requested : `/dashboard/${encodeURIComponent(clinic.slug)}/overview`);
+          router.replace(safeRequested ?? `/dashboard/${encodeURIComponent(clinic.slug)}/overview`);
           return;
         }
       }
 
-      router.replace(isSafeDashboardPath(requested) ? requested : '/dashboard');
+      router.replace(safeRequested ?? '/dashboard');
     } catch (caught) {
       setError('تعذر الاتصال بخدمة المصادقة. تحقق من اتصالك بالإنترنت ثم أعد المحاولة.');
       setIsSubmitting(false);

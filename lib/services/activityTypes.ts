@@ -69,6 +69,7 @@ export const RESERVED_PUBLIC_SLUGS = new Set([
   'forgot-password',
   'admin',
   'ask',
+  'invite',
   'robots.txt',
   'sitemap.xml',
   'error',

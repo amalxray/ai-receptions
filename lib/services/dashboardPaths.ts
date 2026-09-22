@@ -56,6 +56,22 @@ export function ownerLoginUrl(clinicSlug: string): string {
 }
 
 /**
+ * True when `path` is a team-invitation link: `/invite/{token}` (#38).
+ *
+ * The token is the only allowed segment and must look like the generated
+ * credential (hex, 32–128 chars) — so `/login?next=/invite/<token>` can be
+ * honored after sign-in without ever becoming an open redirect.
+ */
+export function isSafeInvitePath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  if (path.startsWith('//') || path.includes('\\') || path.includes('..') || path.includes(':')) {
+    return false;
+  }
+  const segments = path.split('/').filter((s) => s.length > 0);
+  return segments.length === 2 && segments[0] === 'invite' && /^[a-f0-9]{32,128}$/i.test(segments[1]);
+}
+
+/**
  * True when `path` is a safe internal admin destination (/admin[/segment...]).
  * Same rejection rules as isSafeDashboardPath (no absolute URLs, `..`, `\`, `:`).
  */
