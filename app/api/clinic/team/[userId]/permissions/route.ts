@@ -3,6 +3,7 @@ import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { clearPermissionCache, isPermissionKey } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/services/auditService';
+import { logEvent } from '@/lib/server/logging';
 
 export const runtime = 'nodejs';
 
@@ -94,6 +95,10 @@ export async function POST(
   }
 
   const { error: rpcError } = await supabaseAdmin.rpc('set_user_permissions', {
+    // The actor is the AUTHENTICATED admin this route already verified — the
+    // function authorizes this explicit id (auth.uid() is NULL under the
+    // service-role client, which made the previous variant fail with P0001).
+    p_actor_user_id: authorization.user.id,
     p_user_id: params.userId,
     p_clinic_id: clinicId,
     p_permissions: permissions,
@@ -103,11 +108,26 @@ export async function POST(
     if (/CANNOT_MODIFY_OWNER/.test(rpcError.message)) {
       return NextResponse.json({ error: 'لا يمكن تعديل صلاحيات المالك' }, { status: 400 });
     }
+    if (/TARGET_NOT_MEMBER/.test(rpcError.message)) {
+      return NextResponse.json({ error: 'العضو غير موجود في هذه العيادة' }, { status: 404 });
+    }
     if (/Unauthorized/.test(rpcError.message)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    // PGRST202 = the 4-arg function does not exist yet (20261014 unapplied).
+    if (rpcError.code === 'PGRST202' || /Could not find the function/i.test(rpcError.message)) {
+      logEvent('permissions_rpc_migration_missing', { clinic_id: clinicId, code: rpcError.code }, 'error');
+      return NextResponse.json(
+        {
+          error: 'PERMISSIONS_MIGRATION_REQUIRED',
+          message: 'طبّق الترحيل db/migrations/20261014_set_user_permissions_actor.sql لتفعيل الحفظ.',
+          detail: `${rpcError.code ?? ''} ${rpcError.message}`.trim(),
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
-      { error: 'تعذر حفظ الصلاحيات', detail: rpcError.message },
+      { error: 'تعذر حفظ الصلاحيات', detail: `${rpcError.code ?? ''} ${rpcError.message}`.trim() },
       { status: 500 }
     );
   }

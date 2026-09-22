@@ -155,7 +155,28 @@ describe('POST /api/clinic/team/[userId]/permissions', () => {
     expect(res.status).toBe(200);
     expect(rpcCalls).toHaveLength(1);
     expect(rpcCalls[0].fn).toBe('set_user_permissions');
-    expect(rpcCalls[0].args).toMatchObject({ p_user_id: TARGET, p_clinic_id: CLINIC });
+    // The ACTOR must be passed explicitly: auth.uid() is NULL under the
+    // service-role client, so the old auth.uid()-bound function failed P0001.
+    expect(rpcCalls[0].args).toMatchObject({
+      p_actor_user_id: USER,
+      p_user_id: TARGET,
+      p_clinic_id: CLINIC,
+    });
+  });
+
+  it('reports a required migration when the actor-aware RPC is absent (PGRST202)', async () => {
+    respond['clinic_users.select'] = { data: { id: 'm1', role: 'doctor', deleted_at: null }, error: null };
+    respond.rpc = {
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'Could not find the function public.set_user_permissions(p_actor_user_id, p_clinic_id, p_permissions, p_user_id)',
+      },
+    };
+    const res = await savePermissions(body({ view_overview: true }), ctx(TARGET));
+    delete respond.rpc;
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe('PERMISSIONS_MIGRATION_REQUIRED');
   });
 
   it('rejects a non-admin caller (403)', async () => {
