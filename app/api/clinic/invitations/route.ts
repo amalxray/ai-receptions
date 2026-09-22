@@ -116,8 +116,11 @@ export async function POST(req: Request) {
     if (/duplicate key/i.test(error.message)) {
       return NextResponse.json({ error: 'توجد دعوة معلقة لهذا البريد' }, { status: 409 });
     }
-    logEvent('team_invitation_create_error', { clinic_id: clinicId, error: error.message }, 'error');
-    return NextResponse.json({ error: 'تعذر إنشاء الدعوة' }, { status: 500 });
+    logEvent('team_invitation_create_error', { clinic_id: clinicId, error: error.message, code: error.code }, 'error');
+    return NextResponse.json(
+      { error: 'تعذر إنشاء الدعوة', detail: `${error.code ?? ''} ${error.message}`.trim() },
+      { status: 500 }
+    );
   }
 
   const inviteUrl = buildInvitationUrl(getAppBaseUrl(), token);
@@ -184,8 +187,11 @@ export async function GET(req: Request) {
     .order('created_at', { ascending: false });
 
   if (error) {
-    logEvent('team_invitation_list_error', { clinic_id: clinicId, error: error.message }, 'error');
-    return NextResponse.json({ error: 'تعذر جلب الدعوات' }, { status: 500 });
+    logEvent('team_invitation_list_error', { clinic_id: clinicId, error: error.message, code: error.code }, 'error');
+    return NextResponse.json(
+      { error: 'تعذر جلب الدعوات', detail: `${error.code ?? ''} ${error.message}`.trim() },
+      { status: 500 }
+    );
   }
 
   const now = Date.now();

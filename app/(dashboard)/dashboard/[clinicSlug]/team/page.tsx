@@ -1,11 +1,14 @@
 'use client';
 
-// STEP 15G-B — real Team management wired to /api/clinic/members (users entitlement).
-// Lists members, adds (POST), toggles role/active (PATCH) and removes (DELETE).
+// STEP 15G-B — real Team management wired to /api/clinic/members.
+// Lists members, toggles role/active (PATCH) and removes (DELETE). Membership
+// is GAINED exclusively through email invitations (#38) — the legacy
+// "add existing account" form was removed (it errored with "المستخدم غير
+// موجود" for anyone who had not registered yet).
 // Captures 402 ENTITLEMENT_LIMIT_REACHED and renders an Upgrade CTA pointing to
 // /dashboard/subscription?upgrade=1&resource=users&plan=...
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
@@ -13,7 +16,6 @@ import StatusPill from '@/components/dashboard/StatusPill';
 import UpgradeCta from '@/components/dashboard/subscription/UpgradeCta';
 import TeamInvitations from '@/components/dashboard/clinic/TeamInvitations';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { parseEntitlementError } from '@/lib/subscription/upgradeCta';
 import type { EntitlementResource } from '@/lib/subscription/entitlements';
 
 const ROLES = ['owner', 'manager', 'doctor', 'receptionist', 'staff'] as const;
@@ -52,11 +54,6 @@ async function parseJson(res: Response): Promise<any> {
   }
 }
 
-function entitlementBlock(body: unknown): EntitlementResource | null {
-  const parsed = parseEntitlementError(body);
-  return parsed ? parsed.resource : null;
-}
-
 export default function TeamPage() {
   const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [members, setMembers] = useState<Member[]>([]);
@@ -64,7 +61,6 @@ export default function TeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [blockedResource, setBlockedResource] = useState<EntitlementResource | null>(null);
-  const [form, setForm] = useState({ email: '', role: 'staff' });
   const [edit, setEdit] = useState<{ member: Member; role: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -91,32 +87,6 @@ export default function TeamPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicLoading, clinicId]);
 
-
-  async function addMember(e: React.FormEvent) {
-    e.preventDefault();
-    if (!clinicId) return;
-    setBusy(true); setError(null); setBlockedResource(null);
-    try {
-      const headers = await authHeaders();
-      const res = await fetch(`/api/clinic/members?clinic_id=${encodeURIComponent(clinicId)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...headers },
-        body: JSON.stringify({ email: form.email.trim(), role: form.role }),
-      });
-      const body = await parseJson(res);
-      if (!res.ok) {
-        const blocked = entitlementBlock(body);
-        if (blocked) { setBlockedResource(blocked); setError('وصلت إلى الحد الأقصى لأعضاء الفريق في هذه الخطة.'); return; }
-        throw new Error(body?.error ?? 'تعذر إضافة العضو');
-      }
-      setForm({ email: '', role: 'staff' });
-      await load();
-    } catch (e2) {
-      setError(e2 instanceof Error ? e2.message : 'تعذر إضافة العضو');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function startEdit(member: Member) {
     setEdit({ member, role: member.role });
@@ -184,9 +154,6 @@ export default function TeamPage() {
     }
   }
 
-  const usableRoles = useMemo(() => ROLES.filter((r) => r !== 'owner'), []);
-
-
   if (clinicLoading) return <Skeleton className="h-60" />;
   if (clinicError) return <EmptyState title="تعذر تحميل الفريق" description={clinicError} />;
   if (!clinicId) return <EmptyState title="لا توجد عيادة" description="سجّل الدخول لإدارة الفريق." />;
@@ -199,28 +166,6 @@ export default function TeamPage() {
           {error}
         </div>
       )}
-
-      {/* Add member form */}
-      <form onSubmit={addMember} className="mb-6 grid gap-3 rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5 sm:grid-cols-[1fr_auto_auto]">
-        <input
-          type="email"
-          required
-          value={form.email}
-          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          placeholder="بريد العضو (البريد المرتبط بحسابه)"
-          className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-500"
-        />
-        <select
-          value={form.role}
-          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-          className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-500"
-        >
-          {usableRoles.map((r) => <option key={r} value={r}>{ROLE_AR[r]}</option>)}
-        </select>
-        <button type="submit" disabled={busy} className="rounded-full bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-50">
-          {busy ? '...' : 'إضافة عضو'}
-        </button>
-      </form>
 
       {/* #38 — invite by email (works for people without an account) */}
       <TeamInvitations clinicId={clinicId} authHeaders={authHeaders} />

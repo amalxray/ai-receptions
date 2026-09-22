@@ -191,3 +191,18 @@ create policy "clinic_admins_can_delete_invitations"
     or public.app_user_is_clinic_admin_safe(clinic_id)
   );
 
+-- 7) API privileges (REQUIRED — root cause of "تعذر إنشاء الدعوة") -------------
+-- A table that is created OUTSIDE this migration (e.g. pasted into the Supabase
+-- SQL editor under a role that does not inherit Supabase's ALTER DEFAULT
+-- PRIVILEGES) ships with NO grants for the API roles. RLS is then never even
+-- reached: PostgREST answers every request with
+--   42501  permission denied for table invitations
+-- which /api/clinic/invitations surfaced as the generic 500 "تعذر إنشاء الدعوة"
+-- (and "تعذر جلب الدعوات" for the pending list).
+-- These explicit grants make the migration self-sufficient in EVERY environment.
+grant select, insert, update, delete on public.invitations to authenticated;
+grant all privileges on public.invitations to service_role;
+-- Deliberately NO grant to `anon`: an unauthenticated visitor can never read an
+-- invitation row, and the acceptance flow reaches the table with the service
+-- role (the 256-bit token is the credential).
+
