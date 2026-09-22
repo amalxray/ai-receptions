@@ -9,6 +9,7 @@
 // /dashboard/subscription?upgrade=1&resource=users&plan=...
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
@@ -17,6 +18,7 @@ import UpgradeCta from '@/components/dashboard/subscription/UpgradeCta';
 import TeamInvitations from '@/components/dashboard/clinic/TeamInvitations';
 import { useClinicContext } from '@/lib/useClinicContext';
 import type { EntitlementResource } from '@/lib/subscription/entitlements';
+import type { CustomRole } from '@/components/dashboard/team/CustomRoleManager';
 
 const ROLES = ['owner', 'manager', 'doctor', 'receptionist', 'staff'] as const;
 const ROLE_AR: Record<string, string> = {
@@ -55,8 +57,9 @@ async function parseJson(res: Response): Promise<any> {
 }
 
 export default function TeamPage() {
-  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const { clinicId, clinicSlug, role: myRole, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [members, setMembers] = useState<Member[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,6 +82,21 @@ export default function TeamPage() {
       setLoading(false);
     }
   }, [clinicId, authHeaders]);
+
+  // #43 — custom roles for the role picker (admin only; server enforces).
+  useEffect(() => {
+    if (!clinicId || !myRole || !['owner', 'manager'].includes(myRole)) return;
+    let alive = true;
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`/api/clinic/roles?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && alive) setCustomRoles(body?.roles ?? []);
+      } catch { /* non-fatal */ }
+    })();
+    return () => { alive = false; };
+  }, [clinicId, myRole, authHeaders]);
 
   useEffect(() => {
     if (clinicLoading) { setLoading(true); return; }
@@ -167,6 +185,18 @@ export default function TeamPage() {
         </div>
       )}
 
+      {/* #43 — custom roles management */}
+      {clinicSlug && ['owner', 'manager'].includes(myRole ?? '') && (
+        <div className="mb-4 flex justify-end">
+          <Link
+            href={`/dashboard/${clinicSlug}/team/roles`}
+            className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-4 py-1.5 text-xs font-semibold text-cyan-300"
+          >
+            الأدوار والصلاحيات
+          </Link>
+        </div>
+      )}
+
       {/* #38 — invite by email (works for people without an account) */}
       <TeamInvitations clinicId={clinicId} authHeaders={authHeaders} />
 
@@ -197,13 +227,26 @@ export default function TeamPage() {
                       >
                         {CANNOT_DEMOTE[member.role]
                           ? <option value={member.role}>{ROLE_AR[member.role]}</option>
-                          : ROLES.filter((r) => r !== 'owner').map((r) => <option key={r} value={r}>{ROLE_AR[r]}</option>)}
+                          : (
+                            <>
+                              {ROLES.filter((r) => r !== 'owner').map((r) => <option key={r} value={r}>{ROLE_AR[r]}</option>)}
+                              {customRoles.map((cr) => <option key={cr.id} value={cr.name}>{cr.name} (مخصص)</option>)}
+                            </>
+                          )}
                       </select>
                       <button type="button" onClick={saveEdit} disabled={busy} className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 disabled:opacity-50">حفظ</button>
                       <button type="button" onClick={() => setEdit(null)} disabled={busy} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 disabled:opacity-50">إلغاء</button>
                     </>
                   ) : (
                     <button type="button" onClick={() => startEdit(member)} disabled={busy} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 disabled:opacity-50">تغيير الدور</button>
+                  )}
+                  {clinicSlug && (
+                    <Link
+                      href={`/dashboard/${clinicSlug}/team/${member.user_id}`}
+                      className="rounded-full border border-cyan-500/40 px-3 py-1 text-xs text-cyan-300"
+                    >
+                      الملف والصلاحيات
+                    </Link>
                   )}
                   <button type="button" onClick={() => toggleActive(member)} disabled={busy} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 disabled:opacity-50">
                     {member.is_active ? 'تعطيل' : 'تفعيل'}

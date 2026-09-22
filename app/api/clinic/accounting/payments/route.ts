@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, PAYMENT_RECORD_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordPayment, listPayments } from '@/lib/services/accounting';
 
 export async function POST(req: Request) {
@@ -9,6 +10,8 @@ export async function POST(req: Request) {
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
     const denied = roleDenied(authorization, PAYMENT_RECORD_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_payments');
+    if (permBlocked) return permBlocked;
 
     const { invoice_id, amount, method, reference, idempotency_key, payer_type, payer_ref, payment_date } = body;
     // record_payment expects a real invoice UUID — reject anything else early
@@ -44,6 +47,9 @@ export async function GET(req: Request) {
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, FINANCE_READ_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    // #43 — flexible layer on top of the legacy role matrix (never replaces it).
+    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
+    if (permBlocked) return permBlocked;
     const data = await listPayments(clinicId);
     return NextResponse.json({ data });
   } catch (error) {

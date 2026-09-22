@@ -35,7 +35,72 @@ describe('database migration audit', () => {
       '20260820_clinic_ads_table.sql',
       '20260821_founding_member_clinics.sql',
       '20260827_dashboard_location_roles_shifts.sql',
+      '20260830_billing_plans.sql',
+      '20260831_entitlement_usage.sql',
+      '20260832_clinic_public_id.sql',
+      '20260833_clinic_ads_fix.sql',
+      '20260834_subscription_write_service_only.sql',
+      '20260835_clinic_ai_settings_policy_safe.sql',
+      '20260836_billing_plans_limits_canonical.sql',
+      '20260901_accounting_phase_a.sql',
+      '20260902_accounting_phase_b.sql',
+      '20260903_accounting_phase_c.sql',
+      '20260904_localization_foundation.sql',
+      '20260905_insurance_foundation.sql',
+      '20260906_payroll_foundation.sql',
+      '20260907_financial_reporting.sql',
+      '20260908_growth_layer.sql',
+      '20260909_patient_portal_identity.sql',
+      '20260910_portal_payments.sql',
+      '20260911_portal_refunds.sql',
+      '20260912_platform_admins.sql',
+      '20260912_provider_public_visibility.sql',
+      '20260913_provider_public_profile.sql',
+      '20260914_digital_healthcare_space.sql',
+      '20260916_phase1_entitlements_workflows.sql',
+      '20260917_phase1b_workflow_transitions.sql',
+      '20260918_phase2_smart_booking.sql',
+      '20260919_phase3_recall_notifications.sql',
+      '20260920_phase4_digital_intake.sql',
+      '20260921_clinic_public_media.sql',
+      '20260921_subscription_foundation_fixes.sql',
+      '20260922_clinic_public_media_category.sql',
+      '20260922_cross_tenant_coordination.sql',
+      '20260922_subscription_v2_migration.sql',
+      '20260923_clinic_before_after.sql',
+      '20260923_medical_files_scale.sql',
+      '20260924_clinic_badges.sql',
+      '20260924_imaging_requests_billing_link.sql',
+      '20260925_imaging_services_catalog_mirror.sql',
+      '20260925_patients_email_nullable.sql',
+      '20260925_security_definer_views.sql',
+      '20260926_clinic_messaging.sql',
+      '20260926_imaging_requests_center_patient.sql',
+      '20260927_patient_unified_indexes.sql',
+      '20260928_public_page_content.sql',
+      '20260929_lab_services_pricing.sql',
+      '20261001_landing_page_content.sql',
+      '20261002_payments_status_sync.sql',
+      '20261003_notification_type_announcement.sql',
+      '20261004_email_field_content_grants.sql',
+      '20261005_clinic_location.sql',
+      '20261006_platform_admins_grant.sql',
+      '20261007_ask_platform.sql',
+      '20261008_ask_nearby_rpc.sql',
+      '20261009_invoice_slug_numbering.sql',
+      '20261010_clinic_invitations.sql',
+      '20261011_permissions_and_custom_roles.sql',
     ]);
+    // Sorting is part of the contract: pg/CI apply migrations in lexical order.
+    expect([...migrationFiles]).toEqual([...migrationFiles].sort());
+    expect(new Set(migrationFiles).size).toBe(migrationFiles.length);
+  });
+
+  it('ships privileged objects with explicit grants (#38 lesson)', () => {
+    const permissions = fs.readFileSync(path.join(migrationDir, '20261011_permissions_and_custom_roles.sql'), 'utf8');
+    expect(permissions).toContain('to service_role');
+    expect(permissions).toContain('to authenticated');
+    expect(permissions).toContain('grant execute on function public.set_user_permissions');
   });
 
   it('keeps core tenant indexes and trigger coverage in the production migration', () => {

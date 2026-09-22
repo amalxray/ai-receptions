@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, EXPENSE_RECORD_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordExpense, listExpenses } from '@/lib/services/accounting';
 
 // Accounting Phase C — expenses. POST = record (immutable movement), GET = list.
+// #43 — expense mutations additionally require the `manage_expenses` permission.
 const EXPENSE_ERRORS = /EXPENSE_AMOUNT_INVALID|EXPENSE_METHOD_INVALID|EXPENSE_CATEGORY_INVALID|EXPENSE_SPENT_AT_INVALID/;
 
 export async function POST(req: Request) {
@@ -12,6 +14,9 @@ export async function POST(req: Request) {
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
     const denied = roleDenied(authorization, EXPENSE_RECORD_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    // #43 — per-permission enforcement (global by default, owner always allowed).
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_expenses');
+    if (permBlocked) return permBlocked;
 
     const result = await recordExpense({
       clinicId: body.clinic_id,
@@ -40,6 +45,9 @@ export async function GET(req: Request) {
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, FINANCE_READ_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    // #43 — flexible layer on top of the legacy role matrix (never replaces it).
+    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
+    if (permBlocked) return permBlocked;
     const data = await listExpenses(clinicId, {
       categoryId: url.searchParams.get('category_id'),
       status: url.searchParams.get('status'),

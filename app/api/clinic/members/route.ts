@@ -5,6 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import { assertEntitlement, releaseEntitlement, entitlementErrorResponse } from '@/lib/subscription/entitlements';
+import { clearPermissionCache } from '@/lib/auth/permissions';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 export const runtime = 'nodejs';
 
@@ -18,7 +20,9 @@ const addSchema = z.object({
 
 const patchSchema = z.object({
   user_id: z.string().uuid(),
-  role: z.enum(VALID_ROLES).optional(),
+  // #43 — a member's role is either a static system role OR the name of a
+  // custom role defined for this clinic (validated below).
+  role: z.string().trim().min(2).max(50).optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -55,6 +59,8 @@ export async function GET(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team');
+  if (memberListPerm) return memberListPerm;
 
   const { data, error } = await supabaseAdmin
     .from('clinic_users')
@@ -98,6 +104,8 @@ export async function POST(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const addPerm = await permissionDenied(req, clinicId, 'manage_team');
+  if (addPerm) return addPerm;
 
   const parsed = addSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
@@ -173,10 +181,26 @@ export async function PATCH(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const patchPerm = await permissionDenied(req, clinicId, 'manage_team');
+  if (patchPerm) return patchPerm;
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   const { user_id, role, is_active } = parsed.data;
+
+  // #43 — custom roles: a non-system role name must exist as a custom role of
+  // THIS clinic before it can be assigned.
+  if (role !== undefined && !(VALID_ROLES as readonly string[]).includes(role)) {
+    const { data: customRole } = await supabaseAdmin
+      .from('custom_roles')
+      .select('id')
+      .eq('clinic_id', clinicId)
+      .eq('name', role)
+      .maybeSingle();
+    if (!customRole) {
+      return NextResponse.json({ error: 'دور غير معروف لهذه العيادة' }, { status: 400 });
+    }
+  }
 
   // Self-role escalation guard: admins cannot change their own membership.
   if (user_id === authorization.user.id) {
@@ -218,6 +242,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'تعذر تحديث العضو' }, { status: 500 });
   }
 
+  // A role change changes the permission base (#43) — invalidate the cache.
+  if (role !== undefined) clearPermissionCache(user_id);
+
   await writeAuditLog({
     clinicId,
     actorUserId: authorization.user.id,
@@ -245,6 +272,8 @@ export async function DELETE(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
+  const removePerm = await permissionDenied(req, clinicId, 'manage_team');
+  if (removePerm) return removePerm;
 
   const parsed = deleteSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });

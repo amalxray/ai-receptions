@@ -26,6 +26,18 @@ const mockAccounting = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/services/accounting', () => mockAccounting);
 
+// #43 — permissive permissions mock: legacy role-matrix expectations keep
+// passing; the flexible layer's own matrix is covered in permissions-rbac.test.ts.
+vi.mock('@/lib/auth/permissions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
+  return {
+    ...actual,
+    getUserPermissions: vi.fn(async () => new Set(Object.keys(actual.PERMISSIONS))),
+    clearPermissionCache: vi.fn(),
+  };
+});
+
+
 import { POST as postExpense, GET as getExpenses } from '@/app/api/clinic/accounting/expenses/route';
 import { POST as postExpenseVoid } from '@/app/api/clinic/accounting/expenses/[expenseId]/void/route';
 import { POST as postCategory, GET as getCategories } from '@/app/api/clinic/accounting/expense-categories/route';

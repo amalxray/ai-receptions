@@ -112,6 +112,30 @@ const MODULE_FEATURES: Partial<Record<string, FeatureKey>> = {
   team: 'team',
 };
 
+// #43 — module → permission key. Modules WITHOUT a mapping stay visible for
+// every member (Global by Default); mapped modules render only when the
+// member's EFFECTIVE permissions include the key. The sidebar is convenience
+// only — real enforcement lives in the APIs (permission gate) and RLS.
+const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
+  overview: 'view_overview',
+  appointments: 'view_appointments',
+  patients: 'view_patients',
+  'medical-files': 'view_medical_files',
+  conversations: 'view_conversations',
+  messages: 'view_messages',
+  'imaging-requests': 'view_imaging_requests',
+  leads: 'view_leads',
+  'financial-intelligence': 'view_financial',
+  analytics: 'view_analytics',
+  growth: 'view_growth',
+  team: 'manage_team',
+  ads: 'manage_ads',
+  'knowledge-base': 'manage_knowledge',
+  'public-page': 'view_public_page',
+  'public-content': 'manage_public_page',
+  subscription: 'manage_subscription',
+};
+
 /** localStorage key remembering open/collapsed sidebar groups. */
 const OPEN_STATE_KEY = 'dashnav_open_groups_v1';
 
@@ -126,7 +150,7 @@ function readOpenState(): Record<string, boolean> {
 }
 
 export default function DashboardNav() {
-  const { role, clinicSlug, activityType, authHeaders } = useClinicContext();
+  const { role, clinicId, clinicSlug, activityType, authHeaders } = useClinicContext();
   const isAdmin = role === 'owner' || role === 'manager';
   const groups = groupNavLinks(getActivityNavigation(activityType));
   const firstGroupId = groups.length > 0 ? groups[0].id : undefined;
@@ -135,6 +159,33 @@ export default function DashboardNav() {
   // the sidebar fails OPEN while loading (no lock flash); the API routes keep
   // enforcing 402 regardless of what the UI shows.
   const [planId, setPlanId] = useState<string | null | undefined>(undefined);
+
+  // #43 — the caller's effective permission keys. `undefined` = still loading
+  // (fail OPEN, exactly like plan locks); owners skip the fetch entirely.
+  const [perms, setPerms] = useState<Set<string> | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!clinicId || isAdmin) {
+      setPerms(null); // null = no permission filtering
+      return;
+    }
+    let alive = true;
+    setPerms(undefined);
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`/api/clinic/permissions/me?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        if (!res.ok) { if (alive) setPerms(null); return; } // fail open
+        const json = await res.json().catch(() => null);
+        if (alive) setPerms(new Set<string>(json?.data ?? []));
+      } catch {
+        if (alive) setPerms(null); // fail open — server still gates
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [clinicId, isAdmin, authHeaders]);
 
   useEffect(() => {
     let alive = true;
@@ -184,7 +235,13 @@ export default function DashboardNav() {
   return (
     <nav aria-label="قائمة لوحة التحكم" className="space-y-2">
       {groups.map((group) => {
-        const items = group.items.filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module));
+        const items = group.items
+          .filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module))
+          .filter((item) => {
+            if (perms === null || perms === undefined) return true; // loading/owner → fail open
+            const required = MODULE_PERMISSIONS[item.module];
+            return required === undefined || perms.has(required);
+          });
         if (items.length === 0) return null;
         return (
           <details key={group.id} open={isOpen(group.id)} className="group rounded-xl border border-slate-800/70 bg-slate-950/40">

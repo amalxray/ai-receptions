@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getOperationsAnalytics } from '@/lib/services/operationsAnalytics';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 // STEP: Operations Intelligence — Foundation
 // Read-only, tenant-scoped analytics. Same authorization posture as the rest
-// of the dashboard APIs: real bearer token + clinic membership.
+// of the dashboard APIs: real bearer token + clinic membership, plus the #43
+// per-permission gate (view_analytics).
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -17,6 +19,8 @@ export async function GET(req: Request) {
         { status: authorization.status },
       );
     }
+    const permBlocked = await permissionDenied(req, clinicId, 'view_analytics');
+    if (permBlocked) return permBlocked;
     const from = url.searchParams.get('from') ?? undefined;
     const to = url.searchParams.get('to') ?? undefined;
     const data = await getOperationsAnalytics(clinicId, from, to);

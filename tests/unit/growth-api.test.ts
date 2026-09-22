@@ -39,6 +39,17 @@ vi.mock('@/lib/services/growth', () => ({
   matchWaitlistForReleasedSlot: mocks.matchWaitlistForReleasedSlot,
 }));
 
+// #43 — permissive permissions mock (see permissions-rbac.test.ts for the
+// flexible layer's own matrix).
+vi.mock('@/lib/auth/permissions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
+  return {
+    ...actual,
+    getUserPermissions: vi.fn(async () => new Set(Object.keys(actual.PERMISSIONS))),
+    clearPermissionCache: vi.fn(),
+  };
+});
+
 import { POST as recallRulesPOST, GET as recallRulesGET } from '@/app/api/clinic/growth/recall-rules/route';
 import { PATCH as rulePATCH, DELETE as ruleDELETE } from '@/app/api/clinic/growth/recall-rules/[ruleId]/route';
 import { GET as recallsGET } from '@/app/api/clinic/growth/recalls/route';

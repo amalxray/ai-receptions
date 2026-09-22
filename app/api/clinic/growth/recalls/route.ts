@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { listRecalls } from '@/lib/services/growth';
 
 export async function GET(req: Request) {
@@ -10,6 +11,8 @@ export async function GET(req: Request) {
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, DATA_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permBlocked = await permissionDenied(req, clinicId, 'view_growth');
+    if (permBlocked) return permBlocked;
     const data = await listRecalls(clinicId, url.searchParams.get('status') ?? undefined);
     return NextResponse.json({ data });
   } catch (error) {

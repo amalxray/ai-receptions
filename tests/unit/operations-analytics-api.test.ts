@@ -21,6 +21,17 @@ const mockEntitlements = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/subscription/entitlements', () => mockEntitlements);
 
+// #43 — permissive permissions mock (see permissions-rbac.test.ts).
+vi.mock('@/lib/auth/permissions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
+  return {
+    ...actual,
+    getUserPermissions: vi.fn(async () => new Set(Object.keys(actual.PERMISSIONS))),
+    clearPermissionCache: vi.fn(),
+  };
+});
+
+
 // Chainable mock mirroring the server-only service client usage.
 const mockSupabaseAdmin = vi.hoisted(() => {
   const q: Record<string, any> = {};

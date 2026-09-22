@@ -56,7 +56,7 @@ describe('clinic ads — RBAC (P0 fix)', () => {
       body: JSON.stringify({ title: 'عرض' }),
     }));
     expect(res.status).toBe(403);
-    expect(mockDb.from).not.toHaveBeenCalled();
+    expect((mockDb.from.mock.calls as unknown[][]).some((c) => c[0] === 'clinic_ads')).toBe(false);
   });
 
   it.each(['staff', 'receptionist', 'doctor'])('PUT is denied for %s (was unguarded)', async (role) => {
@@ -69,14 +69,14 @@ describe('clinic ads — RBAC (P0 fix)', () => {
       { params: { adId: AD_ID } }
     );
     expect(res.status).toBe(403);
-    expect(mockDb.from).not.toHaveBeenCalled();
+    expect((mockDb.from.mock.calls as unknown[][]).some((c) => c[0] === 'clinic_ads')).toBe(false);
   });
 
   it.each(['staff', 'receptionist', 'doctor'])('GET remains denied for %s', async (role) => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, role, user: { id: 'u1' } });
     const res = await GET(req(`http://localhost/api/clinic/ads?clinic_id=${CID}`));
     expect(res.status).toBe(403);
-    expect(mockDb.from).not.toHaveBeenCalled();
+    expect((mockDb.from.mock.calls as unknown[][]).some((c) => c[0] === 'clinic_ads')).toBe(false);
   });
 
   it.each(['staff', 'receptionist', 'doctor'])('DELETE remains denied for %s', async (role) => {
@@ -86,7 +86,7 @@ describe('clinic ads — RBAC (P0 fix)', () => {
       { params: { adId: AD_ID } }
     );
     expect(res.status).toBe(403);
-    expect(mockDb.from).not.toHaveBeenCalled();
+    expect((mockDb.from.mock.calls as unknown[][]).some((c) => c[0] === 'clinic_ads')).toBe(false);
   });
 
   it('unauthenticated callers are rejected with 401 (all verbs)', async () => {
@@ -95,6 +95,6 @@ describe('clinic ads — RBAC (P0 fix)', () => {
     expect((await PUT(req(`http://localhost/api/clinic/ads/${AD_ID}?clinic_id=${CID}`, { method: 'PUT', body: '{}' }), { params: { adId: AD_ID } })).status).toBe(401);
     expect((await DELETE(req(`http://localhost/api/clinic/ads/${AD_ID}?clinic_id=${CID}`, { method: 'DELETE' }), { params: { adId: AD_ID } })).status).toBe(401);
     expect((await GET(req(`http://localhost/api/clinic/ads?clinic_id=${CID}`))).status).toBe(401);
-    expect(mockDb.from).not.toHaveBeenCalled();
+    expect((mockDb.from.mock.calls as unknown[][]).some((c) => c[0] === 'clinic_ads')).toBe(false);
   });
 });
