@@ -114,13 +114,15 @@ export async function POST(
     if (/Unauthorized/.test(rpcError.message)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // PGRST202 = the 4-arg function does not exist yet (20261014 unapplied).
+    // PGRST202 = PostgREST could not find the 4-arg function → the actor-aware
+    // migration never landed in this database (the retired 3-arg overload may
+    // still be there). 20261015 is idempotent and drops every old overload.
     if (rpcError.code === 'PGRST202' || /Could not find the function/i.test(rpcError.message)) {
       logEvent('permissions_rpc_migration_missing', { clinic_id: clinicId, code: rpcError.code }, 'error');
       return NextResponse.json(
         {
           error: 'PERMISSIONS_MIGRATION_REQUIRED',
-          message: 'طبّق الترحيل db/migrations/20261014_set_user_permissions_actor.sql لتفعيل الحفظ.',
+          message: 'طبّق الترحيل db/migrations/20261015_fix_set_user_permissions.sql لتفعيل الحفظ.',
           detail: `${rpcError.code ?? ''} ${rpcError.message}`.trim(),
         },
         { status: 500 }
