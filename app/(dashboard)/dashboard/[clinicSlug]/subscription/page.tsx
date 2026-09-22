@@ -86,14 +86,26 @@ function statusTone(status: string | null, degraded: boolean): 'success' | 'warn
   return 'neutral';
 }
 
-function readQuery(): { upgrade: boolean; resource: string | null; plan: string | null; sessionId: string | null } {
-  if (typeof window === 'undefined') return { upgrade: false, resource: null, plan: null, sessionId: null };
+function readQuery(): {
+  upgrade: boolean;
+  resource: string | null;
+  plan: string | null;
+  sessionId: string | null;
+  status: string | null;
+  payment: string | null;
+} {
+  if (typeof window === 'undefined') {
+    return { upgrade: false, resource: null, plan: null, sessionId: null, status: null, payment: null };
+  }
   const params = new URLSearchParams(window.location.search);
   return {
     upgrade: params.get('upgrade') === '1',
     resource: params.get('resource'),
     plan: params.get('plan'),
     sessionId: params.get('session_id'),
+    // Lahza callback outcome flags (?status=success|failed|pending, ?payment=…)
+    status: params.get('status'),
+    payment: params.get('payment'),
   };
 }
 
@@ -106,6 +118,8 @@ export default function SubscriptionPage() {
   const [query, setQuery] = useState(readQuery);
   // Billing period toggle — one control drives the whole pricing grid.
   const [period, setPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  // Payment gateway toggle — Lahza (Palestine/local cards) or Stripe (international).
+  const [gateway, setGateway] = useState<'lahza' | 'stripe'>('lahza');
 
   async function load() {
     if (!clinicId) return null;
@@ -160,13 +174,18 @@ export default function SubscriptionPage() {
   }, [loading, clinicId]);
 
 
-  async function choose(planId: string) {
+  async function choose(planId: string, provider: 'lahza' | 'stripe' = gateway) {
     if (!clinicId) return;
     setBusy(true); setErr(null);
     try {
       const headers = await authHeaders();
       const plan = SUBSCRIPTION_PLANS.find((p) => p.id === planId);
-      const endpoint = plan && plan.pricePerMonth > 0 ? '/api/payments/checkout' : '/api/clinic/subscription';
+      const paid = !!plan && plan.pricePerMonth > 0;
+      // Paid plans go through a gateway (Lahza for local cards, Stripe for
+      // international); free/trial plans resolve directly to a records row.
+      const endpoint = paid
+        ? (provider === 'lahza' ? '/api/payments/lahza/checkout' : '/api/payments/checkout')
+        : '/api/clinic/subscription';
       const res = await fetch(`${endpoint}?clinic_id=${encodeURIComponent(clinicId)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...headers },
@@ -175,7 +194,15 @@ export default function SubscriptionPage() {
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
         if (b?.error === 'PAYMENT_NOT_CONFIGURED') {
-          setErr('الدفع غير مفعّل بعد: لم تُهيّأ مفاتيح Stripe الاختبارية.');
+          setErr(
+            provider === 'lahza'
+              ? 'الدفع المحلي غير مفعّل بعد: لم تُهيّأ مفاتيح Lahza.'
+              : 'الدفع غير مفعّل بعد: لم تُهيّأ مفاتيح Stripe الاختبارية.'
+          );
+        } else if (b?.error === 'PAYMENT_SCHEMA_MISSING') {
+          setErr(b?.message || 'طبّق ترحيل بوابة الدفع أولاً (db/migrations/20261013_lahza_gateway.sql).');
+        } else if (b?.error === 'PAYMENT_AMOUNT_UNSUPPORTED' || b?.error === 'PAYMENT_EMAIL_REQUIRED') {
+          setErr(b?.message || 'تعذر بدء الدفع.');
         } else if (b?.error === 'FOUNDING_UNAVAILABLE') {
           setErr(b?.message || 'باقة التأسيس غير متاحة لهذه العيادة (المقاعد التأسيسية مكتملة).');
         } else {
@@ -244,6 +271,42 @@ export default function SubscriptionPage() {
 
   return (
     <DashboardSection title="الاشتراك" subtitle="اختر باقة تناسب عيادتك؛ تُحفظ في ملف العيادة وتُطبَّق على الحجز والاستخدام.">
+
+      {/* Lahza callback outcome — the money answer, before the generic notice. */}
+      {query.status === 'success' ? (
+        <div className="mb-5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-4">
+          <p className="text-sm font-semibold text-emerald-200">تم تأكيد الدفع وتفعيل الاشتراك</p>
+          <p className="mt-1 text-xs text-emerald-200/70">
+            تحقّقنا من العملية مباشرةً لدى مزوّد الدفع وفعّلنا باقتك على هذه العيادة.
+          </p>
+        </div>
+      ) : null}
+      {query.status === 'failed' ? (
+        <div className="mb-5 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-4">
+          <p className="text-sm font-semibold text-rose-200">لم تكتمل عملية الدفع</p>
+          <p className="mt-1 text-xs text-rose-200/70">
+            لم يُفعَّل أي تغيير على باقتك. يمكنك إعادة المحاولة بأمان — لن تُخصم أي مبالغ مكررة.
+          </p>
+        </div>
+      ) : null}
+      {query.status === 'pending' ? (
+        <div className="mb-5 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-4">
+          <p className="text-sm font-semibold text-amber-200">الدفع بانتظار التأكيد النهائي</p>
+          <p className="mt-1 text-xs text-amber-200/70">
+            لم نتمكّن من تأكيد العملية الآن. سيُفعَّل اشتراكك تلقائيًا فور وصول تأكيد مزوّد الدفع.
+          </p>
+        </div>
+      ) : null}
+      {query.payment ? (
+        <div className="mb-5 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-4">
+          <p className="text-sm font-semibold text-slate-200">تعذر ربط عملية الدفع بالعيادة</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {query.payment === 'schema_missing'
+              ? 'ترحيل بوابة الدفع غير مطبَّق على قاعدة البيانات — راجع مسؤول النظام.'
+              : 'افتح الاشتراك من حساب العيادة نفسه وأعد المحاولة.'}
+          </p>
+        </div>
+      ) : null}
 
       {/* STEP 15G-B — Pending activation after returning from Checkout. */}
       {query.sessionId ? (
@@ -351,6 +414,27 @@ export default function SubscriptionPage() {
         {period === 'yearly' && <span className="ms-3 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">وفّر شهرين</span>}
       </div>
 
+      {/* Gateway picker — Lahza handles local (Palestinian) cards and Stripe
+          handles international ones; the server resolves amounts for both. */}
+      <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+        <div className="inline-flex rounded-full border border-slate-700 bg-slate-950/70 p-1" role="group" aria-label="بوابة الدفع">
+          {([
+            { id: 'lahza' as const, label: 'دفع محلي (Lahza)' },
+            { id: 'stripe' as const, label: 'دولي (Stripe)' },
+          ]).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setGateway(option.id)}
+              className={`rounded-full px-5 py-2 text-sm font-semibold transition ${gateway === option.id ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:text-white'}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-slate-500">الشهري والسنوي يحتفظان بنفس السعر في البوابتين.</span>
+      </div>
+
       {/* Trial card — standalone: the monthly/yearly toggle never applies to it. */}
       {trialPlan ? (
         <article
@@ -406,14 +490,15 @@ export default function SubscriptionPage() {
                 onClick={() => choose(plan.id)}
                 className="mt-4 w-full rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
               >
-                {active ? 'الباقة الحالية' : plan.pricePerMonth > 0 ? 'الدفع والاشتراك' : 'اختيار مجاني'}
+                {active ? 'الباقة الحالية' : plan.pricePerMonth > 0 ? (gateway === 'lahza' ? 'الدفع عبر Lahza' : 'الدفع عبر Stripe') : 'اختيار مجاني'}
               </button>
             </article>
           );
         })}
       </div>
       <p className="mt-6 text-xs text-slate-500">
-        ملاحظة: الدفع الإلكتروني الفعلي يتطلب مزوّد دفع مرخّص (مثل Stripe/PayPal لم يُهيّأ هنا). اختيار باقة يُسجّل حالة اشتراك (تجربة/نشط) للعيادة.
+        ملاحظة: لا يُفعَّل الاشتراك إلا بعد تأكيد مزوّد الدفع (Lahza للدفع المحلي، Stripe للدفع الدولي)
+        — التحقق يتم على الخادم ولا تُقبل أي عملية لم تُدفع فعلاً.
       </p>
     </DashboardSection>
   );

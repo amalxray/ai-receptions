@@ -35,5 +35,10 @@
     "status": "open",
     "owner_action": "Explicit Owner approval to start FIRST REAL CLINIC / FIRST REAL PATIENT (MASTER PLAN §12)",
     "evidence": "GO gate: 'لا GO حتى تفعيل Backups/PITR + Restore Drill ناجح' (PROJECT_STATUS, 2026-08-24)"
+  },
+  "lahza_gateway_live": {
+    "status": "open",
+    "owner_action": "Lahza dashboard: register the webhook URL (https://<domain>/api/payments/lahza/webhook) + provide LIVE keys (LAHZA_SECRET_KEY / NEXT_PUBLIC_LAHZA_PUBLIC_KEY) outside the repo; and apply db/migrations/20261013_lahza_gateway.sql in Supabase",
+    "evidence": "Adapter + checkout/callback/webhook implemented 2026-09-22; TEST-mode keys only, migration not yet applied to the production DB"
   }
 }
