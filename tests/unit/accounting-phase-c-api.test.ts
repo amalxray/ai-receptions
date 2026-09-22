@@ -28,11 +28,21 @@ vi.mock('@/lib/services/accounting', () => mockAccounting);
 
 // #43 — permissive permissions mock: legacy role-matrix expectations keep
 // passing; the flexible layer's own matrix is covered in permissions-rbac.test.ts.
+// The flexible layer is mocked as ROLE-DERIVED (base = ROLE_DEFAULTS, no
+// per-user overrides) so the REAL permissionGate runs. That is what makes the
+// legacy role sets on each route load-bearing: if a route forgets to pass
+// `allowedRoles`, a front-desk role that could call it before #43 turns 403.
 vi.mock('@/lib/auth/permissions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
   return {
     ...actual,
-    getUserPermissions: vi.fn(async () => new Set(Object.keys(actual.PERMISSIONS))),
+    getUserPermissionState: vi.fn(async (_userId: string, _clinicId: string, role: string) => ({
+      permissions: new Set<string>(actual.ROLE_DEFAULTS[role] ?? []),
+      overrides: new Map<string, boolean>(),
+    })),
+    getUserPermissions: vi.fn(async (_userId: string, _clinicId: string, role: string) =>
+      new Set<string>(actual.ROLE_DEFAULTS[role] ?? [])
+    ),
     clearPermissionCache: vi.fn(),
   };
 });

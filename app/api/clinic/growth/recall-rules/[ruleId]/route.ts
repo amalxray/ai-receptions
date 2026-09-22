@@ -11,7 +11,7 @@ export async function PATCH(req: Request, context: { params: { ruleId: string } 
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, ADMIN_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    const permBlocked = await permissionDenied(req, clinicId, 'manage_leads');
+    const permBlocked = await permissionDenied(req, clinicId, 'manage_leads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 
     const patch: { recallAfterDays?: number; enabled?: boolean } = {};
@@ -44,7 +44,7 @@ export async function DELETE(req: Request, context: { params: { ruleId: string }
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, ADMIN_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    const permBlocked = await permissionDenied(req, clinicId, 'manage_leads');
+    const permBlocked = await permissionDenied(req, clinicId, 'manage_leads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
     await deleteRecallRule({ clinicId, ruleId: context.params.ruleId });
     return NextResponse.json({ data: { ok: true } });

@@ -59,7 +59,7 @@ export async function GET(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team');
+  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (memberListPerm) return memberListPerm;
 
   const { data, error } = await supabaseAdmin
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const addPerm = await permissionDenied(req, clinicId, 'manage_team');
+  const addPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (addPerm) return addPerm;
 
   const parsed = addSchema.safeParse(await req.json().catch(() => null));
@@ -181,7 +181,7 @@ export async function PATCH(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const patchPerm = await permissionDenied(req, clinicId, 'manage_team');
+  const patchPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (patchPerm) return patchPerm;
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
@@ -272,7 +272,7 @@ export async function DELETE(req: Request) {
   if (roleDenied(authorization, ADMIN_ROLES)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const removePerm = await permissionDenied(req, clinicId, 'manage_team');
+  const removePerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (removePerm) return removePerm;
 
   const parsed = deleteSchema.safeParse(await req.json().catch(() => null));

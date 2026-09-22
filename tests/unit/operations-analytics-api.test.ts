@@ -22,11 +22,21 @@ const mockEntitlements = vi.hoisted(() => ({
 vi.mock('@/lib/subscription/entitlements', () => mockEntitlements);
 
 // #43 — permissive permissions mock (see permissions-rbac.test.ts).
+// The flexible layer is mocked as ROLE-DERIVED (base = ROLE_DEFAULTS, no
+// per-user overrides) so the REAL permissionGate runs. That is what makes the
+// legacy role sets on each route load-bearing: if a route forgets to pass
+// `allowedRoles`, a front-desk role that could call it before #43 turns 403.
 vi.mock('@/lib/auth/permissions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
   return {
     ...actual,
-    getUserPermissions: vi.fn(async () => new Set(Object.keys(actual.PERMISSIONS))),
+    getUserPermissionState: vi.fn(async (_userId: string, _clinicId: string, role: string) => ({
+      permissions: new Set<string>(actual.ROLE_DEFAULTS[role] ?? []),
+      overrides: new Map<string, boolean>(),
+    })),
+    getUserPermissions: vi.fn(async (_userId: string, _clinicId: string, role: string) =>
+      new Set<string>(actual.ROLE_DEFAULTS[role] ?? [])
+    ),
     clearPermissionCache: vi.fn(),
   };
 });
@@ -98,7 +108,7 @@ describe('GET /api/clinic/analytics/operations', () => {
   });
 
   it('scopes every query to the requesting clinic (tenant isolation)', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200 });
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200, user: { id: 'u-analytics' }, role: 'owner' });
     await GET(makeRequest(`https://x.test/api/clinic/analytics/operations?clinic_id=${CLINIC_A}`));
     // 4 tables queried: appointments, conversations, providers, provider_schedules
     expect(mockSupabaseAdmin.supabaseAdmin.from).toHaveBeenCalledWith('appointments');
@@ -114,7 +124,7 @@ describe('GET /api/clinic/analytics/operations', () => {
   });
 
   it('returns payload with funnel, schedule and aiUsage (null=unlimited honored)', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200 });
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200, user: { id: 'u-analytics' }, role: 'owner' });
     const res = await GET(makeRequest(`https://x.test/api/clinic/analytics/operations?clinic_id=${CLINIC_A}&from=2026-09-01T00:00:00.000Z&to=2026-09-07T23:59:59.999Z`));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -129,7 +139,7 @@ describe('GET /api/clinic/analytics/operations', () => {
   });
 
   it('returns 500 with a safe message when a query fails', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200 });
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200, user: { id: 'u-analytics' }, role: 'owner' });
     mockSupabaseAdmin.supabaseAdmin.from.mockImplementationOnce(() => {
       const b = mockSupabaseAdmin.supabaseAdmin.__chain();
       b.resolveWith({ data: null, error: { message: 'boom' }, count: 0 });

@@ -83,8 +83,20 @@ export const ROLE_DEFAULTS: Record<string, PermissionKey[]> = {
   staff: ['view_overview'],
 };
 
+/**
+ * Flexible-layer resolution result.
+ *  - `permissions`: the effective set (base ⊕ overrides) — sidebar/nav rendering.
+ *  - `overrides`: EXPLICIT per-user decisions only. The gate needs this to
+ *    distinguish “never granted” from “explicitly revoked”, which the collapsed
+ *    Set cannot express.
+ */
+export interface UserPermissionState {
+  permissions: Set<PermissionKey>;
+  overrides: Map<PermissionKey, boolean>;
+}
+
 /** Short in-process cache — avoids a DB round-trip per API call. */
-const cache = new Map<string, Set<PermissionKey>>();
+const cache = new Map<string, UserPermissionState>();
 const CACHE_TTL_MS = 60_000;
 const cacheTimestamps = new Map<string, number>();
 
@@ -94,10 +106,20 @@ export async function getUserPermissions(
   role: string,
   client: Pick<ReturnType<typeof supabaseAdmin.from>, 'select'> | any = supabaseAdmin
 ): Promise<Set<PermissionKey>> {
-  // Owner is untouchable: every permission, always.
+  return (await getUserPermissionState(userId, clinicId, role, client)).permissions;
+}
+
+export async function getUserPermissionState(
+  userId: string,
+  clinicId: string,
+  role: string,
+  client: Pick<ReturnType<typeof supabaseAdmin.from>, 'select'> | any = supabaseAdmin
+): Promise<UserPermissionState> {
+  // Owner is untouchable: every permission, always, and nothing is overridable.
   if (role === 'owner') {
-    return new Set(ALL_PERMISSION_KEYS);
+    return { permissions: new Set(ALL_PERMISSION_KEYS), overrides: new Map() };
   }
+
 
   const cacheKey = `${userId}:${clinicId}`;
   const cachedAt = cacheTimestamps.get(cacheKey) ?? 0;
@@ -127,6 +149,9 @@ export async function getUserPermissions(
   const permissions = new Set<PermissionKey>(basePermissions);
 
   // 2) Per-user overrides apply on top (enabled → grant, disabled → revoke).
+  //    Kept as an explicit map as well, so a caller can tell a revocation from
+  //    a permission that was simply never part of the role base.
+  const overrideMap = new Map<PermissionKey, boolean>();
   try {
     const { data: overrides } = await client
       .from('user_permissions')
@@ -136,6 +161,7 @@ export async function getUserPermissions(
 
     (overrides ?? []).forEach(({ permission_key, enabled }: { permission_key: string; enabled: boolean }) => {
       if (!isPermissionKey(permission_key)) return;
+      overrideMap.set(permission_key, enabled === true);
       if (enabled) permissions.add(permission_key);
       else permissions.delete(permission_key);
     });
@@ -143,9 +169,10 @@ export async function getUserPermissions(
     /* keep the base set on failure */
   }
 
-  cache.set(cacheKey, permissions);
+  const state: UserPermissionState = { permissions, overrides: overrideMap };
+  cache.set(cacheKey, state);
   cacheTimestamps.set(cacheKey, Date.now());
-  return permissions;
+  return state;
 }
 
 export function hasPermission(perms: Set<PermissionKey>, key: PermissionKey): boolean {

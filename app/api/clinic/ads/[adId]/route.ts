@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 
 const updateSchema = z.object({
@@ -27,7 +27,7 @@ export async function PUT(req: Request, { params }: { params: { adId: string } }
     if (!auth.authorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
     }
-    const permBlocked = await permissionDenied(req, clinicId, 'manage_ads');
+    const permBlocked = await permissionDenied(req, clinicId, 'manage_ads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 
     const parsed = updateSchema.safeParse(body);
@@ -64,7 +64,7 @@ export async function DELETE(req: Request, { params }: { params: { adId: string 
     if (!auth.authorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
     }
-    const permBlocked = await permissionDenied(req, clinicId, 'manage_ads');
+    const permBlocked = await permissionDenied(req, clinicId, 'manage_ads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 
     const { error } = await supabaseAdmin

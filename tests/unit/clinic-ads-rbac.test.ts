@@ -20,6 +20,23 @@ const mockAuth = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
 
+// Role-derived flexible layer (base = ROLE_DEFAULTS, no overrides) so the REAL
+// permissionGate runs — a route that forgets its legacy `allowedRoles` fails here.
+vi.mock('@/lib/auth/permissions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
+  return {
+    ...actual,
+    getUserPermissionState: vi.fn(async (_userId: string, _clinicId: string, role: string) => ({
+      permissions: new Set<string>(actual.ROLE_DEFAULTS[role] ?? []),
+      overrides: new Map<string, boolean>(),
+    })),
+    getUserPermissions: vi.fn(async (_userId: string, _clinicId: string, role: string) =>
+      new Set<string>(actual.ROLE_DEFAULTS[role] ?? [])
+    ),
+    clearPermissionCache: vi.fn(),
+  };
+});
+
 const mockDb = vi.hoisted(() => {
   const noop = () => chain;
   const chain: any = {

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, DATA_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    const permBlocked = await permissionDenied(req, clinicId, 'view_growth');
+    const permBlocked = await permissionDenied(req, clinicId, 'view_growth', { allowedRoles: DATA_ROLES });
     if (permBlocked) return permBlocked;
     const data = await listRecallRules(clinicId);
     return NextResponse.json({ data });
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
     const denied = roleDenied(authorization, ADMIN_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_leads');
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_leads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 
     const serviceId = body.service_id ?? null;

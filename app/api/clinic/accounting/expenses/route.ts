@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const denied = roleDenied(authorization, EXPENSE_RECORD_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     // #43 — per-permission enforcement (global by default, owner always allowed).
-    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_expenses');
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_expenses', { allowedRoles: EXPENSE_RECORD_ROLES });
     if (permBlocked) return permBlocked;
 
     const result = await recordExpense({
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     const denied = roleDenied(authorization, FINANCE_READ_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
+    const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
     if (permBlocked) return permBlocked;
     const data = await listExpenses(clinicId, {
       categoryId: url.searchParams.get('category_id'),

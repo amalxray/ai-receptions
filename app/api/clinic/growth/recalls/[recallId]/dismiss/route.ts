@@ -11,7 +11,7 @@ export async function POST(req: Request, context: { params: { recallId: string }
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, DATA_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    const permBlocked = await permissionDenied(req, clinicId, 'view_growth');
+    const permBlocked = await permissionDenied(req, clinicId, 'view_growth', { allowedRoles: DATA_ROLES });
     if (permBlocked) return permBlocked;
     await dismissRecall({ clinicId, recallId: context.params.recallId, actorUserId: authorization.user?.id ?? null });
     return NextResponse.json({ data: { ok: true } });
