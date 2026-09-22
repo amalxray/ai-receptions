@@ -27,9 +27,11 @@ const componentPath = path.resolve(__dirname, '../../components/dashboard/team/P
 const componentSource = fs.readFileSync(componentPath, 'utf8');
 
 describe('permission registry & display groups', () => {
-  it('ships exactly the 28 permissions the UI promises', () => {
-    expect(ALL_PERMISSION_KEYS).toHaveLength(28);
-    expect(Object.keys(PERMISSIONS)).toHaveLength(28);
+  it('ships a non-empty registry whose UI mirrors it 1:1', () => {
+    // The count is deliberately derived, not hard-coded: payroll (20261016)
+    // added keys and a stale "28" would have been a false failure.
+    expect(ALL_PERMISSION_KEYS.length).toBeGreaterThanOrEqual(28);
+    expect(Object.keys(PERMISSIONS)).toHaveLength(ALL_PERMISSION_KEYS.length);
   });
 
   it('renders EVERY registry permission exactly once (no orphans, no duplicates)', () => {
@@ -57,7 +59,7 @@ describe('permission registry & display groups', () => {
 describe('basePermissionsForRole (mirrors the server resolution order)', () => {
   it('grants EVERYTHING to the owner, always', () => {
     const base = basePermissionsForRole('owner');
-    expect(base.size).toBe(28);
+    expect(base.size).toBe(ALL_PERMISSION_KEYS.length);
     for (const key of ALL_PERMISSION_KEYS) expect(base.has(key)).toBe(true);
   });
 
@@ -68,11 +70,15 @@ describe('basePermissionsForRole (mirrors the server resolution order)', () => {
     }
   });
 
-  it('keeps staff at the single overview permission', () => {
+  it('keeps staff at the least-privilege base (overview + own payslip)', () => {
     const base = basePermissionsForRole('staff');
     expect(base.has('view_overview')).toBe(true);
     expect(base.has('view_financial')).toBe(false);
-    expect(base.size).toBe(1);
+    // Payroll Phase 2 added `view_own_payslips` to every employee role: staff
+    // may read their OWN pay, never the payroll module.
+    expect(base.has('view_own_payslips')).toBe(true);
+    expect(base.has('view_payroll')).toBe(false);
+    expect(base.size).toBe(ROLE_DEFAULTS.staff.length);
   });
 
   it('resolves a clinic CUSTOM role from its stored permissions, not from defaults', () => {

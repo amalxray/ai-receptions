@@ -39,6 +39,12 @@ export const PERMISSIONS = {
   manage_subscription: 'الاشتراك',
   view_public_page: 'الصفحة العامة',
   manage_public_page: 'محتوى الصفحة العامة',
+  // Phase 2 payroll (20261016)
+  view_payroll: 'عرض الرواتب',
+  manage_payroll: 'إدارة الرواتب',
+  view_advances: 'عرض السلف',
+  manage_advances: 'إدارة السلف',
+  view_own_payslips: 'عرض قسائمي',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -61,12 +67,15 @@ export const ROLE_DEFAULTS: Record<string, PermissionKey[]> = {
     'view_financial', 'manage_invoices', 'manage_payments', 'manage_expenses',
     'view_analytics', 'manage_team', 'manage_settings', 'manage_ads',
     'manage_knowledge', 'view_public_page', 'manage_public_page',
+    'view_payroll', 'manage_payroll', 'view_advances', 'manage_advances', 'view_own_payslips',
   ],
   doctor: [
     'view_overview', 'view_appointments', 'view_patients',
     'view_medical_files', 'manage_medical_files',
     'view_messages', 'send_messages', 'view_conversations',
     'view_imaging_requests', 'manage_imaging_requests',
+    // Own pay only: a doctor sees their payslips, never the payroll module.
+    'view_own_payslips',
   ],
   receptionist: [
     'view_overview', 'view_appointments', 'manage_appointments',
@@ -74,13 +83,15 @@ export const ROLE_DEFAULTS: Record<string, PermissionKey[]> = {
     'view_messages', 'send_messages', 'view_conversations',
     'view_imaging_requests', 'manage_imaging_requests',
     'view_leads', 'manage_leads',
+    'view_own_payslips',
   ],
   accountant: [
     'view_overview', 'view_financial',
     'manage_invoices', 'manage_payments', 'manage_expenses',
     'view_analytics',
+    'view_payroll', 'manage_payroll', 'view_advances', 'manage_advances', 'view_own_payslips',
   ],
-  staff: ['view_overview'],
+  staff: ['view_overview', 'view_own_payslips'],
 };
 
 /**

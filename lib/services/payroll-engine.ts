@@ -46,6 +46,23 @@ export type PayrollTotals = {
   net: number;
 };
 
+/** One advance installment taken by a payslip (Phase 2). */
+export type AdvanceDeductionLine = {
+  advance_id: string;
+  amount: number;
+  /** 1-based: which installment this deduction is. */
+  installment_number: number;
+  /** Total installments of the advance (1 = single-shot). */
+  installments: number;
+};
+
+export type PayrollAuditAction =
+  | 'generated'
+  | 'approved'
+  | 'paid'
+  | 'cancelled'
+  | 'unlocked';
+
 export type GeneratePayrollResult = {
   period_id: string;
   period_month: string;
@@ -79,6 +96,64 @@ async function resolveCurrency(clinicId: string): Promise<string> {
 export function monthStart(periodMonth: string): string {
   return `${periodMonth}-01`;
 }
+
+// ---------------------------------------------------------------------------
+// Payroll audit trail (20261016). Separate from the generic audit log: this one
+// is period-scoped and is what the payroll UI reads back, so a pay dispute can
+// be reconstructed verbatim. A failed audit write never blocks payroll — the
+// generic audit log already has the same event.
+// ---------------------------------------------------------------------------
+export async function writePayrollAudit(input: {
+  clinicId: string;
+  periodId: string | null;
+  actorUserId: string | null;
+  action: PayrollAuditAction;
+  details?: Record<string, unknown>;
+}): Promise<void> {
+  const { error } = await supabaseAdmin.from('payroll_audit_log').insert({
+    clinic_id: input.clinicId,
+    payroll_period_id: input.periodId,
+    actor_user_id: input.actorUserId,
+    action: input.action,
+    details: input.details ?? {},
+  });
+  if (error) {
+    logEvent(
+      'payroll_audit_write_error',
+      { clinic_id: input.clinicId, period_id: input.periodId, action: input.action, error: error.message },
+      'error'
+    );
+  }
+}
+
+export async function listPayrollAudit(
+  clinicId: string,
+  options?: { periodId?: string; limit?: number }
+) {
+  let query = supabaseAdmin
+    .from('payroll_audit_log')
+    .select('id, payroll_period_id, action, actor_user_id, details, created_at')
+    .eq('clinic_id', clinicId)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(Math.max(options?.limit ?? 100, 1), 500));
+  if (options?.periodId) query = query.eq('payroll_period_id', options.periodId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const actorIds = Array.from(new Set((data ?? []).map((r) => r.actor_user_id).filter(Boolean))) as string[];
+  const actors = new Map<string, string | null>();
+  for (const id of actorIds) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(id);
+      actors.set(id, userData?.user?.email ?? null);
+    } catch {
+      actors.set(id, null);
+    }
+  }
+  return (data ?? []).map((row) => ({ ...row, actor_email: actors.get(row.actor_user_id as string) ?? null }));
+}
+
 
 // ---------------------------------------------------------------------------
 // Generation
@@ -170,18 +245,39 @@ export async function generatePayrollPeriod(input: {
     revenueByProvider.set(r.provider_id as string, num(r.issued_revenue));
   });
 
-  // 4) Pending advances — money already handed to the person.
-  const advancesByProvider = new Map<string, { total: number; ids: string[] }>();
+  // 4) Advances — money already handed to the person.
+  //    Phase 2: an installment advance contributes exactly ONE monthly
+  //    installment (never the whole principal) until it is fully repaid, and
+  //    the lines are stored in the payslip breakdown so approval can record the
+  //    same amounts in staff_advance_deductions without recomputing anything.
+  const advancesByProvider = new Map<
+    string,
+    { total: number; ids: string[]; details: AdvanceDeductionLine[] }
+  >();
   const { data: advances, error: advancesError } = await supabaseAdmin
     .from('staff_advances')
-    .select('id, provider_id, amount')
+    .select('id, provider_id, amount, installment_count, installment_amount, months_paid')
     .eq('clinic_id', clinicId)
     .eq('status', 'pending');
   if (advancesError) throw new Error(advancesError.message);
   (advances ?? []).forEach((a) => {
-    const bucket = advancesByProvider.get(a.provider_id as string) ?? { total: 0, ids: [] };
-    bucket.total = round2(bucket.total + num(a.amount));
+    const totalInstallments = Math.max(1, Math.trunc(num(a.installment_count)) || 1);
+    const monthsPaid = Math.max(0, Math.trunc(num(a.months_paid)));
+    if (monthsPaid >= totalInstallments) return; // fully repaid — nothing to take
+    const installment = a.installment_amount != null
+      ? num(a.installment_amount)
+      : round2(num(a.amount) / totalInstallments);
+    if (!(installment > 0)) return;
+
+    const bucket = advancesByProvider.get(a.provider_id as string) ?? { total: 0, ids: [], details: [] };
+    bucket.total = round2(bucket.total + installment);
     bucket.ids.push(a.id as string);
+    bucket.details.push({
+      advance_id: a.id as string,
+      amount: installment,
+      installment_number: monthsPaid + 1,
+      installments: totalInstallments,
+    });
     advancesByProvider.set(a.provider_id as string, bucket);
   });
 
@@ -210,7 +306,7 @@ export async function generatePayrollPeriod(input: {
 
     const model = comp.model as CompensationModel;
     const revenueAttributed = revenueByProvider.get(providerId) ?? 0;
-    const advance = advancesByProvider.get(providerId) ?? { total: 0, ids: [] };
+    const advance = advancesByProvider.get(providerId) ?? { total: 0, ids: [], details: [] };
     const adjustment = adjustmentsByProvider.get(providerId) ?? { bonuses: 0, deductions: 0 };
 
     const base = model === 'fixed_monthly' || model === 'hybrid'
@@ -251,6 +347,7 @@ export async function generatePayrollPeriod(input: {
       breakdown: {
         revenue_attributed: revenueAttributed,
         advances_ids: advance.ids,
+        advance_details: advance.details,
         bonus_lines: (adjustments ?? []).filter((a) => a.provider_id === providerId && a.type === 'bonus'),
         deduction_lines: (adjustments ?? []).filter((a) => a.provider_id === providerId && a.type === 'deduction'),
       },
@@ -291,9 +388,16 @@ export async function generatePayrollPeriod(input: {
     metadata: { period_month: periodMonth, payslips: breakdown.length, total_net: totals.net },
   });
 
+  await writePayrollAudit({
+    clinicId,
+    periodId,
+    actorUserId: input.actorUserId,
+    action: 'generated',
+    details: { period_month: periodMonth, payslips: breakdown.length, total_net: totals.net, currency },
+  });
+
   return { period_id: periodId, period_month: periodMonth, currency, breakdown, totals };
 }
-
 // ---------------------------------------------------------------------------
 // Lifecycle: draft → approved → paid (cancel exits from draft/approved).
 // Every transition is tenant-scoped, state-verified and audited.
@@ -349,13 +453,70 @@ export async function approvePayrollPeriod(input: {
     .single();
   if (updateError || !updated) throw new Error('PERIOD_STATE_CONFLICT');
 
-  // Advances recovered by THIS payroll become `deducted` (history kept).
-  const advanceIds = (slips ?? []).flatMap((s) => {
+  // Advances recovered by THIS payroll: one deduction row per installment and a
+  // counter bump. A multi-installment advance stays `pending` until its LAST
+  // installment, so the next payroll keeps taking the monthly amount.
+  // Payslips generated before Phase 2 carry only `advances_ids` — those keep the
+  // Phase 1 single-shot behaviour so an in-flight draft still approves correctly.
+  const advanceLines: AdvanceDeductionLine[] = (slips ?? []).flatMap((s) => {
+    const lines = (s.breakdown as { advance_details?: AdvanceDeductionLine[] } | null)?.advance_details ?? [];
+    return Array.isArray(lines) ? lines : [];
+  });
+  const legacyAdvanceIds = (slips ?? []).flatMap((s) => {
     const ids = (s.breakdown as { advances_ids?: string[] } | null)?.advances_ids ?? [];
     return Array.isArray(ids) ? ids : [];
   });
+
   let deducted = 0;
-  if (advanceIds.length > 0) {
+
+  for (const line of advanceLines) {
+    const amount = round2(num(line.amount));
+    if (!(amount > 0)) continue;
+
+    // (a) Record what was actually taken — one row per advance per period.
+    const { error: deductionError } = await supabaseAdmin
+      .from('staff_advance_deductions')
+      .insert({
+        advance_id: line.advance_id,
+        payroll_period_id: period.id,
+        clinic_id: input.clinicId,
+        amount,
+      });
+    // Duplicate = this period already took this installment (approve retried).
+    if (deductionError && !/duplicate key|23505/i.test(deductionError.message)) {
+      throw new Error(deductionError.message);
+    }
+
+    // (b) Advance the installment counter; completed advances become history.
+    const { data: advance } = await supabaseAdmin
+      .from('staff_advances')
+      .select('id, installment_count, months_paid')
+      .eq('id', line.advance_id)
+      .eq('clinic_id', input.clinicId)
+      .maybeSingle();
+    if (!advance) continue;
+
+    const totalInstallments = Math.max(1, Math.trunc(num(advance.installment_count)) || 1);
+    const monthsPaid = Math.min(totalInstallments, Math.max(0, Math.trunc(num(advance.months_paid))) + 1);
+    const isComplete = monthsPaid >= totalInstallments;
+
+    const { error: advanceError } = await supabaseAdmin
+      .from('staff_advances')
+      .update({
+        months_paid: monthsPaid,
+        status: isComplete ? 'deducted' : 'pending',
+        deducted_in_period_id: isComplete ? period.id : null,
+        deducted_at: isComplete ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', line.advance_id)
+      .eq('clinic_id', input.clinicId);
+    if (advanceError) throw new Error(advanceError.message);
+    deducted += 1;
+  }
+
+  // Legacy (Phase 1) payslips: full principal deducted in one shot.
+  if (advanceLines.length === 0 && legacyAdvanceIds.length > 0) {
     const { error: advanceError } = await supabaseAdmin
       .from('staff_advances')
       .update({
@@ -365,10 +526,10 @@ export async function approvePayrollPeriod(input: {
         updated_at: new Date().toISOString(),
       })
       .eq('clinic_id', input.clinicId)
-      .in('id', advanceIds)
+      .in('id', legacyAdvanceIds)
       .eq('status', 'pending');
     if (advanceError) throw new Error(advanceError.message);
-    deducted = advanceIds.length;
+    deducted = legacyAdvanceIds.length;
   }
 
   await writeAuditLog({
@@ -378,6 +539,19 @@ export async function approvePayrollPeriod(input: {
     resourceType: 'payroll_periods',
     resourceId: period.id,
     metadata: { period_month: period.period_month, payslips: (slips ?? []).length, advances_deducted: deducted },
+  });
+
+  await writePayrollAudit({
+    clinicId: input.clinicId,
+    periodId: period.id,
+    actorUserId: input.actorUserId,
+    action: 'approved',
+    details: {
+      period_month: period.period_month,
+      payslips: (slips ?? []).length,
+      advances_deducted: deducted,
+      installments: advanceLines.length,
+    },
   });
 
   return { id: period.id, status: 'approved', advances_deducted: deducted };
@@ -445,6 +619,14 @@ export async function markPayrollPaid(input: {
     metadata: { period_month: period.period_month, amount, ledger_event: eventKey },
   });
 
+  await writePayrollAudit({
+    clinicId: input.clinicId,
+    periodId: period.id,
+    actorUserId: input.actorUserId,
+    action: 'paid',
+    details: { period_month: period.period_month, amount, ledger_event: eventKey },
+  });
+
   return { id: period.id, status: 'paid', ledger_event: eventKey, amount };
 }
 
@@ -456,6 +638,57 @@ export async function cancelPayrollPeriod(input: {
 }): Promise<{ id: string; status: PayrollPeriodStatus; advances_released: number }> {
   const period = await loadPeriod(input.clinicId, input.periodId);
   if (period.status === 'paid' || period.status === 'cancelled') throw new Error('PERIOD_STATE_CONFLICT');
+
+  // Phase 2 — reverse THIS period's advance installments BEFORE the period
+  // leaves a writable state (the deductions guard freezes them once paid).
+  const { data: deductionRows, error: deductionReadError } = await supabaseAdmin
+    .from('staff_advance_deductions')
+    .select('id, advance_id, amount')
+    .eq('payroll_period_id', period.id)
+    .eq('clinic_id', input.clinicId);
+  if (deductionReadError) throw new Error(deductionReadError.message);
+
+  if ((deductionRows ?? []).length > 0) {
+    const { error: deleteError } = await supabaseAdmin
+      .from('staff_advance_deductions')
+      .delete()
+      .eq('payroll_period_id', period.id)
+      .eq('clinic_id', input.clinicId);
+    if (deleteError) throw new Error(deleteError.message);
+
+    // Give the installment back: decrement the counter and reopen a completed
+    // advance (the ONLY reversal the advances guard allows).
+    for (const row of deductionRows ?? []) {
+      const { data: advance } = await supabaseAdmin
+        .from('staff_advances')
+        .select('id, installment_count, months_paid, status, deducted_in_period_id')
+        .eq('id', row.advance_id as string)
+        .eq('clinic_id', input.clinicId)
+        .maybeSingle();
+      if (!advance) continue;
+
+      const totalInstallments = Math.max(1, Math.trunc(num(advance.installment_count)) || 1);
+      const monthsPaid = Math.max(0, Math.trunc(num(advance.months_paid)) - 1);
+      const wasCompleted = advance.status === 'deducted' && advance.deducted_in_period_id === period.id;
+
+      const { error: advanceError } = await supabaseAdmin
+        .from('staff_advances')
+        .update({
+          months_paid: monthsPaid,
+          status: 'pending',
+          // Only a completion THIS period may be undone; otherwise the advance
+          // keeps pointing at the period that actually completed it.
+          deducted_in_period_id: wasCompleted ? null : advance.deducted_in_period_id,
+          deducted_at: wasCompleted ? null : undefined,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.advance_id as string)
+        .eq('clinic_id', input.clinicId);
+      if (advanceError) throw new Error(advanceError.message);
+      // monthsPaid is derived, kept only for readability of the trail.
+      void totalInstallments;
+    }
+  }
 
   const { data: updated, error } = await supabaseAdmin
     .from('payroll_periods')
@@ -500,7 +733,92 @@ export async function cancelPayrollPeriod(input: {
     },
   });
 
+  await writePayrollAudit({
+    clinicId: input.clinicId,
+    periodId: period.id,
+    actorUserId: input.actorUserId,
+    action: 'cancelled',
+    details: {
+      period_month: period.period_month,
+      from_status: period.status,
+      advances_released: (released ?? []).length,
+      installments_reversed: (deductionRows ?? []).length,
+      reason: input.reason ?? null,
+    },
+  });
+
   return { id: period.id, status: 'cancelled', advances_released: (released ?? []).length };
+}
+
+/**
+ * Unlock (20261016) — owner-only escape hatch that returns a finalized period to
+ * draft so a corrected payroll can be regenerated. The reason is mandatory and
+ * every unlock is counted + audited; the DB guard re-validates that a reason
+ * exists and that totals only change on the unlocking statement itself.
+ *
+ * NOTE: unlocking does NOT touch money. If the period was already PAID, the
+ * `payroll_run` ledger row stays (append-only ledger) — the next `pay` of the
+ * regenerated period is keyed by period id, so it cannot double-book either.
+ */
+export async function unlockPayrollPeriod(input: {
+  clinicId: string;
+  periodId: string;
+  actorUserId: string;
+  reason: string;
+}): Promise<{ id: string; status: PayrollPeriodStatus; unlock_count: number }> {
+  const reason = (input.reason ?? '').trim();
+  if (reason.length < 5) throw new Error('UNLOCK_REASON_TOO_SHORT');
+
+  const { data: period, error } = await supabaseAdmin
+    .from('payroll_periods')
+    .select('id, clinic_id, period_month, status, unlock_count')
+    .eq('id', input.periodId)
+    .eq('clinic_id', input.clinicId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!period) throw new Error('PERIOD_NOT_FOUND');
+  if (!['approved', 'paid'].includes(period.status as string)) {
+    throw new Error('CANNOT_UNLOCK_THIS_STATUS');
+  }
+
+  const unlockCount = Math.max(0, Math.trunc(num(period.unlock_count))) + 1;
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from('payroll_periods')
+    .update({
+      status: 'draft',
+      unlocked_at: new Date().toISOString(),
+      unlocked_by: input.actorUserId,
+      unlock_reason: reason,
+      unlock_count: unlockCount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', period.id)
+    .eq('clinic_id', input.clinicId)
+    .eq('status', period.status)
+    .select('id, status, unlock_count')
+    .single();
+  if (updateError || !updated) throw new Error('PERIOD_STATE_CONFLICT');
+
+  await writeAuditLog({
+    clinicId: input.clinicId,
+    actorUserId: input.actorUserId,
+    action: 'payroll.period.unlocked',
+    resourceType: 'payroll_periods',
+    resourceId: period.id,
+    metadata: { period_month: period.period_month, from_status: period.status, reason, unlock_count: unlockCount },
+  });
+
+  await writePayrollAudit({
+    clinicId: input.clinicId,
+    periodId: period.id,
+    actorUserId: input.actorUserId,
+    action: 'unlocked',
+    details: { period_month: period.period_month, from_status: period.status, reason, unlock_count: unlockCount },
+  });
+
+  // Advanced picks are re-derived on the next generate — nothing is cached here.
+
+  return { id: period.id, status: 'draft', unlock_count: unlockCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -579,7 +897,7 @@ export async function listAdvances(
 ) {
   let query = supabaseAdmin
     .from('staff_advances')
-    .select('id, provider_id, amount, reason, status, issued_at, deducted_in_period_id, deducted_at, notes, created_at')
+    .select('id, provider_id, amount, reason, status, issued_at, deducted_in_period_id, deducted_at, notes, created_at, installment_count, installment_amount, months_paid')
     .eq('clinic_id', clinicId)
     .order('issued_at', { ascending: false });
   if (filters?.providerId) query = query.eq('provider_id', filters.providerId);
@@ -610,10 +928,19 @@ export async function createAdvance(input: {
   reason?: string | null;
   issuedAt?: string | null;
   notes?: string | null;
+  /** 1..12 — how many monthly payrolls the advance is recovered over. */
+  installmentCount?: number | null;
   actorUserId: string | null;
 }) {
   const amount = round2(num(input.amount));
   if (!(amount > 0)) throw new Error('ADVANCE_AMOUNT_INVALID');
+
+  const installmentCount = input.installmentCount == null
+    ? 1
+    : Math.trunc(num(input.installmentCount));
+  if (!Number.isFinite(installmentCount) || installmentCount < 1 || installmentCount > 12) {
+    throw new Error('ADVANCE_INSTALLMENTS_INVALID');
+  }
 
   // The payee must be an ACTIVE provider of THIS clinic (tenant guard; the
   // composite FK enforces the same rule in the DB).
@@ -626,6 +953,10 @@ export async function createAdvance(input: {
   if (!provider) throw new Error('PROVIDER_NOT_FOUND');
   if (provider.deleted_at) throw new Error('PROVIDER_INACTIVE');
 
+  // The per-installment amount is STORED, never re-derived at deduction time:
+  // editing the count later must not silently change what was agreed.
+  const installmentAmount = round2(amount / installmentCount);
+
   const { data, error } = await supabaseAdmin
     .from('staff_advances')
     .insert({
@@ -636,9 +967,12 @@ export async function createAdvance(input: {
       status: 'pending',
       issued_at: input.issuedAt ?? new Date().toISOString().slice(0, 10),
       notes: input.notes ?? null,
+      installment_count: installmentCount,
+      installment_amount: installmentAmount,
+      months_paid: 0,
       created_by: input.actorUserId,
     })
-    .select('id, provider_id, amount, status, issued_at')
+    .select('id, provider_id, amount, status, issued_at, installment_count, installment_amount, months_paid')
     .single();
   if (error) throw new Error(error.message);
 
@@ -648,10 +982,16 @@ export async function createAdvance(input: {
     action: 'payroll.advance.created',
     resourceType: 'staff_advances',
     resourceId: data.id,
-    metadata: { provider_id: input.providerId, amount },
+    metadata: {
+      provider_id: input.providerId,
+      amount,
+      installment_count: installmentCount,
+      installment_amount: installmentAmount,
+    },
   });
   return data;
 }
+
 
 /** Cancel = status change, never a delete (history is kept, like the ledger). */
 export async function cancelAdvance(input: {
@@ -779,3 +1119,149 @@ export async function deletePayslipAdjustment(input: {
   });
   return { id: input.adjustmentId, deleted: true as const };
 }
+
+// ---------------------------------------------------------------------------
+// Self-service (20261016). The employee ↔ provider link is providers.user_id,
+// resolved from the caller's own auth id — a member can never read another
+// person's pay through these paths, whatever the request body says.
+// ---------------------------------------------------------------------------
+async function resolveSelfProviderId(clinicId: string, userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from('providers')
+    .select('id')
+    .eq('clinic_id', clinicId)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  return (data?.id as string | undefined) ?? null;
+}
+
+export async function listSelfPayslips(input: {
+  clinicId: string;
+  userId: string;
+  limit?: number;
+}) {
+  const providerId = await resolveSelfProviderId(input.clinicId, input.userId);
+  if (!providerId) return { provider_id: null, payslips: [], advances: [] };
+
+  const { data: payslips, error } = await supabaseAdmin
+    .from('payslips')
+    .select('id, payroll_period_id, provider_id, base_amount, commission_amount, bonuses_amount, deductions_amount, advances_amount, revenue_attributed, net_amount, currency, breakdown, created_at')
+    .eq('clinic_id', input.clinicId)
+    .eq('provider_id', providerId)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(Math.max(input.limit ?? 36, 1), 120));
+  if (error) throw new Error(error.message);
+
+  // A draft period is an internal working document — the employee only ever
+  // sees pay that the clinic has approved or paid.
+  const periodIds = Array.from(new Set((payslips ?? []).map((p) => p.payroll_period_id as string)));
+  const periodMeta = new Map<string, { period_month: string; status: string; paid_at: string | null }>();
+  if (periodIds.length > 0) {
+    const { data: periods } = await supabaseAdmin
+      .from('payroll_periods')
+      .select('id, period_month, status, paid_at')
+      .eq('clinic_id', input.clinicId)
+      .in('id', periodIds);
+    (periods ?? []).forEach((p) =>
+      periodMeta.set(p.id as string, {
+        period_month: p.period_month as string,
+        status: p.status as string,
+        paid_at: (p.paid_at as string | null) ?? null,
+      })
+    );
+  }
+
+  const visible = (payslips ?? [])
+    .filter((p) => {
+      const meta = periodMeta.get(p.payroll_period_id as string);
+      return meta && (meta.status === 'approved' || meta.status === 'paid');
+    })
+    .map((p) => {
+      const meta = periodMeta.get(p.payroll_period_id as string);
+      return {
+        ...p,
+        period_month: meta?.period_month ?? null,
+        period_status: meta?.status ?? null,
+        paid_at: meta?.paid_at ?? null,
+      };
+    });
+
+  const { data: advances, error: advanceError } = await supabaseAdmin
+    .from('staff_advances')
+    .select('id, amount, reason, status, issued_at, installment_count, installment_amount, months_paid')
+    .eq('clinic_id', input.clinicId)
+    .eq('provider_id', providerId)
+    .order('issued_at', { ascending: false });
+  if (advanceError) throw new Error(advanceError.message);
+
+  return { provider_id: providerId, payslips: visible, advances: advances ?? [] };
+}
+
+/** One payslip — readable by an admin OR by the provider it belongs to. */
+export async function getPayslipDetail(input: {
+  clinicId: string;
+  payslipId: string;
+  userId: string;
+  isAdmin: boolean;
+}) {
+  const { data: payslip, error } = await supabaseAdmin
+    .from('payslips')
+    .select('*')
+    .eq('id', input.payslipId)
+    .eq('clinic_id', input.clinicId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payslip) throw new Error('PAYSLIP_NOT_FOUND');
+
+  const [{ data: period }, { data: provider }] = await Promise.all([
+    supabaseAdmin
+      .from('payroll_periods')
+      .select('id, period_month, status, approved_at, paid_at, unlock_count, unlock_reason, unlocked_at')
+      .eq('id', payslip.payroll_period_id as string)
+      .eq('clinic_id', input.clinicId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('providers')
+      .select('id, name, title, provider_type, email')
+      .eq('id', payslip.provider_id as string)
+      .eq('clinic_id', input.clinicId)
+      .maybeSingle(),
+  ]);
+
+  if (!input.isAdmin) {
+    const providerId = await resolveSelfProviderId(input.clinicId, input.userId);
+    // Ownership AND publication are both required: a draft run is internal.
+    if (!providerId || providerId !== (payslip.provider_id as string)) throw new Error('FORBIDDEN');
+    if (!['approved', 'paid'].includes((period?.status as string) ?? '')) throw new Error('FORBIDDEN');
+  }
+
+  // Which installments of which advances were taken in THIS period, so the
+  // payslip can explain the advance line instead of showing a bare number.
+  const advanceIds = ((payslip.breakdown as { advance_details?: Array<{ advance_id: string }> } | null)
+    ?.advance_details ?? []).map((line) => line.advance_id);
+
+  let deductions: Array<Record<string, unknown>> = [];
+  if (advanceIds.length > 0) {
+    const { data } = await supabaseAdmin
+      .from('staff_advance_deductions')
+      .select('id, advance_id, amount, deducted_at')
+      .eq('payroll_period_id', payslip.payroll_period_id as string)
+      .eq('clinic_id', input.clinicId)
+      .in('advance_id', advanceIds);
+    deductions = data ?? [];
+  }
+
+  return {
+    ...payslip,
+    period_month: (period?.period_month as string | null) ?? null,
+    period_status: (period?.status as string | null) ?? null,
+    period_approved_at: (period?.approved_at as string | null) ?? null,
+    period_paid_at: (period?.paid_at as string | null) ?? null,
+    provider_name: (provider?.name as string | null) ?? null,
+    provider_title: (provider?.title as string | null) ?? null,
+    advance_deductions: deductions,
+  };
+}
+
+

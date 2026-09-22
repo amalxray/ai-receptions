@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { listAdvances, createAdvance } from '@/lib/services/payroll-engine';
 
 // Staff advances — money handed to a person, recovered from a later payroll.
@@ -18,6 +19,8 @@ export async function GET(req: Request) {
     const authorization = await authorizeClinicRequest(req, clinicId);
     const denied = roleDenied(authorization, FINANCE_READ_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permBlocked = await permissionDenied(req, clinicId, 'view_advances', { allowedRoles: FINANCE_READ_ROLES });
+    if (permBlocked) return permBlocked;
 
     const statusParam = url.searchParams.get('status');
     const data = await listAdvances(clinicId, {
@@ -44,6 +47,8 @@ export async function POST(req: Request) {
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
     const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_advances', { allowedRoles: FINANCE_ADMIN_ROLES });
+    if (permBlocked) return permBlocked;
 
     const data = await createAdvance({
       clinicId: body.clinic_id,
@@ -52,12 +57,14 @@ export async function POST(req: Request) {
       reason: body.reason ?? null,
       issuedAt: body.issued_at ?? null,
       notes: body.notes ?? null,
+      // Phase 2 — the advance can be recovered over 1..12 monthly payrolls.
+      installmentCount: body.installment_count ?? 1,
       actorUserId: authorization.user?.id ?? null,
     });
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = /ADVANCE_AMOUNT_INVALID|PROVIDER_INACTIVE/.test(message)
+    const status = /ADVANCE_AMOUNT_INVALID|PROVIDER_INACTIVE|ADVANCE_INSTALLMENTS_INVALID/.test(message)
       ? 400
       : /PROVIDER_NOT_FOUND/.test(message)
         ? 404

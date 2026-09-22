@@ -36,6 +36,8 @@ const BASE_NAV: NavModule[] = [
   { module: 'notifications', label: 'الإشعارات' },
   { module: 'leads', label: 'العملاء المحتملون' },
   { module: 'financial-intelligence', label: 'الذكاء المالي' },
+  { module: 'payroll', label: 'الرواتب', icon: '💰' },
+  { module: 'my-payslips', label: 'قسائمي', icon: '📄' },
   { module: 'analytics', label: 'التحليلات' },
   { module: 'growth', label: 'النمو' },
   { module: 'subscription', label: 'الاشتراك' },
@@ -134,6 +136,9 @@ const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
   'public-page': 'view_public_page',
   'public-content': 'manage_public_page',
   subscription: 'manage_subscription',
+  // Payroll Phase 2 (20261016)
+  payroll: 'view_payroll',
+  'my-payslips': 'view_own_payslips',
 };
 
 /** localStorage key remembering open/collapsed sidebar groups. */

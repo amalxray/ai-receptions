@@ -131,7 +131,12 @@ describe('GET /api/clinic/permissions/me', () => {
     const res = await myPermissions(req(`/api/clinic/permissions/me?clinic_id=${CLINIC}`));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data).toEqual(['view_overview']);
+    // The staff base is derived, never hard-coded: payroll (20261016) added
+    // `view_own_payslips` to every employee role, and this assertion must not
+    // rot into a false failure.
+    expect(body.data).toEqual(expect.arrayContaining(['view_overview']));
+    expect(body.data).not.toContain('view_financial');
+    expect(body.data).not.toContain('manage_team');
   });
 
   it('rejects an unauthorized caller with the membership status', async () => {

@@ -22,6 +22,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<readonly [string, readonly Permiss
   ['التحليلات', ['view_analytics', 'view_growth']],
   ['الإدارة', ['manage_team', 'manage_settings', 'manage_ads', 'manage_knowledge', 'manage_subscription']],
   ['الصفحة العامة', ['view_public_page', 'manage_public_page']],
+  ['الرواتب', ['view_payroll', 'manage_payroll', 'view_advances', 'manage_advances', 'view_own_payslips']],
 ];
 
 /** Flat list of every key the UI actually renders (duplicates preserved). */

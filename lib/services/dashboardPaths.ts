@@ -20,6 +20,13 @@ export const DASHBOARD_MODULES = [
   'public-content',
   // PHASE K — account self-service (profile + password change)
   'profile',
+  // PAYROLL PHASE 2 (20261016) — payroll module + employee self-service
+  'payroll',
+  'my-payslips',
+  // Registered late (pre-existing gap: the tenant pages existed but the module
+  // list — and therefore the legacy compat redirects — did not).
+  'badges',
+  'before-after',
 ] as const;
 export type DashboardModule = (typeof DASHBOARD_MODULES)[number];
 

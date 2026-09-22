@@ -40,6 +40,10 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   analytics: 'finance',
   growth: 'finance',
   subscription: 'finance',
+  // Payroll (20261016): money modules live in the finance group; "my payslips"
+  // is a personal (account) page, so it sits under settings with the profile.
+  payroll: 'finance',
+  'my-payslips': 'settings',
   'knowledge-base': 'settings',
   'ai-settings': 'settings',
   'communication-settings': 'settings',
