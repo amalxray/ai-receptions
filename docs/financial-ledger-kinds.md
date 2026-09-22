@@ -35,6 +35,20 @@
 | `claim_recorded` | `clinic_claims` | in       | **Not cash.** Insurance claim lodged (draft) against a payer for an issued invoice — an expected receivable from the payer. Never a payment; never cash. |
 | `claim_settled`  | `clinic_claims` | in       | **Not cash.** Payer obligation confirmed (claim settled). The claim is the insurance entity — actual money arrives ONLY via `record_payment` (`payment_recorded`). Settlement never creates a payment row. |
 
+## Kinds (Payroll Engine — 20261012)
+
+| event_type           | ref_table          | direction | Meaning |
+| -------------------- | ------------------ | --------- | ------- |
+| `payroll_run`        | `payroll_periods`  | out       | **Cash out** — the NET of a paid payroll period (one row per period, `event_key = payroll_run:<period_id>`). Advances were already handed over earlier, so this is the remaining money leaving the clinic at payment time. |
+| `payslip_recorded`   | `payslips`         | out       | Documented, **not written yet** (Phase 2 — per-person posting). Never combine with `payroll_run` for the same period: it would double count. |
+| `advance_paid`       | `staff_advances`   | out       | Documented, **not written yet** (Phase 2 — cash out when an advance is issued). |
+| `advance_deducted`   | `staff_advances`   | in        | Documented, **not written yet** (Phase 2 — bookkeeping offset when a payroll recovers the advance; **not cash**). |
+
+Phase 1 writes exactly ONE kind: `payroll_run`. `financial_period_summary`
+(P&L) and the cash-flow views list their kinds explicitly, so payroll does NOT
+enter those reports until the owner approves that reporting change — an
+additive reporting migration plus a dictionary entry here.
+
 ## Cash-flow protection
 
 `direction` alone is **never** a cash signal. Cash flows are identified ONLY by
@@ -70,9 +84,11 @@ it lowers the revenue total captured by `invoice_issued`. There is **no**
 ## Future kinds (NOT yet implemented — do not use)
 
 `cash_variance_recorded` (Phase C follow-up — pending owner decision) ·
-`payroll_run` / `payslip_recorded` (Payroll Foundation) · `fee_recorded` …
+`fee_recorded` …
 Each requires an additive migration + a row in this table.
-(`claim_recorded` / `claim_settled` became ACTIVE kinds with the Insurance
+(`payroll_run` / `payslip_recorded` / `advance_paid` / `advance_deducted` moved
+to **documented** with the Payroll Engine — 20261012, see the section above;
+`claim_recorded` / `claim_settled` became ACTIVE kinds with the Insurance
 Foundation — 20260905.)
 
 ## Insurance Foundation notes (20260905)

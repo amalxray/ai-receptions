@@ -90,6 +90,7 @@ describe('database migration audit', () => {
       '20261009_invoice_slug_numbering.sql',
       '20261010_clinic_invitations.sql',
       '20261011_permissions_and_custom_roles.sql',
+      '20261012_payroll_engine.sql',
     ]);
     // Sorting is part of the contract: pg/CI apply migrations in lexical order.
     expect([...migrationFiles]).toEqual([...migrationFiles].sort());
