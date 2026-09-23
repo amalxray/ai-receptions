@@ -95,6 +95,7 @@ describe('database migration audit', () => {
       '20261014_set_user_permissions_actor.sql',
       '20261015_fix_set_user_permissions.sql',
       '20261016_payroll_phase2.sql',
+      '20261017_invitation_security.sql',
     ]);
     // Sorting is part of the contract: pg/CI apply migrations in lexical order.
     expect([...migrationFiles]).toEqual([...migrationFiles].sort());
@@ -106,6 +107,17 @@ describe('database migration audit', () => {
     expect(permissions).toContain('to service_role');
     expect(permissions).toContain('to authenticated');
     expect(permissions).toContain('grant execute on function public.set_user_permissions');
+  });
+
+  it('keeps the invitation-security functions service-role only (#38)', () => {
+    const invites = fs.readFileSync(path.join(migrationDir, '20261017_invitation_security.sql'), 'utf8');
+
+    // Every privileged function ships with explicit grants…
+    expect(invites).toContain('grant execute on function public.accept_invitation(text, uuid) to service_role');
+    expect(invites).toContain('grant execute on function public.expire_stale_invitations() to service_role');
+    // …and `anon` can never call them straight against PostgREST.
+    expect(invites).toContain('revoke all on function public.accept_invitation(text, uuid) from public, anon');
+    expect(invites).toContain('revoke all on function public.open_invitation(text) from public, anon');
   });
 
   it('keeps core tenant indexes and trigger coverage in the production migration', () => {

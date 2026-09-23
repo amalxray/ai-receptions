@@ -24,7 +24,35 @@ type Invitation = {
   expires_at: string;
   created_at: string;
   is_expired?: boolean;
+  /** 30-minute opening session (20261017): non-null while the invitee has the page open. */
+  session_expires_at?: string | null;
+  session_active?: boolean;
+  /** How many times an owner extended this link (cap: MAX_EXTENSIONS). */
+  extend_count?: number | null;
+  hours_left?: number;
 };
+
+/** Must match MAX_EXTENSIONS in /api/clinic/invitations/[id]/extend and the SQL guard. */
+const MAX_EXTENSIONS = 3;
+/** How long one extension adds. */
+const EXTEND_HOURS = 24;
+const EXTEND_ERROR_AR: Record<string, string> = {
+  MAX_EXTENDS_REACHED: 'تم الوصول للحد الأقصى من التمديدات (3)',
+  NOT_PENDING: 'لا يمكن تمديد دعوة مقبولة أو ملغاة',
+  INVITATION_NOT_FOUND: 'الدعوة غير موجودة',
+};
+
+/** "23 س 41 د" — compact remaining-time label. */
+function remainingLabel(target: string | null | undefined, now: number): string | null {
+  if (!target) return null;
+  const diff = new Date(target).getTime() - now;
+  if (Number.isNaN(diff)) return null;
+  if (diff <= 0) return 'انتهت';
+  const totalMinutes = Math.floor(diff / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} س ${minutes} د` : `${minutes} د`;
+}
 
 type Props = {
   clinicId: string;
@@ -45,8 +73,21 @@ export default function TeamInvitations({ clinicId, authHeaders }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ email: '', role: 'staff' });
-  const [lastLink, setLastLink] = useState<{ url: string; email: string; emailSent: boolean } | null>(null);
+  const [lastLink, setLastLink] = useState<{
+    url: string;
+    email: string;
+    emailSent: boolean;
+    emailError: string | null;
+    provider: string | null;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
+  // Ticks every 30s so the remaining-time labels stay honest without a reload.
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -89,6 +130,8 @@ export default function TeamInvitations({ clinicId, authHeaders }: Props) {
         url: body?.invite_url ?? '',
         email: body?.invitation?.invited_email ?? form.email.trim(),
         emailSent: Boolean(body?.email_sent),
+        emailError: body?.email_error ?? null,
+        provider: body?.email_provider ?? null,
       });
       setForm({ email: '', role: form.role });
       await load();
@@ -120,6 +163,34 @@ export default function TeamInvitations({ clinicId, authHeaders }: Props) {
     }
   }
 
+  async function extend(invitation: Invitation) {
+    if (!clinicId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/clinic/invitations/${encodeURIComponent(invitation.id)}/extend?clinic_id=${encodeURIComponent(clinicId)}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...headers },
+          body: JSON.stringify({ hours: EXTEND_HOURS }),
+        }
+      );
+      const body = await parseJson(res);
+      if (!res.ok) {
+        // The API returns the raw SQL code in `detail` for the capped/not-pending cases.
+        const code = String(body?.detail ?? '').trim();
+        throw new Error(EXTEND_ERROR_AR[code] ?? body?.error ?? 'تعذر تمديد الدعوة');
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر تمديد الدعوة');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyLink(url: string) {
     try {
       await navigator.clipboard.writeText(url);
@@ -143,12 +214,24 @@ export default function TeamInvitations({ clinicId, authHeaders }: Props) {
       )}
 
       {lastLink && (
-        <div className="mt-3 rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
+        <div
+          className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${
+            lastLink.emailSent
+              ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+          }`}
+        >
           <p>
             {lastLink.emailSent
-              ? `أُرسلت الدعوة إلى ${lastLink.email}.`
-              : `لم نتمكن من إرسال البريد — شارك الرابط مع ${lastLink.email} يدويًا.`}
+              ? `أُرسلت الدعوة إلى ${lastLink.email} — الرابط صالح 24 ساعة.`
+              : `لم نتمكن من إرسال البريد إلى ${lastLink.email} — شارك الرابط يدويًا (صالح 24 ساعة).`}
           </p>
+          {lastLink.emailSent && lastLink.provider && (
+            <p className="mt-1 text-[11px] text-cyan-300/80">مزوّد البريد: {lastLink.provider}</p>
+          )}
+          {!lastLink.emailSent && lastLink.emailError && (
+            <p className="mt-1 text-[11px] text-amber-300/80">سبب الفشل: {lastLink.emailError}</p>
+          )}
           {lastLink.url && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <code className="break-all text-[11px] text-cyan-300">{lastLink.url}</code>
@@ -209,19 +292,43 @@ export default function TeamInvitations({ clinicId, authHeaders }: Props) {
                     <StatusPill tone={invitation.is_expired ? 'danger' : 'warning'}>
                       {invitation.is_expired ? 'منتهية' : 'بانتظار القبول'}
                     </StatusPill>
+                    {invitation.session_active && (
+                      <StatusPill tone="success">
+                        {`يفتح الرابط الآن · ${remainingLabel(invitation.session_expires_at, now) ?? '—'}`}
+                      </StatusPill>
+                    )}
                     <span className="text-[11px] text-slate-500">
-                      تنتهي {new Date(invitation.expires_at).toLocaleDateString('ar')}
+                      {invitation.is_expired
+                        ? `انتهت ${new Date(invitation.expires_at).toLocaleString('ar')}`
+                        : `تنتهي بعد ${remainingLabel(invitation.expires_at, now) ?? '—'}`}
                     </span>
+                    {(invitation.extend_count ?? 0) > 0 && (
+                      <span className="text-[11px] text-slate-500">
+                        مُمدّدة {invitation.extend_count}/{MAX_EXTENSIONS}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => revoke(invitation)}
-                  disabled={busy}
-                  className="rounded-full border border-rose-500/40 px-3 py-1 text-xs text-rose-300 disabled:opacity-50"
-                >
-                  إلغاء
-                </button>
+                <div className="flex items-center gap-2">
+                  {(invitation.extend_count ?? 0) < MAX_EXTENSIONS && !invitation.is_expired && (
+                    <button
+                      type="button"
+                      onClick={() => extend(invitation)}
+                      disabled={busy}
+                      className="rounded-full border border-cyan-500/40 px-3 py-1 text-xs text-cyan-300 disabled:opacity-50"
+                    >
+                      تمديد {EXTEND_HOURS} ساعة
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => revoke(invitation)}
+                    disabled={busy}
+                    className="rounded-full border border-rose-500/40 px-3 py-1 text-xs text-rose-300 disabled:opacity-50"
+                  >
+                    إلغاء
+                  </button>
+                </div>
               </div>
             ))}
           </div>

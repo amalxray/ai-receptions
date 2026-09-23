@@ -7,7 +7,7 @@ import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import { findUserIdByEmail } from '@/lib/services/userLookup';
 import { getAppBaseUrl } from '@/lib/communications/links';
-import { buildInvitationUrl, sendInvitationEmail } from '@/lib/communications/email/invitations';
+import { buildInvitationUrl, sendInvitationEmail, INVITATION_TTL_HOURS } from '@/lib/communications/email/invitations';
 
 export const runtime = 'nodejs';
 
@@ -27,8 +27,11 @@ export const runtime = 'nodejs';
  */
 const INVITABLE_ROLES = ['manager', 'doctor', 'receptionist', 'staff'] as const;
 
-const INVITATION_TTL_DAYS = 7;
-
+/**
+ * Link lifetime — 24 hours (20261017). The value is shared with the DB default
+ * and the email copy so the three can never drift apart.
+ */
+const LINK_TTL_HOURS = INVITATION_TTL_HOURS;
 const createSchema = z.object({
   email: z.string().email('بريد إلكتروني غير صالح'),
   role: z.enum(INVITABLE_ROLES).optional().default('staff'),
@@ -96,7 +99,7 @@ export async function POST(req: Request) {
   }
 
   const token = randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + LINK_TTL_HOURS * 60 * 60 * 1000).toISOString();
 
   const { data: invitation, error } = await supabaseAdmin
     .from('invitations')
@@ -125,30 +128,19 @@ export async function POST(req: Request) {
 
   const inviteUrl = buildInvitationUrl(getAppBaseUrl(), token);
 
-  // Best-effort delivery: a mail outage must not lose the invitation — the
-  // caller still receives the link and can share it manually.
-  let emailSent = false;
-  try {
-    await sendInvitationEmail({
-      to: email,
-      clinicName: clinic.name,
-      invitedBy: authorization.user.email ?? null,
-      role,
-      token,
-      expiresIn: '7 أيام',
-    });
-    emailSent = true;
-  } catch (err) {
-    logEvent(
-      'team_invitation_email_error',
-      {
-        clinic_id: clinicId,
-        invitation_id: invitation.id,
-        error: err instanceof Error ? err.message : String(err),
-      },
-      'error'
-    );
-  }
+  // Best-effort delivery, but HONEST: a mail outage (or an unconfigured
+  // provider) must not lose the invitation — the caller always receives the
+  // link, and `email_sent: false` tells the UI to surface it for copying.
+  const delivery = await sendInvitationEmail({
+    to: email,
+    clinicName: clinic.name,
+    invitedBy: authorization.user.email ?? null,
+    role,
+    token,
+    expiresIn: `${LINK_TTL_HOURS} ساعة`,
+  });
+  const emailSent = delivery.sent;
+  const emailError = delivery.error;
 
   await writeAuditLog({
     clinicId,
@@ -156,7 +148,7 @@ export async function POST(req: Request) {
     action: 'invitation.create',
     resourceType: 'invitation',
     resourceId: invitation.id,
-    metadata: { email, role, email_sent: emailSent },
+    metadata: { email, role, email_sent: emailSent, email_provider: delivery.provider },
   });
 
   logEvent('team_invitation_created', {
@@ -164,9 +156,20 @@ export async function POST(req: Request) {
     invitation_id: invitation.id,
     role,
     email_sent: emailSent,
+    email_provider: delivery.provider,
   });
 
-  return NextResponse.json({ invitation, invite_url: inviteUrl, email_sent: emailSent }, { status: 201 });
+  return NextResponse.json(
+    {
+      invitation,
+      invite_url: inviteUrl,
+      email_sent: emailSent,
+      email_provider: delivery.provider,
+      email_error: emailError,
+      expires_in_hours: LINK_TTL_HOURS,
+    },
+    { status: 201 }
+  );
 }
 
 export async function GET(req: Request) {
@@ -178,13 +181,49 @@ export async function GET(req: Request) {
   if (!authorization.authorized) return unauthorized(authorization.status);
   if (roleDenied(authorization, ADMIN_ROLES)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data, error } = await supabaseAdmin
+  const now = Date.now();
+  const mapRows = (rows: Record<string, unknown>[] | null) =>
+    (rows ?? []).map((row) => {
+      const expiresAt = new Date(String(row.expires_at)).getTime();
+      const sessionExpiresAt = row.session_expires_at ? new Date(String(row.session_expires_at)).getTime() : null;
+      return {
+        ...row,
+        is_expired: expiresAt <= now,
+        // The invitee has the page open right now (30-minute session, 20261017).
+        session_active: sessionExpiresAt !== null && sessionExpiresAt > now,
+        hours_left: Math.max(0, Math.round(((expiresAt - now) / (1000 * 60 * 60)) * 10) / 10),
+      };
+    });
+
+  // The token is intentionally NOT selected — the list must never expose it.
+  const listed = await supabaseAdmin
     .from('invitations')
-    // The token is intentionally NOT selected — the list must never expose it.
-    .select('id, invited_email, role, status, expires_at, accepted_at, created_at')
+    .select(
+      'id, invited_email, role, status, expires_at, accepted_at, created_at, opened_at, session_expires_at, extend_count, accept_count'
+    )
     .eq('clinic_id', clinicId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
+
+  let data = listed.data as Record<string, unknown>[] | null;
+  let error = listed.error;
+
+  // Pre-20261017 schema (code deployed before the SQL): the new columns do not
+  // exist yet, so fall back to the legacy projection instead of 500ing the list.
+  if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+    logEvent('team_invitation_list_legacy_projection', {
+      clinic_id: clinicId,
+      hint: 'apply migration 20261017_invitation_security.sql',
+    });
+    const legacy = await supabaseAdmin
+      .from('invitations')
+      .select('id, invited_email, role, status, expires_at, accepted_at, created_at')
+      .eq('clinic_id', clinicId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    data = legacy.data as Record<string, unknown>[] | null;
+    error = legacy.error;
+  }
 
   if (error) {
     logEvent('team_invitation_list_error', { clinic_id: clinicId, error: error.message, code: error.code }, 'error');
@@ -194,11 +233,5 @@ export async function GET(req: Request) {
     );
   }
 
-  const now = Date.now();
-  const invitations = (data ?? []).map((row: Record<string, unknown>) => ({
-    ...row,
-    is_expired: new Date(String(row.expires_at)).getTime() <= now,
-  }));
-
-  return NextResponse.json({ data: invitations });
+  return NextResponse.json({ data: mapRows(data) });
 }

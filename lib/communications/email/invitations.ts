@@ -19,9 +19,26 @@ export interface InvitationEmailParams {
   invitedBy: string | null;
   role: string;
   token: string;
-  /** Human label, e.g. '7 أيام' */
+  /** Human label, e.g. '24 ساعة' */
   expiresIn: string;
 }
+
+/** How long a new invitation link stays valid (matches the DB default). */
+export const INVITATION_TTL_HOURS = 24;
+/** How long an *opening session* lasts once the invitee opens the link. */
+export const INVITATION_SESSION_MINUTES = 30;
+
+/**
+ * Delivery outcome. The caller needs to know whether mail actually left the
+ * building: with the `noop` provider (EMAIL_PROVIDER unset) nothing is sent, and
+ * reporting "sent" would hide the invitation link from the admin forever.
+ */
+export interface InvitationDelivery {
+  sent: boolean;
+  provider: string;
+  error: string | null;
+}
+
 
 /** Arabic labels for the roles an invitation can carry. */
 export const INVITATION_ROLE_AR: Record<string, string> = {
@@ -98,18 +115,48 @@ export function renderInvitationEmail(
 
 /**
  * Sends the invitation email through the configured provider.
- * Throws when the provider fails so the caller can fall back to returning the
- * invitation link for manual sharing (never silently claim "sent").
+ *
+ * NEVER claims success it cannot prove:
+ *   - provider `noop` (EMAIL_PROVIDER unset/misconfigured) → sent: false with
+ *     EMAIL_PROVIDER_NOT_CONFIGURED, so the API/UI offer the manual link instead
+ *     of telling the admin "تم الإرسال" while nothing was delivered;
+ *   - a provider error is reported with the provider's own message;
+ *   - the token is never logged (only clinic + role + provider).
  */
 export async function sendInvitationEmail(
   params: InvitationEmailParams,
   provider?: EmailProvider
-): Promise<void> {
+): Promise<InvitationDelivery> {
   const emailProvider = provider ?? getEmailProvider();
   const message = renderInvitationEmail(params);
 
   // Safe metadata only — NEVER the token or the recipient address.
-  logEvent('team_invitation_email_attempt', { clinic: params.clinicName, role: params.role });
+  logEvent('team_invitation_email_attempt', {
+    clinic: params.clinicName,
+    role: params.role,
+    provider: emailProvider.name,
+  });
 
-  await emailProvider.send(message);
+  if (emailProvider.name === 'noop') {
+    logEvent(
+      'team_invitation_email_skipped',
+      { clinic: params.clinicName, provider: 'noop', reason: 'EMAIL_PROVIDER_NOT_CONFIGURED' },
+      'error'
+    );
+    return { sent: false, provider: 'noop', error: 'EMAIL_PROVIDER_NOT_CONFIGURED' };
+  }
+
+  try {
+    await emailProvider.send(message);
+    logEvent('team_invitation_email_sent', { clinic: params.clinicName, provider: emailProvider.name });
+    return { sent: true, provider: emailProvider.name, error: null };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logEvent(
+      'team_invitation_email_error',
+      { clinic: params.clinicName, provider: emailProvider.name, error },
+      'error'
+    );
+    return { sent: false, provider: emailProvider.name, error };
+  }
 }

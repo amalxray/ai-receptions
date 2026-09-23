@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +14,11 @@ import { supabase } from '@/lib/supabase';
  *   - the mailbox HAS an account → sign in, come back, single "انضم" click.
  *
  * The token is only ever sent to our API (never logged, never rendered).
+ *
+ * Timings (migration 20261017): the LINK is valid 24h, and merely opening it
+ * starts a 30-minute SESSION in the database. The countdown below is UX only —
+ * `open_invitation`/`accept_invitation` re-check the real clock on every call, so
+ * a tampered client cannot outlive either window.
  */
 
 type InvitationPreview = {
@@ -25,7 +30,18 @@ type InvitationPreview = {
   status: 'pending' | 'accepted' | 'revoked' | 'expired' | string;
   expires_at: string;
   has_account: boolean;
+  /** 30-minute opening session started by the GET preview. */
+  session_valid_until: string | null;
+  session_minutes: number;
+  session_reopened: boolean;
 };
+
+/** mm:ss for the session countdown. */
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
 
 export default function AcceptInvitationPage() {
   const params = useParams<{ token: string }>();
@@ -40,30 +56,63 @@ export default function AcceptInvitationPage() {
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  // Guards the auto-reopen so an expired session triggers exactly one refresh.
+  const sessionRenewedRef = useRef(false);
 
-  const loadPreview = useCallback(async () => {
-    if (!token) {
-      setError('رابط الدعوة غير صالح.');
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/invitations/accept?token=${encodeURIComponent(token)}`);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل الدعوة');
-      setPreview(body.invitation as InvitationPreview);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذر تحميل الدعوة');
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const loadPreview = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) {
+        setError('رابط الدعوة غير صالح.');
+        setLoading(false);
+        return;
+      }
+      // `silent` keeps the form on screen while the session is renewed in the
+      // background (a full loading state would wipe what the invitee is typing).
+      if (!options?.silent) setLoading(true);
+      try {
+        const res = await fetch(`/api/invitations/accept?token=${encodeURIComponent(token)}`);
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل الدعوة');
+        setPreview(body.invitation as InvitationPreview);
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'تعذر تحميل الدعوة');
+      } finally {
+        if (!options?.silent) setLoading(false);
+      }
+    },
+    [token]
+  );
 
   useEffect(() => {
     void loadPreview();
   }, [loadPreview]);
+
+  // A 1s tick drives the mm:ss session countdown.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const sessionDeadline = preview?.session_valid_until ? new Date(preview.session_valid_until).getTime() : null;
+  const sessionSecondsLeft =
+    sessionDeadline === null ? null : Math.max(0, Math.ceil((sessionDeadline - now) / 1000));
+  const sessionExpired = sessionSecondsLeft !== null && sessionSecondsLeft === 0;
+
+  // A fresh deadline resets the guard, so the NEXT expiry can also auto-renew.
+  useEffect(() => {
+    if (preview?.session_valid_until) sessionRenewedRef.current = false;
+  }, [preview?.session_valid_until]);
+
+  // Session ran out with the page still open → renew it once, in the background.
+  // The server decides: a link that has itself expired comes back as 'expired'
+  // and the page switches to the blocked state.
+  useEffect(() => {
+    if (!sessionExpired || sessionRenewedRef.current) return;
+    sessionRenewedRef.current = true;
+    void loadPreview({ silent: true });
+  }, [sessionExpired, loadPreview]);
 
   useEffect(() => {
     // Best-effort: who is currently signed in (drives the correct CTA).
@@ -156,7 +205,7 @@ export default function AcceptInvitationPage() {
   function statusMessage(status: string): string {
     if (status === 'accepted') return 'تم استخدام هذه الدعوة بالفعل. سجّل الدخول للوصول إلى لوحة التحكم.';
     if (status === 'revoked') return 'تم إلغاء هذه الدعوة من قبل إدارة العيادة.';
-    if (status === 'expired') return 'انتهت صلاحية هذه الدعوة. اطلب من إدارة العيادة إرسال دعوة جديدة.';
+    if (status === 'expired') return 'انتهت صلاحية هذه الدعوة (تنتهي الروابط بعد 24 ساعة). اطلب من إدارة العيادة إرسال دعوة جديدة أو تمديدها.';
     return 'هذه الدعوة لم تعد صالحة.';
   }
 
@@ -190,7 +239,28 @@ export default function AcceptInvitationPage() {
             </p>
             <ul className="mt-4 space-y-1 text-xs text-slate-400">
               <li>البريد المدعو: <span className="text-slate-200">{preview.email_masked}</span></li>
-              <li>تنتهي الدعوة في: {new Date(preview.expires_at).toLocaleDateString('ar')}</li>
+              <li>
+                تنتهي الدعوة: <span className="text-slate-200">{new Date(preview.expires_at).toLocaleString('ar')}</span>
+                <span className="text-slate-500"> (روابط الدعوة صالحة 24 ساعة)</span>
+              </li>
+              {sessionSecondsLeft !== null && (
+                <li>
+                  جلسة الفتح:{' '}
+                  <span
+                    className={
+                      sessionSecondsLeft === 0
+                        ? 'text-amber-300'
+                        : sessionSecondsLeft <= 120
+                          ? 'text-amber-300'
+                          : 'text-slate-200'
+                    }
+                  >
+                    {sessionSecondsLeft === 0
+                      ? 'انتهت — جارٍ تجديدها…'
+                      : `${formatCountdown(sessionSecondsLeft)} متبقية من أصل ${preview.session_minutes} دقيقة`}
+                  </span>
+                </li>
+              )}
             </ul>
 
             {notice && (
