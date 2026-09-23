@@ -111,6 +111,12 @@ export default function PayrollPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
+            href={tenantDashboardUrl(clinicSlug, 'payroll/compensations')}
+            className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/50"
+          >
+            رواتب المنتسبين
+          </Link>
+          <Link
             href={tenantDashboardUrl(clinicSlug, 'payroll/advances')}
             className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/50"
           >
