@@ -1,18 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import CompensationDialog, { type CompensationPayload } from '@/components/dashboard/payroll/CompensationDialog';
+import PayrollTabs from '@/components/dashboard/payroll/PayrollTabs';
 import {
   COMPENSATION_MODEL_AR,
   PROVIDER_TYPE_AR,
   canManageCompensations,
   compensationSummary,
   mergeCompensationState,
+  salaryCounterLine,
+  selectableProviders,
   translateCompensationError,
+  withoutContractLine,
   type CompensationLite,
   type CompensationRow,
   type NotPayableContract,
@@ -75,7 +77,7 @@ export default function PayrollCompensationsPage() {
       const compensations = (compJson.data ?? []) as CompensationLite[];
       const merged = mergeCompensationState(allProviders, compensations);
 
-      setProviders(allProviders.filter((p) => !p.deleted_at && p.active !== false));
+      setProviders(allProviders);
       setRows(merged.rows);
       setNotPayable(merged.notPayable);
       setError(null);
@@ -155,14 +157,21 @@ export default function PayrollCompensationsPage() {
   }
 
   const withContract = rows.filter((r) => r.hasActiveContract).length;
-  const withoutContract = rows.length - withContract;
-  // Only a provider WITHOUT an active contract may be offered a new one — the DB
-  // keeps a single active contract per provider (partial unique index), so the
-  // other choice would be a guaranteed 409.
-  const availableProviders = rows.filter((r) => !r.hasActiveContract).map((r) => r.provider);
+  // Providers who could actually receive a payslip but have no contract yet: a
+  // soft-deleted provider is excluded from THIS count on purpose (it can never
+  // be paid) — it is still listed in the table with the «محذوف» badge.
+  const withoutContract = rows.filter((r) => !r.hasActiveContract && !r.isDeleted).length;
+  const counterLine = salaryCounterLine(withContract, rows.length);
+  const missingLine = withoutContractLine(withoutContract);
+  // Only a provider WITHOUT an active contract AND NOT soft-deleted may be
+  // offered a new one — the DB keeps a single active contract per provider
+  // (partial unique index), so the other choice would be a guaranteed 409.
+  const availableProviders = selectableProviders(rows);
 
   return (
     <div className="space-y-6">
+      <PayrollTabs clinicSlug={clinicSlug} active="compensations" />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-white">رواتب المنتسبين</h1>
@@ -171,18 +180,10 @@ export default function PayrollCompensationsPage() {
             استخدم «إعادة التوليد» على المسودة، أو «إعادة فتح» الفترة من صفحة الرواتب.
           </p>
           {!loading && rows.length > 0 && (
-            <p className="mt-1 text-xs text-slate-500">
-              {withContract} من {rows.length} منتسباً لهم راتب مُعرَّف.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">{counterLine}</p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={tenantDashboardUrl(clinicSlug, 'payroll')}
-            className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/50"
-          >
-            الرواتب
-          </Link>
           <button
             type="button"
             disabled={!canManage}
@@ -217,16 +218,14 @@ export default function PayrollCompensationsPage() {
         </p>
       )}
       {withoutContract > 0 && (
-        <p className="text-xs text-slate-500">
-          {withoutContract} منتسباً بلا راتب مُعرَّف لن يظهروا في القسائم.
-        </p>
+        <p className="text-xs text-slate-500">{missingLine}</p>
       )}
 
       {loading || clinicLoading ? (
         <div className="h-40 animate-pulse rounded-2xl bg-slate-800/60" />
       ) : rows.length === 0 ? (
         <p className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-8 text-center text-sm text-slate-500">
-          لا يوجد منتسبون نشطون.
+          لا يوجد منتسبون في هذه العيادة.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/70">
@@ -243,9 +242,26 @@ export default function PayrollCompensationsPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.provider.id} className="border-t border-slate-800/70">
+                <tr
+                  key={row.provider.id}
+                  className={
+                    row.isDeleted
+                      ? 'border-t border-slate-800/70 opacity-70'
+                      : 'border-t border-slate-800/70'
+                  }
+                >
                   <td className="px-4 py-3 text-slate-100">
-                    {row.provider.name ?? '—'}
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>{row.provider.name ?? '—'}</span>
+                      {row.isDeleted && (
+                        <span
+                          title="منتسب محذوف — لا يمكن إضافة راتب جديد له"
+                          className="rounded-full border border-slate-600 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300"
+                        >
+                          محذوف
+                        </span>
+                      )}
+                    </span>
                     {(row.provider.title || row.provider.provider_type) && (
                       <span className="block text-xs text-slate-500">
                         {row.provider.title ?? PROVIDER_TYPE_AR[row.provider.provider_type ?? ''] ?? row.provider.provider_type}
@@ -286,8 +302,14 @@ export default function PayrollCompensationsPage() {
                     ) : (
                       <button
                         type="button"
-                        disabled={busy || !canManage}
-                        title={canManage ? undefined : 'إضافة الراتب متاحة للمالك والمحاسب فقط'}
+                        disabled={busy || !canManage || row.isDeleted}
+                        title={
+                          !canManage
+                            ? 'إضافة الراتب متاحة للمالك والمحاسب فقط'
+                            : row.isDeleted
+                              ? 'المنتسب محذوف'
+                              : undefined
+                        }
                         onClick={() => openDialog(row.provider.id)}
                         className="rounded-full bg-cyan-500/10 px-4 py-1.5 text-xs text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >

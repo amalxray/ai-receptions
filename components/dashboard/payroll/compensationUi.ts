@@ -39,6 +39,12 @@ export interface CompensationRow {
   provider: ProviderLite;
   compensation: CompensationLite | null;
   hasActiveContract: boolean;
+  /**
+   * Soft-deleted (or explicitly inactive) provider. It is STILL shown — the screen
+   * hides nothing — but it carries the «محذوف» badge and can never be offered a
+   * new salary (the DB would accept it, yet no payslip would ever be generated).
+   */
+  isDeleted: boolean;
 }
 
 /** An ACTIVE contract whose provider can no longer be paid (soft-deleted/missing). */
@@ -97,11 +103,17 @@ export function isActiveProvider(provider: ProviderLite): boolean {
 }
 
 /**
- * Joins active providers with their ACTIVE contract.
+ * Joins EVERY provider of the clinic with their ACTIVE contract.
  *
- * Active providers come first (sorted by name). Contracts belonging to
- * inactive or missing providers are returned separately so the screen can say
- * so out loud instead of listing a salary that will never reach a payslip.
+ * No provider is filtered out: soft-deleted rows are included and flagged with
+ * `isDeleted` so the screen can badge them instead of silently shrinking the
+ * list (a counter reading «1 من 2» while the clinic really has 7 providers is a
+ * lie). Active providers are listed first, soft-deleted ones last, each group
+ * sorted by name.
+ *
+ * Contracts belonging to inactive or missing providers are ALSO returned
+ * separately so the screen can say out loud that no payslip will ever reach
+ * them.
  */
 export function mergeCompensationState(
   providers: ProviderLite[],
@@ -118,11 +130,19 @@ export function mergeCompensationState(
 
   const rows: CompensationRow[] = [];
   for (const provider of providers) {
-    if (!isActiveProvider(provider)) continue;
     const compensation = byProvider.get(provider.id) ?? null;
-    rows.push({ provider, compensation, hasActiveContract: compensation !== null });
+    rows.push({
+      provider,
+      compensation,
+      hasActiveContract: compensation !== null,
+      isDeleted: !isActiveProvider(provider),
+    });
   }
-  rows.sort((a, b) => (a.provider.name ?? '').localeCompare(b.provider.name ?? '', 'ar'));
+  // Active providers first, then the soft-deleted ones; name order inside each group.
+  rows.sort((a, b) => {
+    if (a.isDeleted !== b.isDeleted) return a.isDeleted ? 1 : -1;
+    return (a.provider.name ?? '').localeCompare(b.provider.name ?? '', 'ar');
+  });
 
   const notPayable: NotPayableContract[] = [];
   // NOTE: forEach instead of `for…of` — this repo's tsconfig target/downlevelIteration
@@ -139,6 +159,85 @@ export function mergeCompensationState(
   notPayable.sort((a, b) => (a.providerName ?? '').localeCompare(b.providerName ?? '', 'ar'));
 
   return { rows, notPayable };
+}
+
+/**
+ * Providers that MAY be offered a new salary contract: no active contract AND
+ * not soft-deleted. Soft-deleted providers are listed on screen, but the
+ * «إضافة راتب» button is disabled for exactly this reason.
+ */
+export function selectableProviders(rows: CompensationRow[]): ProviderLite[] {
+  return rows.filter((row) => !row.hasActiveContract && !row.isDeleted).map((row) => row.provider);
+}
+
+// ---------------------------------------------------------------------------
+// Arabic counting — the counter and the warning line must read correctly for
+// every count, not only the plural the developer happened to test first:
+//   0 → لا أحد | 1 → منتسب واحد | 2 → منتسبان | 3-10 → N منتسبين | 11+ → N منتسباً
+// ---------------------------------------------------------------------------
+
+/** Standalone provider count phrase: 1 → 'منتسب واحد', 2 → 'منتسبان', … */
+export function providersNoun(count: number): string {
+  const value = Math.max(0, Math.trunc(count));
+  if (value === 0) return 'لا أحد';
+  if (value === 1) return 'منتسب واحد';
+  if (value === 2) return 'منتسبان';
+  return value <= 10 ? `${value} منتسبين` : `${value} منتسباً`;
+}
+
+/**
+ * The counted noun right after a numeral: «2 منتسبين» … «11 منتسباً».
+ * The dual and the sound masculine plural share the spelling «منتسبين» in the
+ * genitive, and 11+ returns to the singular accusative «منتسباً».
+ */
+function nounAfterNumeral(count: number): string {
+  return count <= 10 ? 'منتسبين' : 'منتسباً';
+}
+
+/**
+ * Verb agreeing with the provider count: 1 → له | 2 → لهما | 3+ → لهم.
+ *
+ * Agreement rule used by salaryCounterLine: the verb follows the noun that
+ * comes right before it (Y, the TOTAL), so «2 من 7 منتسبين لهم راتب» uses the
+ * plural. The dual «لهما» therefore only appears when the total itself is two.
+ */
+function theyHave(count: number): string {
+  if (count === 1) return 'له';
+  if (count === 2) return 'لهما';
+  return 'لهم';
+}
+
+/**
+ * «X من Y منتسبين لهم راتب مُعرَّف.» — the counter above the table.
+ *   (1, 7)  → '1 من 7 منتسبين لهم راتب مُعرَّف.'
+ *   (2, 7)  → '2 من 7 منتسبين لهم راتب مُعرَّف.'
+ *   (2, 2)  → '2 من 2 منتسبين لهما راتب مُعرَّف.'
+ *   (0, 7)  → 'لا أحد من 7 منتسبين له راتب مُعرَّف.'
+ *   (1, 1)  → '1 من منتسب واحد له راتب مُعرَّف.'
+ *   (3, 12) → '3 من 12 منتسباً لهم راتب مُعرَّف.'
+ *
+ * Y is always printed: the whole point of the fix is that the user sees the real
+ * total, never a silently filtered one.
+ */
+export function salaryCounterLine(withContract: number, total: number): string {
+  const x = Math.max(0, Math.trunc(withContract));
+  const y = Math.max(0, Math.trunc(total));
+  if (y === 0) return 'لا يوجد منتسبون.';
+  const noun = y === 1 ? providersNoun(1) : `${y} ${nounAfterNumeral(y)}`;
+  // «لا أحد» is grammatically singular, so it takes «له» whatever the total is.
+  const verb = x === 0 ? 'له' : theyHave(y);
+  return `${x === 0 ? 'لا أحد' : x} من ${noun} ${verb} راتب مُعرَّف.`;
+}
+
+/**
+ * «منتسب واحد بلا راتب مُعرَّف — لن يظهر في القسائم.» (singular verb)
+ * «3 منتسبين بلا راتب مُعرَّف — لن يظهروا في القسائم.» (plural verb)
+ * Call it with a positive count; the screen renders it only when it is positive.
+ */
+export function withoutContractLine(count: number): string {
+  const value = Math.max(0, Math.trunc(count));
+  const verb = value === 1 ? 'لن يظهر' : 'لن يظهروا';
+  return `${providersNoun(value)} بلا راتب مُعرَّف — ${verb} في القسائم.`;
 }
 
 // ---------------------------------------------------------------------------

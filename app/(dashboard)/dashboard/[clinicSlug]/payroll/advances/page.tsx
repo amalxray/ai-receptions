@@ -1,11 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import AdvanceDialog, { type ProviderOption } from '@/components/dashboard/payroll/AdvanceDialog';
+import PayrollTabs from '@/components/dashboard/payroll/PayrollTabs';
 
 type AdvanceRow = {
   id: string;
@@ -117,6 +116,8 @@ export default function PayrollAdvancesPage() {
 
   return (
     <div className="space-y-6">
+      <PayrollTabs clinicSlug={clinicSlug} active="advances" />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-white">سلف الموظفين</h1>
@@ -124,13 +125,7 @@ export default function PayrollAdvancesPage() {
             سلفة واحدة قد تُستقطع على عدة أشهر؛ كل شهر يُسجَّل قسطه في سجل الرواتب.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link
-            href={tenantDashboardUrl(clinicSlug, 'payroll')}
-            className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/50"
-          >
-            الرواتب
-          </Link>
+        <div className="flex flex-wrap items-center gap-2">
           {canManage && (
             <button
               type="button"

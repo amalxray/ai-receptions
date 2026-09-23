@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import PeriodCard, { type PayrollPeriodRow } from '@/components/dashboard/payroll/PeriodCard';
 import GeneratePayrollDialog from '@/components/dashboard/payroll/GeneratePayrollDialog';
+import PayrollTabs from '@/components/dashboard/payroll/PayrollTabs';
 
 const n = (value: number | string | null | undefined) => {
   const parsed = Number(value);
@@ -102,6 +102,8 @@ export default function PayrollPage() {
 
   return (
     <div className="space-y-6">
+      <PayrollTabs clinicSlug={clinicSlug} active="periods" />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-white">الرواتب</h1>
@@ -110,18 +112,6 @@ export default function PayrollPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={tenantDashboardUrl(clinicSlug, 'payroll/compensations')}
-            className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/50"
-          >
-            رواتب المنتسبين
-          </Link>
-          <Link
-            href={tenantDashboardUrl(clinicSlug, 'payroll/advances')}
-            className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/50"
-          >
-            السلف
-          </Link>
           <select
             value={year}
             onChange={(e) => setYear(e.target.value)}
