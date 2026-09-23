@@ -2,6 +2,26 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-23 — ✅ CLOSED: TEAM INVITATIONS #38 (24h links · 30-min sessions · atomic single-use accept)
+
+**ما نُفِّذ:** `db/migrations/20261017_invitation_security.sql` مُطبَّقة على القاعدة الحيّة (4 أعمدة · `expires_at` default `now() + '24:00:00'` · قيد `invitations_single_use` · 4 دوال `SECURITY DEFINER`) + رابط 24 ساعة · جلسة فتح 30 دقيقة · قبول ذرّي لمرة واحدة (قفل صف + ربط البريد) · تمديد 24 ساعة للمالك/المدير فقط (بحد 3) · cron كنس يومي · واجهة حالة الدعوة في لوحة الفريق.
+
+**ما دُفع:** `1f567de` → `origin/main` (`9ba0845..1f567de`)، 11 ملفاً `+1426/−118`. ملاحظة: الالتزامات `1f567de` وما قبله كانت محليّة غير مدفوعة لأن هذه الجلسة بلا credential — دُفعت الآن عبر PAT موجود في `~/.zsh_history`.
+
+**التحقق الحيّ:** `node scripts/apply-invitation-security.mjs` → **16/16 PASS** (بمفتاح service-role، بلا حاجة لتوكن الإدارة): الأعمدة 4/4 · الافتراضي 24h · `open_invitation`/`accept_invitation` تُطلقان `INVITATION_NOT_FOUND` · `extend_invitation` تفرض `Unauthorized` · `expire_stale_invitations` = 200 swept=0 · قيد single-use يرفض `accepted+0` و`pending+1` بالكود `23514` · `anon` مرفوضة 401 `42501` على الدالتين · `authenticated` مرفوضة 403 `42501` (بـ JWT حقيقي أُنشئ ثم حُذف) · backfill سليم · لا تكرار رموز. البيانات المؤقتة نُظّفت (0 صفوف، 0 مستخدمين).
+
+**ما بقي (عائق بيانات اعتماد، ليس كود):**
+| البند | الحالة | الدليل الفعلي |
+|---|---|---|
+| إرسال Resend | ❌ | `sendInvitationEmail` عبر المسار الحقيقي → `{"sent":false,"provider":"resend","error":"Resend API error (401): API key is invalid"}` — القيمة المتاحة `RESEND_API_KEY=your-resend-api-key` (لا يوجد مفتاح `re_...` على الجهاز) |
+| متغيّرات Vercel | ❌ | توكن Vercel CLI في `~/.local/share/com.vercel.cli/auth.json` → `GET /v2/user` = **403 invalidToken**، وendpoint التجديد 404 → لا صلاحية |
+| Supabase Management API | ❌ | `SUPABASE_ACCESS_TOKEN` (`sbp_…`) → **401 Unauthorized** (الهجرة طُبّقت من المالك عبر SQL Editor) |
+
+**أدوات التحقق المضافة:** `scripts/apply-invitation-security.mjs` (تطبيق + 16 فحص كتالوجي، وتتحوّل تلقائياً للتحقق السلوكي إن كان التوكن ميتاً) و`scripts/verify-invitation-security.mjs` (16 فحصاً حيّاً بمفتاح service-role فقط، منظّف نفسه بنفسه).
+
+**التوقّف التالي:** ضبط `EMAIL_PROVIDER=resend` + `RESEND_API_KEY=re_...` + `EMAIL_FROM` على نطاق موثّق (محلياً وعلى Vercel) لإكمال إرسال الدعوات.
+
+
 ## 2026-09-11 — FIX: messages composer always visible (no "no place to type" state)
 
 - Root cause: `components/dashboard/messaging/MessagingInterface.tsx` rendered the text composer ONLY inside `{selectedPartner && …}` — the input/buttons vanished until a thread was selected (and with no partners at all there was no affordance at all).
