@@ -11,6 +11,12 @@ import { getFinancialIntelligence } from '@/lib/services/financialIntelligence';
  * (financial_period_summary / cash_flow_summary / receivable_aging /
  * daily_cash_positions). No writes, no ledger changes, no new financial source.
  * clinic_id is always the authorized tenant (never client-derived scope).
+ *
+ * The response is passed through unchanged (`{ data }`), so it carries the
+ * payroll disclosure added in 20261018 as well: every `pnlTrends` point has a
+ * `payroll` share (already inside `kpis.expenses`) and
+ * `meta.includesPayroll === true` + `meta.payrollTotal`. Nothing is recomputed
+ * or filtered here — the views stay the single source of truth.
  */
 export async function GET(req: Request) {
   try {

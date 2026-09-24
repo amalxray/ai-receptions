@@ -17,6 +17,14 @@ vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
 const mockFI = vi.hoisted(() => ({ getFinancialIntelligence: vi.fn() }));
 vi.mock('@/lib/services/financialIntelligence', () => mockFI);
 
+// The subscription gate (commit 2d6f0c3) is REAL production behaviour verified
+// by the subscription suite. This file exercises the FI route for RBAC + the
+// payroll payload shape, so the gate is mocked as allowed unless a test denies it.
+const mockGate = vi.hoisted(() => ({
+  featureGateForClinic: vi.fn(async () => ({ allowed: true, requiredPlan: 'growth', planNameAr: 'نمو' })),
+}));
+vi.mock('@/lib/subscription/featureGateServer', () => mockGate);
+
 import { GET } from '@/app/api/clinic/financial-intelligence/route';
 
 const req = (clinicId = 'c1') =>
@@ -25,6 +33,7 @@ const req = (clinicId = 'c1') =>
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true });
+  mockGate.featureGateForClinic.mockResolvedValue({ allowed: true, requiredPlan: 'growth', planNameAr: 'نمو' });
 });
 
 describe('PP-5 API route — RBAC and shape', () => {
@@ -71,5 +80,31 @@ describe('PP-5 API route — RBAC and shape', () => {
     const res = await GET(req());
     expect(res.status).toBe(500);
     expect(((await res.json()) as { error: string }).error).toBe('boom');
+  });
+
+  it('passes the 20261018 payroll disclosure through untouched (meta + per-month share)', async () => {
+    mockFI.getFinancialIntelligence.mockResolvedValue({
+      kpis: { revenue: 9000, expenses: 4000, netPosition: 5000 },
+      pnlTrends: [{ month: '2026-01-01', revenue: 9000, expenses: 4000, net: 5000, payroll: 2500 }],
+      meta: { includesPayroll: true, payrollTotal: 2500 },
+    });
+    const res = await GET(
+      new Request('http://localhost/api/clinic/financial-intelligence?clinic_id=c1&from_month=2026-01-01&to_month=2026-01-01')
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { meta: { includesPayroll: boolean; payrollTotal: number }; pnlTrends: { payroll: number }[] };
+    };
+    expect(body.data.meta.includesPayroll).toBe(true);
+    expect(body.data.meta.payrollTotal).toBe(2500);
+    expect(body.data.pnlTrends[0].payroll).toBe(2500); // inside expenses, never added again
+  });
+
+  it('402 when the subscription gate denies — the payroll passthrough never bypasses gating', async () => {
+    mockGate.featureGateForClinic.mockResolvedValue({ allowed: false, requiredPlan: 'growth', planNameAr: 'نمو' });
+    const res = await GET(req());
+    expect(res.status).toBe(402);
+    expect(((await res.json()) as { error: string }).error).toBe('FEATURE_LOCKED');
+    expect(mockFI.getFinancialIntelligence).not.toHaveBeenCalled();
   });
 });

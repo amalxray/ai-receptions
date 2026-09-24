@@ -8,7 +8,9 @@
  * intelligence · forecasting that invents facts.
  *
  * All outputs are DERIVED at read time from the existing source of truth:
- *   financial_period_summary (D-R1 P&L — clinic-local months)
+ *   financial_period_summary (D-R1 P&L — clinic-local months; `expenses`
+ *     INCLUDES the net of every PAID payroll period as of 20261018, and the
+ *     per-month payroll share is surfaced as `PnlPoint.payroll` for disclosure)
  *   cash_flow_summary       (D-R2 cash flow + collected by method)
  *   receivable_aging        (aging AS-IS — never redefined)
  *   daily_cash_positions    (cash-register, cash method only)
@@ -32,6 +34,13 @@ export type PnlPoint = {
   expenses: number;
   bad_debt: number;
   net_result: number;
+  /**
+   * The payroll part INSIDE `expenses` (paid periods only — see 20261018).
+   * It is never added to `expenses` here: the view already includes it, so this
+   * field is a DISCLOSURE/drill-down line only. Adding it again would double
+   * count. 0 ⇒ no paid payroll period in that month.
+   */
+  payroll: number;
 };
 
 export type CashPoint = {
@@ -147,6 +156,8 @@ export type PnlTrendPoint = {
   expenses: number;
   badDebt: number;
   net: number;
+  /** Payroll share INSIDE `expenses` for that month (paid periods only). */
+  payroll: number;
   prevRevenue: number | null;
   revenueDelta: number | null;
   revenueDeltaPct: number | null;
@@ -163,6 +174,7 @@ export function computePnlTrends(pnl: PnlPoint[]): PnlTrendPoint[] {
     expenses: num(p.expenses),
     badDebt: num(p.bad_debt),
     net: num(p.net_result),
+    payroll: num(p.payroll),
   }));
   return rows.map((r, i) => {
     const prev = i > 0 ? rows[i - 1] : null;
@@ -616,6 +628,14 @@ export function buildRecommendations(anomalies: FinancialAnomaly[]): FinancialRe
 // 8) Aggregate report — composes every derived insight for one clinic.
 //    This is the stable PP-5 interface consumed by the API/dashboard.
 // ---------------------------------------------------------------------------
+/**
+ * Daily cash-register window exposed by the aggregate report — 90 instead of
+ * the 14-day default so the PP-5 dashboard can render honest "today / 7 / 30 /
+ * 90-day" cash views from this array. The P&L stays monthly regardless:
+ * `financial_period_summary` is month-granular, and no daily P&L view exists.
+ */
+const FI_CASH_REGISTER_DAYS = 90;
+
 export type CashRegisterPoint = {
   businessDate: string;
   cashIn: number;
@@ -634,7 +654,15 @@ export type FinancialIntelligenceReport = {
   cashRegister: CashRegisterPoint[];
   anomalies: FinancialAnomaly[];
   recommendations: FinancialRecommendation[];
-  meta: { generatedAt: string; deterministic: true; source: 'existing derived views only' };
+  meta: {
+    generatedAt: string;
+    deterministic: true;
+    source: 'existing derived views only (payroll included)';
+    /** Explicit disclosure: the P&L `expenses` line already contains payroll. */
+    includesPayroll: true;
+    /** Paid-payroll total inside the requested range (0 when none is paid). */
+    payrollTotal: number;
+  };
 };
 
 /** Cash-register trend (cash method only) from daily_cash_positions (D-R2 semantics). */
@@ -668,7 +696,7 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
     getProfitAndLoss(clinicId, range),
     getCashFlow(clinicId, range),
     getAgingSummary(clinicId),
-    getCashRegisterTrend(clinicId),
+    getCashRegisterTrend(clinicId, FI_CASH_REGISTER_DAYS),
   ]);
 
   const pnlPoints: PnlPoint[] = (pnl ?? [])
@@ -679,6 +707,7 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
       expenses: num(p.expenses),
       bad_debt: num(p.bad_debt),
       net_result: num(p.net_result),
+      payroll: num(p.payroll),
     }))
     .filter((p) => p.period_month);
 
@@ -703,6 +732,7 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
   }
 
   const kpis = computeKpis(pnlPoints, cashPoints, aging);
+  const payrollTotal = sum(pnlPoints.map((p) => p.payroll));
   const pnlTrends = computePnlTrends(pnlPoints);
   const cashTrends = computeCashTrends(cashPoints, revenueByMonth);
   const receivables = computeReceivablesInsights(aging, cashPoints);
@@ -721,6 +751,12 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
     cashRegister,
     anomalies,
     recommendations,
-    meta: { generatedAt: new Date().toISOString(), deterministic: true, source: 'existing derived views only' },
+    meta: {
+      generatedAt: new Date().toISOString(),
+      deterministic: true,
+      source: 'existing derived views only (payroll included)',
+      includesPayroll: true,
+      payrollTotal,
+    },
   };
 }

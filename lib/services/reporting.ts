@@ -4,9 +4,12 @@
  * - All figures are DERIVED from the ledger / source transactions at read
  *   time. Nothing is stored; no derived balances as source of truth.
  * - D-R1 (P&L): Revenue = invoice_issued net of invoice_voided; Refunds =
- *   refund_recorded; Expenses = expense_recorded net of expense_voided;
- *   Bad Debt = write_off_recorded (standalone line). claim_* kinds are
- *   structurally excluded from the view (never cash, never P&L).
+ *   refund_recorded; Expenses = expense_recorded net of expense_voided **\+ the
+ *   `payroll_run` NET of every PAID payroll period** (as of 20261018 — see
+ *   docs/financial-ledger-kinds.md); Bad Debt = write_off_recorded (standalone
+ *   line). claim_* kinds are structurally excluded from the view (never cash,
+ *   never P&L). Staff advances never reach this view (cash-flow dictionary
+ *   concern, still deferred).
  * - D-R2 (Cash Flow): ALL actual money movements with METHOD breakdown
  *   from source rows — `direction` is never used as a method or cash signal.
  * - Period boundaries are clinic-local (D-L3) computed in the views; the API
@@ -32,7 +35,7 @@ export async function getProfitAndLoss(clinicId: string, range: PeriodRange = {}
   assertMonth(range.toMonth, 'to_month');
   let query = supabaseAdmin
     .from('financial_period_summary')
-    .select('clinic_id, period_month, revenue, refunds, expenses, bad_debt, net_result')
+    .select('clinic_id, period_month, revenue, refunds, expenses, bad_debt, net_result, payroll')
     .eq('clinic_id', clinicId)
     .order('period_month', { ascending: false });
   if (range.fromMonth) query = query.gte('period_month', range.fromMonth);

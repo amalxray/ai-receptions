@@ -78,6 +78,7 @@ const pnl = (month: string, revenue: number, extras: Partial<PnlPoint> = {}): Pn
   expenses: 0,
   bad_debt: 0,
   net_result: extras.net_result ?? revenue,
+  payroll: 0,
   ...extras,
 });
 
@@ -375,10 +376,13 @@ describe('PP-5 recommendations (informational only)', () => {
 });
 describe('PP-5 aggregate report — read-only / no-write behavior', () => {
   it('composes all insights and NEVER issues DB writes (insert/update/upsert/delete)', async () => {
+    // Payroll-inclusive P&L (20261018): `expenses` ALREADY contains the paid
+    // payroll of 2500/month, so net is negative on purpose. `payroll` is a
+    // disclosure line, never a second expense term.
     mockReporting.getProfitAndLoss.mockResolvedValue([
-      pnl('2026-01-01', 1000, { expenses: 200, net_result: 800 }),
-      pnl('2026-02-01', 1000, { expenses: 200, net_result: 800 }),
-      pnl('2026-03-01', 1000, { expenses: 200, net_result: 800 }),
+      pnl('2026-01-01', 1000, { expenses: 2500, payroll: 2500, net_result: -1500 }),
+      pnl('2026-02-01', 1000, { expenses: 2500, payroll: 2500, net_result: -1500 }),
+      pnl('2026-03-01', 1000, { expenses: 2500, payroll: 2500, net_result: -1500 }),
     ]);
     mockReporting.getCashFlow.mockResolvedValue([
       cash('2026-01-01', 900, 100, 'cash'),
@@ -394,9 +398,12 @@ describe('PP-5 aggregate report — read-only / no-write behavior', () => {
     expect(report.pnlTrends).toHaveLength(3);
     expect(report.cashTrends).toHaveLength(2);
     expect(report.receivables.overdue90Share).toBe(50);
-    expect(report.profitability.netMargin).toBe(80); // net 800×3 / revenue 1000×3
+    expect(report.kpis.expenses).toBe(7500); // payroll stays INSIDE expenses (never added twice)
+    expect(report.profitability.netMargin).toBe(-150); // net −1500×3 / revenue 1000×3
     expect(report.meta.deterministic).toBe(true);
-    expect(report.meta.source).toBe('existing derived views only');
+    expect(report.meta.source).toBe('existing derived views only (payroll included)');
+    expect(report.meta.includesPayroll).toBe(true);
+    expect(report.meta.payrollTotal).toBe(7500);
 
     // read-only proof: only selects happened
     expect(mockSupabaseAdmin.supabaseAdmin.from).toHaveBeenCalledWith('daily_cash_positions');
@@ -407,6 +414,41 @@ describe('PP-5 aggregate report — read-only / no-write behavior', () => {
       expect(b.upsert).not.toHaveBeenCalled();
       expect(b.delete).not.toHaveBeenCalled();
     }
+  });
+
+  it('discloses paid payroll as a SHARE of expenses (never as an extra expense term)', async () => {
+    // Jan: paid payroll 1500 sits INSIDE 2000 of expenses. Feb: a pre-migration
+    // row (before 20261018 the view had no `payroll` column) must degrade to 0.
+    const preMigrationRow = {
+      period_month: '2026-02-01',
+      revenue: 5000,
+      refunds: 0,
+      expenses: 1000,
+      bad_debt: 0,
+      net_result: 4000,
+    } as unknown as PnlPoint;
+    mockReporting.getProfitAndLoss.mockResolvedValue([
+      pnl('2026-01-01', 5000, { expenses: 2000, payroll: 1500, net_result: 3000 }),
+      preMigrationRow,
+    ]);
+    mockReporting.getCashFlow.mockResolvedValue([]);
+    mockAccounting.getAgingSummary.mockResolvedValue(aging(0, 0));
+
+    const report = await getFinancialIntelligence('clinic-1', {
+      fromMonth: '2026-01-01',
+      toMonth: '2026-02-01',
+    });
+
+    expect(report.meta.includesPayroll).toBe(true);
+    expect(report.meta.payrollTotal).toBe(1500); // 1500 + (missing column → 0)
+    expect(report.kpis.expenses).toBe(3000); // 2000 + 1000 — the payroll share is NOT re-added
+    expect(report.kpis.revenue).toBe(10000);
+    expect(report.kpis.netPosition).toBe(7000);
+
+    // No paid payroll period at all ⇒ a clean 0, never NaN/undefined.
+    mockReporting.getProfitAndLoss.mockResolvedValue([pnl('2026-03-01', 100, { net_result: 100 })]);
+    const noPayroll = await getFinancialIntelligence('clinic-1');
+    expect(noPayroll.meta.payrollTotal).toBe(0);
   });
 
   it('rejects malformed month boundaries with 400-mapped errors and performs no queries', async () => {
