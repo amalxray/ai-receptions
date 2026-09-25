@@ -106,7 +106,9 @@ describe('PP-8B-ii — getDoctorPublicProfile (allow-list projection)', () => {
     expect(profile!.bookingUrl).toBe(`/book?slug=${CLINIC_SLUG}`);
     expect(profile!.chatUrl).toBe(`/chat?clinic=${CLINIC_SLUG}`);
     expect(profile!.pageUrl).toBe('https://clinics.example.com/d/dr-ahmadhassan');
-    expect(profile!.clinic.pageUrl).toBe('https://clinics.example.com/c/demo-dental-clinic');
+    // The clinic is referenced by its CANONICAL subdomain (Phase E) — never the
+    // noindex `/c/{slug}` compat path (JSON-LD `Dentist.url` must be canonical).
+    expect(profile!.clinic.pageUrl).toBe('https://demo-dental-clinic.dentairec.com');
     // allow-list: no internal identities leak
     const json = JSON.stringify(profile);
     expect(json).not.toMatch(/user_id|"email"|demo\.dentist/i);

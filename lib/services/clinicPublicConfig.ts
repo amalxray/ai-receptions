@@ -16,6 +16,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
 
 export type PublicSectionKey =
   | 'hero'
@@ -284,7 +285,14 @@ export type PublicProfileSettings = {
 export type PublicPageConfig = PublicProfileSettings & {
   slug: string;
   public_id: string | null;
+  /** Relative legacy path (`/{slug}`) — kept for callers that build their own origin. */
   pageUrl: string;
+  /**
+   * Canonical public URL on the tenant's OWN subdomain
+   * (`https://{slug}.dentairec.com`) — what the dashboard must show, link and
+   * copy. The legacy `/{slug}` path 301-redirects here (Phase E).
+   */
+  canonicalUrl: string;
   services: { id: string; name: string }[];
   providers: { id: string; name: string; title: string | null; specialty: string | null }[];
   hasAds: boolean;
@@ -400,6 +408,7 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
     slug: data.slug,
     public_id: data.public_id ?? null,
     pageUrl: `/${encodeURIComponent(data.slug)}`,
+    canonicalUrl: clinicSpaceUrl(data.slug),
     services: (services ?? []).map((s) => ({ id: s.id, name: s.name })),
     providers: (providers ?? []).map((p) => ({
       id: p.id,

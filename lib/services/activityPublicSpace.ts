@@ -1,9 +1,9 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
-import { getPublicClinicProfile } from '@/lib/services/clinicPublicProfile';
+import { getPublicClinicProfile, legacyClinicUrl } from '@/lib/services/clinicPublicProfile';
 import type { PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
-import { getAppBaseUrl } from '@/lib/communications/links';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
 
 /**
  * Digital Healthcare Space — activity public-space resolver (Phase C/E).
@@ -122,12 +122,17 @@ export type ActivityPublicSpace = {
   labServices: ActivityDomainService[];
 };
 
-export function activitySpaceUrl(
-  slug: string,
-  env: Record<string, string | undefined> = process.env
-): string {
-  const base = getAppBaseUrl(env);
-  return `${base}/${encodeURIComponent(slug)}`;
+/**
+ * Canonical absolute URL of a tenant's public space — the tenant's OWN
+ * subdomain (`https://hala-clinic.dentairec.com`).
+ *
+ * The legacy apex path (`https://www.dentairec.com/hala-clinic`) still resolves
+ * but 301-redirects here, so canonical tags, JSON-LD `url`, sitemap entries and
+ * share links must all advertise the subdomain form. Single-sourced through
+ * `clinicSpaceUrl` so no surface can drift.
+ */
+export function activitySpaceUrl(slug: string): string {
+  return clinicSpaceUrl(slug);
 }
 
 /** Resolves only the authoritative activity type for a tenant slug. */
@@ -318,7 +323,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     bookingUrl: profile.bookingUrl,
     chatUrl: profile.chatUrl,
     pageUrl: activitySpaceUrl(profile.slug),
-    legacyPageUrl: profile.pageUrl,
+    legacyPageUrl: legacyClinicUrl(profile.slug),
     services: profile.services,
     providers: profile.providers,
     ads: profile.ads,

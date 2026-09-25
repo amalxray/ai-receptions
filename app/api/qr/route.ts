@@ -26,7 +26,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     return new NextResponse(null, { status: 404 });
   }
 
-  const svg = await clinicQrSvg({ publicId, slug: clinic.slug });
+  const svg = await clinicQrSvg({ publicId });
 
   return new NextResponse(svg, {
     headers: {

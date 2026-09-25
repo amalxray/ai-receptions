@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getPublicProfileSeoEntries } from '@/lib/services/doctorPublicProfile';
 import { getActivitySpaceEntries } from '@/lib/services/activityPublicSpace';
@@ -9,12 +10,15 @@ import { getActivitySpaceEntries } from '@/lib/services/activityPublicSpace';
  *
  * Contains ONLY indexable public surfaces:
  *   - landing page
- *   - doctor public profiles (visibility = indexable, PP-8B)
- *   - activity public spaces (/{slug}) that are discovery-opted-in and
+ *   - doctor public profiles (visibility = indexable, PP-8B) — PATH-based `/d/{slug}`
+ *   - activity public spaces on their canonical tenant subdomain
+ *     (`https://{slug}.dentairec.com`) that are discovery-opted-in and
  *     subscribed (Phase C generalization — clinic / imaging / dental lab)
  *
  * Legacy `/c/{slug}` is deliberately NOT listed (it is noindex + canonical to
- * /{slug} since Phase E). Private/noindex surfaces never appear (AC-8).
+ * the tenant subdomain since Phase E), and neither is the legacy apex path
+ * `/{slug}` (it now 301-redirects to the subdomain). Private/noindex surfaces
+ * never appear (AC-8).
  */
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +68,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const space of await getActivitySpaceEntries()) {
     entries.push({
-      url: `${base}/${encodeURIComponent(space.slug)}`,
+      // Canonical tenant identity is the tenant's OWN subdomain (Phase E) — the
+      // legacy apex path `/{slug}` 301-redirects here, so listing it would put a
+      // redirecting URL in the sitemap.
+      url: clinicSpaceUrl(space.slug),
       changeFrequency: 'monthly',
       priority: 0.8,
     });

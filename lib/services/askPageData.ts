@@ -1,5 +1,6 @@
 /** Server data loader for the public /ask page (settings + content). */
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
 
 export async function getAskPageData() {
   const [settingsRes, tipsRes, articlesRes, storiesRes, faqRes, clinicsRes, galleryRes, clinicsCount, patientsCount, citiesCount] = await Promise.all([
@@ -16,13 +17,19 @@ export async function getAskPageData() {
   ]);
   const settings: Record<string, unknown> = {};
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
+  // Every partner card links to its canonical tenant subdomain (Phase E): built
+  // here, on the server, so the client never has to know the domain shape.
+  const clinics = (clinicsRes.data ?? []).map((row) => ({
+    ...row,
+    booking_url: clinicSpaceUrl(row.slug),
+  }));
   return {
     settings,
     tips: tipsRes.data ?? [],
     articles: articlesRes.data ?? [],
     stories: storiesRes.data ?? [],
     faq: faqRes.data ?? [],
-    clinics: clinicsRes.data ?? [],
+    clinics,
     gallery: galleryRes.data ?? [],
     stats: {
       clinics_count: clinicsCount.count ?? 0,

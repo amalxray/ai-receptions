@@ -27,6 +27,9 @@ vi.mock('@/lib/services/clinics', () => ({
 }));
 vi.mock('@/lib/services/clinicPublicProfile', () => ({
   getPublicClinicProfile: vi.fn(async () => mockState.profile),
+  // Legacy compat URL (`/c/{slug}`) — mirrors the production helper, which is
+  // what `legacyPageUrl` must keep pointing at after the subdomain migration.
+  legacyClinicUrl: (slug: string) => `https://clinics.example.com/c/${slug}`,
 }));
 vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: {
@@ -102,7 +105,7 @@ describe('Phase C — activity public space', () => {
     const space = await getActivityPublicSpace('demo-clinic');
     expect(space).not.toBeNull();
     expect(space!.activityType).toBe('clinic');
-    expect(space!.pageUrl).toBe('https://clinics.example.com/demo-clinic');
+    expect(space!.pageUrl).toBe('https://demo-clinic.dentairec.com');
     expect(space!.legacyPageUrl).toBe('https://clinics.example.com/c/demo-clinic');
     expect(space!.imagingServices).toEqual([]);
     expect(space!.labServices).toEqual([]);

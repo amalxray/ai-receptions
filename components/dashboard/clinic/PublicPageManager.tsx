@@ -23,6 +23,8 @@ type PageConfig = {
   slug: string;
   public_id: string | null;
   pageUrl: string;
+  /** Canonical tenant subdomain URL (`https://{slug}.dentairec.com`) — link + copy target. */
+  canonicalUrl: string;
   description?: string;
   tagline?: string;
   about?: string;
@@ -260,9 +262,10 @@ export default function PublicPageManager() {
 
   const copyLink = async () => {
     if (!config) return;
-    const url = `${window.location.origin}${config.pageUrl}`;
     try {
-      await navigator.clipboard.writeText(url);
+      // Canonical tenant subdomain (Phase E) — the legacy apex path 301s here,
+      // so copying it would hand the clinic a redirecting URL to publish.
+      await navigator.clipboard.writeText(config.canonicalUrl);
       setSuccess('تم نسخ رابط الصفحة العامة');
     } catch {
       setError('تعذر نسخ الرابط');
@@ -297,8 +300,8 @@ export default function PublicPageManager() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Link href={config.pageUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline">
-                {config.pageUrl}
+              <Link href={config.canonicalUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline">
+                {config.canonicalUrl}
               </Link>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{config.slug}</span>
             </div>
@@ -324,7 +327,7 @@ export default function PublicPageManager() {
                 تنزيل QR
               </button>
               <Link
-                href={config.pageUrl}
+                href={config.canonicalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="rounded-lg border border-slate-300 px-3 py-2 text-center text-sm text-slate-700 hover:bg-slate-50"

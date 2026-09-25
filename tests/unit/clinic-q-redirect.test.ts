@@ -3,7 +3,7 @@ import { GET } from '@/app/q/[publicId]/route';
 import { activitySpaceUrl } from '@/lib/services/activityPublicSpace';
 
 vi.mock('@/lib/services/activityPublicSpace', () => ({
-  activitySpaceUrl: (slug: string) => `https://clinics.example.com/${slug}`,
+  activitySpaceUrl: (slug: string) => `https://${slug}.dentairec.com`,
 }));
 
 // STEP 15D — /q/{publicId} redirect route (QR destination).
@@ -19,12 +19,13 @@ describe('15D — GET /q/[publicId]', () => {
     mockState.clinic = { id: '11111111-1111-1111-1111-111111111111', slug: 'demo-clinic', name: 'Demo' };
   });
 
-  it('redirects (302) to the canonical /{slug} activity space (Phase E)', async () => {
-    const res = await GET(new Request('https://clinics.example.com/q/pub_xyz'), {
+  it('redirects (302) to the canonical activity space on the tenant subdomain (Phase E)', async () => {
+    const res = await GET(new Request('https://www.dentairec.com/q/pub_xyz'), {
       params: { publicId: 'pub_xyz' },
     });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('https://clinics.example.com/demo-clinic');
+    // `new URL()` normalizes the empty root path to `/` — the same URL.
+    expect(res.headers.get('location')).toBe('https://demo-clinic.dentairec.com/');
   });
 
   it('returns 404 for an unknown public id', async () => {

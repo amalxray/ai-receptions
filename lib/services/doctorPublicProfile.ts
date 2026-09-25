@@ -56,7 +56,17 @@ export type DoctorPublicProfile = {
   pageUrl: string;
 };
 
-/** Canonical public page URL for a doctor slug. */
+/**
+ * Canonical public page URL for a doctor slug — PATH-based on the platform
+ * origin: `https://www.dentairec.com/d/{slug}`.
+ *
+ * Doctors deliberately do NOT get subdomains. A doctor is not a tenant: there is
+ * no per-doctor domain provisioning, and a `dr-*` label could collide with a
+ * clinic slug (the slug namespace is shared). One stable platform canonical also
+ * keeps promoted doctor pages alive independently of the clinic's subdomain
+ * lifecycle. The CLINIC they work for is referenced by its own canonical
+ * subdomain URL (see `clinic.pageUrl` below).
+ */
 export function doctorPublicUrl(
   slug: string,
   env: Record<string, string | undefined> = process.env

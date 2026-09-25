@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 describe('PP-8C — sitemap.xml (indexable-only surface)', () => {
-  it('lists home + ONLY indexable doctor profiles with canonical /d/ URLs', async () => {
+  it('lists platform surfaces + ONLY indexable entities (doctors under /d/, spaces on their subdomain)', async () => {
     mockState.entries = [
       { kind: 'doctor', slug: 'dr-indexable', lastModified: new Date('2026-09-01T00:00:00Z') },
     ];
@@ -67,8 +67,16 @@ describe('PP-8C — sitemap.xml (indexable-only surface)', () => {
     const urls = result.map((e) => e.url);
     expect(urls).toContain('https://clinics.example.com/');
     expect(urls).toContain('https://clinics.example.com/d/dr-indexable');
-    expect(urls).toContain('https://clinics.example.com/demo-clinic');
-    expect(urls).toHaveLength(3);
+    // Activity spaces are listed on their canonical tenant SUBDOMAIN (Phase E);
+    // the legacy apex path 301-redirects there, so it must never be listed.
+    expect(urls).toContain('https://demo-clinic.dentairec.com');
+    expect(urls).not.toContain('https://clinics.example.com/demo-clinic');
+    // Entity entries are ADDITIVE to the static platform surfaces (/book,
+    // /discover, /ask + subpages, published articles) — the contract is
+    // "indexable only", not a frozen entry count.
+    expect(urls.length).toBeGreaterThanOrEqual(3);
+    // Legacy /c/{slug} compatibility pages are noindex → never listed.
+    expect(urls.filter((url) => url.includes('/c/'))).toEqual([]);
     const doctorEntry = result.find((e) => e.url?.includes('/d/'));
     expect(doctorEntry?.lastModified).toEqual(new Date('2026-09-01T00:00:00Z'));
   });
@@ -76,17 +84,32 @@ describe('PP-8C — sitemap.xml (indexable-only surface)', () => {
   it('noindex/private profiles are ABSENT (service contract returns indexable only)', async () => {
     mockState.entries = []; // service never returns noindex/private entries
     mockState.activitySpaces = [];
-    const result = await sitemap();
-    expect(result.map((e) => e.url)).toEqual(['https://clinics.example.com/']);
+    const urls = (await sitemap()).map((e) => e.url);
+    expect(urls).toContain('https://clinics.example.com/');
+    // No entity surface may be emitted for an empty service response.
+    expect(urls.filter((url) => url.includes('/d/'))).toEqual([]);
+    expect(urls.filter((url) => url.includes('.dentairec.com'))).toEqual([]);
   });
 });
 
 describe('PP-8C — robots.txt', () => {
   it('allows public surfaces, disallows operational areas, points at sitemap', () => {
     const rules = robots();
-    expect(rules.rules).toEqual([
-      { userAgent: '*', allow: '/', disallow: ['/dashboard/', '/portal/', '/api/'] },
-    ]);
+    const disallow = ['/dashboard/', '/admin/', '/portal/', '/api/'];
+    const wildcard = rules.rules.find((rule) => rule.userAgent === '*');
+    expect(wildcard).toEqual({ userAgent: '*', allow: '/', disallow });
+
+    // AEO/GEO: AI answer-engine crawlers get EXPLICIT allow rules over the same
+    // public surface (and the same operational disallows) — blocking them would
+    // defeat the AEO surface, and blocking noindex pages would hide their
+    // noindex directive from crawlers.
+    const answerEngines = rules.rules.filter((rule) => rule.userAgent !== '*');
+    expect(answerEngines.length).toBeGreaterThan(0);
+    for (const rule of answerEngines) {
+      expect(rule.allow).toBe('/');
+      expect(rule.disallow).toEqual(disallow);
+    }
+
     expect(rules.sitemap).toBe('https://clinics.example.com/sitemap.xml');
   });
 });

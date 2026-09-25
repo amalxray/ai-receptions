@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import {
   TENANT_ROOT_DOMAIN,
   RESERVED_SUBDOMAINS,
+  apexTenantSlugFromPath,
+  clinicSpaceUrl,
   clinicSubdomain,
   isValidTenantSlug,
   tenantPathRewrite,
+  tenantRedirect,
   tenantSlugFromHostname,
 } from '@/lib/vercel/domains';
 // Imported from its own module (not re-exported through lib/vercel/domains) so
@@ -147,5 +150,98 @@ describe('tenant path rewrite', () => {
   it('does not double-rewrite an already prefixed path', () => {
     expect(tenantPathRewrite('hala-clinic', '/hala-clinic/')).toBeNull();
     expect(tenantPathRewrite('hala-clinic', '/hala-clinic/about')).toBeNull();
+  });
+});
+
+describe('canonical tenant URL (Phase E)', () => {
+  it('builds the tenant subdomain URL — the single canonical identity', () => {
+    expect(clinicSpaceUrl('hala-clinic')).toBe('https://hala-clinic.dentairec.com');
+    expect(clinicSpaceUrl('amal-x-ray-center')).toBe('https://amal-x-ray-center.dentairec.com');
+    // Slugs are normalized first, so casing/whitespace can never split identity.
+    expect(clinicSpaceUrl(' HALA-CLINIC ')).toBe('https://hala-clinic.dentairec.com');
+  });
+
+  it('never emits a malformed host for a slug that cannot be a DNS label', () => {
+    // Such slugs cannot exist in the DB (registration validates charset +
+    // reserved list), but a slug must never be able to inject a host or a path.
+    expect(clinicSpaceUrl('a b')).toBe('https://www.dentairec.com/a%20b');
+    expect(clinicSpaceUrl('evil.com/x')).toBe('https://www.dentairec.com/evil.com%2Fx');
+    expect(clinicSpaceUrl('app')).toBe('https://www.dentairec.com/app'); // reserved label
+  });
+});
+
+describe('legacy URL → canonical subdomain redirect', () => {
+  it('candidates the apex path of a tenant-looking slug', () => {
+    expect(tenantRedirect('www.dentairec.com', '/hala-clinic')).toEqual({
+      kind: 'apex-path',
+      slug: 'hala-clinic',
+    });
+    // Trailing slash / casing / port are the same page.
+    expect(tenantRedirect('dentairec.com', '/hala-clinic/')).toEqual({
+      kind: 'apex-path',
+      slug: 'hala-clinic',
+    });
+    expect(tenantRedirect('www.dentairec.com:3000', '/Hala-Clinic')).toEqual({
+      kind: 'apex-path',
+      slug: 'hala-clinic',
+    });
+  });
+
+  it('never candidates platform routes, crawler files or deep links', () => {
+    const untouched = [
+      '/',
+      '/book',
+      '/discover',
+      '/ask',
+      '/login',
+      '/register',
+      '/dashboard',
+      '/dashboard/patients',
+      '/admin',
+      '/portal/x',
+      '/c/hala-clinic',
+      '/d/dr-ahmad',
+      '/q/pub_x',
+      '/llms.txt',
+      '/robots.txt',
+      '/sitemap.xml',
+      '/5e754e705e92a8b07dbe595c930ea146.txt',
+    ];
+    for (const path of untouched) {
+      expect(tenantRedirect('www.dentairec.com', path), path).toBeNull();
+    }
+    // Encoded separators must not smuggle a second segment into the host.
+    expect(tenantRedirect('www.dentairec.com', '/%2Fetc')).toBeNull();
+    expect(tenantRedirect('www.dentairec.com', '/a%2Fb')).toBeNull();
+  });
+
+  it('maps www.<slug> hosts to the bare subdomain (host-level, no lookup)', () => {
+    expect(tenantRedirect('www.hala-clinic.dentairec.com', '/book')).toEqual({
+      kind: 'host',
+      host: 'hala-clinic.dentairec.com',
+    });
+    expect(tenantRedirect('www.hala-clinic.dentairec.com:3000', '/x')).toEqual({
+      kind: 'host',
+      host: 'hala-clinic.dentairec.com',
+    });
+  });
+
+  it('does nothing for already-canonical or non-platform hosts', () => {
+    expect(tenantRedirect('hala-clinic.dentairec.com', '/hala-clinic')).toBeNull();
+    expect(tenantRedirect('dentairec.com', '/')).toBeNull();
+    expect(tenantRedirect('staging.dentairec.com', '/hala-clinic')).toBeNull();
+    expect(tenantRedirect('hala-clinic.vercel.app', '/hala-clinic')).toBeNull();
+    expect(tenantRedirect('', '/hala-clinic')).toBeNull();
+    expect(tenantRedirect('www.dentairec.com', '/hala-clinic')).not.toBeNull();
+  });
+
+  it('parses apex tenant slugs symmetrically with the middleware rewrite', () => {
+    expect(apexTenantSlugFromPath('/hala-clinic')).toBe('hala-clinic');
+    expect(apexTenantSlugFromPath('hala-clinic')).toBe('hala-clinic');
+    expect(apexTenantSlugFromPath('/hala-clinic?utm=1')).toBe('hala-clinic');
+    expect(apexTenantSlugFromPath('/hala-clinic/')).toBe('hala-clinic');
+    expect(apexTenantSlugFromPath('/hala-clinic/team')).toBeNull();
+    expect(apexTenantSlugFromPath('/')).toBeNull();
+    expect(apexTenantSlugFromPath('/%')).toBeNull();
   });
 });

@@ -99,12 +99,47 @@ export function clinicSubdomain(slug: string): string {
 }
 
 /**
+ * Canonical absolute URL of a tenant's public space on its OWN subdomain:
+ *   `hala-clinic` → `https://hala-clinic.dentairec.com`
+ *
+ * This is the single source of canonical tenant identity. Canonical tags,
+ * JSON-LD, sitemap entries, the `/q/{publicId}` QR redirect, `/ask` booking
+ * links and patient-facing pages all read it, so the shape can never drift
+ * between surfaces. The root domain is `TENANT_ROOT_DOMAIN` (derived from
+ * `PRODUCTION_BASE_URL`) — the official domain is never declared twice.
+ *
+ * The legacy path form (`https://www.dentairec.com/{slug}`) still resolves but
+ * 301-redirects here (middleware), so both forms converge on one canonical URL.
+ *
+ * A slug that cannot be a DNS label, or that is reserved/infrastructure, has no
+ * valid subdomain. Such slugs can never exist in the DB (registration rejects
+ * them) — the apex path is returned as a safe fallback instead of emitting a
+ * malformed host (`https://evil.com/x.dentairec.com` style injection).
+ */
+export function clinicSpaceUrl(slug: string): string {
+  const label = normalizeTenantSlug(slug);
+  if (!isValidTenantSlug(label) || isReservedSubdomain(label)) {
+    return `${PRODUCTION_BASE_URL}/${encodeURIComponent(String(slug))}`;
+  }
+  return `https://${clinicSubdomain(label)}`;
+}
+
+/**
+ * Hostname → comparable form: lowercase, port stripped, trailing root dot
+ * stripped. Shared by every host rule so they can never disagree about what a
+ * host is.
+ */
+export function normalizeHostname(hostname: string): string {
+  return hostname.split(':')[0].trim().toLowerCase().replace(/\.$/, '');
+}
+
+/**
  * True when `hostname` is a tenant host; returns its label.
  * The apex, `www.dentairec.com` and any nested host (`a.b.dentairec.com`) are
  * NOT tenant hosts.
  */
 export function tenantSlugFromHostname(hostname: string): string | null {
-  const host = hostname.split(':')[0].trim().toLowerCase().replace(/\.$/, '');
+  const host = normalizeHostname(hostname);
   const suffix = `.${TENANT_ROOT_DOMAIN}`;
   if (!host.endsWith(suffix)) return null;
   const label = host.slice(0, -suffix.length);
@@ -131,6 +166,72 @@ export function tenantSlugFromHostname(hostname: string): string | null {
  */
 export function tenantPathRewrite(slug: string, pathname: string): string | null {
   return pathname === '/' ? `/${slug}` : null;
+}
+
+/**
+ * Extracts the tenant label from a LEGACY apex path (`/hala-clinic`).
+ *
+ * Returns null for anything that is not a single segment a tenant could own:
+ *   - platform/static routes (`/book`, `/dashboard`, `/ask`, …) → reserved list;
+ *   - file-like paths (`/sitemap.xml`, `/robots.txt`, `/llms.txt`) → invalid label;
+ *   - multi-segment paths (`/d/dr-x`, `/c/hala-clinic`, `/api/…`) → not the
+ *     tenant ROOT, and the canonical space has no nested routes.
+ *
+ * Trailing/leading slashes are tolerated (`/hala-clinic/` is the same page) and
+ * the segment is percent-decoded before validation, so `%2F` can never smuggle a
+ * second segment into the host.
+ */
+export function apexTenantSlugFromPath(pathname: string): string | null {
+  const path = (pathname.split('?')[0] ?? '').split('#')[0] ?? '';
+  const segment = path.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!segment || segment.includes('/')) return null;
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+  const label = normalizeTenantSlug(decoded);
+  if (!isValidTenantSlug(label) || isReservedSubdomain(label)) return null;
+  return label;
+}
+
+/**
+ * Redirect decision for a request host + path — pure host math, no DB, so it
+ * stays unit-tested and Edge-safe.
+ *
+ * Two legacy→canonical shapes are recognised:
+ *   1. `www.<slug>.<root>/…`  → `{ kind: 'host' }`   (301 to `<slug>.<root>/…`)
+ *   2. `<root>/<slug>`        → `{ kind: 'apex-path' }` (301 to `<slug>.<root>`)
+ *
+ * Case 2 is only a CANDIDATE: the caller verifies the tenant actually exists
+ * before issuing a permanent redirect (a 301 for a non-existent slug would be
+ * cached by browsers/crawlers forever). Case 1 needs no lookup — the slug is
+ * already a live, resolved host by construction.
+ *
+ * Returns null when the request is already canonical (`<slug>.<root>`), is a
+ * platform route, or has nothing to redirect.
+ */
+export type TenantRedirect =
+  | { kind: 'host'; host: string }
+  | { kind: 'apex-path'; slug: string };
+
+export function tenantRedirect(hostname: string, pathname: string): TenantRedirect | null {
+  const host = normalizeHostname(hostname);
+
+  // 1) www.<slug>.<root> → <slug>.<root> (same path; the apex form is canonical).
+  if (host.startsWith('www.')) {
+    const slug = tenantSlugFromHostname(host.slice('www.'.length));
+    if (slug) return { kind: 'host', host: clinicSubdomain(slug) };
+  }
+
+  // 2) <root>/<slug> (and www.<root>/<slug>) → <slug>.<root>.
+  if (host === TENANT_ROOT_DOMAIN || host === `www.${TENANT_ROOT_DOMAIN}`) {
+    const slug = apexTenantSlugFromPath(pathname);
+    if (slug) return { kind: 'apex-path', slug };
+  }
+
+  return null;
 }
 
 /**

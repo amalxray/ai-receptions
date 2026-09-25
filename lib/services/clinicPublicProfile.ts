@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { logEvent } from '@/lib/server/logging';
 import { readDisplaySettings, readTheme, type PublicDisplaySettings, type PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
 
@@ -93,13 +94,33 @@ export type PublicClinicProfile = {
   theme: PublicThemeSettings;
 };
 
-/** Builds the canonical public page URL for a clinic slug. */
-export function publicClinicUrl(
+/**
+ * Canonical public URL of a clinic — its own subdomain: `https://{slug}.dentairec.com`.
+ *
+ * Phase E of the subdomain migration: the tenant HOST is the clinic's canonical
+ * identity, so every caller (doctor profile + JSON-LD, QR/share, sitemap,
+ * patient links) resolves one canonical URL. `getAppBaseUrl` deliberately plays
+ * no part here: canonical identity must never be re-pointable by a leftover
+ * preview/env value (docs/AEO-GEO.md §9).
+ */
+export function publicClinicUrl(slug: string): string {
+  return clinicSpaceUrl(slug);
+}
+
+/**
+ * Legacy path-based public URL (`https://www.dentairec.com/c/{slug}`).
+ *
+ * `/c/{slug}` still renders the tenant so old links and printed material keep
+ * working, but it is noindex and canonicalises to the subdomain — it must never
+ * be advertised as an entity's canonical URL. It is kept distinct (instead of
+ * being folded into `publicClinicUrl`) for the compatibility surface itself:
+ * `legacyPageUrl` and the `/c/` page's own `og:url`.
+ */
+export function legacyClinicUrl(
   slug: string,
   env: Record<string, string | undefined> = process.env
 ): string {
-  const base = getAppBaseUrl(env);
-  return `${base}/c/${encodeURIComponent(slug)}`;
+  return `${getAppBaseUrl(env)}/c/${encodeURIComponent(slug)}`;
 }
 
 type PublicProfileShape = {

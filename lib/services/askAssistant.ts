@@ -22,6 +22,7 @@ import { ensureAIProviders } from '@/lib/ai/providers/registry';
 import { generateWithFailover } from '@/lib/ai/resilience';
 import { logEvent } from '@/lib/server/logging';
 import { runNearbyClinics, getAskSettings } from '@/lib/services/askContent';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
 
 export type AskLocation = { lat: number; lng: number; city?: string | null } | null;
 
@@ -60,7 +61,9 @@ async function nearbySuggestions(location: AskLocation, limit = 3) {
       phone: r.phone ?? null,
       google_maps_url: r.google_maps_url ?? null,
       distance_km: r.distance_km != null ? Number(r.distance_km) : null,
-      booking_url: `/${r.slug}`,
+      // Canonical tenant subdomain (Phase E) — the legacy apex path `/{slug}`
+      // 301-redirects here, so a suggestion link must never encode it.
+      booking_url: clinicSpaceUrl(r.slug),
     }));
   } catch {
     return [];

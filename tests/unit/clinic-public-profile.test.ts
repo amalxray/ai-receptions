@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getPublicClinicProfile, publicClinicUrl } from '@/lib/services/clinicPublicProfile';
+import { getPublicClinicProfile, publicClinicUrl, legacyClinicUrl } from '@/lib/services/clinicPublicProfile';
 import { clinicQrDestination } from '@/lib/qr/clinicQr';
 
 // STEP 15D — Public Clinic Profile projection tests (deny-by-default).
@@ -270,17 +270,25 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
     expect(profile?.ads[0].cta_link).toBe('/book');
   });
 
-  it('publicClinicUrl builds the canonical /c/{slug} URL from NEXT_PUBLIC_APP_URL', () => {
-    process.env.NEXT_PUBLIC_APP_URL = 'https://clinics.example.com';
-    expect(publicClinicUrl('demo-clinic')).toBe('https://clinics.example.com/c/demo-clinic');
+  it('publicClinicUrl returns the canonical tenant subdomain (env-independent)', () => {
+    expect(publicClinicUrl('demo-clinic')).toBe('https://demo-clinic.dentairec.com');
+    // Canonical identity must never be re-pointable by a stray/preview env value.
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.example.com';
+    expect(publicClinicUrl('demo-clinic')).toBe('https://demo-clinic.dentairec.com');
     delete process.env.NEXT_PUBLIC_APP_URL;
   });
-  it('clinicQrDestination encodes the stable /q/{publicId} target (never the slug)', () => {
+  it('legacyClinicUrl keeps the compatibility /c/{slug} URL on the configured base', () => {
     process.env.NEXT_PUBLIC_APP_URL = 'https://clinics.example.com';
-    const dest = clinicQrDestination({ publicId: 'abc-123', slug: 'my-clinic' });
+    expect(legacyClinicUrl('demo-clinic')).toBe('https://clinics.example.com/c/demo-clinic');
+    delete process.env.NEXT_PUBLIC_APP_URL;
+  });
+  it('clinicQrDestination encodes the stable /q/{publicId} target on the PLATFORM origin (never the tenant host or slug)', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://clinics.example.com';
+    const dest = clinicQrDestination({ publicId: 'abc-123' });
     expect(dest).toBe('https://clinics.example.com/q/abc-123');
-    // The QR target must not embed the slug — printed codes survive slug changes.
+    // Printed codes must survive a slug rename AND a tenant-host change.
     expect(dest).not.toContain('my-clinic');
+    expect(dest).not.toContain('dentairec.com');
     delete process.env.NEXT_PUBLIC_APP_URL;
   });
 });

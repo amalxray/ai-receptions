@@ -1,20 +1,20 @@
 import QRCode from 'qrcode';
-import { publicClinicUrl } from '@/lib/services/clinicPublicProfile';
+import { getAppBaseUrl } from '@/lib/communications/links';
 
 /**
  * STEP 15D — Server-side QR generation for the clinic public page.
  *
- * QR codes encode `/q/{public_id}` (opaque stable identifier) so printed
- * codes keep working even if the clinic slug changes later. Generated
- * on-demand as SVG — nothing is stored.
+ * QR codes encode `/q/{public_id}` on the PLATFORM origin (opaque stable
+ * identifier) so printed codes survive both a slug rename AND the canonical
+ * migration to tenant subdomains: the destination embeds neither the slug nor
+ * the tenant host, and `/q/{public_id}` 302-redirects to whatever canonical
+ * space the tenant currently owns. Encoding the subdomain instead would kill
+ * every printed code the day a tenant host is removed.
+ *
+ * Generated on-demand as SVG — nothing is stored.
  */
-export async function clinicQrSvg(clinic: { publicId: string; slug: string }): Promise<string> {
-  // publicClinicUrl builds the base; swap the /c/{slug} tail for /q/{publicId}.
-  const base = publicClinicUrl(clinic.slug);
-  const pageUrl = new URL(base);
-  const destination = `${pageUrl.origin}/q/${encodeURIComponent(clinic.publicId)}`;
-
-  return QRCode.toString(destination, {
+export async function clinicQrSvg(clinic: { publicId: string }): Promise<string> {
+  return QRCode.toString(clinicQrDestination(clinic), {
     type: 'svg',
     errorCorrectionLevel: 'M',
     margin: 2,
@@ -22,7 +22,7 @@ export async function clinicQrSvg(clinic: { publicId: string; slug: string }): P
 }
 
 /** Returns the exact destination URL a QR code for this clinic encodes. */
-export function clinicQrDestination(clinic: { publicId: string; slug: string }): string {
-  const pageUrl = new URL(publicClinicUrl(clinic.slug));
-  return `${pageUrl.origin}/q/${encodeURIComponent(clinic.publicId)}`;
+export function clinicQrDestination(clinic: { publicId: string }): string {
+  return `${getAppBaseUrl()}/q/${encodeURIComponent(clinic.publicId)}`;
 }
+

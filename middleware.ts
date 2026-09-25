@@ -1,16 +1,29 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSupabaseCoreConfig } from '@/lib/supabase/config';
-import { tenantSlugFromHostname, tenantPathRewrite } from '@/lib/vercel/domains';
+import {
+  clinicSpaceUrl,
+  tenantRedirect,
+  tenantSlugFromHostname,
+  tenantPathRewrite,
+} from '@/lib/vercel/domains';
+import { tenantSlugExists } from '@/lib/vercel/tenantLookup';
 
 /**
  * SUPABASE SSR SESSION REFRESH + TENANT SUBDOMAIN ROUTING — middleware.
  *
  * Responsibilities (STRICT scope):
+ *   - Redirect LEGACY public URLs to the canonical tenant subdomain (301):
+ *       www.dentairec.com/hala-clinic → hala-clinic.dentairec.com
+ *       www.hala-clinic.dentairec.com/… → hala-clinic.dentairec.com/…
+ *     The apex-path form is only redirected for a slug that really is a live
+ *     tenant (`tenantSlugExists`) — a permanent redirect for a typo would be
+ *     cached by browsers/crawlers forever. Platform routes, crawler files and
+ *     deep links are never touched (reserved-slug rules in `lib/vercel/domains`).
  *   - Refresh the Supabase auth cookies on EVERY request (rotate refresh token,
  *     keep `getUser()` coherent for Server Components / Route Handlers).
  *   - Rewrite tenant subdomains to their public space path:
- *     hala-clinic.dentairec.com → /hala-clinic (same page as the apex path).
+ *     hala-clinic.dentairec.com → /hala-clinic (the canonical tenant space).
  *     ONLY the tenant root is rewritten. Every other path on a tenant host keeps
  *     its own meaning (platform router): the clinic page's relative booking CTA
  *     `/book?slug=…`, `/discover`, crawler files, etc. Prefixing those with the
@@ -20,8 +33,6 @@ import { tenantSlugFromHostname, tenantPathRewrite } from '@/lib/vercel/domains'
  *     (API routes). The subdomain rewrite grants nothing: it only maps a host to
  *     the SAME public page that already exists on the canonical domain, and the
  *     slug must be a valid, non-reserved tenant label.
- *   - No redirects are issued for public routes — booking, AI chat and auth
- *     routes keep working without forced login.
  *
  * The `matcher` below excludes static assets so they are never processed.
  */
@@ -56,9 +67,32 @@ function tenantRewrite(request: NextRequest, slug: string): URL | null {
 export async function middleware(request: NextRequest) {
   const { supabaseUrl, anonKey } = getSupabaseCoreConfig();
   const { pathname } = request.nextUrl;
+  const host = hostHeader(request);
+
+  // --- Canonical migration: legacy URLs 301 to the tenant subdomain ---------
+  // www.<slug>.<root>/… → <slug>.<root>/…   (host-level; the slug is already a
+  //                                          live resolved host — no lookup)
+  // <root>/<slug>       → <slug>.<root>     (only when the tenant exists)
+  const redirect = tenantRedirect(host, pathname);
+  if (redirect?.kind === 'host') {
+    return NextResponse.redirect(
+      new URL(`https://${redirect.host}${pathname}${request.nextUrl.search}`),
+      301
+    );
+  }
+  if (
+    redirect?.kind === 'apex-path' &&
+    (await tenantSlugExists(redirect.slug, request.nextUrl.origin))
+  ) {
+    // Query string is preserved (utm/analytics continuity on old links).
+    return NextResponse.redirect(
+      new URL(`${clinicSpaceUrl(redirect.slug)}${request.nextUrl.search}`),
+      301
+    );
+  }
 
   // --- Tenant subdomain routing (pure host math; no DB, no authorization) ---
-  const tenantSlug = tenantSlugFromHostname(hostHeader(request));
+  const tenantSlug = tenantSlugFromHostname(host);
   const rewrite = tenantSlug ? tenantRewrite(request, tenantSlug) : null;
   const buildResponse = () =>
     rewrite ? NextResponse.rewrite(rewrite, { request }) : NextResponse.next({ request });

@@ -85,7 +85,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://api.indexnow.org/index
 - `https://www.dentairec.com/robots.txt` — تظهر قواعد زواحف AI
 - `https://www.dentairec.com/llms.txt`
 - `https://www.dentairec.com/sitemap.xml` — يشمل /book و/discover
-- Rich Results Test على `/{slug}` → MedicalClinic
+- Rich Results Test على `https://{slug}.dentairec.com` → MedicalClinic
 - schema.org validator على `/d/{slug}` → Physician
 
 ## 9) هوية الـ Canonical (مصدر واحد للحقيقة)
@@ -105,4 +105,28 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://api.indexnow.org/index
 مكونات العميل (`ShareButtons` · `QRCodeCard` · JSON-LD في `AskClient`) تبدأ
 بالدومين الرسمي ثم تستبدله بـ `window.location.origin` بعد التحميل — فلا تظهر
 روابط مشاركة قديمة حتى لو حُقنت قيمة بناء قديمة في الحزمة.
+
+### 9.1) هوية المستأجر (Tenant Canonical) — النطاق الفرعي
+
+- **المصدر الواحد للهوية:** `clinicSpaceUrl(slug)` في `lib/vercel/domains.ts` →
+  `https://{slug}.dentairec.com` (والجذر مشتق من `TENANT_ROOT_DOMAIN`، أي لا
+  يوجد أي دومين مكتوب مرتين). كل الأسطح تقرأ منه: وسم `canonical`، JSON-LD،
+  `sitemap.xml`، بطاقات `/ask`، وروابط لوحة التحكم — ولا يُبنى الرابط يدويًا في
+  أي مكان آخر.
+- **الروابط القديمة → 301 دائم** (في `middleware.ts`):
+  `https://www.dentairec.com/{slug}` و `https://www.{slug}.dentairec.com/…`
+  تُحوَّل إلى `https://{slug}.dentairec.com`. التحويل للـ slug في المسار يتم
+  فقط إذا كان المستأجر موجودًا فعلاً (`/api/clinic/check-slug` + كاش داخلي 60
+  ثانية، **وفشل مفتوح**): تحويل 301 لرابط مكتوب خطأً يُخزَّن في المتصفحات
+  والزواحف ولا يمكن التراجع عنه.
+- **لا يُلمس أي مسار محجوز:** `/book` · `/discover` · `/ask` · `/dashboard` ·
+  `/admin` · `/login` · `/register` · `/portal` · `/api/*` · `/c/{slug}` ·
+  `/d/{slug}` · `/q/{public_id}` · `robots.txt` · `sitemap.xml` · `llms.txt`.
+- **`/c/{slug}`** صفحة توافق فقط: `noindex` + canonical إلى النطاق الفرعي — لا
+  تُعلن كرابط رسمي (`legacyClinicUrl` للاستخدام الداخلي فقط).
+- **`/d/{slug}`** يبقى على الدومين الرسمي: الطبيب ليس مستأجرًا ولا يملك نطاقًا
+  فرعيًا (والتسمية `dr-*` قد تتصادم مع slug عيادة).
+- **رمز QR** يُشفّر `https://www.dentairec.com/q/{public_id}` (معرّف ثابت
+  opaque) على دومين المنصة — لا يحمل الـ slug ولا النطاق الفرعي، فتبقى الرموز
+  المطبوعة صالحة بعد أي إعادة تسمية أو تغيير في استضافة المستأجر.
 

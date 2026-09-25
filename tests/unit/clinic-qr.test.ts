@@ -16,28 +16,28 @@ afterEach(() => {
 
 describe('15D — clinic QR', () => {
   it('destination encodes the opaque /q/{publicId} route, not the internal UUID', () => {
-    const destination = clinicQrDestination({ publicId: 'pub_xyz_99', slug: 'demo-clinic' });
+    const destination = clinicQrDestination({ publicId: 'pub_xyz_99' });
     expect(destination).toBe('https://clinics.example.com/q/pub_xyz_99');
-    expect(destination).not.toContain('/c/demo-clinic');
+    expect(destination).not.toContain('demo-clinic');
   });
 
   it('URL-encodes the public id', () => {
-    const destination = clinicQrDestination({ publicId: 'a b/c', slug: 'demo-clinic' });
+    const destination = clinicQrDestination({ publicId: 'a b/c' });
     expect(destination).toBe('https://clinics.example.com/q/a%20b%2Fc');
   });
 
   it('generates a server-side SVG (QR data is encoded visually, deterministically)', async () => {
-    const svg = await clinicQrSvg({ publicId: 'pub_xyz_99', slug: 'demo-clinic' });
+    const svg = await clinicQrSvg({ publicId: 'pub_xyz_99' });
     expect(svg).toContain('<svg');
     expect(svg).toContain('viewBox');
     expect(svg.length).toBeGreaterThan(500);
 
     // Deterministic: same input → identical output.
-    const again = await clinicQrSvg({ publicId: 'pub_xyz_99', slug: 'demo-clinic' });
+    const again = await clinicQrSvg({ publicId: 'pub_xyz_99' });
     expect(again).toBe(svg);
 
     // Different destination → different matrix (proves the URL is encoded, not a static image).
-    const other = await clinicQrSvg({ publicId: 'pub_other', slug: 'demo-clinic' });
+    const other = await clinicQrSvg({ publicId: 'pub_other' });
     expect(other).not.toBe(svg);
   });
 });
