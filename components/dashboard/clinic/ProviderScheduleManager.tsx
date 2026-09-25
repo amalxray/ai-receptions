@@ -13,7 +13,13 @@ type Provider = { id: string; name: string; title: string | null };
 type Service = { id: string; name: string };
 
 export default function ProviderScheduleManager() {
-  const { isConfigured: isSupabaseConfigured } = useSupabaseConfig();
+  // `configLoading` = health-check in flight, `checkFailed` = the check errored.
+  // Neither means "Supabase is not configured".
+  const {
+    isConfigured: isSupabaseConfigured,
+    loading: configLoading,
+    checkFailed,
+  } = useSupabaseConfig();
   const {
     clinicId,
     authHeaders,
@@ -31,7 +37,8 @@ export default function ProviderScheduleManager() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) { setLoading(false); return; }
+    if (configLoading) { setLoading(true); return; }
+    if (!isSupabaseConfigured && !checkFailed) { setLoading(false); return; }
     if (clinicLoading) { setLoading(true); return; }
     if (!clinicId) {
       if (clinicError) setError(clinicError);
@@ -40,6 +47,7 @@ export default function ProviderScheduleManager() {
     }
     let mounted = true;
     async function resolve() {
+      setError(null);
       try {
         const headers = await authHeaders();
         const [pRes, sRes] = await Promise.all([
@@ -62,7 +70,7 @@ export default function ProviderScheduleManager() {
     void resolve();
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupabaseConfigured, clinicLoading, clinicId]);
+  }, [isSupabaseConfigured, configLoading, checkFailed, clinicLoading, clinicId]);
 
   useEffect(() => {
     if (!clinicId || !selectedProvider) return;
@@ -147,8 +155,8 @@ export default function ProviderScheduleManager() {
     finally { setSaving(false); }
   }
 
-  if (loading) return <Skeleton className="h-60" />;
-  if (!isSupabaseConfigured) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage provider schedules." />;
+  if (loading || configLoading) return <Skeleton className="h-60" />;
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage provider schedules." />;
   if (error && providers.length === 0) return <EmptyState title="Service unavailable" description={error} />;
 
   return (

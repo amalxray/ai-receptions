@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { logEvent } from '@/lib/server/logging';
 import { readDisplaySettings, readTheme, type PublicDisplaySettings, type PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
 
 /**
@@ -287,16 +288,24 @@ export async function getPublicClinicProfile(
   }
 
   // Active announcements/offers (clinic_ads) — date-windowed, tenant-scoped.
-  const { data: adRows } = await supabaseAdmin
+  // `clinic_ads` has no deleted_at column (20260833_clinic_ads_fix.sql); the
+  // previous `.is('deleted_at', null)` made PostgREST fail the whole read, so
+  // ads never rendered. Date windows are inclusive and allow open-ended ads
+  // (null start/end), same semantics as /api/booking/ads.
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: adRows, error: adsError } = await supabaseAdmin
     .from('clinic_ads')
     .select('title, description, image_url, cta_text, cta_link')
     .eq('clinic_id', clinic.id)
     .eq('is_active', true)
-    .is('deleted_at', null)
-    .lte('start_date', new Date().toISOString().slice(0, 10))
-    .gte('end_date', new Date().toISOString().slice(0, 10))
+    .or(`start_date.is.null,start_date.lte.${today}`)
+    .or(`end_date.is.null,end_date.gte.${today}`)
     .order('display_order', { ascending: true })
     .limit(6);
+  if (adsError) {
+    // Degrade gracefully: the public profile still renders without ads.
+    logEvent('public_profile_ads_error', { clinicId: clinic.id, error: adsError.message }, 'error');
+  }
   const ads: PublicAd[] = (adRows ?? []).map((a) => ({
     title: a.title,
     description: a.description ?? null,

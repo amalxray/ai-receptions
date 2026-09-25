@@ -12,7 +12,13 @@ type Service = { id: string; name: string; description: string | null; duration_
 type Mode = 'providers' | 'services';
 
 export default function ProviderServiceManager({ mode }: { mode: Mode }) {
-  const { isConfigured: isSupabaseConfigured } = useSupabaseConfig();
+  // `configLoading` = health-check in flight, `checkFailed` = the check errored.
+  // Neither means "Supabase is not configured".
+  const {
+    isConfigured: isSupabaseConfigured,
+    loading: configLoading,
+    checkFailed,
+  } = useSupabaseConfig();
   const {
     clinicId,
     authHeaders,
@@ -47,7 +53,8 @@ export default function ProviderServiceManager({ mode }: { mode: Mode }) {
   }
 
   useEffect(() => {
-    if (!isSupabaseConfigured) { setLoading(false); return; }
+    if (configLoading) { setLoading(true); return; }
+    if (!isSupabaseConfigured && !checkFailed) { setLoading(false); return; }
     if (clinicLoading) { setLoading(true); return; }
     if (!clinicId) {
       if (clinicError) setError(clinicError);
@@ -56,7 +63,7 @@ export default function ProviderServiceManager({ mode }: { mode: Mode }) {
     }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupabaseConfigured, clinicLoading, clinicId]);
+  }, [isSupabaseConfigured, configLoading, checkFailed, clinicLoading, clinicId]);
 
   function openCreate() {
     setEditingId(null);
@@ -127,8 +134,8 @@ export default function ProviderServiceManager({ mode }: { mode: Mode }) {
     }
   }
 
-  if (loading) return <Skeleton className="h-60" />;
-  if (!isSupabaseConfigured) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage providers and services." />;
+  if (loading || configLoading) return <Skeleton className="h-60" />;
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage providers and services." />;
   if (error) return <EmptyState title="Service unavailable" description={error} />;
 
   return (

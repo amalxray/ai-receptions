@@ -10,6 +10,8 @@ const mockState = vi.hoisted(() => ({
   results: {} as Record<string, any>,
   error: null as any,
   eqCalls: {} as Record<string, Array<[string, unknown]>>,
+  isCalls: {} as Record<string, Array<[string, unknown]>>,
+  orCalls: {} as Record<string, string[]>,
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -17,7 +19,17 @@ vi.mock('@/lib/supabase/admin', () => ({
     from: vi.fn((table: string) => {
       const chain: any = {};
       const resolved = () => ({ data: mockState.results[table] ?? null, error: mockState.error });
-      for (const m of ['select', 'is', 'order', 'limit', 'lte', 'gte', 'lt', 'gt']) chain[m] = () => chain;
+      // `or` is used by the ads query (open-ended start_date/end_date windows,
+      // mirroring /api/booking/ads) — record the filters so tests can assert them.
+      for (const m of ['select', 'order', 'limit', 'lte', 'gte', 'lt', 'gt']) chain[m] = () => chain;
+      chain.or = (filter: string) => {
+        (mockState.orCalls[table] ??= []).push(filter);
+        return chain;
+      };
+      chain.is = (col: string, val: unknown) => {
+        (mockState.isCalls[table] ??= []).push([col, val]);
+        return chain;
+      };
       chain.eq = (col: string, val: unknown) => {
         (mockState.eqCalls[table] ??= []).push([col, val]);
         return chain;
@@ -55,6 +67,8 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
     delete mockState.results['clinic_ads'];
     mockState.error = null;
     mockState.eqCalls = {};
+    mockState.isCalls = {};
+    mockState.orCalls = {};
   });
 
   it('resolves a full public profile with allow-listed fields only', async () => {
@@ -95,6 +109,11 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
       'city',
       'area',
       'address',
+      // Public map pin: consumed by activityPublicSpace → PublicLocationMap.
+      // Coordinates of the clinic itself are public information (same data a
+      // visitor sees on Google Maps), so they belong to the public projection.
+      'latitude',
+      'longitude',
       'phone',
       'services',
       'providers',
@@ -217,6 +236,38 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
     for (const [, val] of allClinicScoped) {
       expect(val).toBe(CID);
     }
+  });
+
+  it('ads query uses an open-ended date window and never filters the non-existent deleted_at column', async () => {
+    mockState.results = {
+      clinics: baseClinicRow(),
+      clinic_services: [],
+      providers: [],
+      clinic_ads: [
+        { title: 'عرض تنظيف', description: 'خصم', image_url: null, cta_text: 'احجز', cta_link: '/book' },
+      ],
+      provider_schedules: [],
+    };
+
+    const profile = await getPublicClinicProfile({ slug: 'demo-clinic' });
+
+    // clinic_ads has no deleted_at column (20260833_clinic_ads_fix.sql): asking
+    // PostgREST for it failed the WHOLE ads read, so `ads` was always empty.
+    const adsIsCalls = mockState.isCalls['clinic_ads'] ?? [];
+    expect(adsIsCalls.some(([col]) => col === 'deleted_at')).toBe(false);
+
+    // The window must be open-ended (null start/end allowed) and inclusive,
+    // identical to /api/booking/ads.
+    const today = new Date().toISOString().slice(0, 10);
+    expect(mockState.orCalls['clinic_ads']).toEqual([
+      `start_date.is.null,start_date.lte.${today}`,
+      `end_date.is.null,end_date.gte.${today}`,
+    ]);
+
+    // …and the ads still reach the public projection.
+    expect(profile?.ads).toHaveLength(1);
+    expect(profile?.ads[0].title).toBe('عرض تنظيف');
+    expect(profile?.ads[0].cta_link).toBe('/book');
   });
 
   it('publicClinicUrl builds the canonical /c/{slug} URL from NEXT_PUBLIC_APP_URL', () => {

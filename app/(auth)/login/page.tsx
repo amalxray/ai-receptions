@@ -101,7 +101,9 @@ export default function LoginPage() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
@@ -115,10 +117,12 @@ export default function LoginPage() {
             </label>
             <PasswordInput
               id="password"
+              name="password"
               value={password}
               onChange={(v) => setPassword(v)}
               placeholder="••••••••"
               className="mt-2"
+              autoComplete="current-password"
               required
             />
           </div>

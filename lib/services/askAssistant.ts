@@ -10,8 +10,17 @@
  * whichever provider the platform configured (openai/anthropic/ollama).
  * When no provider is registered, a rule-based reply still drives the flow
  * (always functional, never blocked on the model).
+ *
+ * Reliability (Phase 12): the call goes through generateWithFailover()
+ * (bounded retry + failover to the next registered provider) instead of a bare
+ * provider.generate(), so a 429/timeout no longer costs a conversation turn.
+ * If every candidate fails, the failure is logged and the rule-based reply
+ * below still answers.
  */
 import { getProvider } from '@/lib/ai/provider';
+import { ensureAIProviders } from '@/lib/ai/providers/registry';
+import { generateWithFailover } from '@/lib/ai/resilience';
+import { logEvent } from '@/lib/server/logging';
 import { runNearbyClinics, getAskSettings } from '@/lib/services/askContent';
 
 export type AskLocation = { lat: number; lng: number; city?: string | null } | null;
@@ -81,19 +90,28 @@ function severityReply(message: string): { reply: string; urgent: boolean } {
 }
 
 async function aiReply(message: string): Promise<string> {
+  // Register the platform-configured providers before asking the registry
+  // (same call the orchestrator/knowledge pipeline make at startup).
+  ensureAIProviders();
   const provider = getProvider();
   if (!provider) return ''; // fallback to rule-based below
   try {
     const system =
       'أنت مساعد صحي رقمي باللهجة الفلسطينية تابع لمنصة تصل المرضى بأقرب مراكز/عيادات/مختبرات الأسنان. ارد بشكل ودّي قصير (١-٣ جمل)، اسأل سؤال توضيحي واحد إذا لزم، لا تشخّص أمراضاً بدل الطبيب، وحذّر للطوارئ إذا كان الوصف خطيراً.';
-    const res = await provider.generate({
+    const res = await generateWithFailover({
       prompt: `${system}\n\nالمريض يقول:\n${message.substring(0, 500)}\n\nرد:\n`,
       maxTokens: 220,
       temperature: 0.6,
     });
     const text = (res?.text ?? '').trim();
     return text.slice(0, 600);
-  } catch {
+  } catch (err) {
+    // Total AI failure (all candidates exhausted) — rule-based reply takes over.
+    logEvent(
+      'ask_ai_reply_failed',
+      { error: err instanceof Error ? err.message : String(err) },
+      'warn'
+    );
     return '';
   }
 }

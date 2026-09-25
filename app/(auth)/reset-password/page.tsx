@@ -88,11 +88,13 @@ export default function ResetPasswordPage() {
               </label>
               <PasswordInput
               id="password"
+              name="new_password"
               value={password}
               onChange={(v) => setPassword(v)}
               placeholder="••••••••"
               className="mt-2"
               autoComplete="new-password"
+              ignorePasswordManagers
               required
               minLength={ 8 }
             />
@@ -103,11 +105,13 @@ export default function ResetPasswordPage() {
               </label>
               <PasswordInput
               id="confirm"
+              name="confirm_password"
               value={confirm}
               onChange={(v) => setConfirm(v)}
               placeholder="••••••••"
               className="mt-2"
               autoComplete="new-password"
+              ignorePasswordManagers
               required
             />
             </div>

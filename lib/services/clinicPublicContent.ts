@@ -139,11 +139,17 @@ export function contentTableFor(type: PublicContentType): string {
 
 export async function listPublicContent(clinicId: string, type: PublicContentType) {
   const table = contentTableFor(type);
+  // The news ticker is the odd one out: clinic_news_ticker orders by `priority`
+  // while achievements/testimonials/articles use `display_order`
+  // (20260928_public_page_content.sql). Ordering the ticker by display_order
+  // made PostgREST reject the whole read (column does not exist).
+  // TODO(task, separate): unify the ticker column name with the other tables.
+  const orderColumn = type === 'news' ? 'priority' : 'display_order';
   const { data, error } = await supabaseAdmin
     .from(table)
     .select('*')
     .eq('clinic_id', clinicId)
-    .order('display_order', { ascending: true });
+    .order(orderColumn, { ascending: true });
   if (error) throw new Error(error.message);
   return data ?? [];
 }

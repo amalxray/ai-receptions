@@ -11,6 +11,13 @@ interface Props {
   autoComplete?: string;
   id?: string;
   minLength?: number;
+  /**
+   * Opt-out of third-party password-manager autofill (LastPass `data-lpignore`)
+   * for forms where autofill is harmful — e.g. "change password" / invite
+   * sign-up, where the browser offering the SAVED login password into the
+   * "new password" field is the bug.
+   */
+  ignorePasswordManagers?: boolean;
 }
 
 /**
@@ -27,6 +34,7 @@ export default function PasswordInput({
   autoComplete = 'current-password',
   id,
   minLength,
+  ignorePasswordManagers = false,
 }: Props) {
   const [show, setShow] = useState(false);
 
@@ -42,6 +50,7 @@ export default function PasswordInput({
         required={required}
         minLength={minLength}
         autoComplete={autoComplete}
+        data-lpignore={ignorePasswordManagers ? 'true' : undefined}
         className="w-full rounded-3xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
         dir="ltr"
       />

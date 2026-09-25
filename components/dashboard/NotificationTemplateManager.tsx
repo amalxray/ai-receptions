@@ -9,7 +9,13 @@ import Skeleton from '@/components/ui/Skeleton';
 type Template = { id: string; name: string; subject: string | null; body: string | null; active: boolean };
 
 export default function NotificationTemplateManager() {
-  const { isConfigured: isSupabaseConfigured } = useSupabaseConfig();
+  // `configLoading` = health-check in flight, `checkFailed` = the check errored.
+  // Neither means "Supabase is not configured".
+  const {
+    isConfigured: isSupabaseConfigured,
+    loading: configLoading,
+    checkFailed,
+  } = useSupabaseConfig();
   const {
     clinicId,
     authHeaders,
@@ -24,7 +30,8 @@ export default function NotificationTemplateManager() {
   const [form, setForm] = useState({ name: '', subject: '', body: '' });
 
   useEffect(() => {
-    if (!isSupabaseConfigured) { setLoading(false); return; }
+    if (configLoading) { setLoading(true); return; }
+    if (!isSupabaseConfigured && !checkFailed) { setLoading(false); return; }
     if (clinicLoading) { setLoading(true); return; }
     if (!clinicId) {
       if (clinicError) setError(clinicError);
@@ -33,19 +40,21 @@ export default function NotificationTemplateManager() {
     }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupabaseConfigured, clinicLoading, clinicId]);
+  }, [isSupabaseConfigured, configLoading, checkFailed, clinicLoading, clinicId]);
 
   async function load() {
     if (!clinicId) return;
     setLoading(true);
+    setError(null);
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/clinic/notification-templates?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-      if (!res.ok) throw new Error('Failed to load');
+      if (!res.ok) throw new Error('Failed to load templates');
       const body = await res.json();
       setTemplates(body.data || []);
     } catch (e) {
-      // ignore
+      // Surface the failure instead of leaving an empty-looking (but broken) list.
+      setError(e instanceof Error ? e.message : 'Failed to load templates');
     } finally { setLoading(false); }
   }
 
@@ -69,8 +78,9 @@ export default function NotificationTemplateManager() {
     load();
   }
 
-  if (loading) return <Skeleton className="h-60" />;
-  if (!isSupabaseConfigured) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage templates." />;
+  if (loading || configLoading) return <Skeleton className="h-60" />;
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage templates." />;
+  if (error && templates.length === 0) return <EmptyState title="Service unavailable" description={error} />;
 
   return (
     <div className="space-y-5">

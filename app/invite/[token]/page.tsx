@@ -305,6 +305,9 @@ export default function AcceptInvitationPage() {
                 </p>
                 <input
                   type="password"
+                  name="password"
+                  autoComplete="new-password"
+                  data-lpignore="true"
                   required
                   minLength={6}
                   value={password}
@@ -314,6 +317,9 @@ export default function AcceptInvitationPage() {
                 />
                 <input
                   type="password"
+                  name="confirm_password"
+                  autoComplete="new-password"
+                  data-lpignore="true"
                   required
                   minLength={6}
                   value={confirmPassword}

@@ -45,7 +45,14 @@ const CHECK_ITEMS: { key: keyof SetupStatus['checks']; label: string; href: stri
 ];
 
 export default function ClinicSetupManager() {
-  const { isConfigured: isSupabaseConfigured } = useSupabaseConfig();
+  // `configLoading` = the Supabase health-check is still in flight; `checkFailed`
+  // = the check itself errored (network/server). Neither may be reported to the
+  // user as "Supabase is not configured".
+  const {
+    isConfigured: isSupabaseConfigured,
+    loading: configLoading,
+    checkFailed,
+  } = useSupabaseConfig();
   const {
     clinicId,
     authHeaders,
@@ -70,7 +77,10 @@ export default function ClinicSetupManager() {
   });
 
   useEffect(() => {
-    if (!isSupabaseConfigured) { setLoading(false); return; }
+    if (configLoading) { setLoading(true); return; }
+    // Not configured on purpose → the "not configured" state is handled in
+    // render(). A failed check is NOT a configuration answer.
+    if (!isSupabaseConfigured && !checkFailed) { setLoading(false); return; }
     if (clinicLoading) { setLoading(true); return; }
     if (!clinicId) {
       if (clinicError) setError(clinicError);
@@ -79,6 +89,7 @@ export default function ClinicSetupManager() {
     }
     let mounted = true;
     async function load() {
+      setError(null);
       try {
         await Promise.all([loadProfile(clinicId), loadStatus(clinicId)]);
       } catch (e) {
@@ -90,7 +101,7 @@ export default function ClinicSetupManager() {
     void load();
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupabaseConfigured, clinicLoading, clinicId]);
+  }, [isSupabaseConfigured, configLoading, checkFailed, clinicLoading, clinicId]);
 
   async function loadProfile(id: string) {
     try {
@@ -165,8 +176,11 @@ export default function ClinicSetupManager() {
     }
   }
 
-  if (loading) return <Skeleton className="h-60" />;
-  if (!isSupabaseConfigured) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to set up your clinic." />;
+  if (loading || configLoading) return <Skeleton className="h-60" />;
+  // Only claim "not configured" once the health-check actually answered that
+  // way: while it is in flight we show the skeleton, and if it failed we fall
+  // through to the real load error below.
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to set up your clinic." />;
   if (error && !profile) return <EmptyState title="Service unavailable" description={error} />;
 
   return (

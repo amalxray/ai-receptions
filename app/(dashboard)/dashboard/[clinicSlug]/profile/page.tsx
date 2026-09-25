@@ -112,11 +112,13 @@ export default function ProfilePage() {
           </label>
           <PasswordInput
             id="current-password"
+            name="current_password"
             value={current}
             onChange={(v) => setCurrent(v)}
             placeholder="••••••••"
             className="mt-2"
             autoComplete="current-password"
+            ignorePasswordManagers
             required
           />
         </div>
@@ -126,11 +128,13 @@ export default function ProfilePage() {
           </label>
           <PasswordInput
             id="new-password"
+            name="new_password"
             value={password}
             onChange={(v) => setPassword(v)}
             placeholder="••••••••"
             className="mt-2"
             autoComplete="new-password"
+            ignorePasswordManagers
             required
             minLength={8}
           />
@@ -141,11 +145,13 @@ export default function ProfilePage() {
           </label>
           <PasswordInput
             id="confirm-password"
+            name="confirm_password"
             value={confirm}
             onChange={(v) => setConfirm(v)}
             placeholder="••••••••"
             className="mt-2"
             autoComplete="new-password"
+            ignorePasswordManagers
             required
           />
         </div>

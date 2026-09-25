@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { rateLimit, clientIp } from '@/lib/rateLimit';
 import { answerAsk } from '@/lib/services/askAssistant';
 
+// The reply waits on the AI provider (bounded retry + failover with backoff:
+// up to 2 attempts per candidate and 1s→3s pauses). The platform default
+// (~10s on serverless) can cut a legitimate generation short.
+export const maxDuration = 30;
+
 const bodySchema = z.object({
   message: z.string().min(1).max(1000),
   location: z

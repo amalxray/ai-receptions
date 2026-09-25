@@ -359,7 +359,12 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
   const activityType = normalizeActivityType(data.activity_type ?? 'clinic');
   const config = readPublicProfile(data.settings, activityType);
 
-  const [{ data: services }, { data: providers }, { data: ads }] = await Promise.all([
+  // clinic_ads has no `deleted_at` column (20260833_clinic_ads_fix.sql) — asking
+  // for it made the whole request fail, so `hasAds` was always false. The date
+  // window also allows open-ended ads (null start/end) and matches the public
+  // /api/booking/ads semantics.
+  const today = new Date().toISOString().slice(0, 10);
+  const [servicesRes, providersRes, adsRes] = await Promise.all([
     supabaseAdmin
       .from('clinic_services')
       .select('id, name')
@@ -377,9 +382,18 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
       .select('id')
       .eq('clinic_id', clinicId)
       .eq('is_active', true)
-      .is('deleted_at', null)
+      .or(`start_date.is.null,start_date.lte.${today}`)
+      .or(`end_date.is.null,end_date.gte.${today}`)
       .limit(1),
   ]);
+
+  const services = servicesRes.data;
+  const providers = providersRes.data;
+  const ads = adsRes.data;
+  if (adsRes.error) {
+    // Non-fatal: the public page configuration is still usable without ads.
+    logEvent('public_config_ads_error', { clinicId, error: adsRes.error.message }, 'error');
+  }
 
   return {
     ...config,
