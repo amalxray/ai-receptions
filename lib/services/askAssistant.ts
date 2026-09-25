@@ -23,6 +23,7 @@ import { generateWithFailover } from '@/lib/ai/resilience';
 import { logEvent } from '@/lib/server/logging';
 import { runNearbyClinics, getAskSettings } from '@/lib/services/askContent';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import { resolveTenantPublicUrls } from '@/lib/vercel/tenantLinks';
 
 export type AskLocation = { lat: number; lng: number; city?: string | null } | null;
 
@@ -51,6 +52,11 @@ async function nearbySuggestions(location: AskLocation, limit = 3) {
   if (!location) return [];
   try {
     const rows = await runNearbyClinics(location.lat, location.lng, 50, limit);
+    // Reachable target per suggestion (P1): the canonical tenant subdomain when
+    // its host is registered on the Vercel project, else `/c/{slug}` — a patient
+    // must never be sent to a host whose TLS handshake fails. One listing for
+    // the whole suggestion set.
+    const urls = await resolveTenantPublicUrls(rows.map((r) => r.slug));
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -61,9 +67,7 @@ async function nearbySuggestions(location: AskLocation, limit = 3) {
       phone: r.phone ?? null,
       google_maps_url: r.google_maps_url ?? null,
       distance_km: r.distance_km != null ? Number(r.distance_km) : null,
-      // Canonical tenant subdomain (Phase E) — the legacy apex path `/{slug}`
-      // 301-redirects here, so a suggestion link must never encode it.
-      booking_url: clinicSpaceUrl(r.slug),
+      booking_url: urls.get(r.slug) ?? clinicSpaceUrl(r.slug),
     }));
   } catch {
     return [];

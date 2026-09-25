@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdomainReadiness';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getPublicProfileSeoEntries } from '@/lib/services/doctorPublicProfile';
 import { getActivitySpaceEntries } from '@/lib/services/activityPublicSpace';
@@ -66,11 +67,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
-  for (const space of await getActivitySpaceEntries()) {
+  // Activity spaces are listed ONLY on their canonical tenant subdomain, and
+  // only when that host is actually registered on the Vercel project (P1): a
+  // subdomain that cannot complete a TLS handshake must never be advertised to
+  // a crawler, and the legacy apex path 301-redirects there (so it cannot be
+  // listed either). An un-provisioned tenant is simply absent until its host is
+  // ready, and ONE listing answers every slug.
+  const spaces = await getActivitySpaceEntries();
+  const registeredHosts = await readVercelProjectDomainNames();
+  for (const space of spaces) {
+    if (!isSubdomainIn(registeredHosts, space.slug)) continue;
     entries.push({
-      // Canonical tenant identity is the tenant's OWN subdomain (Phase E) — the
-      // legacy apex path `/{slug}` 301-redirects here, so listing it would put a
-      // redirecting URL in the sitemap.
       url: clinicSpaceUrl(space.slug),
       changeFrequency: 'monthly',
       priority: 0.8,

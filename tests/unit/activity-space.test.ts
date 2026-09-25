@@ -53,6 +53,13 @@ vi.mock('@/lib/supabase/admin', () => ({
   },
 }));
 vi.mock('@/lib/communications/links', () => ({ getAppBaseUrl: () => 'https://clinics.example.com' }));
+// Readiness-aware link resolution (P1): the space's `pageUrl` comes from
+// `resolveTenantPublicUrl`, which returns the tenant subdomain while its host is
+// registered on the Vercel project. Mirrored here so the projection test stays
+// offline (the real helper is covered by `subdomain-readiness.test.ts`).
+vi.mock('@/lib/vercel/tenantLinks', () => ({
+  resolveTenantPublicUrl: vi.fn(async (slug: string) => `https://${slug}.dentairec.com`),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();

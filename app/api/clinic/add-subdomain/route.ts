@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { ADMIN_ROLES, authorizeClinicRequest, roleDenied } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { persistClinicProvisioning } from '@/lib/services/clinicProvisioning';
+import { clearVercelDomainsCache } from '@/lib/vercel/subdomainReadiness';
 import {
   addClinicSubdomain,
   clinicSubdomain,
@@ -79,12 +81,24 @@ export async function POST(request: Request) {
 
     const result = await addClinicSubdomain(slug);
 
+    // The project listing just changed (or was already correct) — drop the
+    // cached readiness answer so the redirect/canonical decision and the
+    // dashboard see the new state immediately instead of up to 60s later.
+    clearVercelDomainsCache();
+
     // NOTE: discriminated with `'error' in result` rather than `if
     // (!result.success)`: the project compiles with `strict: false`, where
     // negated/truthiness narrowing of the `success` discriminant does not apply
     // and `result.error`/`result.code` would be type errors. Verified with the
     // local tsc.
     if ('error' in result) {
+      // Record the failed attempt so the owner sees WHY the host is missing
+      // (the retry button reads it back from settings.tenant). Best-effort — a
+      // persistence failure must not mask the real provisioning error.
+      await persistClinicProvisioning(clinic_id, {
+        subdomain_status: 'failed',
+        subdomain_error: result.error ?? 'unknown',
+      });
       logEvent(
         'clinic_subdomain_add_failed',
         { clinic_id, slug, code: result.code ?? 'unknown', error: result.error },
@@ -93,15 +107,31 @@ export async function POST(request: Request) {
       return NextResponse.json(result, { status: 502 });
     }
 
+    // `subdomain_error: undefined` is deliberate: `persistClinicProvisioning`
+    // merges over the previous record, so a stale error from an earlier attempt
+    // (e.g. CREDENTIALS_MISSING) would otherwise survive forever next to a now
+    // healthy host. JSON drops undefined keys, which is what clears it.
+    const persisted = await persistClinicProvisioning(clinic_id, {
+      subdomain: result.domain,
+      subdomain_status: 'active',
+      subdomain_error: undefined,
+    });
+
     logEvent('clinic_subdomain_added', {
       clinic_id,
       slug,
       domain: result.domain,
       verified: result.verified,
       already_existed: result.alreadyExisted,
+      persisted,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      persisted,
+      subdomain_status: 'active',
+      subdomain_error: null,
+    });
   } catch (error) {
     logEvent('clinic_subdomain_add_failed', { error: String(error) }, 'error');
     return NextResponse.json({ error: 'Subdomain setup failed', detail: String(error) }, { status: 500 });

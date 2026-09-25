@@ -51,6 +51,12 @@ vi.mock('@/lib/communications/links', () => ({
   getAppBaseUrl: () => 'https://clinics.example.com',
 }));
 
+// Readiness-aware clinic link (P1): JSON-LD must reference a URL that is
+// fetchable today. The tenant host here is registered, so the subdomain is used.
+vi.mock('@/lib/vercel/tenantLinks', () => ({
+  resolveTenantPublicUrl: vi.fn(async (slug: string) => `https://${slug}.dentairec.com`),
+}));
+
 function providerRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'p1',

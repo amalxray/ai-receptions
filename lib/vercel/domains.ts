@@ -15,6 +15,7 @@
  */
 import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
 import { RESERVED_PUBLIC_SLUGS } from '@/lib/services/activityTypes';
+import { isHostnameRegistered } from '@/lib/vercel/subdomainReadiness';
 
 const VERCEL_API = 'https://api.vercel.com';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -266,9 +267,19 @@ function credentials(): { token: string; projectId: string } | null {
 
 /**
  * Registers `{slug}.{root}` on the Vercel project so the tenant host is served
- * by this deployment. Idempotent: Vercel's `domain_already_exists` is reported
- * as success (`alreadyExisted: true`) because the desired end state is already
- * true — re-running this must never fail a tenant setup.
+ * by this deployment.
+ *
+ * Idempotent by contract. Vercel answers a repeat registration in TWO ways and
+ * both mean "already true", which is why both are treated as success:
+ *   - `domain_already_exists` — the domain exists on this project.
+ *   - `domain_already_in_use`  — 409, returned as well when the domain is
+ *     already assigned to THIS project (verified live 2026-09-25: re-adding
+ *     `hala-clinic.dentairec.com`, which is present on the project, returned
+ *     409/`domain_already_in_use`). Reporting that as a failure made every
+ *     re-provision of a healthy tenant look broken.
+ * The in-use code is only trusted after confirming membership in the project's
+ * domain list (`fresh`: a stale cache could hide a just-created domain), so a
+ * domain owned by ANOTHER project still fails loudly.
  */
 export async function addClinicSubdomain(slug: string): Promise<SubdomainResult> {
   const label = normalizeTenantSlug(slug);
@@ -307,6 +318,11 @@ export async function addClinicSubdomain(slug: string): Promise<SubdomainResult>
 
     if (body.error?.code === 'domain_already_exists') {
       return { success: true, domain, verified: true, alreadyExisted: true };
+    }
+
+    if (body.error?.code === 'domain_already_in_use') {
+      const mine = await isHostnameRegistered(domain, true);
+      if (mine) return { success: true, domain, verified: true, alreadyExisted: true };
     }
 
     return {

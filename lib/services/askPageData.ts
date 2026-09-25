@@ -1,6 +1,7 @@
 /** Server data loader for the public /ask page (settings + content). */
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import { resolveTenantPublicUrls } from '@/lib/vercel/tenantLinks';
 
 export async function getAskPageData() {
   const [settingsRes, tipsRes, articlesRes, storiesRes, faqRes, clinicsRes, galleryRes, clinicsCount, patientsCount, citiesCount] = await Promise.all([
@@ -19,9 +20,15 @@ export async function getAskPageData() {
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
   // Every partner card links to its canonical tenant subdomain (Phase E): built
   // here, on the server, so the client never has to know the domain shape.
-  const clinics = (clinicsRes.data ?? []).map((row) => ({
+  const clinics = clinicsRes.data ?? [];
+  // Every partner card links to a URL that is reachable RIGHT NOW (P1): the
+  // canonical tenant subdomain when its host is registered on the Vercel
+  // project, otherwise the compatibility page `/c/{slug}`. ONE Vercel listing
+  // answers all cards, so the page never fans out per clinic.
+  const clinicUrls = await resolveTenantPublicUrls(clinics.map((row) => row.slug));
+  const clinicsWithLinks = clinics.map((row) => ({
     ...row,
-    booking_url: clinicSpaceUrl(row.slug),
+    booking_url: clinicUrls.get(row.slug) ?? clinicSpaceUrl(row.slug),
   }));
   return {
     settings,
@@ -29,7 +36,7 @@ export async function getAskPageData() {
     articles: articlesRes.data ?? [],
     stories: storiesRes.data ?? [],
     faq: faqRes.data ?? [],
-    clinics,
+    clinics: clinicsWithLinks,
     gallery: galleryRes.data ?? [],
     stats: {
       clinics_count: clinicsCount.count ?? 0,

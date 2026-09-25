@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getActivityPublicSpace, activitySpaceUrl, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
+import { getActivityPublicSpace, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
@@ -33,7 +33,12 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
   if (!space) {
     return { title: 'غير موجودة', robots: { index: false, follow: false } };
   }
-  const canonical = activitySpaceUrl(space.slug);
+  // `space.pageUrl` is readiness-resolved by the service (P1): the tenant
+  // subdomain when its host is registered on the Vercel project, else the
+  // reachable `/c/{slug}` compatibility page. A canonical tag must point at a
+  // URL a crawler can actually fetch, so the service value is reused verbatim
+  // (single lookup — canonical, og:url and JSON-LD can never disagree).
+  const canonical = space.pageUrl;
   const description =
     space.description ??
     `${space.name} — ${space.city ?? ''} ${space.area ?? ''}`.trim();
@@ -62,7 +67,7 @@ function buildSpaceJsonLd(space: ActivityPublicSpace) {
     // activity_type is the single discriminator (Digital Healthcare Space):
     '@type': space.activityType === 'dental_lab' ? 'MedicalBusiness' : 'MedicalClinic',
     name: space.name,
-    url: activitySpaceUrl(space.slug),
+    url: space.pageUrl,
     ...(space.description ? { description: space.description } : {}),
     ...(space.tagline ? { slogan: space.tagline } : {}),
     ...(space.logo ? { image: space.logo } : {}),

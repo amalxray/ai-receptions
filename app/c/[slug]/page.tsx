@@ -2,9 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
   getPublicClinicProfile,
-  publicClinicUrl,
 } from '@/lib/services/clinicPublicProfile';
-import { activitySpaceUrl } from '@/lib/services/activityPublicSpace';
 
 /**
  * STEP 15D / Digital Healthcare Space — LEGACY COMPATIBILITY page (`/c/{slug}`).
@@ -53,7 +51,10 @@ export async function generateMetadata({
   const description =
     resolved.description ??
     `صفحة عيادة ${resolved.name} — احجز موعدك.`;
-  const canonical = activitySpaceUrl(resolved.slug);
+  // Readiness-resolved by the service (P1): the tenant subdomain once its host
+  // is registered on the Vercel project — otherwise this very page, which is
+  // then self-canonical instead of canonicalising to an unreachable host.
+  const canonical = resolved.pageUrl;
   return {
     title: resolved.name,
     description,
@@ -63,7 +64,7 @@ export async function generateMetadata({
       description,
       type: 'website',
       siteName: resolved.name,
-      url: publicClinicUrl(resolved.slug),
+      url: resolved.pageUrl,
     },
     alternates: { canonical },
   };

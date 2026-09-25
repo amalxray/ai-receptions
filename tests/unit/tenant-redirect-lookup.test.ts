@@ -33,7 +33,7 @@ describe('tenantSlugExists (check-slug contract)', () => {
 
     await expect(tenantSlugExists('hala-clinic', ORIGIN)).resolves.toBe(true);
 
-    const requested = String(fetchMock.mock.calls[0][0]);
+    const requested = String((fetchMock.mock.calls[0] as unknown[])[0]);
     expect(requested).toContain('/api/clinic/check-slug');
     expect(requested).toContain('slug=hala-clinic');
     expect(requested.startsWith(ORIGIN)).toBe(true);

@@ -22,7 +22,10 @@
 
 const CACHE_TTL_MS = 60_000;
 const MAX_CACHE_ENTRIES = 500;
-const LOOKUP_TIMEOUT_MS = 2_000;
+// Cold-start latency: the internal check-slug endpoint can take ~7s on a cold
+// isolate (measured live: first attempt 7.0s → fail-open 200, then 0.2–0.5s →
+// 301). A 4s budget absorbs that without holding the middleware long.
+const LOOKUP_TIMEOUT_MS = 4_000;
 
 const cache = new Map<string, { exists: boolean; expiresAt: number }>();
 

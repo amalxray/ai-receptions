@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import { resolveTenantPublicUrl } from '@/lib/vercel/tenantLinks';
 import { logEvent } from '@/lib/server/logging';
 import { readDisplaySettings, readTheme, type PublicDisplaySettings, type PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
 
@@ -359,7 +360,10 @@ export async function getPublicClinicProfile(
     workingHours,
     bookingUrl: `/book?slug=${encodeURIComponent(clinicRow.slug)}`,
     chatUrl: `/chat?clinic=${encodeURIComponent(clinicRow.slug)}`,
-    pageUrl: publicClinicUrl(clinicRow.slug),
+    // Readiness-aware (P1): the canonical subdomain when it is registered on the
+    // Vercel project, otherwise the reachable `/c/{slug}` form — a canonical
+    // tag must always point at a URL a crawler can actually fetch.
+    pageUrl: await resolveTenantPublicUrl(clinicRow.slug),
     display: readDisplaySettings(clinicRow.settings),
     theme: readTheme(clinicRow.settings),
   };

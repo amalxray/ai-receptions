@@ -4,6 +4,7 @@ import { getPublicClinicProfile, legacyClinicUrl } from '@/lib/services/clinicPu
 import type { PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import { resolveTenantPublicUrl } from '@/lib/vercel/tenantLinks';
 
 /**
  * Digital Healthcare Space — activity public-space resolver (Phase C/E).
@@ -130,6 +131,11 @@ export type ActivityPublicSpace = {
  * but 301-redirects here, so canonical tags, JSON-LD `url`, sitemap entries and
  * share links must all advertise the subdomain form. Single-sourced through
  * `clinicSpaceUrl` so no surface can drift.
+ *
+ * NOTE: this is the canonical SHAPE. Surfaces that must be fetchable TODAY
+ * (canonical tags, QR redirects, sitemap, patient links) resolve through
+ * `resolveTenantPublicUrl` instead — it falls back to `/c/{slug}` while the
+ * host is still unregistered on the Vercel project (P1).
  */
 export function activitySpaceUrl(slug: string): string {
   return clinicSpaceUrl(slug);
@@ -322,7 +328,10 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     phone: profile.phone,
     bookingUrl: profile.bookingUrl,
     chatUrl: profile.chatUrl,
-    pageUrl: activitySpaceUrl(profile.slug),
+    // Readiness-aware: the tenant subdomain when it is registered on the Vercel
+    // project, otherwise the reachable `/c/{slug}` page (P1 fallback). Never a
+    // host that would fail its TLS handshake.
+    pageUrl: await resolveTenantPublicUrl(profile.slug),
     legacyPageUrl: legacyClinicUrl(profile.slug),
     services: profile.services,
     providers: profile.providers,

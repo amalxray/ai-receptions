@@ -23,8 +23,20 @@ type PageConfig = {
   slug: string;
   public_id: string | null;
   pageUrl: string;
-  /** Canonical tenant subdomain URL (`https://{slug}.dentairec.com`) — link + copy target. */
+  /**
+   * Public URL the owner must show, link and copy — READINESS-RESOLVED on the
+   * server (P1): the canonical tenant subdomain (`https://{slug}.dentairec.com`)
+   * once that host is registered on the Vercel project, otherwise the reachable
+   * compatibility page `/c/{slug}`. Handing a clinic a URL whose host cannot
+   * complete a TLS handshake published a dead link.
+   */
   canonicalUrl: string;
+  /** Is the tenant host registered on the Vercel project (authoritative)? */
+  subdomainReady?: boolean;
+  /** Provisioning record from settings.tenant — display only (for the retry button). */
+  subdomainStatus?: 'active' | 'failed' | 'unknown';
+  /** Last provisioning error, shown next to the retry button. */
+  subdomainError?: string | null;
   description?: string;
   tagline?: string;
   about?: string;
@@ -122,6 +134,8 @@ export default function PublicPageManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  /** Tenant-host provisioning ("أعد التجهيز") — separate from form saving. */
+  const [provisioning, setProvisioning] = useState(false);
   const [form, setForm] = useState({
     description: '',
     tagline: '',
@@ -263,12 +277,54 @@ export default function PublicPageManager() {
   const copyLink = async () => {
     if (!config) return;
     try {
-      // Canonical tenant subdomain (Phase E) — the legacy apex path 301s here,
-      // so copying it would hand the clinic a redirecting URL to publish.
+      // Whatever the server resolved (subdomain when its host is registered,
+      // otherwise the reachable `/c/{slug}` page) — copying a URL whose host
+      // cannot complete a TLS handshake would publish a dead link.
       await navigator.clipboard.writeText(config.canonicalUrl);
       setSuccess('تم نسخ رابط الصفحة العامة');
     } catch {
       setError('تعذر نسخ الرابط');
+    }
+  };
+
+  /**
+   * Re-runs tenant-host provisioning (`POST /api/clinic/add-subdomain`).
+   *
+   * Provisioning is best-effort during registration, so a tenant can end up with
+   * a live slug and NO registered host — and the server deliberately does not
+   * redirect to an unprovisioned host. This gives the owner a real recovery
+   * action: the endpoint is idempotent, records the outcome in
+   * `settings.tenant.subdomain_status`, and the reload re-reads the
+   * Vercel-authoritative readiness.
+   */
+  const provisionSubdomain = async () => {
+    if (!config || !clinicId || provisioning) return;
+    setProvisioning(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/clinic/add-subdomain', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clinic_id: clinicId, slug: config.slug }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(body?.error || body?.detail || `تعذر تجهيز النطاق (${res.status})`);
+      }
+      setSuccess(
+        body?.alreadyExisted
+          ? 'النطاق مسجّل ومجهّز بالفعل.'
+          : 'تم تجهيز النطاق — قد يستغرق إصدار الشهادة دقيقة تقريبًا.'
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر تجهيز النطاق');
+    } finally {
+      // Always reload: the endpoint records the outcome either way, so the badge
+      // must reflect the persisted state even on failure.
+      await load();
+      setProvisioning(false);
     }
   };
 
@@ -308,6 +364,36 @@ export default function PublicPageManager() {
             <button type="button" onClick={copyLink} className="text-sm text-slate-600 underline-offset-2 hover:underline">
               نسخ الرابط
             </button>
+
+            {/* Tenant host readiness (P1) — the readiness verdict is
+                Vercel-authoritative on the server; provisioning is best-effort
+                at registration, so the owner gets a real recovery action here. */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {config.subdomainReady ? (
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                  النطاق الفرعي جاهز
+                </span>
+              ) : (
+                <>
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                    {config.subdomainStatus === 'failed'
+                      ? 'فشل تجهيز النطاق الفرعي'
+                      : 'النطاق الفرعي قيد التجهيز'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={provisionSubdomain}
+                    disabled={provisioning}
+                    className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {provisioning ? 'جارٍ التجهيز…' : 'أعد التجهيز'}
+                  </button>
+                </>
+              )}
+            </div>
+            {!config.subdomainReady && config.subdomainError ? (
+              <p className="text-xs text-red-600">{config.subdomainError}</p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             {config.public_id ? (

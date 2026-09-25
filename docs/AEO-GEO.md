@@ -129,4 +129,24 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://api.indexnow.org/index
 - **رمز QR** يُشفّر `https://www.dentairec.com/q/{public_id}` (معرّف ثابت
   opaque) على دومين المنصة — لا يحمل الـ slug ولا النطاق الفرعي، فتبقى الرموز
   المطبوعة صالحة بعد أي إعادة تسمية أو تغيير في استضافة المستأجر.
+- **الجاهزية (Vercel-authoritative) — شرط لا اختيار:** النطاق الفرعي لا يعمل
+  (لا DNS ولا شهادة) قبل تسجيل المضيف في مشروع Vercel. والتسجيل **best-effort**
+  في التسجيل/التهيئة (كل خطأ يُبتلع حتى لا يُحجب المستأجر)، فقد يوجد slug حيّ
+  بلا مضيف مُسجَّل. لذلك:
+  - **الـ301 في المسار يُصدر فقط إذا كان المضيف مُسجَّلًا فعلاً**
+    (`readVercelProjectDomainNames()` في `lib/vercel/subdomainReadiness.ts`،
+    كاش 60 ثانية + `stale-if-error` حتى 10 دقائق + **fail-closed** عند تعذّر
+    قراءة Vercel). قبل هذا الشرط كان 4 من 6 مستأجرين يُحوَّلون إلى مضيف تنتهي
+    مصافحته TLS بالفشل (انحدار فعلي في الإنتاج).
+  - **كل مُصدِّر رابط يقرأ الجاهزية** عبر `lib/vercel/tenantLinks.ts`:
+    `ready → https://{slug}.dentairec.com` وإلا `https://www.dentairec.com/c/{slug}`
+    (صفحة توافق تعمل اليوم). يشمل ذلك وسم `canonical`، JSON-LD، هدف 302 في
+    `/q/{public_id}`، بطاقات `/ask`، و`sitemap.xml` (**يُدرج النطاقات الجاهزة
+    فقط**؛ لا مسار مُحوَّل ولا صفحة `noindex` في الـsitemap).
+  - **`settings.tenant.subdomain_status` سجل عرض لا قرار:** يقرأه زر «إعادة
+    تجهيز النطاق» في لوحة التحكم (`POST /api/clinic/add-subdomain`) ويُكتب بعده
+    عبر `persistClinicProvisioning` — أما القرار فيبقى من Vercel.
+  - **السكربتات:** `npm run provision:tenants -- --persist [slugs…]` (كتابة
+    idempotent — يعُدّ `domain_already_in_use` نجاحًا بعد التحقق من عضوية المضيف
+    في المشروع) و`npm run verify:tenants` (قراءة خالصة للحالة الحيّة).
 

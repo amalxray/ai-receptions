@@ -16,6 +16,18 @@ vi.mock('@/lib/supabase/config', () => ({
   getSupabaseCoreConfig: () => ({ supabaseUrl: undefined, anonKey: undefined }),
 }));
 
+/**
+ * Vercel-authoritative readiness (P1) — mocked so this file asserts the WIRING
+ * (status code, Location, query preservation) without a network call, and so the
+ * "live slug but no registered host" regression below stays reproducible.
+ */
+const readiness = vi.hoisted(() => ({ hosts: new Set<string>(['hala-clinic.dentairec.com']) }));
+vi.mock('@/lib/vercel/subdomainReadiness', () => ({
+  readVercelProjectDomainNames: vi.fn(async () => readiness.hosts),
+  isSubdomainIn: (names: ReadonlySet<string> | null, slug: string) =>
+    Boolean(names?.has(`${String(slug).trim().toLowerCase()}.dentairec.com`)),
+}));
+
 import { middleware } from '@/middleware';
 import { clearTenantSlugCache } from '@/lib/vercel/tenantLookup';
 
@@ -36,6 +48,7 @@ function request(url: string, host?: string): NextRequest {
 describe('middleware — legacy URL → tenant subdomain (301)', () => {
   beforeEach(() => {
     clearTenantSlugCache();
+    readiness.hosts = new Set(['hala-clinic.dentairec.com']);
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ available: false, reason: 'taken' })));
   });
 
@@ -74,6 +87,19 @@ describe('middleware — legacy URL → tenant subdomain (301)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ available: true })));
 
     const res = await middleware(request('https://www.dentairec.com/typed-a-typo'));
+
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.status).not.toBe(301);
+  });
+
+  it('does NOT redirect a live tenant whose host is not registered on Vercel', async () => {
+    // Provisioning is best-effort (every failure is swallowed during
+    // registration), so a LIVE slug can exist with NO registered host.
+    // Redirecting there dead-ended on a failed TLS handshake for 4 of 6 tenants,
+    // so the request must fall through to normal routing (today's 200/404).
+    readiness.hosts = new Set<string>();
+
+    const res = await middleware(request('https://www.dentairec.com/hala-clinic'));
 
     expect(res.headers.get('location')).toBeNull();
     expect(res.status).not.toBe(301);

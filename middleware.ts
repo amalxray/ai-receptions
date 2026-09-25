@@ -8,6 +8,7 @@ import {
   tenantPathRewrite,
 } from '@/lib/vercel/domains';
 import { tenantSlugExists } from '@/lib/vercel/tenantLookup';
+import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdomainReadiness';
 
 /**
  * SUPABASE SSR SESSION REFRESH + TENANT SUBDOMAIN ROUTING — middleware.
@@ -16,10 +17,13 @@ import { tenantSlugExists } from '@/lib/vercel/tenantLookup';
  *   - Redirect LEGACY public URLs to the canonical tenant subdomain (301):
  *       www.dentairec.com/hala-clinic → hala-clinic.dentairec.com
  *       www.hala-clinic.dentairec.com/… → hala-clinic.dentairec.com/…
- *     The apex-path form is only redirected for a slug that really is a live
- *     tenant (`tenantSlugExists`) — a permanent redirect for a typo would be
- *     cached by browsers/crawlers forever. Platform routes, crawler files and
- *     deep links are never touched (reserved-slug rules in `lib/vercel/domains`).
+ *     The apex-path form is only redirected when the slug really is a live tenant
+ *     (`tenantSlugExists`) AND that tenant's host is registered on the Vercel
+ *     project (Vercel-authoritative readiness, cached 60s) — a permanent redirect
+ *     for a typo would be cached by browsers/crawlers forever, and a redirect to
+ *     an unprovisioned host lands on a failed TLS handshake. Platform routes,
+ *     crawler files and deep links are never touched (reserved-slug rules in
+ *     `lib/vercel/domains`).
  *   - Refresh the Supabase auth cookies on EVERY request (rotate refresh token,
  *     keep `getUser()` coherent for Server Components / Route Handlers).
  *   - Rewrite tenant subdomains to their public space path:
@@ -80,15 +84,30 @@ export async function middleware(request: NextRequest) {
       301
     );
   }
-  if (
-    redirect?.kind === 'apex-path' &&
-    (await tenantSlugExists(redirect.slug, request.nextUrl.origin))
-  ) {
-    // Query string is preserved (utm/analytics continuity on old links).
-    return NextResponse.redirect(
-      new URL(`${clinicSpaceUrl(redirect.slug)}${request.nextUrl.search}`),
-      301
-    );
+  if (redirect?.kind === 'apex-path') {
+    // A 301 is issued only when BOTH conditions hold:
+    //   1. the slug really is a live tenant (`tenantSlugExists`) — a permanent
+    //      redirect for a typo is cached by browsers/crawlers essentially
+    //      forever and cannot be revoked;
+    //   2. that tenant's host is actually REGISTERED on the Vercel project
+    //      (Vercel-authoritative, cached 60s). Provisioning is best-effort, so a
+    //      live slug can exist with no host — redirecting there sent patients,
+    //      printed QR codes and crawlers to a host whose TLS handshake aborts
+    //      (4 of 6 live tenants were affected before this check).
+    // Both lookups run in parallel; "unknown" (Vercel unreadable) counts as
+    // not-ready, so the request falls through to normal routing instead of
+    // trading a working page for a broken URL.
+    const [exists, registeredHosts] = await Promise.all([
+      tenantSlugExists(redirect.slug, request.nextUrl.origin),
+      readVercelProjectDomainNames(),
+    ]);
+    if (exists && isSubdomainIn(registeredHosts, redirect.slug)) {
+      // Query string is preserved (utm/analytics continuity on old links).
+      return NextResponse.redirect(
+        new URL(`${clinicSpaceUrl(redirect.slug)}${request.nextUrl.search}`),
+        301
+      );
+    }
   }
 
   // --- Tenant subdomain routing (pure host math; no DB, no authorization) ---

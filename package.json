@@ -10,6 +10,8 @@
     "probe:fi": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/fi-probe.ts",
     "probe:gate": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/gate-probe.ts",
     "probe:matrix": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/matrix-probe.ts",
+    "provision:tenants": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/provision-tenant-subdomains.ts",
+    "verify:tenants": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/verify-tenant-subdomains.ts",
     "build": "next build",
     "start": "next start",
     "lint": "node node_modules/eslint/bin/eslint.js .",

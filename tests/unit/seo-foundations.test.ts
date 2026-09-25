@@ -7,7 +7,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * indexable → the ONLY entries allowed into sitemap.
  */
 
-const mockState = vi.hoisted(() => ({ entries: [] as any[], activitySpaces: [] as any[] }));
+const mockState = vi.hoisted(() => ({
+  entries: [] as any[],
+  activitySpaces: [] as any[],
+  /** Vercel-registered hosts (readiness, P1). */
+  hosts: ['demo-clinic.dentairec.com'] as string[],
+}));
 vi.mock('@/lib/services/doctorPublicProfile', () => ({
   getPublicProfileSeoEntries: vi.fn(async () => mockState.entries),
 }));
@@ -16,6 +21,15 @@ vi.mock('@/lib/services/activityPublicSpace', () => ({
 }));
 vi.mock('@/lib/communications/links', () => ({
   getAppBaseUrl: () => 'https://clinics.example.com',
+}));
+// Readiness is Vercel-authoritative (P1) — the sitemap may only advertise a
+// tenant subdomain whose host is actually registered on the project. Mirrored
+// here so the test stays offline; the real client is covered by
+// `subdomain-readiness.test.ts`.
+vi.mock('@/lib/vercel/subdomainReadiness', () => ({
+  readVercelProjectDomainNames: vi.fn(async () => new Set(mockState.hosts)),
+  isSubdomainIn: (names: ReadonlySet<string> | null, slug: string) =>
+    Boolean(names && names.has(`${slug}.dentairec.com`)),
 }));
 
 import sitemap from '@/app/sitemap';
@@ -53,6 +67,7 @@ function baseProfile(overrides: Record<string, unknown> = {}): DoctorPublicProfi
 beforeEach(() => {
   vi.clearAllMocks();
   mockState.entries = [];
+  mockState.hosts = ['demo-clinic.dentairec.com'];
 });
 
 describe('PP-8C — sitemap.xml (indexable-only surface)', () => {
@@ -96,14 +111,18 @@ describe('PP-8C — robots.txt', () => {
   it('allows public surfaces, disallows operational areas, points at sitemap', () => {
     const rules = robots();
     const disallow = ['/dashboard/', '/admin/', '/portal/', '/api/'];
-    const wildcard = rules.rules.find((rule) => rule.userAgent === '*');
+    // `MetadataRoute.Robots['rules']` is `Rules | Rules[]` (Next accepts a single
+    // rule object as well as an array), so it must be narrowed before use —
+    // `.find`/`.filter` only exist on the array form.
+    const ruleList = Array.isArray(rules.rules) ? rules.rules : [rules.rules];
+    const wildcard = ruleList.find((rule) => rule.userAgent === '*');
     expect(wildcard).toEqual({ userAgent: '*', allow: '/', disallow });
 
     // AEO/GEO: AI answer-engine crawlers get EXPLICIT allow rules over the same
     // public surface (and the same operational disallows) — blocking them would
     // defeat the AEO surface, and blocking noindex pages would hide their
     // noindex directive from crawlers.
-    const answerEngines = rules.rules.filter((rule) => rule.userAgent !== '*');
+    const answerEngines = ruleList.filter((rule) => rule.userAgent !== '*');
     expect(answerEngines.length).toBeGreaterThan(0);
     for (const rule of answerEngines) {
       expect(rule.allow).toBe('/');

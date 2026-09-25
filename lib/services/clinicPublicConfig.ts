@@ -16,7 +16,9 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
-import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import type { ClinicTenantProvisioning } from '@/lib/services/clinicProvisioning';
+import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdomainReadiness';
+import { tenantPublicUrl } from '@/lib/vercel/tenantLinks';
 
 export type PublicSectionKey =
   | 'hero'
@@ -288,11 +290,23 @@ export type PublicPageConfig = PublicProfileSettings & {
   /** Relative legacy path (`/{slug}`) — kept for callers that build their own origin. */
   pageUrl: string;
   /**
-   * Canonical public URL on the tenant's OWN subdomain
-   * (`https://{slug}.dentairec.com`) — what the dashboard must show, link and
-   * copy. The legacy `/{slug}` path 301-redirects here (Phase E).
+   * Public URL the owner must show, link and copy — READINESS-RESOLVED (P1):
+   * the tenant's own subdomain (`https://{slug}.dentairec.com`) once that host is
+   * registered on the Vercel project, otherwise the reachable compatibility page
+   * `/c/{slug}`. Handing a clinic a URL whose host cannot complete a TLS
+   * handshake (provisioning is best-effort) published a dead link.
    */
   canonicalUrl: string;
+  /** Is the tenant host registered on the Vercel project (authoritative)? */
+  subdomainReady: boolean;
+  /**
+   * Provisioning record from `clinics.settings.tenant` — display only (the
+   * readiness DECISION is Vercel-authoritative):
+   *   active  → host registered · failed → last attempt failed·unknown → no record.
+   */
+  subdomainStatus: 'active' | 'failed' | 'unknown';
+  /** Last provisioning error for the owner (shown next to the retry button). */
+  subdomainError: string | null;
   services: { id: string; name: string }[];
   providers: { id: string; name: string; title: string | null; specialty: string | null }[];
   hasAds: boolean;
@@ -403,12 +417,32 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
     logEvent('public_config_ads_error', { clinicId, error: adsRes.error.message }, 'error');
   }
 
+  // --- Tenant host readiness (P1) ------------------------------------------
+  // The owner must be handed a URL that WORKS. Provisioning is best-effort, so
+  // the DB record can lag or its domain can be deleted by hand in Vercel: the
+  // verdict reads the Vercel project listing (cached 60s, one call per request)
+  // and the DB value is only DISPLAYED next to the retry button.
+  const tenantRecord = ((data.settings ?? {}) as { tenant?: ClinicTenantProvisioning }).tenant;
+  const registeredHosts = await readVercelProjectDomainNames();
+  const subdomainReady = isSubdomainIn(registeredHosts, data.slug);
+  const canonicalUrl = tenantPublicUrl(data.slug, subdomainReady);
+  const subdomainStatus: PublicPageConfig['subdomainStatus'] = subdomainReady
+    ? 'active'
+    : tenantRecord?.subdomain_status === 'failed'
+      ? 'failed'
+      : 'unknown';
+  // A stale error must never be shown for a host that IS registered.
+  const subdomainError = subdomainReady ? null : tenantRecord?.subdomain_error ?? null;
+
   return {
     ...config,
     slug: data.slug,
     public_id: data.public_id ?? null,
     pageUrl: `/${encodeURIComponent(data.slug)}`,
-    canonicalUrl: clinicSpaceUrl(data.slug),
+    canonicalUrl,
+    subdomainReady,
+    subdomainStatus,
+    subdomainError,
     services: (services ?? []).map((s) => ({ id: s.id, name: s.name })),
     providers: (providers ?? []).map((p) => ({
       id: p.id,

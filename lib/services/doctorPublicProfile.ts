@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
-import { publicClinicUrl } from '@/lib/services/clinicPublicProfile';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { resolveTenantPublicUrl } from '@/lib/vercel/tenantLinks';
 import { PUBLISHABLE_PROVIDER_TYPES } from '@/lib/services/providerVisibility';
 
 /**
@@ -187,7 +187,9 @@ export async function getDoctorPublicProfile(
       area: clinicRow.area ?? null,
       address: clinicRow.address_detail ?? null,
       phone: showPhone ? (clinicRow.phone ?? null) : null,
-      pageUrl: publicClinicUrl(clinicRow.slug),
+      // Readiness-aware (P1): structured data must reference a URL that is
+      // fetchable today — the tenant subdomain once registered, else `/c/{slug}`.
+      pageUrl: await resolveTenantPublicUrl(clinicRow.slug),
     },
     services,
     workingHours,
