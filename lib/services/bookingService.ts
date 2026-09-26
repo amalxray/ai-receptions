@@ -140,6 +140,66 @@ export async function isClinicHoliday(clinicId: string, date: string): Promise<b
   return (data ?? []).length > 0;
 }
 
+/** Why a calendar day has no bookable slots (Smart-UX — additive, never changes slot generation). */
+export type DayStatusReason = 'holiday' | 'weekday_closed' | 'open';
+
+export type DayStatus = {
+  date: string;
+  /** JS weekday of the date in UTC (0 = Sunday … 6 = Saturday). */
+  weekday: number;
+  closed: boolean;
+  reason: DayStatusReason;
+};
+
+/** Injectable readers so the closed-day logic is testable without a DB. */
+export type DayStatusDeps = {
+  isHoliday?: (clinicId: string, date: string) => Promise<boolean>;
+  loadSchedule?: (clinicId: string, providerId: string) => Promise<ProviderSchedule | null>;
+};
+
+/**
+ * Explains WHY a date has no slots so the public page (and the AI) can say
+ * "الخميس مغلق" instead of an ambiguous "لا يوجد أوقات متاحة".
+ *
+ * Rules, in order:
+ *  1. clinic holiday → `holiday` (the schedule is never read),
+ *  2. no enabled schedule row for that weekday → `weekday_closed`,
+ *  3. otherwise → `open`.
+ *
+ * Fail-safe: any read failure degrades to `open`, so the UI falls back to its
+ * generic empty-slots state instead of falsely telling a patient the clinic is
+ * closed. Additive only — `getAvailableSlots` / booking are untouched.
+ */
+export async function getDayStatus(
+  clinicId: string,
+  providerId: string,
+  date: string,
+  deps: DayStatusDeps = {},
+): Promise<DayStatus> {
+  const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+  const readHoliday = deps.isHoliday ?? isClinicHoliday;
+  const readSchedule = deps.loadSchedule ?? loadProviderSchedule;
+
+  try {
+    if (await readHoliday(clinicId, date)) {
+      return { date, weekday, closed: true, reason: 'holiday' };
+    }
+  } catch {
+    // Fail-open: an unreadable holiday calendar must never close a working day.
+  }
+
+  try {
+    const schedule = await readSchedule(clinicId, providerId);
+    const day = schedule?.days?.find((d) => d.weekday === weekday);
+    if (!day || day.enabled !== true) {
+      return { date, weekday, closed: true, reason: 'weekday_closed' };
+    }
+    return { date, weekday, closed: false, reason: 'open' };
+  } catch {
+    return { date, weekday, closed: false, reason: 'open' };
+  }
+}
+
 /**
  * Returns the active services for a clinic (public-safe, no internal fields).
  * Flexible pricing: `price` is the fixed/default price; null or 0 means
@@ -657,13 +717,28 @@ export async function createBooking(params: {
 /**
  * Loads a public appointment by clinic + id + token hash.
  * Returns null if the appointment does not exist, is not in the clinic,
+/**
+ * Loads a public (token-authorized) appointment row.
+ * Returns null when the appointment belongs to another clinic, is soft-deleted,
  * or the token does not match. Never returns sensitive patient data.
+ *
+ * `patient_id` + `appointment_date` are carried ONLY for the clinic-facing
+ * in-app notification (B14). The public routes whitelist the fields they return,
+ * so no patient data ever leaves through the HTTP response.
  */
-async function loadPublicAppointment(clinicId: string, appointmentId: string, token: string): Promise<{ id: string; status: string } | null> {
+export type PublicAppointmentRecord = {
+  id: string;
+  status: string;
+  patient_id: string | null;
+  appointment_date: string | null;
+};
+
+/** Token-scoped, clinic-scoped appointment read used by confirm/cancel. */
+async function loadPublicAppointment(clinicId: string, appointmentId: string, token: string): Promise<PublicAppointmentRecord | null> {
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const { data, error } = await supabaseAdmin
     .from('appointments')
-    .select('id, status')
+    .select('id, status, patient_id, appointment_date')
     .eq('clinic_id', clinicId)
     .eq('id', appointmentId)
     .eq('booking_token', tokenHash)
@@ -674,7 +749,12 @@ async function loadPublicAppointment(clinicId: string, appointmentId: string, to
     return null;
   }
 
-  return { id: data.id, status: data.status };
+  return {
+    id: data.id,
+    status: data.status,
+    patient_id: data.patient_id ?? null,
+    appointment_date: data.appointment_date ?? null,
+  };
 }
 
 /**
@@ -746,7 +826,7 @@ export async function reschedulePublicBooking(params: {
   token: string;
   date: string;
   time: string;
-}): Promise<{ id: string; scheduled_at: string; appointment_date: string; status: string }> {
+}): Promise<{ id: string; scheduled_at: string; appointment_date: string; status: string; patient_id: string | null }> {
   const { clinicId, appointmentId, token, date, time } = params;
 
   // 1. Verify ownership: appointment must exist in this clinic with this token hash.
@@ -787,7 +867,7 @@ export async function reschedulePublicBooking(params: {
  * Requires the secure booking token. Clinic-scoped and appointment-scoped.
  * Returns only public-safe data.
  */
-export async function cancelPublicBooking(params: { clinicId: string; appointmentId: string; token: string }): Promise<{ id: string; status: string }> {
+export async function cancelPublicBooking(params: { clinicId: string; appointmentId: string; token: string }): Promise<PublicAppointmentRecord> {
   const { clinicId, appointmentId, token } = params;
 
   const appointment = await loadPublicAppointment(clinicId, appointmentId, token);
@@ -832,5 +912,13 @@ export async function cancelPublicBooking(params: { clinicId: string; appointmen
     }, 'error');
   }
 
-  return { id: data.id, status: data.status };
+  // patient_id/appointment_date come from the authorized load above. They are
+  // used by the cancel route only to build the clinic-facing in-app notification
+  // (B14); the public HTTP response never forwards them.
+  return {
+    id: data.id,
+    status: data.status,
+    patient_id: appointment.patient_id,
+    appointment_date: appointment.appointment_date,
+  };
 }

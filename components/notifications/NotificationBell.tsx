@@ -8,7 +8,9 @@ import { useClinicContext } from '@/lib/useClinicContext';
 import { isChimeMuted, setChimeMuted } from '@/lib/audio/chime';
 import { isInAppUnread } from '@/lib/notification/inAppStatus';
 import { useToast } from '@/components/ui/Toast';
-import { getSupabaseClient } from '@/lib/supabase/client';
+// Cookie-shared browser client (session contract — see lib/supabase.ts) and the
+// config flag used to skip realtime when no project is configured.
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export type InAppNotification = {
   id: string;
@@ -137,43 +139,48 @@ export default function NotificationBell() {
   useEffect(() => {
     void fetchNotifications();
 
-    // 1) Realtime subscription for instant alerts (< 1 second)
-    const supabase = getSupabaseClient();
+    // 1) Realtime subscription for instant alerts (< 1 second).
+    // `supabase` is the cookie-shared browser client (session contract) — never
+    // a second localStorage-only client. Skipped when the project is unconfigured
+    // (the 60s heartbeat below still keeps the badge fresh).
+    const client = supabase;
     const channelName = clinicId ? `clinic-notifications-${clinicId}` : 'clinic-notifications-all';
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: clinicId ? `clinic_id=eq.${clinicId}` : undefined,
-        },
-        (payload) => {
-          const row = payload.new as any;
-          if (row && row.channel === 'inapp') {
-            const newNotif: InAppNotification = {
-              id: row.id,
-              type: row.type || 'system',
-              status: row.status || 'pending',
-              payload: row.payload || {},
-              created_at: row.created_at || new Date().toISOString(),
-            };
-            setNotifications((prev) => [newNotif, ...prev.slice(0, 4)]);
-            setUnreadCount((c) => c + 1);
+    const channel = isSupabaseConfigured
+      ? client
+          .channel(channelName)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'notifications',
+              filter: clinicId ? `clinic_id=eq.${clinicId}` : undefined,
+            },
+            (payload) => {
+              const row = payload.new as any;
+              if (row && row.channel === 'inapp') {
+                const newNotif: InAppNotification = {
+                  id: row.id,
+                  type: row.type || 'system',
+                  status: row.status || 'pending',
+                  payload: row.payload || {},
+                  created_at: row.created_at || new Date().toISOString(),
+                };
+                setNotifications((prev) => [newNotif, ...prev.slice(0, 4)]);
+                setUnreadCount((c) => c + 1);
 
-            // Trigger instant Toast + Chime sound
-            addToast({
-              type: 'notification',
-              title: newNotif.payload?.title || 'إشعار جديد في العيادة',
-              message: newNotif.payload?.body || 'لديك إشعار جديد في لوحة التحكم.',
-              link: newNotif.payload?.link ?? null,
-            });
-          }
-        }
-      )
-      .subscribe();
+                // Trigger instant Toast + Chime sound
+                addToast({
+                  type: 'notification',
+                  title: newNotif.payload?.title || 'إشعار جديد في العيادة',
+                  message: newNotif.payload?.body || 'لديك إشعار جديد في لوحة التحكم.',
+                  link: newNotif.payload?.link ?? null,
+                });
+              }
+            },
+          )
+          .subscribe()
+      : null;
 
     // 2) Keep a 60s backup heartbeat polling in case websocket disconnects
     const interval = setInterval(() => {
@@ -182,7 +189,7 @@ export default function NotificationBell() {
 
     return () => {
       clearInterval(interval);
-      void supabase.removeChannel(channel);
+      if (channel) void client.removeChannel(channel);
     };
   }, [clinicId]);
 

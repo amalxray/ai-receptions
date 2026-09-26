@@ -43,6 +43,13 @@ function resetChain() {
   q.in.mockResolvedValue({ data: [{ id: SERVICE }], error: null });
 }
 
+/**
+ * Next.js 14 App Router passes the dynamic segment as the handler's 2nd
+ * argument (`(req, { params })`). The routes read `params.providerId`, so the
+ * tests must supply it exactly like the framework does.
+ */
+const ctx = { params: { providerId: PROVIDER } };
+
 describe('Provider Schedule API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +60,7 @@ describe('Provider Schedule API', () => {
   it('gets schedule for an authorized clinic member', async () => {
     const q = mockSupabaseAdmin.supabaseAdmin;
     q.order.mockResolvedValue({ data: [{ weekday: 1, enabled: true, start_time: '09:00', end_time: '17:00' }], error: null });
-    const res = await getSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`));
+    const res = await getSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`), ctx);
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data[0].weekday).toBe(1);
@@ -61,35 +68,35 @@ describe('Provider Schedule API', () => {
 
   it('returns 403 for cross-clinic schedule access', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
-    const res = await getSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_B}`));
+    const res = await getSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_B}`), ctx);
     expect(res.status).toBe(403);
   });
 
   it('returns 404 when provider is not in the clinic', async () => {
     const q = mockSupabaseAdmin.supabaseAdmin;
     q.single.mockResolvedValue({ data: null, error: { message: 'not found' } });
-    const res = await getSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`));
+    const res = await getSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`), ctx);
     expect(res.status).toBe(404);
   });
 
   it('updates a valid schedule', async () => {
     const res = await putSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`, jsonBody({
       schedule: [{ weekday: 1, enabled: true, start_time: '09:00', end_time: '17:00' }],
-    })));
+    })), ctx);
     expect(res.status).toBe(200);
   });
 
   it('rejects invalid schedule (end before start)', async () => {
     const res = await putSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`, jsonBody({
       schedule: [{ weekday: 1, enabled: true, start_time: '17:00', end_time: '09:00' }],
-    })));
+    })), ctx);
     expect(res.status).toBe(400);
   });
 
   it('rejects invalid time format', async () => {
     const res = await putSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_A}`, jsonBody({
       schedule: [{ weekday: 1, enabled: true, start_time: '25:00', end_time: '17:00' }],
-    })));
+    })), ctx);
     expect(res.status).toBe(400);
   });
 
@@ -97,7 +104,7 @@ describe('Provider Schedule API', () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
     const res = await putSchedule(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/schedule?clinic_id=${CLINIC_B}`, jsonBody({
       schedule: [{ weekday: 1, enabled: true, start_time: '09:00', end_time: '17:00' }],
-    })));
+    })), ctx);
     expect(res.status).toBe(403);
   });
 });
@@ -113,7 +120,7 @@ describe('Provider/Service Assignment API', () => {
     const q = mockSupabaseAdmin.supabaseAdmin;
     // Sequence eq calls: provider single uses 2 eqs, provider_services uses 2 eqs — make first three chainable and the 4th resolve
     q.eq.mockImplementationOnce(() => q).mockImplementationOnce(() => q).mockImplementationOnce(() => q).mockResolvedValueOnce({ data: [{ service_id: SERVICE }], error: null });
-    const res = await getAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_A}`));
+    const res = await getAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_A}`), ctx);
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data).toEqual([SERVICE]);
@@ -121,7 +128,7 @@ describe('Provider/Service Assignment API', () => {
 
   it('returns 403 for cross-clinic assignment access', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
-    const res = await getAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_B}`));
+    const res = await getAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_B}`), ctx);
     expect(res.status).toBe(403);
   });
 
@@ -131,7 +138,7 @@ describe('Provider/Service Assignment API', () => {
     q.in.mockResolvedValueOnce({ data: [{ id: SERVICE }], error: null });
     // Sequence eq calls: provider single (2 eqs) + clinic_services eq (1) + delete eq (1) -> make first 4 chainable then final resolve
     q.eq.mockImplementationOnce(() => q).mockImplementationOnce(() => q).mockImplementationOnce(() => q).mockImplementationOnce(() => q).mockResolvedValueOnce({ error: null });
-    const res = await putAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_A}`, jsonBody({ service_ids: [SERVICE] })));
+    const res = await putAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_A}`, jsonBody({ service_ids: [SERVICE] })), ctx);
     expect(res.status).toBe(200);
   });
 
@@ -140,13 +147,13 @@ describe('Provider/Service Assignment API', () => {
     // Sequence eq calls: provider single (2 eqs) + clinic_services eq (1) -> make them chainable, and have `in` return no services
     q.eq.mockImplementationOnce(() => q).mockImplementationOnce(() => q).mockImplementationOnce(() => q);
     q.in.mockResolvedValueOnce({ data: [], error: null });
-    const res = await putAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_A}`, jsonBody({ service_ids: [SERVICE] })));
+    const res = await putAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_A}`, jsonBody({ service_ids: [SERVICE] })), ctx);
     expect(res.status).toBe(404);
   });
 
   it('rejects cross-clinic assignment save', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
-    const res = await putAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_B}`, jsonBody({ service_ids: [SERVICE] })));
+    const res = await putAssignments(makeRequest(`http://localhost/api/clinic/providers/${PROVIDER}/services?clinic_id=${CLINIC_B}`, jsonBody({ service_ids: [SERVICE] })), ctx);
     expect(res.status).toBe(403);
   });
 });

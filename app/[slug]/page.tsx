@@ -5,6 +5,7 @@ import { getAppBaseUrl } from '@/lib/communications/links';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
+import InstallPWA from '@/components/pwa/InstallPWA';
 
 /**
  * Digital Healthcare Space — CANONICAL public space route (Phase E).
@@ -107,12 +108,14 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       dangerouslySetInnerHTML={{ __html: jsonLd }}
     />
   );
+  // PWA — every activity space renders the same self-hiding install banner.
   switch (space.activityType) {
     case 'imaging_center':
       return (
         <>
           {schemaScript}
           <ImagingPublicSpace space={space} />
+          <InstallPWA variant="floating" />
         </>
       );
     case 'dental_lab':
@@ -120,6 +123,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <DentalLabPublicSpace space={space} />
+          <InstallPWA variant="floating" />
         </>
       );
     default:
@@ -127,6 +131,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={space} />
+          <InstallPWA variant="floating" />
         </>
       );
   }

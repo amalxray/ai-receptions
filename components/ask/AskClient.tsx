@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import AskChat from '@/components/ask/AskChat';
-import InstallButton from '@/components/ask/InstallButton';
 import WhatsAppFloat from '@/components/ask/WhatsAppFloat';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import ShareButtons from '@/components/ask/ShareButtons';
@@ -68,7 +67,6 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
     <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100" dir="rtl">
       {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
       <link rel="alternate" type="application/rss+xml" title="سنّي" href="/ask/rss.xml" />
-      <link rel="manifest" href="/manifest.json" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
       <WhatsAppFloat />
 

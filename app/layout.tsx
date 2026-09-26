@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Tajawal, IBM_Plex_Sans_Arabic, IBM_Plex_Mono } from 'next/font/google';
+import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import './globals.css';
 
@@ -29,6 +30,18 @@ export const metadata: Metadata = {
   title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
   description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
   // Bing Webmaster verification → renders <meta name="msvalidate.01" content="…">
+  // PWA - installable app: web manifest, iOS standalone meta and icons.
+  manifest: '/manifest.json',
+  applicationName: 'AI-Receptions',
+  appleWebApp: { capable: true, title: 'AI-Receptions', statusBarStyle: 'default' },
+  icons: {
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  formatDetection: { telephone: false },
   verification: {
     other: {
       'msvalidate.01': 'AB6893BB9C46704C823CBA7063CE0B53',
@@ -43,6 +56,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
+  // Brand emerald - drives the Android status bar in standalone mode.
+  themeColor: '#10B981',
 };
 
 /** AEO/GEO — platform-level Organization entity (answer engines + AI crawlers). */
@@ -74,6 +89,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <OrganizationJsonLd />
         {children}
+        {/* PWA - register the offline shell worker once per page load. */}
+        <Script id="pwa-sw-register" strategy="afterInteractive">
+          {`if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }); }`}
+        </Script>
       </body>
     </html>
   );

@@ -20,11 +20,23 @@ export type ClinicServiceForAI = {
   description: string | null;
   duration_minutes: number;
   pricing_type: 'unspecified' | 'fixed' | 'estimate' | 'range' | 'case_by_case' | null;
-  price: number | null;
+  /**
+   * Canonical fixed/default price. Optional: the column is nullable and legacy
+   * rows keep the price in `price_min`/`price_max` only — `describeServicePrice`
+   * already falls back to those.
+   */
+  price?: number | null;
   price_min: number | null;
   price_max: number | null;
   price_visible_to_patients: boolean;
   active: boolean;
+  /**
+   * PHASE A — generic provider optionality (`clinic_services.requires_provider`,
+   * migration 20260907, NOT NULL DEFAULT false). Only an explicit `true` forces a
+   * provider; imaging centers / labs can be booked provider-less. Optional so
+   * older callers and fixtures that predate the flag keep compiling.
+   */
+  requires_provider?: boolean;
 };
 
 export type ClinicProviderForAI = {
@@ -87,7 +99,7 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
       supabaseAdmin
         .from('clinic_services')
         .select(
-          'id, name, description, duration_minutes, pricing_type, price, price_min, price_max, price_visible_to_patients, active'
+          'id, name, description, duration_minutes, pricing_type, price, price_min, price_max, price_visible_to_patients, active, requires_provider'
         )
         .eq('clinic_id', clinicId)
         .eq('active', true)

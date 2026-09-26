@@ -49,12 +49,22 @@ export type BookingAttemptResult =
   | { action: 'already_booked'; appointment_id: string }
   | { action: 'failed'; reason: string };
 
-export function missingBookingFields(state: {
-  booking: { service_id: string | null; provider_id: string | null; slot: string | null; patient_name: string | null; phone: string | null };
-}): Array<'service' | 'provider' | 'patient_name' | 'phone' | 'slot'> {
+/**
+ * PHASE A — `provider` is a blocking field ONLY when the selected service
+ * actually requires one (`clinic_services.requires_provider`). Callers without
+ * service context keep the legacy strict behaviour by omitting the flag
+ * (it defaults to `true`), so imaging centers can stop being forced into a
+ * dentist/provider choice without touching clinics.
+ */
+export function missingBookingFields(
+  state: {
+    booking: { service_id: string | null; provider_id: string | null; slot: string | null; patient_name: string | null; phone: string | null };
+  },
+  requiresProvider: boolean = true,
+): Array<'service' | 'provider' | 'patient_name' | 'phone' | 'slot'> {
   const missing: Array<'service' | 'provider' | 'patient_name' | 'phone' | 'slot'> = [];
   if (!state.booking.service_id) missing.push('service');
-  if (!state.booking.provider_id) missing.push('provider');
+  if (requiresProvider && !state.booking.provider_id) missing.push('provider');
   if (!state.booking.patient_name || !state.booking.patient_name.trim()) missing.push('patient_name');
   // Phone is OPTIONAL (user decision, fix [5]) — never a blocking field.
   if (!state.booking.slot) missing.push('slot');

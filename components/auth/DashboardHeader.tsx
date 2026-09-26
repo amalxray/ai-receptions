@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import NotificationBell from '@/components/notifications/NotificationBell';
+import InstallPWA from '@/components/pwa/InstallPWA';
 
 export default function DashboardHeader() {
   const router = useRouter();
@@ -43,6 +44,8 @@ export default function DashboardHeader() {
       <div className="flex items-center gap-3">
         {/* #35 — live in-app clinic notifications (badge + glass dropdown) */}
         <NotificationBell />
+        {/* PWA - hides itself once the dashboard is installed. */}
+        <InstallPWA />
         <button
           type="button"
           onClick={handleSignOut}

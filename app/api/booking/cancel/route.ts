@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     await createInAppNotification({
       clinicId: clinic_id,
       patientId: appointment.patient_id,
-      appointmentId,
+      appointmentId: appointment_id,
       event: 'appointment_cancelled',
       title: 'إلغاء موعد',
       body: `تم إلغاء الموعد المقرّر بتاريخ ${appointment.appointment_date || ''}.`,

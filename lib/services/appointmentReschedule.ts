@@ -35,7 +35,7 @@ export async function rescheduleAppointment(params: {
   appointmentId: string;
   date: string;
   time: string;
-}): Promise<{ id: string; scheduled_at: string; appointment_date: string; status: string }> {
+}): Promise<{ id: string; scheduled_at: string; appointment_date: string; status: string; patient_id: string | null }> {
   const { clinicId, appointmentId, date, time } = params;
 
   // 1. Load the existing appointment
@@ -112,7 +112,7 @@ export async function rescheduleAppointment(params: {
     })
     .eq('id', appointmentId)
     .eq('clinic_id', clinicId)
-    .select('id, scheduled_at, appointment_date, status')
+    .select('id, scheduled_at, appointment_date, status, patient_id')
     .single();
 
   if (updateError) {

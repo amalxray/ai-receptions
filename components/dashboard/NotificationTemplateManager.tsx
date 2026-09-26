@@ -169,7 +169,7 @@ export default function NotificationTemplateManager() {
         pushToast({
           type: "error",
           title: "خطأ في حفظ القالب",
-          description: errMsg,
+          message: errMsg,
         });
         return;
       }
@@ -177,7 +177,7 @@ export default function NotificationTemplateManager() {
       pushToast({
         type: "success",
         title: editingId ? "تم تعديل القالب" : "تم حفظ القالب",
-        description: "تم تحديث قوالب الإشعارات بنجاح.",
+        message: "تم تحديث قوالب الإشعارات بنجاح.",
       });
       setFormOpen(false);
       load();
@@ -186,7 +186,7 @@ export default function NotificationTemplateManager() {
       pushToast({
         type: "error",
         title: "خطأ في الاتصال",
-        description: msg,
+        message: msg,
       });
     }
   }
@@ -203,14 +203,14 @@ export default function NotificationTemplateManager() {
         pushToast({
           type: "error",
           title: "خطأ في حذف القالب",
-          description: errData.error || "تعذر حذف القالب",
+          message: errData.error || "تعذر حذف القالب",
         });
         return;
       }
       pushToast({
         type: "success",
         title: "تم حذف القالب",
-        description: "تمت إزالة القالب بنجاح.",
+        message: "تمت إزالة القالب بنجاح.",
       });
       load();
     } catch (err) {
@@ -218,7 +218,7 @@ export default function NotificationTemplateManager() {
       pushToast({
         type: "error",
         title: "خطأ في الاتصال",
-        description: msg,
+        message: msg,
       });
     }
   }

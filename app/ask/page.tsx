@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import AskClient from '@/components/ask/AskClient';
+import InstallPWA from '@/components/pwa/InstallPWA';
 import { getAskPageData } from '@/lib/services/askPageData';
 import { getAppBaseUrl } from '@/lib/communications/links';
 
@@ -37,5 +38,11 @@ export default async function AskPage() {
   const on = (k: string) => sections[k] !== false;
   const published = (articles as Array<Record<string, unknown>>).filter((a) => a.slug);
 
-  return <AskClient settings={settings} tips={tips} articles={articles} stories={stories} faq={faq} clinics={clinics} gallery={gallery} stats={stats} />;
+  return (
+    <>
+      <AskClient settings={settings} tips={tips} articles={articles} stories={stories} faq={faq} clinics={clinics} gallery={gallery} stats={stats} />
+      {/* PWA — bottom install banner; hidden when installed/dismissed (see usePWAInstall). */}
+      <InstallPWA variant="floating" />
+    </>
+  );
 }

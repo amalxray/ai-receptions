@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     await createInAppNotification({
       clinicId: clinic_id,
       patientId: appointment.patient_id,
-      appointmentId,
+      appointmentId: appointment_id,
       event: 'appointment_rescheduled',
       title: 'إعادة جدولة موعد',
       body: `تم تعديل موعد المريض إلى تاريخ ${date} الساعة ${time}.`,
