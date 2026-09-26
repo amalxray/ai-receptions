@@ -211,7 +211,8 @@ describe('#36 — templates manager bound to the real route contract', () => {
     expect(manager).toContain('?clinic_id=');
     expect(manager).not.toContain('?clinicId=');
     expect(manager).toContain('payload?.data');
-    expect(manager).toContain('method: "PUT"');
+    expect(manager).toContain('PUT');
+    expect(manager).toContain('editingId ? "PUT" : "POST"');
   });
 
   it('offers visual editing: channel tabs, variable chips and a live preview', () => {

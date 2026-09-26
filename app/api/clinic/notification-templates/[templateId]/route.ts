@@ -21,14 +21,14 @@ export async function PUT(req: Request) {
   try {
     const { pathname, searchParams } = new URL(req.url);
     const templateId = pathname.split('/').filter(Boolean).pop();
-    const clinicId = searchParams.get('clinic_id');
+    const body = await req.json().catch(() => ({}));
+    const clinicId = body.clinic_id || searchParams.get('clinic_id');
     if (!templateId) return NextResponse.json({ error: 'template_id is required' }, { status: 400 });
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
     if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
 
-    const body = await req.json();
     const parsed = templateUpdateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 });
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { pushToast } from '@/components/ui/Toast';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import {
@@ -142,36 +143,84 @@ export default function NotificationTemplateManager() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const headers = await authHeaders();
-    headers["Content-Type"] = "application/json";
-    const payload = {
-      template_type: form.template_type,
-      channel: form.channel,
-      language: form.language,
-      subject: form.subject || null,
-      body: form.body || null,
-    };
-    if (editingId) {
-      await fetch(`/api/clinic/notification-templates/${editingId}?clinic_id=${encodeURIComponent(clinicId)}`, {
-        method: "PUT",
+    try {
+      const headers = await authHeaders();
+      headers["Content-Type"] = "application/json";
+      const payload = {
+        clinic_id: clinicId,
+        template_type: form.template_type,
+        channel: form.channel,
+        language: form.language,
+        subject: form.subject || null,
+        body: form.body || null,
+      };
+      const url = editingId
+        ? `/api/clinic/notification-templates/${editingId}?clinic_id=${encodeURIComponent(clinicId)}`
+        : `/api/clinic/notification-templates?clinic_id=${encodeURIComponent(clinicId)}`;
+      const res = await fetch(url, {
+        method: editingId ? "PUT" : "POST",
         headers,
         body: JSON.stringify(payload),
       });
-    } else {
-      await fetch(`/api/clinic/notification-templates?clinic_id=${encodeURIComponent(clinicId)}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.error || (editingId ? "تعذر تعديل القالب" : "تعذر حفظ القالب");
+        pushToast({
+          type: "error",
+          title: "خطأ في حفظ القالب",
+          description: errMsg,
+        });
+        return;
+      }
+
+      pushToast({
+        type: "success",
+        title: editingId ? "تم تعديل القالب" : "تم حفظ القالب",
+        description: "تم تحديث قوالب الإشعارات بنجاح.",
+      });
+      setFormOpen(false);
+      load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "حدث خطأ غير متوقع أثناء الحفظ";
+      pushToast({
+        type: "error",
+        title: "خطأ في الاتصال",
+        description: msg,
       });
     }
-    setFormOpen(false);
-    load();
   }
 
   async function remove(id: string) {
-    const headers = await authHeaders();
-    await fetch(`/api/clinic/notification-templates/${id}?clinic_id=${encodeURIComponent(clinicId)}`, { method: "DELETE", headers });
-    load();
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/notification-templates/${id}?clinic_id=${encodeURIComponent(clinicId)}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        pushToast({
+          type: "error",
+          title: "خطأ في حذف القالب",
+          description: errData.error || "تعذر حذف القالب",
+        });
+        return;
+      }
+      pushToast({
+        type: "success",
+        title: "تم حذف القالب",
+        description: "تمت إزالة القالب بنجاح.",
+      });
+      load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "حدث خطأ أثناء الحذف";
+      pushToast({
+        type: "error",
+        title: "خطأ في الاتصال",
+        description: msg,
+      });
+    }
   }
 
   const insertVariable = (variable: string) => {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
+import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 
 const bookingSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -60,6 +61,17 @@ export async function POST(req: Request) {
     });
 
     logEvent('booking_created', { clinic_id: clinic_id, provider_id: provider_id, appointment_id: appointment.id });
+
+    // Send immediate in-app notification to the clinic dashboard
+    await createInAppNotification({
+      clinicId: clinic_id,
+      patientId,
+      appointmentId: appointment.id,
+      event: 'appointment_new',
+      title: 'حجز موعد جديد',
+      body: `تم حجز موعد جديد للمريض ${patient_name} بتاريخ ${date} الساعة ${time} (${service}).`,
+      link: `/dashboard/${clinic_id}/appointments`,
+    });
 
     // Return only safe patient-facing data
     return NextResponse.json({

@@ -43,14 +43,14 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const body = await req.json().catch(() => ({}));
     const { searchParams } = new URL(req.url);
-    const clinicId = searchParams.get('clinic_id');
+    const clinicId = body.clinic_id || searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
     if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
 
-    const body = await req.json();
     const parsed = templateCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 });
 

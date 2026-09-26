@@ -8,6 +8,7 @@ import { useClinicContext } from '@/lib/useClinicContext';
 import { isChimeMuted, setChimeMuted } from '@/lib/audio/chime';
 import { isInAppUnread } from '@/lib/notification/inAppStatus';
 import { useToast } from '@/components/ui/Toast';
+import { getSupabaseClient } from '@/lib/supabase/client';
 
 export type InAppNotification = {
   id: string;
@@ -25,6 +26,10 @@ const TYPE_ICONS: Record<string, { icon: string; bg: string }> = {
   appointment_reminder: { icon: '⏰', bg: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
   appointment_confirmation: { icon: '✅', bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
   appointment_cancellation: { icon: '❌', bg: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
+  appointment_new: { icon: '📅', bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
+  appointment_rescheduled: { icon: '🔄', bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
+  message_new: { icon: '💬', bg: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
+  payment_received: { icon: '💰', bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
   billing: { icon: '💳', bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
   platform_announcement: { icon: '📢', bg: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
   system: { icon: '⚙️', bg: 'bg-slate-500/10 text-slate-400 border-slate-500/30' },
@@ -131,10 +136,54 @@ export default function NotificationBell() {
 
   useEffect(() => {
     void fetchNotifications();
+
+    // 1) Realtime subscription for instant alerts (< 1 second)
+    const supabase = getSupabaseClient();
+    const channelName = clinicId ? `clinic-notifications-${clinicId}` : 'clinic-notifications-all';
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: clinicId ? `clinic_id=eq.${clinicId}` : undefined,
+        },
+        (payload) => {
+          const row = payload.new as any;
+          if (row && row.channel === 'inapp') {
+            const newNotif: InAppNotification = {
+              id: row.id,
+              type: row.type || 'system',
+              status: row.status || 'pending',
+              payload: row.payload || {},
+              created_at: row.created_at || new Date().toISOString(),
+            };
+            setNotifications((prev) => [newNotif, ...prev.slice(0, 4)]);
+            setUnreadCount((c) => c + 1);
+
+            // Trigger instant Toast + Chime sound
+            addToast({
+              type: 'notification',
+              title: newNotif.payload?.title || 'إشعار جديد في العيادة',
+              message: newNotif.payload?.body || 'لديك إشعار جديد في لوحة التحكم.',
+              link: newNotif.payload?.link ?? null,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    // 2) Keep a 60s backup heartbeat polling in case websocket disconnects
     const interval = setInterval(() => {
       void fetchNotifications(true);
-    }, 45000); // Poll every 45 seconds for new clinic events
-    return () => clearInterval(interval);
+    }, 60000);
+
+    return () => {
+      clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
   }, [clinicId]);
 
   async function markAllAsRead() {

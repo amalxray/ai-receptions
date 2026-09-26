@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, PAYMENT_RECORD_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordPayment, listPayments } from '@/lib/services/accounting';
+import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 
 export async function POST(req: Request) {
   try {
@@ -31,7 +32,15 @@ export async function POST(req: Request) {
       paymentDate: payment_date ?? null,
       actorUserId: authorization.user?.id ?? null,
     });
+    void createInAppNotification({
+      clinicId: body.clinic_id,
+      event: 'payment_received',
+      title: 'دفعة مالية جديدة',
+      body: `تم تسجيل دفعة بقيمة ${amount} (${method || 'نقدي'})`,
+      link: `/dashboard/${body.clinic_id}/accounting/invoices/${encodeURIComponent(invoice_id)}`,
+    });
     return NextResponse.json({ data: result }, { status: 201 });
+
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /INVALID_AMOUNT|INVALID_METHOD|INVOICE_NOT_FOUND|INVOICE_VOIDED|INVALID_PAYER_TYPE/.test(message) ? 400 : 500;

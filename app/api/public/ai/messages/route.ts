@@ -9,6 +9,7 @@ import { RateLimiter, getClientId } from '@/lib/services/gateway/security/rate-l
 import { logEvent } from '@/lib/server/logging';
 import { buildPendingBookingContext } from '@/lib/ai/bookingContextBridge';
 import { buildChatInteractive } from '@/lib/ai/chatInteractive';
+import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 
 // AI generation on the Free Tier can legitimately take 10–30s (measured up to
 // 25s); the platform default (~10s on serverless) was cutting successful
@@ -83,6 +84,14 @@ export async function POST(req: Request) {
 
     // Non-streaming path for public chat
     const { userMessage, assistantMessage } = await receivePatientMessage({ clinicId: clinic.id, conversationId: convId, userId: null, text });
+    void createInAppNotification({
+      clinicId: clinic.id,
+      event: 'message_new',
+      title: 'رسالة جديدة من مريض',
+      body: text.slice(0, 140),
+      link: `/dashboard/${clinic.id}/chat?conversation=${encodeURIComponent(convId)}`,
+    });
+
     // AI-outage fallback: the orchestrator persists a safe reply + marks handoff.
     // Never render an undefined message to the patient.
     const safeAssistant = assistantMessage ?? {

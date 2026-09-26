@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { cancelPublicBooking } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
+import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 
 const cancelSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -27,6 +28,17 @@ export async function POST(req: Request) {
     });
 
     logEvent('booking_cancelled', { clinic_id, appointment_id });
+
+    // Send immediate in-app notification to the clinic dashboard
+    await createInAppNotification({
+      clinicId: clinic_id,
+      patientId: appointment.patient_id,
+      appointmentId,
+      event: 'appointment_cancelled',
+      title: 'إلغاء موعد',
+      body: `تم إلغاء الموعد المقرّر بتاريخ ${appointment.appointment_date || ''}.`,
+      link: `/dashboard/${clinic_id}/appointments`,
+    });
 
     return NextResponse.json({ data: appointment });
   } catch (err) {

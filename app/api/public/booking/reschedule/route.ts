@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { reschedulePublicBooking } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
+import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 
 const rescheduleSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -31,6 +32,17 @@ export async function POST(req: Request) {
     });
 
     logEvent('booking_rescheduled', { clinic_id, appointment_id, new_date: date, new_time: time });
+
+    // Send immediate in-app notification to the clinic dashboard
+    await createInAppNotification({
+      clinicId: clinic_id,
+      patientId: appointment.patient_id,
+      appointmentId,
+      event: 'appointment_rescheduled',
+      title: 'إعادة جدولة موعد',
+      body: `تم تعديل موعد المريض إلى تاريخ ${date} الساعة ${time}.`,
+      link: `/dashboard/${clinic_id}/appointments`,
+    });
 
     // Public-safe response — no internal fields, no booking token, no patient data.
     const scheduledAt = String(appointment.scheduled_at ?? '');
