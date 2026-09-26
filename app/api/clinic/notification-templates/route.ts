@@ -3,12 +3,18 @@ import { z } from 'zod';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import {
+  NOTIFICATION_TEMPLATE_TYPES,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_LANGUAGES,
+} from '@/lib/notification/templateContract';
 
 const templateCreateSchema = z.object({
-  name: z.string().min(1).max(200),
+  template_type: z.enum(NOTIFICATION_TEMPLATE_TYPES),
+  channel: z.enum(NOTIFICATION_CHANNELS),
+  language: z.enum(NOTIFICATION_LANGUAGES).default('ar'),
   subject: z.string().max(200).optional(),
   body: z.string().max(5000).optional(),
-  active: z.boolean().optional(),
 });
 
 export async function GET(req: Request) {
@@ -21,7 +27,7 @@ export async function GET(req: Request) {
     if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
 
     const { data, error } = await supabaseAdmin
-      .from('notification_templates')
+      .from('clinic_notification_templates')
       .select('*')
       .eq('clinic_id', clinicId)
       .order('created_at', { ascending: false });
@@ -50,13 +56,14 @@ export async function POST(req: Request) {
 
     const insert = {
       clinic_id: clinicId,
-      name: parsed.data.name,
+      template_type: parsed.data.template_type,
+      channel: parsed.data.channel,
+      language: parsed.data.language,
       subject: parsed.data.subject || null,
       body: parsed.data.body || null,
-      active: parsed.data.active ?? true,
     };
 
-    const { data, error } = await supabaseAdmin.from('notification_templates').insert([insert]).select().single();
+    const { data, error } = await supabaseAdmin.from('clinic_notification_templates').insert([insert]).select().single();
     if (error) throw error;
     logEvent('clinic_notification_template_created', { clinic_id: clinicId, template_id: data.id });
     return NextResponse.json({ data });

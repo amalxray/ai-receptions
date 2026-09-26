@@ -1,12 +1,12 @@
 import DashboardSection from '@/components/dashboard/DashboardSection';
-import NotificationTemplateManager from '@/components/dashboard/NotificationTemplateManager';
+import NotificationsTabs from '@/components/notifications/NotificationsTabs';
 
 export const metadata = { title: 'Notifications' };
 
 export default function NotificationsPage() {
   return (
-    <DashboardSection title="الإشعارات" subtitle="أدر قوالب الإشعارات وإعدادات التواصل.">
-      <NotificationTemplateManager />
+    <DashboardSection title="الإشعارات" subtitle="تابع الإشعارات الواردة وأدر قوالب الرسائل.">
+      <NotificationsTabs />
     </DashboardSection>
   );
 }

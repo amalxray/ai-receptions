@@ -3,6 +3,7 @@ import DashboardAuthGuard from '@/components/auth/DashboardAuthGuard';
 import DashboardHeader from '@/components/auth/DashboardHeader';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import DashboardMobileNav from '@/components/dashboard/DashboardMobileNav';
+import { ToastViewport } from '@/components/ui/Toast';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -38,6 +39,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <section className="space-y-6">{children}</section>
           </div>
         </div>
+
+        {/* Global toast viewport — one instance for the whole dashboard shell */}
+        <ToastViewport />
       </div>
     </DashboardAuthGuard>
   );

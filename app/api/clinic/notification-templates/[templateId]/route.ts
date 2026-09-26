@@ -3,12 +3,18 @@ import { z } from 'zod';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import {
+  NOTIFICATION_TEMPLATE_TYPES,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_LANGUAGES,
+} from '@/lib/notification/templateContract';
 
 const templateUpdateSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  template_type: z.enum(NOTIFICATION_TEMPLATE_TYPES).optional(),
+  channel: z.enum(NOTIFICATION_CHANNELS).optional(),
+  language: z.enum(NOTIFICATION_LANGUAGES).optional(),
   subject: z.string().max(200).optional().nullable(),
   body: z.string().max(5000).optional().nullable(),
-  active: z.boolean().optional(),
 });
 
 export async function PUT(req: Request) {
@@ -27,13 +33,14 @@ export async function PUT(req: Request) {
     if (!parsed.success) return NextResponse.json({ error: 'Invalid payload', details: parsed.error.errors }, { status: 400 });
 
     const update: Record<string, any> = {};
-    if (parsed.data.name !== undefined) update.name = parsed.data.name;
+    if (parsed.data.template_type !== undefined) update.template_type = parsed.data.template_type;
+    if (parsed.data.channel !== undefined) update.channel = parsed.data.channel;
+    if (parsed.data.language !== undefined) update.language = parsed.data.language;
     if (parsed.data.subject !== undefined) update.subject = parsed.data.subject;
     if (parsed.data.body !== undefined) update.body = parsed.data.body;
-    if (parsed.data.active !== undefined) update.active = parsed.data.active;
 
     const { data, error } = await supabaseAdmin
-      .from('notification_templates')
+      .from('clinic_notification_templates')
       .update(update)
       .eq('id', templateId)
       .eq('clinic_id', clinicId)
@@ -62,7 +69,7 @@ export async function DELETE(req: Request) {
     if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
 
     const { error } = await supabaseAdmin
-      .from('notification_templates')
+      .from('clinic_notification_templates')
       .delete()
       .eq('id', templateId)
       .eq('clinic_id', clinicId);
