@@ -75,4 +75,8 @@ export const RESERVED_PUBLIC_SLUGS = new Set([
   'error',
   'not-found',
   'favicon.ico',
+  // PWA identity — `app/manifest.json/route.ts` is a static route segment, so it
+  // must be reserved here (the filesystem invariant in
+  // `tests/unit/tenant-subdomains.test.ts` enforces this list).
+  'manifest.json',
 ]);

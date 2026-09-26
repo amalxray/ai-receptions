@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import {
   getPublicClinicProfile,
 } from '@/lib/services/clinicPublicProfile';
+import { brandMetadataIcons } from '@/lib/services/pwaManifest';
+import { requestCache } from '@/lib/server/requestCache';
 
 /**
  * STEP 15D / Digital Healthcare Space — LEGACY COMPATIBILITY page (`/c/{slug}`).
@@ -40,10 +42,13 @@ function formatTime(time: string): string {
 
 export type ClinicPublicPageProps = { params: { slug: string } };
 
+/** Request-scoped memoization — metadata + render resolve the profile once. */
+const loadProfile = requestCache(getPublicClinicProfile);
+
 export async function generateMetadata({
   params,
 }: ClinicPublicPageProps): Promise<Metadata> {
-  const resolved = await getPublicClinicProfile({ slug: params.slug });
+  const resolved = await loadProfile({ slug: params.slug });
   if (!resolved) {
     return { title: 'العيادة غير موجودة', robots: { index: false, follow: false } };
   }
@@ -58,6 +63,13 @@ export async function generateMetadata({
   return {
     title: resolved.name,
     description,
+    // PWA — this page renders a TENANT on the platform apex origin, so its
+    // install identity is the clinic's too: the manifest is asked for by slug
+    // (the host is the platform here) and iOS gets the clinic's app title/icon.
+    applicationName: resolved.name,
+    appleWebApp: { capable: true, title: resolved.name, statusBarStyle: 'default' },
+    icons: brandMetadataIcons(resolved.logo),
+    manifest: `/manifest.json?slug=${encodeURIComponent(params.slug)}`,
     robots: { index: false, follow: false },
     openGraph: {
       title: resolved.name,
@@ -71,7 +83,7 @@ export async function generateMetadata({
 }
 
 export default async function ClinicPublicPage({ params }: ClinicPublicPageProps) {
-  const profile = await getPublicClinicProfile({ slug: params.slug });
+  const profile = await loadProfile({ slug: params.slug });
   if (!profile) {
     notFound();
   }

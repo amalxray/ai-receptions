@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Tajawal, IBM_Plex_Sans_Arabic, IBM_Plex_Mono } from 'next/font/google';
 import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import './globals.css';
 
 const tajawal = Tajawal({
@@ -51,14 +52,10 @@ export const metadata: Metadata = {
 
 // #40 — mobile viewport: explicit device-width, no layout-breaking zoom lock
 // (maximumScale keeps pinch-zoom accessible), safe-area aware for notched phones.
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 5,
-  viewportFit: 'cover',
-  // Brand emerald - drives the Android status bar in standalone mode.
-  themeColor: '#10B981',
-};
+// PWA per-clinic identity: single-sourced in `lib/services/pwaManifest`
+// (PLATFORM_VIEWPORT). The tenant space re-uses it and swaps ONLY `themeColor`
+// for the clinic's color, so the two can never drift apart.
+export const viewport: Viewport = PLATFORM_VIEWPORT;
 
 /** AEO/GEO — platform-level Organization entity (answer engines + AI crawlers). */
 function OrganizationJsonLd() {

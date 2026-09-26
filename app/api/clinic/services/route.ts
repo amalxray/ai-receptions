@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { createCatalogService, listCatalogServices } from '@/lib/services/clinicServiceCatalog';
 import { logEvent } from '@/lib/server/logging';
 
 const PRICING_TYPES = ['unspecified', 'fixed', 'estimate', 'range', 'case_by_case'] as const;
 
 /**
- * Services create schema — covers BOTH the legacy price column and the newer
- * pricing_* columns so the UI can round-trip prices without them being
- * silently stripped. Empty-string numeric inputs arrive from HTML forms;
- * they are normalised to null instead of coercing to 0 ("free").
+ * B18 — this endpoint is ACTIVITY-AWARE: it reads and writes the catalog that
+ * belongs to `clinics.activity_type` (imaging_services for imaging centers,
+ * lab_services for dental labs, clinic_services for clinics), so what the owner
+ * edits in the dashboard is exactly what the public space renders. All routing
+ * and the canonical clinic_services mirror live in
+ * `lib/services/clinicServiceCatalog.ts`; this route keeps auth + validation.
  */
 /** HTML forms submit numbers as strings; '' means "not provided" → null. */
 const normalizeNumericInput = (body: Record<string, unknown>): Record<string, unknown> => {
@@ -50,16 +52,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
-    const supabase = supabaseAdmin;
-    const { data, error } = await supabase
-      .from('clinic_services')
-      .select('id, name, description, duration_minutes, price, pricing_type, price_min, price_max, price_visible_to_patients, active, deleted_at')
-      .eq('clinic_id', clinicId)
-      .order('name', { ascending: true });
-
-    if (error) throw new Error(error.message);
-
-    return NextResponse.json({ data: (data || []).map((s) => ({ ...s, active: s.active && !s.deleted_at })) });
+    const data = await listCatalogServices(clinicId);
+    return NextResponse.json({ data });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('clinic_services_get_error', { error: message }, 'error');
@@ -87,34 +81,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid service payload', details: parsed.error.errors }, { status: 400 });
     }
 
-    const supabase = supabaseAdmin;
-    const pricingType = parsed.data.pricing_type ?? 'unspecified';
-    const priceVisible = parsed.data.price_visible_to_patients ?? true;
-    // Keep legacy `price` in sync with a fixed price so old readers stay correct.
-    const legacyPrice = parsed.data.price ?? null;
-
-    const { data, error } = await supabase
-      .from('clinic_services')
-      .insert({
-        clinic_id: clinicId,
-        name: parsed.data.name,
-        description: parsed.data.description ?? null,
-        duration_minutes: parsed.data.duration_minutes,
-        price: legacyPrice,
-        pricing_type: pricingType,
-        price_min: parsed.data.price_min ?? null,
-        price_max: parsed.data.price_max ?? null,
-        price_visible_to_patients: priceVisible,
-        active: parsed.data.active,
-        deleted_at: null,
-      })
-      .select('id, name, description, duration_minutes, price, pricing_type, price_min, price_max, price_visible_to_patients, active, deleted_at')
-      .single();
-
-    if (error) throw new Error(error.message);
+    const data = await createCatalogService(clinicId, parsed.data);
 
     logEvent('clinic_service_created', { clinic_id: clinicId, service_id: data.id });
-    return NextResponse.json({ data: { ...data, active: data.active && !data.deleted_at } }, { status: 201 });
+    return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('clinic_services_post_error', { error: message }, 'error');

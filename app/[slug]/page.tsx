@@ -1,7 +1,9 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import { getActivityPublicSpace, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
+import { requestCache } from '@/lib/server/requestCache';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
@@ -29,8 +31,16 @@ export const fetchCache = 'force-no-store';
 
 export type ActivitySpacePageProps = { params: { slug: string } };
 
+/**
+ * Request-scoped memoization (`lib/server/requestCache`) — `generateMetadata`,
+ * `generateViewport` and the page render in ONE request, and the space costs
+ * several queries. Without it the resolver runs three times per visit (the module
+ * is `force-no-store`, so nothing else dedupes it).
+ */
+const loadSpace = requestCache(getActivityPublicSpace);
+
 export async function generateMetadata({ params }: ActivitySpacePageProps): Promise<Metadata> {
-  const space = await getActivityPublicSpace(params.slug);
+  const space = await loadSpace(params.slug);
   if (!space) {
     return { title: 'غير موجودة', robots: { index: false, follow: false } };
   }
@@ -46,6 +56,12 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
   return {
     title: space.name,
     description,
+    // PWA install identity = THIS clinic, not the platform: Android/Chrome read
+    // the host-resolved `/manifest.json`, iOS reads the tags below — Safari never
+    // reads a manifest for "Add to Home Screen" (see `brandMetadataIcons`).
+    applicationName: space.name,
+    appleWebApp: { capable: true, title: space.name, statusBarStyle: 'default' },
+    icons: brandMetadataIcons(space.logo),
     alternates: { canonical },
     robots: { index: true, follow: true },
     openGraph: {
@@ -56,6 +72,17 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
       siteName: space.name,
     },
   };
+}
+
+/**
+ * PWA — the standalone status bar / iOS theme color carries the CLINIC's primary
+ * color (the same bounded theme the page renders), not the platform emerald.
+ * Everything else is inherited from PLATFORM_VIEWPORT (#40 mobile contract).
+ */
+export async function generateViewport({ params }: ActivitySpacePageProps): Promise<Viewport> {
+  const space = await loadSpace(params.slug);
+  if (!space) return PLATFORM_VIEWPORT;
+  return { ...PLATFORM_VIEWPORT, themeColor: space.theme.primary_color };
 }
 
 /** AEO/GEO — per-tenant structured data: MedicalClinic (clinic / imaging
@@ -97,7 +124,7 @@ function buildSpaceJsonLd(space: ActivityPublicSpace) {
 }
 
 export default async function ActivitySpacePage({ params }: ActivitySpacePageProps) {
-  const space = await getActivityPublicSpace(params.slug);
+  const space = await loadSpace(params.slug);
   if (!space) {
     notFound();
   }
@@ -115,7 +142,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ImagingPublicSpace space={space} />
-          <InstallPWA variant="floating" />
+          <InstallPWA variant="floating" appName={space.name} />
         </>
       );
     case 'dental_lab':
@@ -123,7 +150,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <DentalLabPublicSpace space={space} />
-          <InstallPWA variant="floating" />
+          <InstallPWA variant="floating" appName={space.name} />
         </>
       );
     default:
@@ -131,7 +158,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={space} />
-          <InstallPWA variant="floating" />
+          <InstallPWA variant="floating" appName={space.name} />
         </>
       );
   }

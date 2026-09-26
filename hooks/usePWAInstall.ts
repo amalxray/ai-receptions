@@ -60,6 +60,36 @@ export function isIOSDevice(userAgent: string, platform = '', maxTouchPoints = 0
   return /Mac/i.test(platform) && maxTouchPoints > 1;
 }
 
+/**
+ * In-app browsers (Facebook, Instagram, WhatsApp, TikTok…) expose NO "Add to
+ * Home Screen" on iOS — Apple allows it in Safari only. Detecting the wrapper
+ * lets the instructions name the app the visitor is stuck in and tell them what
+ * to tap; silently showing Safari steps there was the confusing case.
+ */
+export const IN_APP_BROWSER_NAMES: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /FBAN|FBAV|FB_IAB|FBIOS/i, label: 'متصفح فيسبوك' },
+  { pattern: /Instagram/i, label: 'متصفح إنستغرام' },
+  { pattern: /WhatsApp/i, label: 'متصفح واتساب' },
+  { pattern: /TikTok|BytedanceWebview|musical_ly/i, label: 'متصفح تيك توك' },
+  { pattern: /Twitter/i, label: 'متصفح X (تويتر)' },
+  { pattern: /Snapchat/i, label: 'متصفح سناب شات' },
+  { pattern: /LinkedInApp/i, label: 'متصفح لينكدإن' },
+  { pattern: /MicroMessenger/i, label: 'متصفح وي تشات' },
+  { pattern: /GSA\//i, label: 'متصفح تطبيق جوجل' },
+];
+
+/** Friendly Arabic name of the enclosing in-app browser, or null when standalone. */
+export function inAppBrowserName(userAgent: string): string | null {
+  for (const entry of IN_APP_BROWSER_NAMES) {
+    if (entry.pattern.test(userAgent)) return entry.label;
+  }
+  return null;
+}
+
+export function isInAppBrowser(userAgent: string): boolean {
+  return inAppBrowserName(userAgent) !== null;
+}
+
 function readFlag(key: string): boolean {
   if (typeof window === 'undefined') return false;
   try {
@@ -86,6 +116,7 @@ export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<PWAInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [inAppBrowser, setInAppBrowser] = useState<string | null>(null);
   const [wasDismissed, setWasDismissed] = useState(false);
   const [isInstalledInStorage, setIsInstalledInStorage] = useState(false);
   const [showIOSHelp, setShowIOSHelp] = useState(false);
@@ -101,6 +132,7 @@ export function usePWAInstall() {
     // iOS Safari exposes its own flag; keep both paths.
     setIsStandalone(standaloneMode || nav.standalone === true);
     setIsIOS(isIOSDevice(nav.userAgent ?? '', nav.platform ?? '', nav.maxTouchPoints ?? 0));
+    setInAppBrowser(inAppBrowserName(nav.userAgent ?? ''));
     setWasDismissed(readFlag(PWA_DISMISSED_KEY));
     setIsInstalledInStorage(readFlag(PWA_INSTALLED_KEY));
   }, []);
@@ -207,6 +239,10 @@ export function usePWAInstall() {
     mounted,
     shouldShow,
     isIOS,
+    /** Friendly name of the enclosing in-app browser (فيسبوك/إنستغرام…), else null. */
+    inAppBrowser,
+    /** True inside an in-app browser: no install exists until the link opens in a real browser. */
+    isInAppBrowser: inAppBrowser !== null,
     isStandalone,
     /** Android/Chrome: a real native prompt is available right now. */
     canPromptNatively: deferredPrompt !== null,

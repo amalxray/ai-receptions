@@ -19,7 +19,16 @@ const MODALITY_LABELS: Record<string, string> = {
   cephalometric: 'تصوير جانبي للجمجمة',
 };
 
-function servicePriceLabel(svc: { pricing_mode: string | null; price: number | null; price_min: number | null; price_max: number | null; price_note: string | null }): string | null {
+/**
+ * B18 — price label for a public imaging service.
+ *
+ * A row whose `pricing_mode` is 'unspecified' but that CARRIES a positive price
+ * (legacy/seeded rows, or a service saved before the mode was enforced) used to
+ * render NO price at all — the owner saw a price in the dashboard and nothing on
+ * the site. A positive price is announced as fixed; 0/null keeps meaning
+ * "no price". Exported for unit tests (pure function).
+ */
+export function imagingServicePriceLabel(svc: { pricing_mode: string | null; price: number | null; price_min: number | null; price_max: number | null; price_note: string | null }): string | null {
   switch (svc.pricing_mode) {
     case 'fixed':
       return svc.price != null ? `${svc.price} ₪` : svc.price_note ?? null;
@@ -27,6 +36,10 @@ function servicePriceLabel(svc: { pricing_mode: string | null; price: number | n
       return svc.price_min != null && svc.price_max != null ? `${svc.price_min}–${svc.price_max} ₪` : svc.price_note ?? null;
     case 'estimate':
       return svc.price_min != null ? `≈${svc.price_min} ₪` : svc.price_note ?? null;
+    case 'unspecified': {
+      const price = svc.price != null ? Number(svc.price) : null;
+      return price != null && price > 0 ? `${price} ₪` : svc.price_note ?? null;
+    }
     default:
       return svc.price_note ?? null;
   }
@@ -59,7 +72,7 @@ export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
                       {svc.report_policy && <p className="mt-1 text-xs text-slate-500">التقرير: {svc.report_policy}</p>}
                       {svc.delivery_methods.length > 0 && <p className="mt-1 text-xs text-slate-500">التسليم: {svc.delivery_methods.join('، ')}</p>}
                     </div>
-                    {servicePriceLabel(svc) && <span className="shrink-0 font-semibold text-brand-cyan">{servicePriceLabel(svc)}</span>}
+                    {imagingServicePriceLabel(svc) && <span className="shrink-0 font-semibold text-brand-cyan">{imagingServicePriceLabel(svc)}</span>}
                   </li>
                 ))}
               </ul>

@@ -119,8 +119,11 @@ export function describeImagingPrice(svc: ImagingService): string | null {
       return svc.price_note ?? null;
     case 'estimate':
       return svc.price_min != null ? `≈${svc.price_min} ILS` : svc.price_note ?? null;
-    case 'case_by_case':
     case 'unspecified':
+      // B18 — legacy/seeded rows carry a real price with no mode; hiding it made
+      // the site look like the owner's price was ignored.
+      return svc.price != null && Number(svc.price) > 0 ? `${Number(svc.price)} ILS` : svc.price_note ?? null;
+    case 'case_by_case':
     default:
       return svc.price_note ?? null;
   }

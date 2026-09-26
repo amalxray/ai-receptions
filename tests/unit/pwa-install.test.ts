@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   PWA_DISMISSED_KEY,
   PWA_INSTALLED_KEY,
+  inAppBrowserName,
   isIOSDevice,
+  isInAppBrowser,
   shouldShowInstallButton,
   type PWAInstallSignals,
 } from '@/hooks/usePWAInstall';
@@ -73,5 +75,28 @@ describe('isIOSDevice', () => {
   it('does not flag desktop macOS or Android', () => {
     expect(isIOSDevice('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 0)).toBe(false);
     expect(isIOSDevice('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120')).toBe(false);
+  });
+});
+
+/**
+ * In-app browsers: Apple exposes "Add to Home Screen" in Safari only, so an
+ * iPhone inside Facebook/Instagram/WhatsApp sees no option at all. The install
+ * sheet names the wrapper and offers a copy-link step instead.
+ */
+describe('in-app browser detection', () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15';
+
+  it('names the wrapping app so the instructions can be specific', () => {
+    expect(inAppBrowserName(`${IPHONE} Mobile/15E148 [FBAN/FBIOS;FBAV/400.0]`)).toBe('متصفح فيسبوك');
+    expect(inAppBrowserName(`${IPHONE} Instagram 320.0`)).toBe('متصفح إنستغرام');
+    expect(inAppBrowserName(`${IPHONE} WhatsApp/2.24`)).toBe('متصفح واتساب');
+    expect(inAppBrowserName(`${IPHONE} TikTok 32.0`)).toBe('متصفح تيك توك');
+  });
+
+  it('does not flag real Safari, Chrome or a plain Android browser', () => {
+    expect(isInAppBrowser(IPHONE)).toBe(false);
+    expect(inAppBrowserName(`${IPHONE} CriOS/120.0`)).toBeNull();
+    expect(isInAppBrowser('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120')).toBe(false);
+    expect(inAppBrowserName('')).toBeNull();
   });
 });
