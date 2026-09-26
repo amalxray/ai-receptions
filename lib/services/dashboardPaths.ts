@@ -16,6 +16,8 @@ export const DASHBOARD_MODULES = [
   'subscription', 'team', 'setup', 'medical-files', 'messages', 'imaging-centers',
   // imaging-center workflow modules (activity-specific capabilities)
   'imaging-requests', 'referring-clinics',
+  // B20 — cross-tenant referrals (both directions: clinic ↔ imaging center)
+  'referrals',
   // PHASE L — public page content builder (theme/achievements/testimonials/articles/news)
   'public-content',
   // PHASE K — account self-service (profile + password change)

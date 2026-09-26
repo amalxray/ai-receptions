@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { applyWorkflowTransition, workflowErrorResponse } from '@/lib/services/workflowService';
 import { issueInvoiceForImagingRequest } from '@/lib/services/imagingBilling';
+import { notifyReferral } from '@/lib/notifications/referralNotifier';
+import { eventForStatusTransition } from '@/lib/services/referralWorkflow';
 import { logEvent } from '@/lib/server/logging';
 
 /**
@@ -104,6 +106,32 @@ export async function PATCH(req: Request, { params }: { params: { requestId: str
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
+
+    // B20 — the ANSWER travels back to the referring clinic (bell + toast).
+    // Only accepted / rejected / needs_clarification are newsworthy; the
+    // center's internal production chain (scheduled → in_progress → ready) is
+    // private. Fail-safe: the transition is already committed + audited.
+    const answerEvent = t === 'imaging_requests' && toStatus ? eventForStatusTransition(toStatus) : null;
+    if (answerEvent) {
+      const { data: referral } = await supabaseAdmin
+        .from('imaging_requests')
+        .select('id, referring_clinic_id, patient_ref, requested_service')
+        .eq('id', params.requestId)
+        .maybeSingle();
+      if (referral?.referring_clinic_id) {
+        const { data: mine } = await supabaseAdmin.from('clinics').select('name').eq('id', clinicId).maybeSingle();
+        await notifyReferral({
+          recipientClinicId: referral.referring_clinic_id,
+          requestId: referral.id,
+          event: answerEvent,
+          patientRef: referral.patient_ref,
+          counterpartName: mine?.name ?? null,
+          serviceName: referral.requested_service,
+          note: parsed.data.reason ?? null,
+        });
+      }
+    }
+
     return NextResponse.json({ data, transition: fromStatus ? { from: fromStatus, to: toStatus } : undefined });
   } catch (err) {
     logEvent('activity_requests_patch_error', { error: err instanceof Error ? err.message : String(err) }, 'error');

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest, roleDenied, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { notifyReferral } from '@/lib/notifications/referralNotifier';
 import { logEvent } from '@/lib/server/logging';
 
 /**
@@ -32,7 +33,7 @@ export async function POST(req: Request, { params }: { params: { requestId: stri
 
     const { data: request } = await supabaseAdmin
       .from('imaging_requests')
-      .select('id, clinic_id, referring_clinic_id, patient_id, status')
+      .select('id, clinic_id, referring_clinic_id, patient_id, patient_ref, requested_service, status')
       .eq('id', params.requestId)
       .is('deleted_at', null)
       .maybeSingle();
@@ -79,6 +80,21 @@ export async function POST(req: Request, { params }: { params: { requestId: stri
       request_id: request.id,
       patient_id: request.patient_id,
     });
+
+    // B20 — deliver the news to the referring clinic (bell + toast + deep link
+    // to the referral page where the signed-URL attachments live).
+    if (request.referring_clinic_id) {
+      const { data: mine } = await supabaseAdmin.from('clinics').select('name').eq('id', clinicId).maybeSingle();
+      await notifyReferral({
+        recipientClinicId: request.referring_clinic_id,
+        requestId: request.id,
+        event: 'referral_result_ready',
+        patientRef: request.patient_ref,
+        counterpartName: mine?.name ?? null,
+        serviceName: request.requested_service,
+      });
+    }
+
     return NextResponse.json({ data: result }, { status: 201 });
   } catch (err) {
     logEvent('imaging_result_post_error', { error: err instanceof Error ? err.message : String(err) }, 'error');

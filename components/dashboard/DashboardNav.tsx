@@ -28,6 +28,7 @@ const BASE_NAV: NavModule[] = [
   { module: 'appointments', label: 'المواعيد' },
   { module: 'patients', label: 'المرضى' },
   { module: 'medical-files', label: 'الملفات الطبية' },
+  { module: 'referrals', label: 'التحويلات' },
   { module: 'providers', label: 'الأطباء' },
   { module: 'services', label: 'الخدمات' },
   { module: 'team', label: 'إدارة الفريق' },
@@ -83,10 +84,14 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
     modules.splice(overviewIdx + 1, 0, ...IMAGING_WORKFLOW);
   } else if (type === 'dental_lab') {
     // A lab receives cases from clinics — no appointments, no lead capture,
-    // and it does not refer patients to imaging centers. It only sees the
-    // referring clinics that send work to it.
+    // it does not refer patients to imaging centers, and imaging referrals
+    // (B20, a clinic ↔ imaging center flow) do not apply to it.
     modules = modules.filter(
-      (m) => m.module !== 'appointments' && m.module !== 'leads' && m.module !== 'imaging-centers'
+      (m) =>
+        m.module !== 'appointments' &&
+        m.module !== 'leads' &&
+        m.module !== 'imaging-centers' &&
+        m.module !== 'referrals'
     );
     const overviewIdx = modules.findIndex((m) => m.module === 'overview');
     modules.splice(overviewIdx + 1, 0, { module: 'referring-clinics', label: 'العيادات المحوِّلة' });
@@ -126,6 +131,9 @@ const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
   conversations: 'view_conversations',
   messages: 'view_messages',
   'imaging-requests': 'view_imaging_requests',
+  // B20 — referrals reuse the imaging-requests permission (no new permission
+  // row / migration); the sidebar stays convenience, APIs keep enforcing.
+  referrals: 'view_imaging_requests',
   leads: 'view_leads',
   'financial-intelligence': 'view_financial',
   analytics: 'view_analytics',

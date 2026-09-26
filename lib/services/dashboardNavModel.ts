@@ -28,6 +28,7 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   patients: 'ops',
   'imaging-requests': 'ops',
   'medical-files': 'ops',
+  referrals: 'ops',
   providers: 'ops',
   team: 'ops',
   conversations: 'communication',

@@ -1,13 +1,25 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import type { ReferralNotificationEvent } from '@/lib/services/referralWorkflow';
 
+/**
+ * In-app events the platform can raise.
+ *
+ * `referral_*` (B20) are the cross-tenant referral events: submitted (clinic →
+ * imaging center), accepted / rejected / needs_clarification (the answer coming
+ * back) and result_ready (the study delivered to the referring clinic). The
+ * event NAME lives in `ReferralNotificationEvent` so the referral routes, the
+ * bell and the tests share one union instead of drifting literals.
+ */
 export type InAppNotificationEvent =
   | 'appointment_new'
   | 'appointment_cancelled'
   | 'appointment_rescheduled'
   | 'message_new'
   | 'payment_received'
-  | 'system';
+  | 'system'
+  | ReferralNotificationEvent;
+
 
 export interface CreateInAppNotificationParams {
   clinicId: string;
