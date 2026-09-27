@@ -2,6 +2,62 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-27 — ✅ N14: الملف الذكي للمريض (Smart Patient Profile) + حاسبة العمر
+
+**الحالة: مُنجَز ومُتحقَّق منه (`tsc` نظيف · `next build` ناجح · 12 اختبار وحدة ناجح).**
+
+**ما أُضيف:**
+- `components/dashboard/patients/SmartPatientProfile.tsx` — مكوّن عرض ثلاثي المستويات داخل تبويب «نظرة عامة» في صفحة المريض:
+  1. **بطاقة ملخّص فوري (5 ثوانٍ):** الاسم، الحالة، المصدر، شارة العمر المتحرّكة، أزرار تواصل سريع + ملاحظة سريعة.
+  2. **بطاقات نشاط متتالية (10 ثوانٍ):** زيارات / ملفات / إحوالات / فواتير — كل بطاقة تنقلك للمكان المناسب.
+  3. **خط زمني تفاعلي (30 ثانية):** محطّات المريض من المواعيد مع حالات (تم / قيد المتابعة / متبقٍ / ملغي).
+- `lib/patientAge.ts` — `calculatePatientAge` (سنوات/أشهر/أيام بالتقويم المحلي، ترفض تواريخ المستقبل وغير الصالحة مثل `2020-99-99`)، `formatAgeAr` (تصريف عربي: سنة واحدة/سنتان/5 سنوات/6 أشهر/أقل من يوم)، `isValidDateOfBirth` (تاريخ حقيقي في الماضي ≤ 130 سنة).
+- `app/(dashboard)/dashboard/[clinicSlug]/patients/[patientId]/page.tsx` — يدمج المكوّن: عداد الزيارات من المواعيد، وعدادات الملفات/الفواتير/الإحوالات من `medical-files/list` و`accounting/invoices` و`imaging/referrals?direction=all`؛ أي endpoint غير متاح يُبقي العداد 0 بدل تعطيل الصفحة.
+- `app/(dashboard)/dashboard/[clinicSlug]/patients/page.tsx` — حقل «تاريخ الميلاد» في نموذج الإضافة/التعديل مع تحقق قبل الحفظ، ورسالة خطأ خاصة بالنموذج (`formError`) منفصلة عن خطأ القائمة، وتعبئة الحقل عند التعديل من `metadata.date_of_birth`.
+
+**تنبيهات:**
+- العمر يُخزَّن في `patients.metadata.date_of_birth` (لا عمود جديد، لا DDL)؛ الـAPIs (`POST /api/patients` و`PUT /api/patients/{id}`) تدمجه في `metadata` أصلًا.
+- المرضى المسجَّلون قبل هذه المهمة بلا `date_of_birth` تظهر شارة العمر مخفية لديهم حتى إدخال التاريخ.
+- الاختبارات: `tests/unit/patient-age.test.ts` (7) و`tests/unit/smart-patient-profile.test.ts` (5) — `npx vitest run <الملفين>`.
+
+
+## 2026-09-25 — 📋 B10 (مؤجّل — مهمة منفصلة): 3 مستأجرين غير قابلين للاكتشاف في `/ask`
+
+**الحالة: مُسجَّل · لم يُنفَّذ (بأمر المالك).**
+
+**الوصف:** صفحة `/ask` تعرض 4 من 6 عيادات. السبب ليس عيبًا في ترشيح الصفحة بل **بيانات ناقصة**:
+`/ask` يستمد البطاقات من RPC `nearby_clinics(lat, lng)` (بحث بالمسافة) — وهذا يوجب إحداثيات:
+- `ahmad-clinic` — `latitude=null` · `longitude=null` · `discovery_enabled` غير مُفعَّل
+- `almtmizon` — `latitude=null` · `longitude=null` · `discovery_enabled` غير مُفعَّل
+- `alawael-clinic` — `latitude=null` · `longitude=null` (`discovery_enabled` مُفعَّل)
+
+**الأثر:** هؤلاء المستأجرون لا يظهرون في `/ask` ولا في أي سطح بحث قائم على الموقع،
+و`sitemap.xml` يستثنيهم (لأن سجلات النشر/الاكتشاف لا تُنتج مدخلًا).
+
+**المطلوب في المهمة المنفصلة (لا DDL):** تعبئة `clinics.latitude/longitude` و`discovery_enabled`
+لكل مستأجر من لوحة التحكم (إعدادات الموقع/العنوان)، ثم التحقق من ظهورهم في `/ask` و`sitemap.xml`.
+ويُراعى قرار المالك: هل نضيف مسار ترشيح بديل (بالمدينة) للعيادات بلا إحداثيات أم نُلزم الإحداثيات.
+
+
+
+**السبب الجذري (مُثبَت حيّاً — لا تخمين):** `20261018` أعاد إنشاء `financial_period_summary` و`cash_flow_summary`
+بـ`drop view` + `create view` (سطرا 84/168). `DROP VIEW` محا الـACL، و`CREATE VIEW` لا يُعيده، والملف لم يحتوِ أي `GRANT`.
+فحص REST المباشر للإنتاج بنفس مفتاح service-role: `receivable_aging` 200 · `daily_cash_positions` 200 · `payroll_periods` 200 ·
+`clinics` 200 — لكن `financial_period_summary` و`cash_flow_summary` = **403 `{"code":"42501","message":"permission denied for view …"}`**
+(و anon = 401). الكاش سليم: PostgREST OpenAPI يُظهر `financial_period_summary(…, net_result, payroll)` → **ليست مشكلة schema cache ولا كود**.
+
+**الأثر:** `/dashboard/{slug}/financial-intelligence` + `/api/clinic/financial-intelligence` + `/api/clinic/reporting/pnl` + `/api/clinic/reporting/cash-flow`.
+(تحقق 20261018 رجع `expenses = 5800 ✅` لأنه نُفِّذ بدور المالك الذي لا يخضع للـACL — الفحص الصحيح بدور التطبيق/عبر REST.)
+
+**الإصلاح:** `db/migrations/20261019_fix_view_grants.sql` — `grant select … to service_role` على الـviewين + حارس `relacl` (`aclexplode`) + `notify pgrst`.
+القاعدة الوقائية سُجّلت كـ **D10** في `docs/architecture-decisions.md`.
+
+**بند B6 (مؤجّل — إصلاح منفصل، لا علاقة له بالسبب):** الصفحة تُخفي الخطأ الحقيقي.
+`app/(dashboard)/dashboard/[clinicSlug]/financial-intelligence/page.tsx:243-246` تُحوّل كل رد غير 2xx (عدا 403) إلى
+`throw new Error('خدمة الذكاء المالي غير متاحة')` (السطر 245)، ويُعرض النص كـ`description` في السطر 429 — فتعذّر تشخيص `42501` من الواجهة.
+المطلوب: عرض `body.error` الحقيقي القادم من الـAPI، وتمييز 402 (`FEATURE_LOCKED`) و403 برسائل صريحة، وإبقاء الـfallback لحالة فشل الشبكة/JSON فقط.
+
+
 ## 2026-09-23 — ✅ CLOSED: TEAM INVITATIONS #38 (24h links · 30-min sessions · atomic single-use accept)
 
 **ما نُفِّذ:** `db/migrations/20261017_invitation_security.sql` مُطبَّقة على القاعدة الحيّة (4 أعمدة · `expires_at` default `now() + '24:00:00'` · قيد `invitations_single_use` · 4 دوال `SECURITY DEFINER`) + رابط 24 ساعة · جلسة فتح 30 دقيقة · قبول ذرّي لمرة واحدة (قفل صف + ربط البريد) · تمديد 24 ساعة للمالك/المدير فقط (بحد 3) · cron كنس يومي · واجهة حالة الدعوة في لوحة الفريق.

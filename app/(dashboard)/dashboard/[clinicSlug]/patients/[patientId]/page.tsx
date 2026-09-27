@@ -7,6 +7,11 @@ import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
+import SmartPatientProfile, {
+  type SmartPatientData,
+  type SmartPatientStats,
+  type SmartAppointment,
+} from '@/components/dashboard/patients/SmartPatientProfile';
 
 /**
  * PATIENT DETAIL — full standalone page (/dashboard/{slug}/patients/{id}).
@@ -16,16 +21,7 @@ import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
  * lazily. All data comes from membership-guarded APIs.
  */
 
-type PatientRecord = {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  source: string;
-  status?: string;
-  notes?: string | null;
-  created_at?: string;
-};
+type PatientRecord = SmartPatientData;
 
 type PatientAppointment = {
   id: string;
@@ -79,6 +75,7 @@ function statusPill(status: string): string {
   return map[status] ?? 'bg-slate-800 text-slate-400';
 }
 
+
 export default function PatientDetailPage() {
   const { patientId, clinicSlug } = useParams<{ patientId: string; clinicSlug: string }>();
   const { clinicId, authHeaders, loading: clinicLoading } = useClinicContext();
@@ -94,6 +91,14 @@ export default function PatientDetailPage() {
   const [apptsLoading, setApptsLoading] = useState(false);
   const [communications, setCommunications] = useState<PatientCommunication[]>([]);
   const [commsLoading, setCommsLoading] = useState(false);
+  /** Counters powering the N14 smart-profile activity cards (best effort). */
+  const [overviewCounts, setOverviewCounts] = useState<SmartPatientStats>({
+    visitsCount: 0,
+    filesCount: 0,
+    referralsCount: 0,
+    invoicesCount: 0,
+  });
+
 
   useEffect(() => {
     if (clinicLoading) return;
@@ -124,7 +129,10 @@ export default function PatientDetailPage() {
   }, [clinicId, patientId, clinicLoading]);
 
   useEffect(() => {
-    if (tab !== 'appointments' || !clinicId || !patientId) return;
+    // The smart profile (overview) renders the appointment timeline, so the
+    // same lazy fetch serves both tabs.
+    if (tab !== 'appointments' && tab !== 'overview') return;
+    if (!clinicId || !patientId) return;
     void (async () => {
       setApptsLoading(true);
       try {
@@ -141,6 +149,50 @@ export default function PatientDetailPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, clinicId, patientId]);
+
+  /**
+   * N14 activity counters (files / invoices / referrals). Informational only:
+   * any endpoint that is not reachable simply keeps its counter at 0 instead
+   * of blocking the profile from rendering.
+   */
+  useEffect(() => {
+    if (tab !== 'overview' || !clinicId || !patientId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const q = `clinic_id=${encodeURIComponent(clinicId)}&patient_id=${encodeURIComponent(patientId)}`;
+        const [filesRes, invoicesRes, referralsRes] = await Promise.all([
+          fetch(`/api/clinic/medical-files/list?${q}`, { headers }),
+          fetch(`/api/clinic/accounting/invoices?${q}`, { headers }),
+          fetch(`/api/imaging/referrals?clinic_id=${encodeURIComponent(clinicId)}&direction=all`, { headers }),
+        ]);
+        const [filesJson, invoicesJson, referralsJson] = await Promise.all([
+          filesRes.json().catch(() => null),
+          invoicesRes.json().catch(() => null),
+          referralsRes.json().catch(() => null),
+        ]);
+        if (cancelled) return;
+        const rows = (payload: unknown): Record<string, unknown>[] => {
+          const data = (payload as { data?: unknown } | null)?.data;
+          return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+        };
+        setOverviewCounts({
+          visitsCount: 0,
+          filesCount: filesRes.ok ? rows(filesJson).length : 0,
+          invoicesCount: invoicesRes.ok ? rows(invoicesJson).length : 0,
+          referralsCount: referralsRes.ok ? rows(referralsJson).filter((r) => r.patient_id === patientId).length : 0,
+        });
+      } catch {
+        /* counters stay at zero — the profile still renders */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, clinicId, patientId]);
+
 
   useEffect(() => {
     if (tab !== 'communications' || !clinicId || !patientId) return;
@@ -172,6 +224,28 @@ export default function PatientDetailPage() {
     () => appointments.filter((a) => a.status === 'completed' || a.status === 'cancelled' || a.status === 'no_show'),
     [appointments]
   );
+
+  /** N14 smart profile: visits counter comes from appointments, the rest from `overviewCounts`. */
+  const smartStats = useMemo<SmartPatientStats>(
+    () => ({ ...overviewCounts, visitsCount: appointments.length }),
+    [appointments, overviewCounts]
+  );
+
+  const smartAppointments = useMemo<SmartAppointment[]>(
+    () =>
+      [...appointments]
+        .sort((a, b) => (b.appointment_date + (b.appointment_time ?? '')).localeCompare(a.appointment_date + (a.appointment_time ?? '')))
+        .map((a) => ({
+          id: a.id,
+          service: a.service,
+          appointment_date: a.appointment_date,
+          appointment_time: a.appointment_time ?? null,
+          status: a.status,
+          provider_name: a.provider_name ?? null,
+        })),
+    [appointments]
+  );
+
 
   return (
     <div className="space-y-4">
@@ -225,52 +299,54 @@ export default function PatientDetailPage() {
 
           <div className="min-h-[40vh]">
             {tab === 'overview' && (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                  <p className="text-sm font-semibold text-white">معلومات المريض</p>
-                  <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                    <dt className="text-slate-500">الاسم</dt>
-                    <dd className="text-slate-200">{patient.name}</dd>
-                    <dt className="text-slate-500">الهاتف</dt>
-                    <dd className="text-slate-200" dir="ltr">{patient.phone || '—'}</dd>
-                    <dt className="text-slate-500">البريد</dt>
-                    <dd className="text-slate-200" dir="ltr">{patient.email || '—'}</dd>
-                    <dt className="text-slate-500">المصدر</dt>
-                    <dd className="text-slate-200">{patient.source || '—'}</dd>
-                    <dt className="text-slate-500">الحالة</dt>
-                    <dd className="text-slate-200">{patient.status || '—'}</dd>
-                    {patient.created_at && (
-                      <>
-                        <dt className="text-slate-500">سُجّل في</dt>
-                        <dd className="text-slate-200">{formatDateAr(patient.created_at)}</dd>
-                      </>
+              <div className="space-y-4">
+                {/* N14 — Smart Patient Profile (3-level cognitive layout). */}
+                <SmartPatientProfile
+                  patient={patient}
+                  stats={smartStats}
+                  appointments={smartAppointments}
+                  onOpenVisits={() => setTab('appointments')}
+                  onOpenFiles={() => setTab('financial')}
+                  onOpenInvoices={() => setTab('financial')}
+                  onOpenReferrals={() => setShowTransfer(true)}
+                  onOpenTimelineDetail={() => setTab('appointments')}
+                />
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                    <p className="text-sm font-semibold text-white">تفاصيل التواصل</p>
+                    <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                      <dt className="text-slate-500">الهاتف</dt>
+                      <dd className="text-slate-200" dir="ltr">{patient.phone || '—'}</dd>
+                      <dt className="text-slate-500">البريد</dt>
+                      <dd className="text-slate-200" dir="ltr">{patient.email || '—'}</dd>
+                      <dt className="text-slate-500">تاريخ الميلاد</dt>
+                      <dd className="text-slate-200" dir="ltr">{patient.metadata?.date_of_birth || 'غير مسجّل'}</dd>
+                    </dl>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                    <p className="text-sm font-semibold text-white">المواعيد القادمة</p>
+                    {upcoming.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">لا مواعيد قادمة.</p>
+                    ) : (
+                      <ul className="mt-3 space-y-2">
+                        {upcoming.slice(0, 5).map((a) => (
+                          <li key={a.id} className="rounded-xl bg-slate-950/60 p-3 text-sm text-slate-300">
+                            <p>🦷 {a.service || 'خدمة'} · {appointmentStatusAr(a.status)}</p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              📅 {formatDateAr(a.appointment_date)} · 🕐 {formatTimeAr(a.appointment_time ?? '')}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </dl>
-                  {patient.notes && (
-                    <p className="mt-4 rounded-xl bg-slate-950/60 p-3 text-sm text-slate-300">📝 {patient.notes}</p>
-                  )}
-                </div>
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                  <p className="text-sm font-semibold text-white">المواعيد القادمة</p>
-                  {upcoming.length === 0 ? (
-                    <p className="mt-3 text-sm text-slate-500">لا مواعيد قادمة.</p>
-                  ) : (
-                    <ul className="mt-3 space-y-2">
-                      {upcoming.slice(0, 5).map((a) => (
-                        <li key={a.id} className="rounded-xl bg-slate-950/60 p-3 text-sm text-slate-300">
-                          <p>🦷 {a.service || 'خدمة'} · {appointmentStatusAr(a.status)}</p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            📅 {formatDateAr(a.appointment_date)} · 🕐 {formatTimeAr(a.appointment_time ?? '')}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="mt-5 text-sm font-semibold text-white">الزيارات السابقة ({past.length})</p>
-                  <p className="mt-1 text-xs text-slate-500">التفاصيل الكاملة في تبويب «📅 المواعيد».</p>
+                    <p className="mt-5 text-sm font-semibold text-white">الزيارات السابقة ({past.length})</p>
+                    <p className="mt-1 text-xs text-slate-500">التفاصيل الكاملة في تبويب «📅 المواعيد».</p>
+                  </div>
                 </div>
               </div>
             )}
+
 
             {tab === 'appointments' && (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">

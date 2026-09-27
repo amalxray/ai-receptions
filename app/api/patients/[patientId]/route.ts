@@ -19,13 +19,24 @@ export async function PUT(request: Request) {
 
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
+    const existing = updateDemoPatient(patientId, {});
+    const existingMeta = (existing?.metadata as Record<string, unknown> | undefined) ?? {};
+    const mergedMeta = {
+      ...existingMeta,
+      source: body.source ?? existingMeta.source ?? 'موقع الويب',
+      status: body.status ?? existingMeta.status ?? 'جديد',
+      ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+      ...(body.date_of_birth !== undefined ? { date_of_birth: body.date_of_birth } : {}),
+    };
+
     const updated = updateDemoPatient(patientId, {
-      name: body.name,
-      email: body.email,
-      phone: body.phone,
-      notes: body.notes,
-      source: body.source ?? 'موقع الويب',
-      status: body.status ?? 'جديد',
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.email !== undefined ? { email: body.email } : {}),
+      ...(body.phone !== undefined ? { phone: body.phone } : {}),
+      ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      source: mergedMeta.source as string,
+      status: mergedMeta.status as string,
+      metadata: mergedMeta,
     });
     if (!updated) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
@@ -39,13 +50,33 @@ export async function PUT(request: Request) {
   }
 
   const supabase = supabaseAdmin;
-  const { data, error } = await supabase.from('patients').update({
-    full_name: body.name,
-    email: body.email,
-    phone_number: body.phone,
-    notes: body.notes,
-    metadata: { source: body.source ?? 'موقع الويب', status: body.status ?? 'جديد' },
-  }).eq('id', patientId).eq('clinic_id', clinicId).select().single();
+
+  // Fetch current metadata to preserve existing fields
+  const { data: currentPatient } = await supabase
+    .from('patients')
+    .select('metadata')
+    .eq('id', patientId)
+    .eq('clinic_id', clinicId)
+    .maybeSingle();
+
+  const existingMeta = (currentPatient?.metadata as Record<string, unknown> | undefined) ?? {};
+  const mergedMeta = {
+    ...existingMeta,
+    source: body.source ?? existingMeta.source ?? 'موقع الويب',
+    status: body.status ?? existingMeta.status ?? 'جديد',
+    ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+    ...(body.date_of_birth !== undefined ? { date_of_birth: body.date_of_birth } : {}),
+  };
+
+  const updateFields: Record<string, unknown> = {
+    metadata: mergedMeta,
+  };
+  if (body.name !== undefined) updateFields.full_name = body.name;
+  if (body.email !== undefined) updateFields.email = body.email;
+  if (body.phone !== undefined) updateFields.phone_number = body.phone;
+  if (body.notes !== undefined) updateFields.notes = body.notes;
+
+  const { data, error } = await supabase.from('patients').update(updateFields).eq('id', patientId).eq('clinic_id', clinicId).select().single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
+import { isValidDateOfBirth } from '@/lib/patientAge';
 
 function formatDateAr(iso: string | null): string {
   if (!iso) return 'بدون تاريخ';
@@ -23,7 +24,20 @@ type PatientRecord = {
   source: string;
   status?: string;
   notes?: string | null;
+  metadata?: { date_of_birth?: string | null; [key: string]: unknown } | null;
 };
+
+/** Shared shape for both the "add" and "edit" patient forms. */
+const EMPTY_PATIENT_FORM = {
+  name: '',
+  email: '',
+  phone: '',
+  source: 'موقع الويب',
+  status: 'جديد',
+  notes: '',
+  dateOfBirth: '',
+};
+
 
 type PatientAppointment = {
   id: string;
@@ -58,8 +72,10 @@ export default function PatientsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<PatientRecord | null>(null);
-  const [formState, setFormState] = useState({ name: '', email: '', phone: '', source: 'موقع الويب', status: 'جديد', notes: '' });
+  const [formState, setFormState] = useState(EMPTY_PATIENT_FORM);
   const [submitting, setSubmitting] = useState(false);
+  /** Form-local validation/save message — kept separate from the list `error`. */
+  const [formError, setFormError] = useState<string | null>(null);
   const [patientAppointments, setPatientAppointments] = useState<PatientAppointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [communications, setCommunications] = useState<PatientCommunication[]>([]);
@@ -170,6 +186,11 @@ export default function PatientsPage() {
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formState.name.trim() || !clinicId) return;
+    if (formState.dateOfBirth && !isValidDateOfBirth(formState.dateOfBirth)) {
+      setFormError('تاريخ الميلاد غير صالح (يجب أن يكون تاريخًا حقيقيًا في الماضي).');
+      return;
+    }
+    setFormError(null);
     setSubmitting(true);
     setTimeout(() => {}, 0);
     try {
@@ -189,6 +210,7 @@ export default function PatientsPage() {
           source: formState.source,
           status: formState.status,
           notes: formState.notes,
+          date_of_birth: formState.dateOfBirth || null,
         }),
       });
       if (!response.ok) {
@@ -203,9 +225,9 @@ export default function PatientsPage() {
       setSelectedId(savedPatient.id);
       setIsFormOpen(false);
       setEditingPatient(null);
-      setFormState({ name: '', email: '', phone: '', source: 'موقع الويب', status: 'جديد', notes: '' });
+      setFormState({ ...EMPTY_PATIENT_FORM });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Failed to save patient');
+      setFormError(caughtError instanceof Error ? caughtError.message : 'Failed to save patient');
     } finally {
       setSubmitting(false);
     }
@@ -239,7 +261,7 @@ export default function PatientsPage() {
         </div>
         <button
           type="button"
-          onClick={() => { setEditingPatient(null); setFormState({ name: '', email: '', phone: '', source: 'موقع الويب', status: 'جديد', notes: '' }); setIsFormOpen((current) => !current); }}
+          onClick={() => { setEditingPatient(null); setFormState({ ...EMPTY_PATIENT_FORM }); setIsFormOpen((current) => !current); }}
           className="rounded-full bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950"
         >
           {isFormOpen ? 'إلغاء' : 'إضافة مريض'}
@@ -252,6 +274,18 @@ export default function PatientsPage() {
             <input value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} placeholder="اسم المريض" className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" required />
             <input value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} placeholder="البريد الإلكتروني" className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
             <input value={formState.phone} onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))} placeholder="رقم الهاتف" className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
+            <div>
+              <label htmlFor="patient-date-of-birth" className="mb-1 block text-xs text-slate-400">تاريخ الميلاد (يُحسب العمر تلقائيًا في ملف المريض)</label>
+              <input
+                id="patient-date-of-birth"
+                type="date"
+                dir="ltr"
+                max={new Date().toISOString().slice(0, 10)}
+                value={formState.dateOfBirth}
+                onChange={(event) => setFormState((current) => ({ ...current, dateOfBirth: event.target.value }))}
+                className="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100"
+              />
+            </div>
             <select value={formState.source} onChange={(event) => setFormState((current) => ({ ...current, source: event.target.value }))} className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100">
               <option value="موقع الويب">الموقع الإلكتروني</option>
               <option value="الهاتف">الهاتف</option>
@@ -268,9 +302,9 @@ export default function PatientsPage() {
             <button type="submit" disabled={submitting} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">
               {submitting ? 'جارٍ الحفظ...' : editingPatient ? 'حفظ التعديلات' : 'إنشاء مريض'}
             </button>
-            <button type="button" onClick={() => { setIsFormOpen(false); setEditingPatient(null); setFormState({ name: '', email: '', phone: '', source: 'موقع الويب', status: 'جديد', notes: '' }); }} className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300">إلغاء</button>
+            <button type="button" onClick={() => { setIsFormOpen(false); setEditingPatient(null); setFormState({ ...EMPTY_PATIENT_FORM }); }} className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300">إلغاء</button>
           </div>
-          {error && <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
+          {(formError || error) && <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">{formError ?? error}</div>}
         </form>
       ) : null}
 
@@ -300,7 +334,7 @@ export default function PatientsPage() {
                 </div>
                 <div className="mt-4 flex justify-end gap-x-4 gap-y-2 border-t border-slate-800 pt-3 text-sm">
                   <button type="button" onClick={() => setSelectedId(patient.id)} className="text-emerald-400 hover:text-emerald-300">عرض الملف</button>
-                  <button type="button" onClick={() => { setEditingPatient(patient); setFormState({ name: patient.name, email: patient.email, phone: patient.phone, source: patient.source, status: patient.status ?? 'جديد', notes: patient.notes ?? '' }); setIsFormOpen(true); }} className="text-cyan-400 hover:text-cyan-300">تعديل</button>
+                  <button type="button" onClick={() => { setEditingPatient(patient); setFormState({ name: patient.name, email: patient.email, phone: patient.phone, source: patient.source, status: patient.status ?? 'جديد', notes: patient.notes ?? '', dateOfBirth: patient.metadata?.date_of_birth ?? '' }); setIsFormOpen(true); }} className="text-cyan-400 hover:text-cyan-300">تعديل</button>
                   <button type="button" onClick={() => handleDelete(patient.id)} className="text-red-400 hover:text-red-300">حذف</button>
                 </div>
               </div>

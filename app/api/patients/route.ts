@@ -15,6 +15,7 @@ type DemoPatient = {
   created_at: string;
   updated_at: string;
   notes?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 function toPatientShape(record: any): DemoPatient {
@@ -31,6 +32,7 @@ function toPatientShape(record: any): DemoPatient {
     created_at: record?.created_at ?? new Date().toISOString(),
     updated_at: record?.updated_at ?? new Date().toISOString(),
     notes: record?.notes ?? null,
+    metadata: record?.metadata ?? null,
   };
 }
 
@@ -78,6 +80,12 @@ export async function GET(req: Request) {
 export async function POST(request: Request) {
   const config = getSupabaseEnvConfig();
   const body = await request.json();
+  const metadata = {
+    source: body.source ?? 'موقع الويب',
+    status: body.status ?? 'جديد',
+    ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
+    ...(body.date_of_birth ? { date_of_birth: body.date_of_birth } : {}),
+  };
   const payload = {
     id: crypto.randomUUID(),
     clinic_id: body.clinic_id ?? '00000000-0000-0000-0000-000000000000',
@@ -86,9 +94,10 @@ export async function POST(request: Request) {
     // (clinic_id, lower(email)); store NULL for "no email" instead.
     email: (body.email ?? '').trim() || null,
     phone: (body.phone ?? body.phone_number ?? '').trim() || null,
-    source: body.source ?? 'موقع الويب',
-    status: body.status ?? 'جديد',
+    source: metadata.source,
+    status: metadata.status,
     notes: body.notes ?? null,
+    metadata,
   };
 
   if (!config.isConfigured) {
@@ -112,7 +121,7 @@ export async function POST(request: Request) {
         email: payload.email,
         phone_number: payload.phone,
         notes: payload.notes,
-        metadata: { source: payload.source, status: payload.status },
+        metadata: payload.metadata,
       })
       .select()
       .single();

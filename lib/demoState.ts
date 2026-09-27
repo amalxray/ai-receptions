@@ -11,6 +11,7 @@ type DemoPatient = {
   created_at: string;
   updated_at: string;
   notes?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type DemoAppointment = {
@@ -61,6 +62,9 @@ const demoPatients: DemoPatient[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     notes: 'مريض جديد يحتاج متابعة.',
+    metadata: {
+      date_of_birth: '1989-05-14',
+    },
   },
   {
     id: '22222222-2222-2222-2222-222222222222',
@@ -73,6 +77,9 @@ const demoPatients: DemoPatient[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     notes: 'إجراء متابعة بعد تنظيف الأسنان.',
+    metadata: {
+      date_of_birth: '1995-10-20',
+    },
   },
 ];
 
@@ -126,6 +133,7 @@ export function createDemoPatient(input: Partial<DemoPatient> & Pick<DemoPatient
     created_at: input.created_at ?? new Date().toISOString(),
     updated_at: input.updated_at ?? new Date().toISOString(),
     notes: input.notes ?? null,
+    metadata: input.metadata ?? {},
   };
   demoPatients.unshift(created);
   return created;
