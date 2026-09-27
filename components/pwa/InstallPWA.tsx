@@ -16,9 +16,11 @@ import { usePWAInstall } from '@/hooks/usePWAInstall';
  * space (`/{slug}`, owned by the page), the platform name everywhere else.
  *
  * iOS has no `beforeinstallprompt`, and Apple allows "Add to Home Screen" in
- * Safari ONLY. Android therefore gets the native prompt while iPhone gets a
- * Share-sheet walkthrough — and, inside Facebook/Instagram/WhatsApp, the
- * "open it in Safari first" step, which is where the option silently vanishes.
+ * Safari ONLY. Android has the native prompt but only once Chrome's engagement
+ * heuristic is satisfied, so both platforms get a permanent button that uses the
+ * prompt when one exists and otherwise walks the visitor through their browser's
+ * own menu — inside Facebook/Instagram/WhatsApp that walkthrough starts by
+ * copying the link, since those webviews offer no install option at all.
  */
 export type InstallPWAProps = {
   variant?: 'inline' | 'floating';
@@ -41,21 +43,25 @@ export default function InstallPWA({
     mounted,
     shouldShow,
     isIOS,
+    isAndroid,
     /** Non-null inside an in-app browser (فيسبوك/إنستغرام/واتساب…). */
     inAppBrowser,
     canPromptNatively,
     install,
     dismiss,
-    showIOSHelp,
-    openIOSHelp,
-    closeIOSHelp,
+    showManualHelp,
+    openManualHelp,
+    closeManualHelp,
   } = usePWAInstall();
   const [busy, setBusy] = useState(false);
 
   const handleInstall = useCallback(async () => {
-    // iOS never fires `beforeinstallprompt` → guide the visitor instead.
-    if (isIOS && !canPromptNatively) {
-      openIOSHelp();
+    // No native dialog means iOS (never fires) or Android whose engagement
+    // heuristic has not been satisfied yet. Both still have a manual
+    // "Add to Home Screen" path, so show the matching walkthrough rather than
+    // a click that silently does nothing.
+    if (!canPromptNatively) {
+      openManualHelp();
       return;
     }
     setBusy(true);
@@ -64,9 +70,12 @@ export default function InstallPWA({
     } finally {
       setBusy(false);
     }
-  }, [canPromptNatively, install, isIOS, openIOSHelp]);
+  }, [canPromptNatively, install, openManualHelp]);
 
   if (!mounted || !shouldShow) return null;
+
+  /** iPhone/iPad get the Share-sheet steps; everyone else gets the ⋮ menu. */
+  const manualPlatform: 'ios' | 'android' = isIOS && !isAndroid ? 'ios' : 'android';
 
   const pill = (
     <button
@@ -83,8 +92,13 @@ export default function InstallPWA({
     return (
       <>
         {pill}
-        {showIOSHelp && (
-          <IOSInstallHelp appName={appName} inAppBrowser={inAppBrowser} onClose={closeIOSHelp} />
+        {showManualHelp && (
+          <ManualInstallHelp
+            appName={appName}
+            platform={manualPlatform}
+            inAppBrowser={inAppBrowser}
+            onClose={closeManualHelp}
+          />
         )}
       </>
     );
@@ -120,25 +134,35 @@ export default function InstallPWA({
           ✕
         </button>
       </div>
-      {showIOSHelp && (
-        <IOSInstallHelp appName={appName} inAppBrowser={inAppBrowser} onClose={closeIOSHelp} />
+      {showManualHelp && (
+        <ManualInstallHelp
+          appName={appName}
+          platform={manualPlatform}
+          inAppBrowser={inAppBrowser}
+          onClose={closeManualHelp}
+        />
       )}
     </>
   );
 }
 
 /**
- * iOS only — Safari exposes no install API at all, so the steps are shown
- * visually. Apple deliberately keeps "Add to Home Screen" inside Safari, which is
- * why the walkthrough starts by getting the visitor into a browser that has it
- * (with a copy-link action instead of leaving them stuck in a webview).
+ * Manual install walkthrough — the path taken whenever no native dialog exists:
+ * iOS (Safari exposes no install API at all) and Android before Chrome releases
+ * `beforeinstallprompt` after its engagement heuristic. Both keep the option
+ * inside their own browser menu, so the first step is always "open this page in
+ * that browser" — inside Facebook/Instagram/WhatsApp there is no menu at all on
+ * either OS, which is why the copy-link action exists.
  */
-function IOSInstallHelp({
+function ManualInstallHelp({
   appName,
+  platform,
   inAppBrowser,
   onClose,
 }: {
   appName: string;
+  /** Which menu the visitor must use: the iOS Share sheet vs. Chrome's ⋮ menu. */
+  platform: 'ios' | 'android';
   /** Friendly name of the in-app browser, or null in a real browser. */
   inAppBrowser: string | null;
   onClose: () => void;
@@ -157,7 +181,10 @@ function IOSInstallHelp({
     }
   }, []);
 
-  const steps = [
+  /** iOS keeps install in Safari only; Android's webviews simply have no menu. */
+  const isIOSPath = platform === 'ios';
+  const browserName = isIOSPath ? 'Safari' : 'Chrome';
+  const iosSteps = [
     {
       icon: '🧭',
       title: 'افتح الصفحة في Safari',
@@ -181,19 +208,45 @@ function IOSInstallHelp({
       text: `ستظهر أيقونة «${appName}» على شاشة هاتفك وتُفتح كتطبيق مستقل بدون شريط المتصفح.`,
     },
   ];
+
+  const androidSteps = [
+    {
+      icon: '⋮',
+      title: `افتح قائمة ${browserName}`,
+      text: inAppBrowser
+        ? `أنت داخل ${inAppBrowser}، وهذا التطبيق لا يملك زر القائمة ولا خيار التثبيت أصلاً. اضغط «انسخ الرابط» ثم الصقه في ${browserName}، أو استخدم زر المشاركة واختر «فتح في ${browserName}».`
+        : 'زر القائمة (ثلاث نقاط) في أعلى شريط العنوان — وفي بعض إصدارات Chrome تجده أسفل الشاشة بجانب شريط العنوان.',
+    },
+    {
+      icon: '📌',
+      title: 'اختر «تثبيت التطبيق»',
+      text: 'وقد يظهر باسم «إضافة إلى الشاشة الرئيسية» أو «Install app» أو «Add to Home screen» — كلها نفس الشيء.',
+    },
+    {
+      icon: '✅',
+      title: 'أكّد الضغط على «تثبيت»',
+      text: `ستظهر أيقونة «${appName}» على شاشة هاتفك وتُفتح كتطبيق مستقل بدون شريط المتصفح.`,
+    },
+  ];
+
+  const steps = isIOSPath ? iosSteps : androidSteps;
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="تعليمات تثبيت التطبيق على iPhone"
+      aria-label={`تعليمات تثبيت التطبيق على ${isIOSPath ? 'iPhone' : 'أندرويد'}`}
       className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/70 p-4 backdrop-blur-sm sm:items-center"
     >
       <div dir="rtl" className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-5 text-right shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-black text-white">أضف «{appName}» إلى شاشة iPhone</h2>
+            <h2 className="text-base font-black text-white">
+              أضف «{appName}» إلى شاشة {isIOSPath ? 'iPhone' : 'هاتفك'}
+            </h2>
             <p className="mt-1 text-xs text-slate-400">
-              {inAppBrowser ? 'الخيار مخفي في هذا المتصفح — أربع خطوات من Safari.' : 'أربع خطوات سريعة من Safari.'}
+              {inAppBrowser
+                ? `الخيار مخفي في هذا المتصفح — خطوات سريعة من ${browserName}.`
+                : `خطوات سريعة من قائمة ${browserName}.`}
             </p>
           </div>
           <button
@@ -219,8 +272,9 @@ function IOSInstallHelp({
           ))}
         </ol>
         <p className="mt-3 rounded-xl bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
-          ملاحظة: Apple لا تسمح لأي موقع بإظهار نافذة تثبيت تلقائية على iPhone (بخلاف أندرويد)،
-          فالإضافة إلى الشاشة تبقى يدوية من قائمة المشاركة — هذا طبيعي وليس خللًا في الموقع.
+          {isIOSPath
+            ? 'ملاحظة: Apple لا تسمح لأي موقع بإظهار نافذة تثبيت تلقائية على iPhone (بخلاف أندرويد)، فالإضافة إلى الشاشة تبقى يدوية من قائمة المشاركة — هذا طبيعي وليس خللًا في الموقع.'
+            : 'ملاحظة: Chrome يُظهر خيار التثبيت بعد أن تتصفح الصفحة نحو 30 ثانية وتضغط في مكان منها، وقد لا يعرضه لفترة بعد رفض نافذته سابقًا — إن لم يظهر الخيار فتصفح قليلًا ثم أعد فتح القائمة. هذا شرط من المتصفح وليس خللًا في الموقع.'}
         </p>
         {inAppBrowser && (
           <button
@@ -228,7 +282,9 @@ function IOSInstallHelp({
             onClick={copyLink}
             className="mt-3 w-full rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
           >
-            {copied ? '✅ تم نسخ الرابط — افتحه الآن في Safari' : '📋 انسخ الرابط لفتحه في Safari'}
+            {copied
+              ? `✅ تم نسخ الرابط — افتحه الآن في ${browserName}`
+              : `📋 انسخ الرابط لفتحه في ${browserName}`}
           </button>
         )}
         <button

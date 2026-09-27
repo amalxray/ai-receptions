@@ -86,6 +86,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <OrganizationJsonLd />
         {children}
+        {/* PWA - stash `beforeinstallprompt` the moment Chrome fires it. The event
+            is never replayed, and the install button lives in a client component
+            that attaches its own listener after hydration, so a prompt that
+            arrives early would be lost. `usePWAInstall` adopts this copy.
+            No preventDefault() here: Chrome's own infobar stays a valid path. */}
+        <Script id="pwa-prompt-capture" strategy="beforeInteractive">
+          {`window.addEventListener('beforeinstallprompt', function (e) { window.__pwaInstallPrompt = e; });`}
+        </Script>
         {/* PWA - register the offline shell worker once per page load. */}
         <Script id="pwa-sw-register" strategy="afterInteractive">
           {`if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }); }`}
