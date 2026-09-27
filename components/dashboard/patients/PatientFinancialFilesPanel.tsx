@@ -560,12 +560,12 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   }, [balances, invoiceTotal, paymentTotal]);
 
   if (loading) {
-    return <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400">جارٍ تحميل الملف المالي والطبي...</div>;
+    return <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm text-sm text-slate-500">جارٍ تحميل الملف المالي والطبي...</div>;
   }
 return (
     <div className="mt-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-white">الملف المالي والطبي {patientName ? `— ${patientName}` : ''}</p>
+        <p className="text-sm font-semibold text-slate-900">الملف المالي والطبي {patientName ? `— ${patientName}` : ''}</p>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -611,23 +611,23 @@ return (
 
       {/* Balance summary */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <p className="text-xs text-slate-400">إجمالي الفواتير</p>
-          <p className="mt-1 text-lg font-bold text-white">{invoiceTotal.toFixed(2)}</p>
+        <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+          <p className="text-xs text-slate-500">إجمالي الفواتير</p>
+          <p className="mt-1 text-lg font-bold text-slate-900">{invoiceTotal.toFixed(2)}</p>
         </div>
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <p className="text-xs text-slate-400">المدفوع</p>
-          <p className="mt-1 text-lg font-bold text-emerald-300">{paymentTotal.toFixed(2)}</p>
+        <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+          <p className="text-xs text-slate-500">المدفوع</p>
+          <p className="mt-1 text-lg font-bold text-emerald-700">{paymentTotal.toFixed(2)}</p>
         </div>
-        <div className={`rounded-2xl border p-4 ${balance > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-800 bg-slate-900/60'}`}>
-          <p className="text-xs text-slate-400">الرصيد المتبقي</p>
-          <p className={`mt-1 text-lg font-bold ${balance > 0 ? 'text-amber-300' : 'text-slate-300'}`}>{balance.toFixed(2)}</p>
+        <div className={`rounded-2xl border p-4 ${balance > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-200/70 bg-white/80'}`}>
+          <p className="text-xs text-slate-500">الرصيد المتبقي</p>
+          <p className={`mt-1 text-lg font-bold ${balance > 0 ? 'text-amber-700' : 'text-slate-600'}`}>{balance.toFixed(2)}</p>
         </div>
       </div>
 {/* Invoice form */}
       {showInvoiceForm && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <p className="mb-3 text-sm font-semibold text-white">
+        <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+          <p className="mb-3 text-sm font-semibold text-slate-900">
             {reissueFrom ? `🔄 إعادة إصدار من: ${reissueFrom}` : 'إصدار فاتورة جديدة'}
           </p>
           {reissueFrom && (
@@ -644,7 +644,7 @@ return (
                   <select
                     value={line.service_id}
                     onChange={(e) => pickService(line.key, e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/70 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-400 focus:outline-none"
                   >
                     <option value="">— خدمة من القائمة (أو اكتب وصفاً أدناه) —</option>
                     {services.map((service) => (
@@ -656,7 +656,7 @@ return (
                     value={line.description}
                     onChange={(e) => updateLine(line.key, { description: e.target.value })}
                     placeholder={`وصف البند ${index + 1} (يُملأ تلقائياً عند اختيار خدمة)`}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <input
@@ -666,7 +666,7 @@ return (
                   value={line.quantity}
                   onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
                   placeholder="الكمية"
-                  className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
                 />
                 <input
                   type="number"
@@ -675,13 +675,13 @@ return (
                   value={line.unit_price}
                   onChange={(e) => updateLine(line.key, { unit_price: e.target.value })}
                   placeholder="السعر"
-                  className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => removeLine(line.key)}
                   disabled={invLines.length === 1}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-rose-500/60 hover:text-rose-300 disabled:opacity-40"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-rose-400 hover:text-rose-600 disabled:opacity-40"
                 >
                   حذف
                 </button>
@@ -693,13 +693,13 @@ return (
             <button
               type="button"
               onClick={addLine}
-              className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-200 hover:border-cyan-500/60"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-400"
             >
               + إضافة بند
             </button>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-slate-600">
               الإجمالي قبل الإصدار:{' '}
-              <span className="font-bold text-cyan-300">{draftTotal.toFixed(2)} ₪</span>
+              <span className="font-bold text-cyan-700">{draftTotal.toFixed(2)} ₪</span>
             </p>
           </div>
           <div className="mt-3 flex gap-2">
@@ -714,7 +714,7 @@ return (
             <button
               type="button"
               onClick={() => setShowInvoiceForm(false)}
-              className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
             >
               إلغاء
             </button>
@@ -724,13 +724,13 @@ return (
 
       {/* Payment form */}
       {showPaymentForm && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <p className="mb-3 text-sm font-semibold text-white">تسجيل دفعة</p>
+        <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+          <p className="mb-3 text-sm font-semibold text-slate-900">تسجيل دفعة</p>
           <div className="grid gap-3 sm:grid-cols-5">
             <select
               value={payInvoiceId}
               onChange={(e) => setPayInvoiceId(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/70 focus:outline-none sm:col-span-2"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-400 focus:outline-none sm:col-span-2"
             >
               <option value="">اختر الفاتورة...</option>
               {invoices.map((inv) => (
@@ -746,12 +746,12 @@ return (
               value={payAmount}
               onChange={(e) => setPayAmount(e.target.value)}
               placeholder="المبلغ"
-              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/70 focus:outline-none"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
             />
             <select
               value={payMethod}
               onChange={(e) => setPayMethod(e.target.value as typeof payMethod)}
-              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/70 focus:outline-none"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-400 focus:outline-none"
             >
               {Object.entries(METHOD_AR).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
@@ -761,7 +761,7 @@ return (
               type="date"
               value={payDate}
               onChange={(e) => setPayDate(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-cyan-500/70 focus:outline-none"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-400 focus:outline-none"
               aria-label="تاريخ الدفعة"
             />
           </div>
@@ -777,7 +777,7 @@ return (
             <button
               type="button"
               onClick={() => setShowPaymentForm(false)}
-              className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
             >
               إلغاء
             </button>
@@ -785,21 +785,21 @@ return (
         </div>
       )}
 {/* Invoices list */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-        <p className="mb-3 text-sm font-semibold text-white">الفواتير ({invoices.length})</p>
+      <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+        <p className="mb-3 text-sm font-semibold text-slate-900">الفواتير ({invoices.length})</p>
         {invoices.length === 0 ? (
           <p className="text-sm text-slate-500">لا توجد فواتير لهذا المريض.</p>
         ) : (
-          <ul className="divide-y divide-slate-800">
+          <ul className="divide-y divide-slate-200">
             {invoices.map((inv) => (
               <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                 <div>
-                  <p className="font-medium text-slate-200">{inv.invoice_number ?? inv.id.slice(0, 8)}</p>
+                  <p className="font-medium text-slate-700">{inv.invoice_number ?? inv.id.slice(0, 8)}</p>
                   {inv.created_at && <p className="text-xs text-slate-500">{new Date(inv.created_at).toLocaleDateString('ar')}</p>}
                 </div>
                 <div className="text-left">
-                  <p className="font-bold text-white">{Number(inv.total_amount ?? inv.total ?? 0).toFixed(2)}</p>
-                  <p className={`text-xs ${inv.status === 'voided' ? 'text-rose-400' : inv.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                  <p className="font-bold text-slate-900">{Number(inv.total_amount ?? inv.total ?? 0).toFixed(2)}</p>
+                  <p className={`text-xs ${inv.status === 'voided' ? 'text-rose-600' : inv.status === 'paid' ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
                   </p>
                 </div>
@@ -807,7 +807,7 @@ return (
                   <button
                     type="button"
                     onClick={() => void printInvoice(inv)}
-                    className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
                     title="طباعة الفاتورة"
                   >
                     🖨️ طباعة
@@ -816,7 +816,7 @@ return (
                     <button
                       type="button"
                       onClick={() => openVoidDialog(inv)}
-                      className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-300 transition hover:bg-red-500/30"
+                      className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100"
                       title="إلغاء الفاتورة (تبقى برقمها بحالة ملغاة)"
                     >
                       ❌ إلغاء
@@ -827,7 +827,7 @@ return (
                       type="button"
                       onClick={() => void startReissue(inv)}
                       disabled={reissueBusy}
-                      className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/30 disabled:opacity-50"
+                      className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
                       title="إصدار فاتورة جديدة بنفس البيانات (المبلغ قابل للتعديل)"
                     >
                       {reissueBusy ? '…' : '🔄 إعادة إصدار'}
@@ -841,21 +841,21 @@ return (
       </div>
 
       {/* Payments list */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-        <p className="mb-3 text-sm font-semibold text-white">الدفعات ({payments.length})</p>
+      <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+        <p className="mb-3 text-sm font-semibold text-slate-900">الدفعات ({payments.length})</p>
         {payments.length === 0 ? (
           <p className="text-sm text-slate-500">لا توجد دفعات مسجلة لهذا المريض.</p>
         ) : (
-          <ul className="divide-y divide-slate-800">
+          <ul className="divide-y divide-slate-200">
             {payments.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                 <div>
-                  <p className="font-medium text-slate-200">
+                  <p className="font-medium text-slate-700">
                     {METHOD_AR[p.method ?? ''] ?? p.method} {p.receipt_number ? `· ${p.receipt_number}` : ''}
                   </p>
                   {p.created_at && <p className="text-xs text-slate-500">{new Date(p.created_at).toLocaleDateString('ar')}</p>}
                 </div>
-                <p className="font-bold text-emerald-300">+{Number(p.amount ?? 0).toFixed(2)}</p>
+                <p className="font-bold text-emerald-700">+{Number(p.amount ?? 0).toFixed(2)}</p>
               </li>
             ))}
           </ul>
@@ -863,16 +863,16 @@ return (
       </div>
 
       {/* Medical files list */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-        <p className="mb-3 text-sm font-semibold text-white">الملفات الطبية ({files.length})</p>
+      <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+        <p className="mb-3 text-sm font-semibold text-slate-900">الملفات الطبية ({files.length})</p>
         {files.length === 0 ? (
           <p className="text-sm text-slate-500">لا توجد ملفات طبية بعد. يمكنك إرفاق ملف أو نسخ مرفق من المحادثات.</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {files.map((f) => (
-              <li key={f.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              <li key={f.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/70 bg-white p-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-200">{f.original_filename ?? f.file_type ?? 'ملف'}</p>
+                  <p className="truncate text-sm font-medium text-slate-700">{f.original_filename ?? f.file_type ?? 'ملف'}</p>
                   <p className="text-xs text-slate-500">
                     {f.file_type ?? ''} · {f.size_bytes != null ? `${(f.size_bytes / 1024).toFixed(1)} KB` : ''} ·{' '}
                     {f.created_at ? new Date(f.created_at).toLocaleDateString('ar') : ''}
@@ -899,27 +899,27 @@ return (
             onClick={() => {
               if (!voidBusy) setVoidingInvoice(null);
             }}
-            className="absolute inset-0 bg-slate-950/80"
+            className="absolute inset-0 bg-slate-900/50"
           />
-          <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-[2rem] border border-slate-800 bg-slate-950 p-6 shadow-2xl">
-            <h2 className="text-base font-bold text-white">❌ إلغاء الفاتورة</h2>
-            <p className="mt-2 text-sm text-slate-300">
+          <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-base font-bold text-slate-900">❌ إلغاء الفاتورة</h2>
+            <p className="mt-2 text-sm text-slate-600">
               الفاتورة: <span className="font-mono">{voidingInvoice.invoice_number ?? ''}</span> —{' '}
               <span className="font-bold">{Number(voidingInvoice.total_amount ?? voidingInvoice.total ?? 0).toFixed(2)}₪</span>
             </p>
             <p className="mt-1 text-xs text-slate-500">
               تبقى الفاتورة محفوظة برقمها بحالة «ملغاة» (لا تُحذف أبداً). فاتورة عليها دفعات مسجلة يجب عكس دفعاتها أولاً.
             </p>
-            <label className="mt-4 block text-xs text-slate-400">سبب الإلغاء (إلزامي):</label>
+            <label className="mt-4 block text-xs text-slate-500">سبب الإلغاء (إلزامي):</label>
             <textarea
               value={voidReason}
               onChange={(e) => setVoidReason(e.target.value)}
               rows={3}
               placeholder="مثال: خطأ في السعر — 330 بدلاً من 30"
-              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-500/70 focus:outline-none"
+              className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-500 focus:border-red-500/70 focus:outline-none"
             />
             {voidError && (
-              <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              <div role="alert" className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {voidError}
               </div>
             )}
@@ -936,7 +936,7 @@ return (
                 type="button"
                 onClick={() => setVoidingInvoice(null)}
                 disabled={voidBusy}
-                className="rounded-full border border-slate-700 px-5 py-2 text-sm font-semibold text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 رجوع
               </button>
