@@ -249,24 +249,7 @@ const GROUP_KEYS = ['basic_info', 'medical_history', 'insurance', 'emergency_con
  * (intake forms, imports) keep working. Keys the rest of the app already stores
  * (`critical_alert`, `alerts`, `source`, …) are preserved untouched.
  */
-/**
- * Result of {@link serializePatientMetadata}: the JSONB payload written back to
- * `patients.metadata`. Only groups that actually hold data are emitted, so each
- * group is optional at the type level (mirroring the runtime), while any custom
- * key already stored by other features survives the round-trip untouched.
- */
-export type SerializedPatientMetadata = {
-  date_of_birth?: string;
-  basic_info?: Partial<BasicInfo>;
-  medical_history?: Partial<MedicalHistory>;
-  insurance?: Partial<InsuranceInfo>;
-  emergency_contact?: Partial<EmergencyContact>;
-  quick_notes?: QuickNote[];
-  /** Any custom key already stored by other features survives the round-trip. */
-  [key: string]: unknown;
-};
-
-export function serializePatientMetadata(metadata: unknown): SerializedPatientMetadata {
+export function serializePatientMetadata(metadata: unknown): Record<string, unknown> {
   const meta = parsePatientMetadata(metadata);
   const out: Record<string, unknown> = {};
 

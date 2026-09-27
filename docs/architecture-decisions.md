@@ -98,29 +98,6 @@ Implementation مستقبلي للشبكة = **مرحلة مستقلة بأمر 
 مشتركين حقيقيين وبقرار معلن بفك الـdeferral المقصود لـDICOM/Case identity
 (DO-NOT-BUILD-YET — STEP 4 §13).
 
-## D10 — Migration Privilege Rule: `DROP VIEW` يحذف الصلاحيات
-
-**Status: LOCKED — Owner-approved (2026-09-25، بعد حادثة إنتاج).**
-
-**القاعدة الملزمة:** كل migration يُعيد إنشاء view (`drop view` + `create view`)
-**يجب** أن يُعيد الـ`GRANT` صراحةً في نفس الملف، وأن يتحقق منها بعده.
-
-- `DROP VIEW` يحذف ACL الـview بالكامل · `CREATE VIEW` **لا يُعيد** الصلاحيات المحذوفة
-  · و`ALTER VIEW … SET (security_invoker = true)` لا يُعيدها أيضاً (reloption ≠ grant).
-- **الدليل (حادثة 2026-09-25):** `20261018_payroll_pnl_integration.sql` أعاد
-  `financial_period_summary` و`cash_flow_summary` (سطرا 84/168) وأعاد الـreloption مع حارس
-  صارم، لكنه لم يحتوِ أي `GRANT` → الإنتاج: `42501 permission denied for view …`
-  (service_role 403 · anon 401) على هذين الـviewين فقط، بينما `receivable_aging` /
-  `daily_cash_positions` / `payroll_periods` = 200 بنفس المفتاح. الإصلاح:
-  `20261019_fix_view_grants.sql` (منح صريح + حارس relacl). الكاش سليم (PostgREST
-  OpenAPI يعرض `… net_result, payroll`) — ليست مشكلة schema cache.
-- **التحقق يكون بدور التطبيق لا بدور المالك:** فحص 20261018 رجع `expenses = 5800` بنجاح
-  لأن المالك (postgres) لا يخضع للـACL — أي تحقق بعد recreate يجب أن يُنفَّذ عبر
-  REST/dور `service_role` (أو `set role`) وإلا فهو أعمى عن هذا الصنف من الأخطاء.
-- **`anon` لا يُمنح** على views تعتمد جداول لا يملك عليها صلاحية (مثال: `payroll_periods`)
-  حتى مع `security_invoker=true` → سيُستبدل 42501 بآخر. `authenticated` يملك
-  `payroll_periods` (20261012) فيمكن منحه عند ظهور قارئ في المتصفح.
-
 ## DO-NOT-BUILD-YET (مُثبَّت من STEP 4 §13)
 
 Double-entry كامل · Claims engine كامل · Online patient payments/Stripe للمريض · Inventory/POs · DICOM/Imaging · Multi-currency فعلية · Patient portal/Forms/Consent · Voice AI · Franchise dashboards — بكل شرط "متى يصبح منطقيًا" الموثق في تقرير STEP 4.

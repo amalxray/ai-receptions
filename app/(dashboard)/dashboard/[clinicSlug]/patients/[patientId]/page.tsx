@@ -61,32 +61,19 @@ function formatDateAr(iso: string | null): string {
   }
 }
 
-/**
- * N15 design tokens — every surface on this page reuses the exact language of
- * the smart profile card so the file reads as ONE screen, not four widgets.
- */
-const CARD =
-  'rounded-3xl border border-slate-200/80 bg-white/95 p-5 shadow-lg shadow-slate-200/40 backdrop-blur-md sm:p-6';
-const SUBCARD = 'rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm';
-const CARD_TITLE = 'flex items-center gap-2 text-sm font-bold text-slate-800';
-const CARD_HINT = 'text-[11px] font-normal text-slate-400';
-const INPUT_LABEL = 'text-xs font-semibold text-slate-500';
-const INPUT_VALUE = 'text-sm font-medium text-slate-800';
-
 function statusPill(status: string): string {
   const map: Record<string, string> = {
-    confirmed: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    scheduled: 'bg-blue-50 text-blue-700 border border-blue-200',
-    completed: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    cancelled: 'bg-red-50 text-red-700 border border-red-200',
-    no_show: 'bg-amber-50 text-amber-700 border border-amber-200',
-    sent: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    failed: 'bg-red-50 text-red-700 border border-red-200',
-    retried: 'bg-amber-50 text-amber-700 border border-amber-200',
+    confirmed: 'bg-emerald-500/15 text-emerald-300',
+    scheduled: 'bg-cyan-500/15 text-cyan-300',
+    completed: 'bg-cyan-500/15 text-cyan-300',
+    cancelled: 'bg-red-500/15 text-red-300',
+    no_show: 'bg-amber-500/15 text-amber-300',
+    sent: 'bg-emerald-500/15 text-emerald-300',
+    failed: 'bg-red-500/15 text-red-300',
+    retried: 'bg-amber-500/15 text-amber-300',
   };
-  return map[status] ?? 'bg-slate-50 text-slate-600 border border-slate-200';
+  return map[status] ?? 'bg-slate-800 text-slate-400';
 }
-
 
 
 export default function PatientDetailPage() {
@@ -265,17 +252,17 @@ export default function PatientDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link
           href={`/dashboard/${clinicSlug}/patients`}
-          className="rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm backdrop-blur-sm transition hover:border-blue-400 hover:text-blue-600 hover:shadow-md"
+          className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1.5 text-xs text-slate-300 transition hover:border-cyan-500/50 hover:text-white"
         >
           ← العودة للمرضى
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          {patient && <h1 className="text-lg font-extrabold tracking-tight text-slate-900">👤 {patient.name}</h1>}
+          {patient && <h1 className="text-lg font-bold text-white">👤 {patient.name}</h1>}
           {patient && clinicId && !clinicLoading && (
             <button
               type="button"
               onClick={() => setShowTransfer(true)}
-              className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm backdrop-blur-sm transition hover:bg-blue-100 hover:shadow-md"
+              className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
             >
               🩻 تحويل لمركز تصوير
             </button>
@@ -284,27 +271,25 @@ export default function PatientDetailPage() {
       </div>
 
       {loading && (
-        <div className={`${SUBCARD} text-sm text-slate-500`}>جارٍ التحميل...</div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400">جارٍ التحميل...</div>
       )}
       {!loading && error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700 shadow-sm">{error}</div>
+        <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>
       )}
 
       {!loading && !error && patient && (
         <>
           <nav
             aria-label="أقسام ملف المريض"
-            className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-sm backdrop-blur-md"
+            className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
           >
             {TABS.map((t) => (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 ${
-                  tab === t.key
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
-                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700'
+                className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  tab === t.key ? 'bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40' : 'text-slate-300 hover:bg-slate-800/70'
                 }`}
               >
                 {t.label}
@@ -328,39 +313,35 @@ export default function PatientDetailPage() {
                 />
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className={SUBCARD}>
-                    <h2 className={CARD_TITLE}>
-                      <span>📇 تفاصيل التواصل</span>
-                    </h2>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                    <p className="text-sm font-semibold text-white">تفاصيل التواصل</p>
                     <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                      <dt className={INPUT_LABEL}>الهاتف</dt>
-                      <dd className={INPUT_VALUE} dir="ltr">{patient.phone || '—'}</dd>
-                      <dt className={INPUT_LABEL}>البريد</dt>
-                      <dd className={INPUT_VALUE} dir="ltr">{patient.email || '—'}</dd>
-                      <dt className={INPUT_LABEL}>تاريخ الميلاد</dt>
-                      <dd className={INPUT_VALUE} dir="ltr">{patient.metadata?.date_of_birth || 'غير مسجّل'}</dd>
+                      <dt className="text-slate-500">الهاتف</dt>
+                      <dd className="text-slate-200" dir="ltr">{patient.phone || '—'}</dd>
+                      <dt className="text-slate-500">البريد</dt>
+                      <dd className="text-slate-200" dir="ltr">{patient.email || '—'}</dd>
+                      <dt className="text-slate-500">تاريخ الميلاد</dt>
+                      <dd className="text-slate-200" dir="ltr">{patient.metadata?.date_of_birth || 'غير مسجّل'}</dd>
                     </dl>
                   </div>
-                  <div className={SUBCARD}>
-                    <h2 className={CARD_TITLE}>
-                      <span>📅 المواعيد القادمة</span>
-                    </h2>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                    <p className="text-sm font-semibold text-white">المواعيد القادمة</p>
                     {upcoming.length === 0 ? (
-                      <p className="mt-3 text-sm text-slate-400">لا مواعيد قادمة.</p>
+                      <p className="mt-3 text-sm text-slate-500">لا مواعيد قادمة.</p>
                     ) : (
                       <ul className="mt-3 space-y-2">
                         {upcoming.slice(0, 5).map((a) => (
-                          <li key={a.id} className="rounded-xl border border-blue-200/60 bg-blue-50/60 p-3 text-sm text-slate-700">
+                          <li key={a.id} className="rounded-xl bg-slate-950/60 p-3 text-sm text-slate-300">
                             <p>🦷 {a.service || 'خدمة'} · {appointmentStatusAr(a.status)}</p>
-                            <p className="mt-1 text-xs text-slate-500">
+                            <p className="mt-1 text-xs text-slate-400">
                               📅 {formatDateAr(a.appointment_date)} · 🕐 {formatTimeAr(a.appointment_time ?? '')}
                             </p>
                           </li>
                         ))}
                       </ul>
                     )}
-                    <p className="mt-5 text-sm font-bold text-slate-800">الزيارات السابقة ({past.length})</p>
-                    <p className={`mt-1 ${CARD_HINT}`}>التفاصيل الكاملة في تبويب «📅 المواعيد».</p>
+                    <p className="mt-5 text-sm font-semibold text-white">الزيارات السابقة ({past.length})</p>
+                    <p className="mt-1 text-xs text-slate-500">التفاصيل الكاملة في تبويب «📅 المواعيد».</p>
                   </div>
                 </div>
               </div>
@@ -368,26 +349,22 @@ export default function PatientDetailPage() {
 
 
             {tab === 'appointments' && (
-              <section className={CARD}>
-                <h2 className={CARD_TITLE}>
-                  <span>📅 المواعيد</span>
-                  <span className={CARD_HINT}>({appointments.length})</span>
-                </h2>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
                 {apptsLoading ? (
-                  <p className="mt-3 text-sm text-slate-500">جارٍ تحميل المواعيد...</p>
+                  <p className="text-sm text-slate-400">جارٍ تحميل المواعيد...</p>
                 ) : appointments.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">لا توجد مواعيد لهذا المريض.</p>
+                  <p className="text-sm text-slate-500">لا توجد مواعيد لهذا المريض.</p>
                 ) : (
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {appointments.map((appt) => (
-                      <div key={appt.id} className={`${SUBCARD} transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md`}>
+                      <div key={appt.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-slate-900">🦷 {appt.service ?? 'خدمة غير محددة'}</span>
+                          <span className="font-semibold text-slate-100">🦷 {appt.service ?? 'خدمة غير محددة'}</span>
                           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusPill(appt.status)}`}>
                             {appointmentStatusAr(appt.status)}
                           </span>
                         </div>
-                        <div className="mt-3 space-y-1 text-sm text-slate-600">
+                        <div className="mt-3 space-y-1 text-sm text-slate-300">
                           <p>📅 {formatDateAr(appt.appointment_date)}</p>
                           <p>🕐 {formatTimeAr(appt.appointment_time ?? '')}</p>
                           {appt.provider_name ? <p>👨‍⚕️ {appt.provider_name}</p> : null}
@@ -396,7 +373,7 @@ export default function PatientDetailPage() {
                     ))}
                   </div>
                 )}
-              </section>
+              </div>
             )}
 
             {tab === 'financial' && (
@@ -404,39 +381,27 @@ export default function PatientDetailPage() {
             )}
 
             {tab === 'communications' && (
-              <div className={CARD}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className={CARD_TITLE}>
-                    <span>📨 سجل التواصل</span>
-                    <span className={CARD_HINT}>({communications.length} عملية)</span>
-                  </h2>
-                </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
                 {commsLoading ? (
-                  <p className="mt-4 text-sm text-slate-400">جارٍ تحميل سجل التواصل...</p>
+                  <p className="text-sm text-slate-400">جارٍ تحميل سجل التواصل...</p>
                 ) : communications.length === 0 ? (
-                  <p className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white/60 p-4 text-sm text-slate-500">
-                    لا توجد عمليات تواصل بعد.
-                  </p>
+                  <p className="text-sm text-slate-500">لا توجد عمليات تواصل بعد.</p>
                 ) : (
-                  <div className="mt-4 space-y-2">
+                  <div className="space-y-2">
                     {communications.map((comm) => (
-                      <div key={comm.id} className={SUBCARD}>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-sm font-bold text-slate-900">📤 {comm.type}</span>
-                          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusPill(comm.status)}`}>
+                      <div key={comm.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-slate-200">{comm.type}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusPill(comm.status)}`}>
                             {COMMUNICATION_STATUS_AR[comm.status] ?? comm.status}
                           </span>
                         </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                        <div className="mt-1 text-xs text-slate-400">
                           <span>{COMMUNICATION_CHANNEL_AR[comm.channel] ?? comm.channel}</span>
-                          {comm.sent_at ? <span>🕐 أُرسلت: {comm.sent_at.slice(0, 16).replace('T', ' ')}</span> : null}
-                          {comm.attempt_count > 0 ? <span>🔁 محاولات: {comm.attempt_count}</span> : null}
+                          {comm.sent_at ? ` • أُرسلت: ${comm.sent_at.slice(0, 16).replace('T', ' ')}` : ''}
+                          {comm.attempt_count > 0 ? ` • محاولات: ${comm.attempt_count}` : ''}
                         </div>
-                        {comm.last_error && (
-                          <div className="mt-2 rounded-xl border border-red-200/70 bg-red-50 px-3 py-2 text-[11px] text-red-700">
-                            خطأ: {comm.last_error}
-                          </div>
-                        )}
+                        {comm.last_error && <div className="mt-1 text-xs text-red-400">خطأ: {comm.last_error}</div>}
                       </div>
                     ))}
                   </div>
@@ -449,10 +414,10 @@ export default function PatientDetailPage() {
 
       {transferMsg && (
         <div
-          className="rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 text-sm font-semibold text-emerald-800 shadow-sm backdrop-blur-sm"
+          className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200"
           role="status"
         >
-          ✅ {transferMsg}
+          {transferMsg}
         </div>
       )}
 
