@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
+import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
 import { resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
 import SmartPatientProfile, {
@@ -17,7 +18,8 @@ import SmartPatientProfile, {
 /**
  * PATIENT DETAIL — full standalone page (/dashboard/{slug}/patients/{id}).
  * Replaces the cramped stacked layout inside the patients list: tabs give
- * each domain (overview / appointments / financial+files / communications)
+ * each domain (overview / appointments / financial / medical files /
+ * communications)
  * real width, the shell is responsive, and each tab fetches its own data
  * lazily. All data comes from membership-guarded APIs.
  */
@@ -47,7 +49,8 @@ type PatientCommunication = {
 const TABS = [
   { key: 'overview', label: '📋 نظرة عامة' },
   { key: 'appointments', label: '📅 المواعيد' },
-  { key: 'financial', label: '💰 المالية والملفات' },
+  { key: 'financial', label: '💰 المالية' },
+  { key: 'files', label: '🖼️ ملفات الأشعة' },
   { key: 'communications', label: '🗨️ التواصل' },
 ] as const;
 
@@ -307,7 +310,7 @@ export default function PatientDetailPage() {
                   stats={smartStats}
                   appointments={smartAppointments}
                   onOpenVisits={() => setTab('appointments')}
-                  onOpenFiles={() => setTab('financial')}
+                  onOpenFiles={() => setTab('files')}
                   onOpenInvoices={() => setTab('financial')}
                   onOpenReferrals={() => setShowTransfer(true)}
                   onOpenTimelineDetail={() => setTab('appointments')}
@@ -379,6 +382,20 @@ export default function PatientDetailPage() {
 
             {tab === 'financial' && (
               <PatientFinancialFilesPanel patientId={patient.id} patientName={patient.name} />
+            )}
+
+            {/* Medical imaging files: direct upload up to 2 GiB (X-ray / CBCT / DICOM). */}
+            {tab === 'files' && clinicId && (
+              <PatientMedicalFilesTab
+                clinicId={clinicId}
+                patientId={patient.id}
+                authHeaders={authHeaders}
+                onCountChange={(count) =>
+                  setOverviewCounts((prev) =>
+                    prev.filesCount === count ? prev : { ...prev, filesCount: count }
+                  )
+                }
+              />
             )}
 
             {tab === 'communications' && (
