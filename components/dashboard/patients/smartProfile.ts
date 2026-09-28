@@ -8,7 +8,12 @@
  * Persistence contract (NO migration): every extra field lives inside the
  * existing `patients.metadata` jsonb under a stable group:
  *   basic_info | medical_history | insurance | emergency_contact | quick_notes
+ *
+ * N15.1: the age is typed MANUALLY (`age`, in years) and stored both flat and
+ * inside `basic_info`; `date_of_birth` stays readable for legacy records only.
  */
+
+import { calculatePatientAge, formatAgeAr } from '@/lib/patientAge';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -105,6 +110,15 @@ export type BasicInfo = {
 };
 
 export type SmartPatientMetadata = {
+  /**
+   * N15.1 — manual age in YEARS as typed by the doctor ("35"). `''` = unknown.
+   * Mirrored inside `basic_info.age` so both readers stay happy.
+   */
+  age: string;
+  /**
+   * Legacy source only: records created before N15.1 stored a birth date and
+   * the age was derived from it. New patients leave it empty.
+   */
   date_of_birth: string;
   basic_info: BasicInfo;
   medical_history: MedicalHistory;
@@ -184,6 +198,8 @@ export function parsePatientMetadata(metadata: unknown): SmartPatientMetadata {
 
   return {
     ...source,
+    // N15.1 — the manual age is read flat (`age`) or nested (`basic_info.age`).
+    age: pickScalar(basic.age, source.age),
     date_of_birth: asString(source.date_of_birth) || asString(basic.date_of_birth),
     basic_info: {
       age: pickScalar(basic.age, source.age),
@@ -249,11 +265,30 @@ const GROUP_KEYS = ['basic_info', 'medical_history', 'insurance', 'emergency_con
  * (intake forms, imports) keep working. Keys the rest of the app already stores
  * (`critical_alert`, `alerts`, `source`, …) are preserved untouched.
  */
-export function serializePatientMetadata(metadata: unknown): Record<string, unknown> {
+/**
+ * Result of {@link serializePatientMetadata}: the JSONB payload written back to
+ * `patients.metadata`. Only groups that actually hold data are emitted, so each
+ * group is optional at the type level (mirroring the runtime), while any custom
+ * key already stored by other features survives the round-trip untouched.
+ */
+export type SerializedPatientMetadata = {
+  /** N15.1 — manual age written flat so flat readers find it without nesting. */
+  age?: string;
+  date_of_birth?: string;
+  basic_info?: Partial<BasicInfo>;
+  medical_history?: Partial<MedicalHistory>;
+  insurance?: Partial<InsuranceInfo>;
+  emergency_contact?: Partial<EmergencyContact>;
+  quick_notes?: QuickNote[];
+  /** Any custom key already stored by other features survives the round-trip. */
+  [key: string]: unknown;
+};
+
+export function serializePatientMetadata(metadata: unknown): SerializedPatientMetadata {
   const meta = parsePatientMetadata(metadata);
   const out: Record<string, unknown> = {};
 
-  const owned = new Set<string>([...GROUP_KEYS, 'date_of_birth', 'quick_notes']);
+  const owned = new Set<string>([...GROUP_KEYS, 'age', 'date_of_birth', 'quick_notes']);
   for (const [key, value] of Object.entries(meta)) {
     if (owned.has(key) || value === undefined || value === null) continue;
     if (typeof value === 'string' && !value.trim()) continue;
@@ -263,6 +298,9 @@ export function serializePatientMetadata(metadata: unknown): Record<string, unkn
 
   const dateOfBirth = meta.date_of_birth.trim();
   if (dateOfBirth) out.date_of_birth = dateOfBirth;
+
+  const manualAge = meta.age.trim();
+  if (manualAge) out.age = manualAge;
 
   const basic = Object.entries(meta.basic_info).filter(([, v]) => asString(v).trim()) as [string, string][];
   if (basic.length) out.basic_info = Object.fromEntries(basic.map(([k, v]) => [k, v.trim()]));
@@ -297,6 +335,7 @@ export function serializePatientMetadata(metadata: unknown): Record<string, unkn
 /** Healthy default for a patient with no metadata yet. */
 export function emptyMetadata(): SmartPatientMetadata {
   return {
+    age: '',
     date_of_birth: '',
     basic_info: { age: '', gender: '', blood_type: '', address: '' },
     medical_history: {
@@ -315,6 +354,67 @@ export function emptyMetadata(): SmartPatientMetadata {
 }
 
 /* ------------------------------------------------------------------ */
+/* N15.1 — العمر اليدوي (Manual age)                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Upper bound for a hand-typed age — mirrors `isValidDateOfBirth`'s 130-year
+ * ceiling in `lib/patientAge` so both entry paths reject the same junk.
+ */
+export const MAX_PATIENT_AGE = 130;
+
+/**
+ * "35" | 35 | " 35 " → 35. Anything else (empty, negative, decimals, letters,
+ * or more than {@link MAX_PATIENT_AGE} years) → null.
+ */
+export function parseManualAge(value: unknown): number | null {
+  const raw = (typeof value === 'number' ? String(value) : asString(value)).trim();
+  if (!/^\d{1,3}$/.test(raw)) return null;
+  const years = Number(raw);
+  return years <= MAX_PATIENT_AGE ? years : null;
+}
+
+/**
+ * Patient-form validation for the manual age field: BLANK is accepted (the
+ * field is optional and clearing it removes the age), otherwise the value must
+ * be a whole number of years between 0 and {@link MAX_PATIENT_AGE}.
+ */
+export function isValidManualAge(value: unknown): boolean {
+  const raw = (typeof value === 'number' ? String(value) : asString(value)).trim();
+  return raw === '' || parseManualAge(raw) !== null;
+}
+
+/**
+ * Manual years → Arabic label ("35 سنة"، "سنة واحدة"، "سنتان"). A `0` means the
+ * doctor only gave years, so "أقل من سنة" is the honest label.
+ */
+export function formatManualAgeAr(value: unknown): string {
+  const years = parseManualAge(value);
+  if (years === null) return 'غير محدد';
+  if (years === 0) return 'أقل من سنة';
+  return formatAgeAr({ years, months: 0, days: 0 });
+}
+
+/** The manual age stored on the record (flat `age` or `basic_info.age`). */
+export function readManualAge(metadata: unknown): string {
+  return parsePatientMetadata(metadata).age.trim();
+}
+
+/**
+ * N15.1 — what the patient file shows: the MANUAL age first, and only when it
+ * is missing do we fall back to deriving the age from a legacy
+ * `date_of_birth`. Returns "غير محدد" when neither is available.
+ */
+export function resolvePatientAgeLabel(metadata: unknown): string {
+  const meta = parsePatientMetadata(metadata);
+  if (parseManualAge(meta.age) !== null) return formatManualAgeAr(meta.age);
+  return formatAgeAr(calculatePatientAge(meta.date_of_birth));
+}
+
+/* ------------------------------------------------------------------ */
+/* Completion ring + alerts                                            */
+
+/* ------------------------------------------------------------------ */
 /* Completion ring + alerts                                            */
 /* ------------------------------------------------------------------ */
 
@@ -325,7 +425,8 @@ export function profileCompleteness(
 ): { score: number; missing: string[] } {
   const medical = metadata.medical_history;
   const checks: { ok: boolean; label: string }[] = [
-    { ok: Boolean(metadata.date_of_birth), label: 'تاريخ الميلاد' },
+    // N15.1 — a hand-typed age counts, and a legacy birth date still counts too.
+    { ok: Boolean(metadata.age.trim() || metadata.date_of_birth), label: 'العمر' },
     { ok: Boolean(metadata.basic_info.blood_type), label: 'فصيلة الدم' },
     { ok: Boolean(metadata.basic_info.gender), label: 'الجنس' },
     { ok: Boolean(patient.phone), label: 'الهاتف' },
@@ -377,7 +478,8 @@ export function calculateProfileCompletion(
     { ok: Boolean(patient.name?.trim()), label: 'الاسم' },
     { ok: Boolean(patient.phone), label: 'الهاتف' },
     { ok: Boolean(patient.email), label: 'البريد' },
-    { ok: Boolean(metadata.date_of_birth), label: 'تاريخ الميلاد' },
+    // N15.1 — the manual age replaces the birth date as the age source.
+    { ok: Boolean(metadata.age.trim() || metadata.date_of_birth), label: 'العمر' },
     { ok: Boolean(metadata.basic_info.blood_type), label: 'فصيلة الدم' },
     { ok: Boolean(metadata.basic_info.gender), label: 'الجنس' },
     { ok: Boolean(metadata.basic_info.address), label: 'العنوان' },
@@ -622,6 +724,7 @@ export function matchesProfileSearch(query: string, patient: SmartPatientData): 
     patient.phone ?? '',
     patient.email ?? '',
     patient.notes ?? '',
+    metadata.age,
     metadata.date_of_birth,
     metadata.basic_info.gender,
     metadata.basic_info.blood_type,
@@ -699,6 +802,7 @@ export function searchProfileSections(
   const haystacks: Record<ProfileSectionId, string[]> = {
     basic: [
       context.patient.name,
+      metadata.age,
       metadata.date_of_birth,
       metadata.basic_info.gender,
       metadata.basic_info.blood_type,

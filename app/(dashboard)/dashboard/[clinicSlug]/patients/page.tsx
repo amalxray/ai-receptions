@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
-import { isValidDateOfBirth } from '@/lib/patientAge';
+import { MAX_PATIENT_AGE, formatManualAgeAr, isValidManualAge, parseManualAge, readManualAge } from '@/components/dashboard/patients/smartProfile';
 
 function formatDateAr(iso: string | null): string {
   if (!iso) return 'بدون تاريخ';
@@ -24,8 +24,21 @@ type PatientRecord = {
   source: string;
   status?: string;
   notes?: string | null;
-  metadata?: { date_of_birth?: string | null; [key: string]: unknown } | null;
+  metadata?: {
+    /** N15.1 — manual age in years (written flat; `basic_info.age` also read). */
+    age?: string | number | null;
+    /** Legacy records only — the age is no longer derived from a birth date. */
+    date_of_birth?: string | null;
+    basic_info?: { age?: string | number | null; [key: string]: unknown } | null;
+    [key: string]: unknown;
+  } | null;
 };
+
+/** Manual-age label for a list row ("35 سنة") — '' when the age is unknown. */
+function patientAgeLabel(patient: PatientRecord): string {
+  const label = formatManualAgeAr(readManualAge(patient.metadata));
+  return label === 'غير محدد' ? '' : label;
+}
 
 /** Shared shape for both the "add" and "edit" patient forms. */
 const EMPTY_PATIENT_FORM = {
@@ -35,7 +48,8 @@ const EMPTY_PATIENT_FORM = {
   source: 'موقع الويب',
   status: 'جديد',
   notes: '',
-  dateOfBirth: '',
+  /** N15.1 — age in years, typed manually by the receptionist. */
+  age: '',
 };
 
 
@@ -186,10 +200,12 @@ export default function PatientsPage() {
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formState.name.trim() || !clinicId) return;
-    if (formState.dateOfBirth && !isValidDateOfBirth(formState.dateOfBirth)) {
-      setFormError('تاريخ الميلاد غير صالح (يجب أن يكون تاريخًا حقيقيًا في الماضي).');
+    // N15.1 — the age is typed manually now, so validate it instead of a birth date.
+    if (!isValidManualAge(formState.age)) {
+      setFormError(`العمر غير صالح (أدخل عدد سنوات بين 0 و ${MAX_PATIENT_AGE}).`);
       return;
     }
+    const ageYears = formState.age.trim() ? parseManualAge(formState.age) : null;
     setFormError(null);
     setSubmitting(true);
     setTimeout(() => {}, 0);
@@ -210,7 +226,9 @@ export default function PatientsPage() {
           source: formState.source,
           status: formState.status,
           notes: formState.notes,
-          date_of_birth: formState.dateOfBirth || null,
+          // N15.1 — stored flat in metadata; `parsePatientMetadata` mirrors it
+          // into `basic_info.age` for the profile, and null clears the field.
+          metadata: { age: ageYears === null ? null : String(ageYears) },
         }),
       });
       if (!response.ok) {
@@ -275,14 +293,18 @@ export default function PatientsPage() {
             <input value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} placeholder="البريد الإلكتروني" className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
             <input value={formState.phone} onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))} placeholder="رقم الهاتف" className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
             <div>
-              <label htmlFor="patient-date-of-birth" className="mb-1 block text-xs text-slate-400">تاريخ الميلاد (يُحسب العمر تلقائيًا في ملف المريض)</label>
+              <label htmlFor="patient-age" className="mb-1 block text-xs text-slate-400">العمر (بالسنوات — يُدخل يدويًا)</label>
               <input
-                id="patient-date-of-birth"
-                type="date"
+                id="patient-age"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={MAX_PATIENT_AGE}
+                step={1}
                 dir="ltr"
-                max={new Date().toISOString().slice(0, 10)}
-                value={formState.dateOfBirth}
-                onChange={(event) => setFormState((current) => ({ ...current, dateOfBirth: event.target.value }))}
+                placeholder="مثال: 35"
+                value={formState.age}
+                onChange={(event) => setFormState((current) => ({ ...current, age: event.target.value }))}
                 className="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100"
               />
             </div>
@@ -328,13 +350,14 @@ export default function PatientsPage() {
                     <div className="mt-2 space-y-1 text-sm text-slate-300">
                       {patient.phone ? (<p className="flex items-center gap-2"><span>📞</span><span dir="ltr">{patient.phone}</span></p>) : null}
                       {patient.email ? (<p className="flex items-center gap-2 truncate"><span>✉️</span><span className="truncate" dir="ltr">{patient.email}</span></p>) : null}
+                      {patientAgeLabel(patient) ? (<p className="flex items-center gap-2"><span>🎂</span><span>العمر: {patientAgeLabel(patient)}</span></p>) : null}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-300">{patient.status ?? 'جديد'}</span>
                 </div>
                 <div className="mt-4 flex justify-end gap-x-4 gap-y-2 border-t border-slate-800 pt-3 text-sm">
                   <button type="button" onClick={() => setSelectedId(patient.id)} className="text-emerald-400 hover:text-emerald-300">عرض الملف</button>
-                  <button type="button" onClick={() => { setEditingPatient(patient); setFormState({ name: patient.name, email: patient.email, phone: patient.phone, source: patient.source, status: patient.status ?? 'جديد', notes: patient.notes ?? '', dateOfBirth: patient.metadata?.date_of_birth ?? '' }); setIsFormOpen(true); }} className="text-cyan-400 hover:text-cyan-300">تعديل</button>
+                  <button type="button" onClick={() => { setEditingPatient(patient); setFormState({ name: patient.name, email: patient.email, phone: patient.phone, source: patient.source, status: patient.status ?? 'جديد', notes: patient.notes ?? '', age: readManualAge(patient.metadata) }); setIsFormOpen(true); }} className="text-cyan-400 hover:text-cyan-300">تعديل</button>
                   <button type="button" onClick={() => handleDelete(patient.id)} className="text-red-400 hover:text-red-300">حذف</button>
                 </div>
               </div>

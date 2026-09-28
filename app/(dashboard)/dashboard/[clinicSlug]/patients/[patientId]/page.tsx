@@ -7,6 +7,7 @@ import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
+import { resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
 import SmartPatientProfile, {
   type SmartPatientData,
   type SmartPatientStats,
@@ -320,8 +321,8 @@ export default function PatientDetailPage() {
                       <dd className="text-slate-200" dir="ltr">{patient.phone || '—'}</dd>
                       <dt className="text-slate-500">البريد</dt>
                       <dd className="text-slate-200" dir="ltr">{patient.email || '—'}</dd>
-                      <dt className="text-slate-500">تاريخ الميلاد</dt>
-                      <dd className="text-slate-200" dir="ltr">{patient.metadata?.date_of_birth || 'غير مسجّل'}</dd>
+                      <dt className="text-slate-500">العمر</dt>
+                      <dd className="text-slate-200">{resolvePatientAgeLabel(patient.metadata)}</dd>
                     </dl>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
