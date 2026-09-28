@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { getClinicSlugById } from '@/lib/services/tenantAccess';
 
 const bookingSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -63,6 +65,9 @@ export async function POST(req: Request) {
     logEvent('booking_created', { clinic_id: clinic_id, provider_id: provider_id, appointment_id: appointment.id });
 
     // Send immediate in-app notification to the clinic dashboard
+    // B20 — the link carries the tenant SLUG (the canonical tenant token that
+    // `/dashboard/[clinicSlug]` resolves). The clinic id is only a fallback.
+    const clinicSlug = await getClinicSlugById(clinic_id);
     await createInAppNotification({
       clinicId: clinic_id,
       patientId,
@@ -70,7 +75,7 @@ export async function POST(req: Request) {
       event: 'appointment_new',
       title: 'حجز موعد جديد',
       body: `تم حجز موعد جديد للمريض ${patient_name} بتاريخ ${date} الساعة ${time} (${service}).`,
-      link: `/dashboard/${clinic_id}/appointments`,
+      link: tenantDashboardUrl(clinicSlug ?? clinic_id, 'appointments'),
     });
 
     // Return only safe patient-facing data

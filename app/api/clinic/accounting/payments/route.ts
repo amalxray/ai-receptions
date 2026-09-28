@@ -3,6 +3,8 @@ import { authorizeClinicRequest, roleDenied, PAYMENT_RECORD_ROLES, FINANCE_READ_
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordPayment, listPayments } from '@/lib/services/accounting';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { getClinicSlugById } from '@/lib/services/tenantAccess';
 
 export async function POST(req: Request) {
   try {
@@ -32,12 +34,17 @@ export async function POST(req: Request) {
       paymentDate: payment_date ?? null,
       actorUserId: authorization.user?.id ?? null,
     });
+    // B20 — `/dashboard/{clinic_id}/accounting/invoices/{id}` 404s twice over: the
+    // tenant token was an id, and the accounting module has no dashboard page
+    // (the API exists, the UI lives in the patient file + financial intelligence).
+    // The canonical landing page for "a payment arrived" is financial-intelligence.
+    const clinicSlug = await getClinicSlugById(body.clinic_id);
     void createInAppNotification({
       clinicId: body.clinic_id,
       event: 'payment_received',
       title: 'دفعة مالية جديدة',
       body: `تم تسجيل دفعة بقيمة ${amount} (${method || 'نقدي'})`,
-      link: `/dashboard/${body.clinic_id}/accounting/invoices/${encodeURIComponent(invoice_id)}`,
+      link: tenantDashboardUrl(clinicSlug ?? body.clinic_id, 'financial-intelligence'),
     });
     return NextResponse.json({ data: result }, { status: 201 });
 

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { reschedulePublicBooking } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { getClinicSlugById } from '@/lib/services/tenantAccess';
 
 const rescheduleSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -34,6 +36,8 @@ export async function POST(req: Request) {
     logEvent('booking_rescheduled', { clinic_id, appointment_id, new_date: date, new_time: time });
 
     // Send immediate in-app notification to the clinic dashboard
+    // B20 — tenant SLUG in the link (clinic id only as fallback).
+    const clinicSlug = await getClinicSlugById(clinic_id);
     await createInAppNotification({
       clinicId: clinic_id,
       patientId: appointment.patient_id,
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
       event: 'appointment_rescheduled',
       title: 'إعادة جدولة موعد',
       body: `تم تعديل موعد المريض إلى تاريخ ${date} الساعة ${time}.`,
-      link: `/dashboard/${clinic_id}/appointments`,
+      link: tenantDashboardUrl(clinicSlug ?? clinic_id, 'appointments'),
     });
 
     // Public-safe response — no internal fields, no booking token, no patient data.

@@ -27,6 +27,55 @@ function readClinicId(request: NextRequest): string | null {
   return searchParams.get('clinic_id') ?? searchParams.get('clinicId');
 }
 
+/**
+ * B20 — historic notification links are rewritten to surfaces that exist.
+ *
+ * Rows written before this fix carry a tenant token that `resolveTenantAccess`
+ * resolves by its id alias, plus a module segment that was never built:
+ *   `/dashboard/{token}/accounting/invoices/{id}` → `/dashboard/{token}/financial-intelligence`
+ *   `/dashboard/{token}/chat?conversation={id}`   → `/dashboard/{token}/conversations/{id}`
+ * Rewriting on READ is what makes the already-stored rows work without a data
+ * migration; NEW rows are built canonical by their producers, so they pass
+ * through untouched. Anything this function does not recognise is returned
+ * verbatim — it never invents a path, and it never touches the tenant segment
+ * (membership/access control stays in the layout guard).
+ *
+ * Module-local on purpose: a Next.js route file may only export its HTTP verbs,
+ * so the behaviour is asserted through `GET` (see
+ * `tests/unit/notification-tenant-link.test.ts`).
+ */
+function normalizeNotificationLink(link: unknown): string | null {
+  if (typeof link !== 'string') return null;
+  const raw = link.trim();
+  if (!raw || !raw.startsWith('/dashboard/')) return raw || null;
+
+  const [pathPart, queryPart] = raw.split('?');
+  const segments = pathPart.split('/').filter(Boolean);
+  if (segments.length < 3) return raw; // /dashboard or /dashboard/{module} — no tenant module to map
+
+  const [, tenant, module] = segments;
+  if (module === 'accounting') {
+    return `/dashboard/${tenant}/financial-intelligence`;
+  }
+  if (module === 'chat') {
+    const conversationId = new URLSearchParams(queryPart ?? '').get('conversation');
+    return conversationId
+      ? `/dashboard/${tenant}/conversations/${encodeURIComponent(conversationId)}`
+      : `/dashboard/${tenant}/conversations`;
+  }
+  return raw;
+}
+
+/** Replace `payload.link` only when normalisation actually changes it. */
+function withNormalizedLink(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const record = payload as Record<string, unknown>;
+  if (typeof record.link !== 'string' || !record.link) return payload;
+  const link = normalizeNotificationLink(record.link);
+  if (link === record.link) return payload;
+  return { ...record, link };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -58,6 +107,9 @@ export async function GET(request: NextRequest) {
     const normalised = (notifications || []).map((n) => ({
       ...n,
       status: isInAppUnread(n.status) ? 'unread' : 'read',
+      // B20 — historic rows point at modules that do not resolve; map the link to
+      // the live surface so "عرض نص الإشعار" never lands on the 404 page.
+      payload: withNormalizedLink(n.payload),
     }));
 
     // Calculate unread count — must match the producers, not just our own writes.

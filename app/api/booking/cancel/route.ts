@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { cancelPublicBooking } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { getClinicSlugById } from '@/lib/services/tenantAccess';
 
 const cancelSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -30,6 +32,8 @@ export async function POST(req: Request) {
     logEvent('booking_cancelled', { clinic_id, appointment_id });
 
     // Send immediate in-app notification to the clinic dashboard
+    // B20 — tenant SLUG in the link (clinic id only as fallback).
+    const clinicSlug = await getClinicSlugById(clinic_id);
     await createInAppNotification({
       clinicId: clinic_id,
       patientId: appointment.patient_id,
@@ -37,7 +41,7 @@ export async function POST(req: Request) {
       event: 'appointment_cancelled',
       title: 'إلغاء موعد',
       body: `تم إلغاء الموعد المقرّر بتاريخ ${appointment.appointment_date || ''}.`,
-      link: `/dashboard/${clinic_id}/appointments`,
+      link: tenantDashboardUrl(clinicSlug ?? clinic_id, 'appointments'),
     });
 
     return NextResponse.json({ data: appointment });

@@ -10,6 +10,7 @@ import { logEvent } from '@/lib/server/logging';
 import { buildPendingBookingContext } from '@/lib/ai/bookingContextBridge';
 import { buildChatInteractive } from '@/lib/ai/chatInteractive';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 
 // AI generation on the Free Tier can legitimately take 10–30s (measured up to
 // 25s); the platform default (~10s on serverless) was cutting successful
@@ -89,7 +90,10 @@ export async function POST(req: Request) {
       event: 'message_new',
       title: 'رسالة جديدة من مريض',
       body: text.slice(0, 140),
-      link: `/dashboard/${clinic.id}/chat?conversation=${encodeURIComponent(convId)}`,
+      // B20 — `/dashboard/{clinic_id}/chat` never existed as a tenant module and
+      // carried a clinic id instead of the slug. The real surface is the
+      // conversations module, deep-linked to this conversation.
+      link: `${tenantDashboardUrl(clinic.slug, 'conversations')}/${encodeURIComponent(convId)}`,
     });
 
     // AI-outage fallback: the orchestrator persists a safe reply + marks handoff.
