@@ -51,6 +51,15 @@ export async function POST(req: Request) {
     // The recorded upload session must exist for this clinic/path — proves THIS
     // org started the upload (IDOR guard against confirming an arbitrary path).
     const session = await getUploadSession(clinic_id, storage_path);
+    // B22 — surface a lookup FAILURE instead of reporting it as "no session", so a
+    // malformed filter or a missing column can never masquerade as the user's
+    // mistake again (that is exactly how the `is('status','started')` bug below
+    // hid: PostgREST rejected the expression with 400 and the user was told
+    // "لم يُعثر على جلسة رفع").
+    if (session.error) {
+      logEvent('medical_files_upload_session_lookup_failed', { clinic_id, error: session.error.message }, 'error');
+      return NextResponse.json({ error: 'تعذر التحقق من جلسة الرفع — أعد المحاولة' }, { status: 500 });
+    }
     if (!session.data) {
       return NextResponse.json({ error: 'لم يُعثر على جلسة رفع لهذه العيادة — ابدأ الرفع عبر upload-start' }, { status: 403 });
     }
@@ -87,6 +96,11 @@ async function getUploadSession(clinicId: string, storagePath: string) {
     .select('id, status')
     .eq('clinic_id', clinicId)
     .eq('storage_path', storagePath)
-    .is('status', 'started')
+    // B22 — `.eq`, NOT `.is`: PostgREST's `is` operator only accepts
+    // null/true/false/unknown, so `.is('status', 'started')` compiled to
+    // `status=is.started` → 400 PGRST100 ("unexpected \"s\"") → data null → every
+    // confirm was rejected as "no upload session" for EVERY tenant. The smart
+    // upload (upload-start → PUT → confirm) could therefore never complete.
+    .eq('status', 'started')
     .maybeSingle();
 }
