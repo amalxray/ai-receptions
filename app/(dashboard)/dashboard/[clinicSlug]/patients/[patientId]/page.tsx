@@ -90,6 +90,8 @@ export default function PatientDetailPage() {
   const [patient, setPatient] = useState<PatientRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** B37 — bump to re-run the patient load from the error state. */
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [apptsLoading, setApptsLoading] = useState(false);
@@ -116,12 +118,20 @@ export default function PatientDetailPage() {
       setError(null);
       try {
         const headers = await authHeaders();
-        const res = await fetch(`/api/patients?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-        if (!res.ok) throw new Error('بيانات المريض غير متاحة');
-        const data = (await res.json()) as PatientRecord[];
-        const list = Array.isArray(data) ? data : [];
-        const found = list.find((p) => p.id === patientId) ?? null;
-        if (!found) throw new Error('المريض غير موجود في هذه العيادة');
+        // B37: read this patient directly instead of fetching the patients list
+        // and `.find()`-ing it. That list route returns the NEWEST 50 patients
+        // only, so every older patient looked deleted ("المريض غير موجود في هذه
+        // العيادة") even though the row was intact.
+        const res = await fetch(
+          `/api/patients/${encodeURIComponent(patientId)}?clinic_id=${encodeURIComponent(clinicId)}`,
+          { headers }
+        );
+        if (res.status === 401) throw new Error('انتهت الجلسة — أعد تسجيل الدخول ثم أعد المحاولة');
+        if (res.status === 403) throw new Error('لا تملك صلاحية الوصول إلى هذا المريض');
+        if (res.status === 404) throw new Error('لم يُعثر على هذا المريض في هذه العيادة');
+        if (!res.ok) throw new Error('تعذر تحميل بيانات المريض');
+        const found = (await res.json()) as PatientRecord;
+        if (!found || typeof found !== 'object' || !found.id) throw new Error('بيانات المريض غير متاحة');
         setPatient(found);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'حدث خطأ');
@@ -130,7 +140,7 @@ export default function PatientDetailPage() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicId, patientId, clinicLoading]);
+  }, [clinicId, patientId, clinicLoading, reloadKey]);
 
   useEffect(() => {
     // The smart profile (overview) renders the appointment timeline, so the
@@ -278,7 +288,16 @@ export default function PatientDetailPage() {
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400">جارٍ التحميل...</div>
       )}
       {!loading && error && (
-        <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/20"
+          >
+            🔄 إعادة المحاولة
+          </button>
+        </div>
       )}
 
       {!loading && !error && patient && (

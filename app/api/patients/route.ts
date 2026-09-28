@@ -2,39 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { toPatientShape } from '@/lib/services/patientShape';
 import { createDemoPatient, getDemoPatients } from '@/lib/demoState';
-
-type DemoPatient = {
-  id: string;
-  clinic_id: string;
-  name: string;
-  email: string;
-  phone: string;
-  source: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  notes?: string | null;
-  metadata?: Record<string, unknown> | null;
-};
-
-function toPatientShape(record: any): DemoPatient {
-  const source = record?.metadata?.source ?? record?.source ?? 'موقع الويب';
-  const status = record?.metadata?.status ?? record?.status ?? 'جديد';
-  return {
-    id: record?.id ?? crypto.randomUUID(),
-    clinic_id: record?.clinic_id ?? '00000000-0000-0000-0000-000000000000',
-    name: record?.name ?? record?.full_name ?? 'مريض جديد',
-    email: record?.email ?? '',
-    phone: record?.phone ?? record?.phone_number ?? '',
-    source,
-    status,
-    created_at: record?.created_at ?? new Date().toISOString(),
-    updated_at: record?.updated_at ?? new Date().toISOString(),
-    notes: record?.notes ?? null,
-    metadata: record?.metadata ?? null,
-  };
-}
 
 export async function GET(req: Request) {
   const config = getSupabaseEnvConfig();
