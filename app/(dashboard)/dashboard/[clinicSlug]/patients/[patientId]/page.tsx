@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { supabase } from '@/lib/supabase';
 import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
-import { resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
+import { appendQuickNote, resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
 import SmartPatientProfile, {
   type SmartPatientData,
   type SmartPatientStats,
@@ -82,7 +83,7 @@ function statusPill(status: string): string {
 
 export default function PatientDetailPage() {
   const { patientId, clinicSlug } = useParams<{ patientId: string; clinicSlug: string }>();
-  const { clinicId, authHeaders, loading: clinicLoading } = useClinicContext();
+  const { clinicId, authHeaders, role, loading: clinicLoading } = useClinicContext();
 
   const [tab, setTab] = useState<TabKey>('overview');
   const [showTransfer, setShowTransfer] = useState(false);
@@ -227,6 +228,53 @@ export default function PatientDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, clinicId, patientId]);
 
+  /**
+   * B39 — "ملاحظة سريعة" only toggled a collapsed block, so nothing was ever
+   * stored (and for a patient with no notes the click did nothing at all).
+   * Notes are appended to `patients.metadata.quick_notes` through
+   * appendQuickNote, and only that key is sent: the PUT route shallow-merges
+   * `body.metadata` over the existing JSONB, so source / status / medical
+   * history / manual age can never be clobbered by a note. Local state is
+   * updated from the same payload — the notes list and the smart timeline
+   * re-render without a refetch.
+   */
+  const saveQuickNote = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!clinicId || !patient || !trimmed) return;
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const author = sessionData.session?.user?.email ?? role ?? undefined;
+
+      const next = appendQuickNote(patient.metadata, {
+        text: trimmed,
+        date: new Date().toISOString(),
+        ...(author ? { by: author } : {}),
+      });
+
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/patients/${encodeURIComponent(patient.id)}?clinic_id=${encodeURIComponent(clinicId)}`,
+        {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metadata: { quick_notes: next.quick_notes } }),
+        }
+      );
+
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('انتهت الجلسة — أعد تسجيل الدخول ثم أعد المحاولة');
+        if (res.status === 404) throw new Error('لم يُعثر على هذا المريض في هذه العيادة');
+        throw new Error('تعذر حفظ الملاحظة — حاول مرة أخرى');
+      }
+
+      setPatient((prev) =>
+        prev ? { ...prev, metadata: { ...(prev.metadata ?? {}), quick_notes: next.quick_notes } } : prev
+      );
+    },
+    [authHeaders, clinicId, patient, role]
+  );
+
   const upcoming = useMemo(
     () =>
       [...appointments]
@@ -333,6 +381,7 @@ export default function PatientDetailPage() {
                   onOpenInvoices={() => setTab('financial')}
                   onOpenReferrals={() => setShowTransfer(true)}
                   onOpenTimelineDetail={() => setTab('appointments')}
+                  onSaveQuickNote={saveQuickNote}
                 />
 
                 <div className="grid gap-4 lg:grid-cols-2">

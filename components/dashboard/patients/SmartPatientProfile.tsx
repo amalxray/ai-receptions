@@ -17,9 +17,17 @@ import {
   User,
   Sparkles,
   ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { calculatePatientAge, formatAgeAr } from '@/lib/patientAge';
 import { formatTimeAr } from '@/lib/dashboard/labels-ar';
+// B38/B39 — the profile reads the shared phone normalizer and the defensive
+// metadata reader instead of re-implementing either next to the component.
+import {
+  normalizePhoneForWhatsApp,
+  parsePatientMetadata,
+  type QuickNote,
+} from '@/components/dashboard/patients/smartProfile';
 
 export type SmartPatientData = {
   id: string;
@@ -61,7 +69,8 @@ export type SmartTimelineItem = {
   date: string;
   time?: string;
   status: 'completed' | 'in_progress' | 'remaining' | 'cancelled';
-  iconType?: 'visit' | 'file' | 'referral' | 'invoice';
+  /** Kept in sync with `smartProfile.ts#SmartTimelineItem` so either can be passed in. */
+  iconType?: 'visit' | 'file' | 'referral' | 'invoice' | 'note' | 'medical';
 };
 
 interface SmartPatientProfileProps {
@@ -74,6 +83,11 @@ interface SmartPatientProfileProps {
   onOpenReferrals?: () => void;
   onOpenInvoices?: () => void;
   onOpenTimelineDetail?: (item: SmartTimelineItem) => void;
+  /**
+   * B39 — persists a quick note (`metadata.quick_notes`). Throwing rejects keep
+   * the composer open and surface the message under the textarea.
+   */
+  onSaveQuickNote?: (text: string) => Promise<void> | void;
 }
 
 function formatDateAr(iso: string | null | undefined): string {
@@ -211,8 +225,43 @@ export default function SmartPatientProfile({
   onOpenReferrals,
   onOpenInvoices,
   onOpenTimelineDetail,
+  onSaveQuickNote,
 }: SmartPatientProfileProps) {
   const [noteExpanded, setNoteExpanded] = useState(false);
+  // B39 — the quick-note composer used to share the `noteExpanded` toggle, and
+  // the whole notes block was gated on `patient.notes`, so for a patient with no
+  // stored notes clicking "ملاحظة سريعة" did literally nothing.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  const quickNotes: QuickNote[] = parsePatientMetadata(patient.metadata).quick_notes;
+
+  // B38 — wa.me needs country-code digits. A local 05XXXXXXXX used to be pasted
+  // verbatim (https://wa.me/0599123456) and WhatsApp reported the number as
+  // invalid; normalizePhoneForWhatsApp prefixes +970 and drops the leading 0.
+  const whatsappTarget = normalizePhoneForWhatsApp(patient.phone);
+
+  async function submitQuickNote() {
+    const text = noteDraft.trim();
+    if (!text) return;
+    if (!onSaveQuickNote) {
+      setNoteError('حفظ الملاحظات غير متوفر في هذه الشاشة');
+      return;
+    }
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await onSaveQuickNote(text);
+      setNoteDraft('');
+      setComposerOpen(false);
+    } catch (e) {
+      setNoteError(e instanceof Error ? e.message : 'تعذر حفظ الملاحظة');
+    } finally {
+      setNoteSaving(false);
+    }
+  }
 
   const dob =
     patient.metadata?.date_of_birth ||
@@ -230,7 +279,7 @@ export default function SmartPatientProfile({
     .sort((a, b) => b.appointment_date.localeCompare(a.appointment_date));
   const lastVisit = pastAppointments[0];
 
-  const timeline: SmartTimelineItem[] =
+  const appointmentTimeline: SmartTimelineItem[] =
     timelineItems.length > 0
       ? timelineItems
       : appointments.map((appt) => {
@@ -249,6 +298,30 @@ export default function SmartPatientProfile({
             iconType: 'visit',
           };
         });
+
+  // B39 — every quick note is a timeline event ("الخط الزمني يسجّل كل إضافة").
+  // Only merged on the self-built path: a parent that passes `timelineItems`
+  // owns the event list and would otherwise see notes duplicated.
+  const noteTimeline: SmartTimelineItem[] =
+    timelineItems.length > 0
+      ? []
+      : quickNotes.map((note, index) => {
+          const stamp = note.date || '';
+          const hasClock = stamp.length > 10;
+          return {
+            id: `note-${index}-${stamp}`,
+            title: 'ملاحظة طبية',
+            subtitle: note.by ? `${note.text} · ${note.by}` : note.text,
+            date: hasClock ? stamp.slice(0, 10) : stamp,
+            time: hasClock ? stamp.slice(11, 16) : undefined,
+            status: 'completed' as const,
+            iconType: 'note' as const,
+          };
+        });
+
+  const timeline: SmartTimelineItem[] = [...appointmentTimeline, ...noteTimeline].sort((a, b) =>
+    `${b.date}${b.time ?? ''}`.localeCompare(`${a.date}${a.time ?? ''}`)
+  );
 
   return (
     <div
@@ -411,36 +484,109 @@ export default function SmartPatientProfile({
               </div>
             </div>
 
-            {/* Note expansion */}
-            {patient.notes && (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => setNoteExpanded(!noteExpanded)}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
-                >
-                  <FileText className="h-3.5 w-3.5 text-purple-500" />
-                  <span>ملاحظات إضافية</span>
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform duration-200 ${
-                      noteExpanded ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-                <AnimatePresence>
-                  {noteExpanded && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-2 rounded-xl bg-purple-50/60 p-3 text-xs text-purple-900 border border-purple-200/50 leading-relaxed"
+            {/* Notes: legacy free-text + saved quick notes + composer (B39) */}
+            <div className="mt-3 space-y-2">
+              {patient.notes && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setNoteExpanded(!noteExpanded)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-purple-500" />
+                    <span>ملاحظات إضافية</span>
+                    <ChevronDown
+                      className={`h-3 w-3 transition-transform duration-200 ${
+                        noteExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  <AnimatePresence>
+                    {noteExpanded && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-2 rounded-xl bg-purple-50/60 p-3 text-xs text-purple-900 border border-purple-200/50 leading-relaxed"
+                      >
+                        {patient.notes}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              {quickNotes.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    ملاحظات الطبيب ({quickNotes.length})
+                  </p>
+                  {quickNotes.slice(0, noteExpanded ? quickNotes.length : 2).map((note, idx) => (
+                    <div
+                      key={`${note.date}-${idx}`}
+                      className="rounded-xl border border-purple-200/50 bg-purple-50/60 p-2.5 text-xs text-purple-900"
                     >
-                      {patient.notes}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+                      <p className="leading-relaxed">{note.text}</p>
+                      <p className="mt-1 text-[10px] text-purple-500">
+                        📅 {formatDateAr(note.date)}
+                        {note.date.length > 10 ? ` · 🕐 ${note.date.slice(11, 16)}` : ''}
+                        {note.by ? ` · 👨‍⚕️ ${note.by}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <AnimatePresence initial={false}>
+                {composerOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-1 rounded-xl border border-purple-200/70 bg-white/70 p-3">
+                      <textarea
+                        value={noteDraft}
+                        onChange={(event) => setNoteDraft(event.target.value)}
+                        rows={3}
+                        maxLength={2000}
+                        placeholder="اكتب ملاحظة سريعة عن المريض…"
+                        aria-label="نص الملاحظة السريعة"
+                        className="w-full resize-y rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-800 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-200"
+                      />
+                      {noteError && (
+                        <p role="alert" className="mt-1.5 text-[11px] font-semibold text-red-600">
+                          {noteError}
+                        </p>
+                      )}
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void submitQuickNote()}
+                          disabled={noteSaving || !noteDraft.trim()}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {noteSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          {noteSaving ? 'جارٍ الحفظ…' : 'حفظ الملاحظة'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setComposerOpen(false);
+                            setNoteError(null);
+                          }}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* Multi-state Quick Action Buttons */}
             <div className="mt-6 pt-5 border-t border-slate-200/70">
@@ -459,14 +605,10 @@ export default function SmartPatientProfile({
                 <MultiStateActionButton
                   icon={MessageCircle}
                   label="محادثة واتساب"
-                  subLabel="رسالة فورية"
+                  subLabel={whatsappTarget ? `+${whatsappTarget}` : 'رقم غير صالح'}
                   color="blue"
                   badgeLetter="W"
-                  href={
-                    patient.phone
-                      ? `https://wa.me/${patient.phone.replace(/[^0-9]/g, '')}`
-                      : undefined
-                  }
+                  href={whatsappTarget ? `https://wa.me/${whatsappTarget}` : undefined}
                 />
                 <MultiStateActionButton
                   icon={FileText}
@@ -474,7 +616,10 @@ export default function SmartPatientProfile({
                   subLabel="تدوين فوري"
                   color="purple"
                   badgeLetter="N"
-                  onClick={() => setNoteExpanded((v) => !v)}
+                  onClick={() => {
+                    setComposerOpen((v) => !v);
+                    setNoteError(null);
+                  }}
                 />
               </div>
             </div>
@@ -634,7 +779,18 @@ export default function SmartPatientProfile({
             ) : (
               <div className="space-y-6">
                 {timeline.map((item, idx) => {
-                  const statusConfig = {
+                  // A quick note is not a workflow state — it gets its own node
+                  // instead of inheriting the ✅ «تم بنجاح» appointment styling.
+                  const noteConfig = {
+                    badge: '📝 ملاحظة',
+                    badgeClass: 'bg-purple-50 text-purple-700 border-purple-200',
+                    nodeBg: 'bg-purple-500 text-white ring-4 ring-purple-100',
+                    icon: FileText,
+                  };
+                  const statusConfig =
+                    (item.iconType === 'note'
+                      ? noteConfig
+                      : {
                     completed: {
                       badge: '✅ تم بنجاح',
                       badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -664,7 +820,7 @@ export default function SmartPatientProfile({
                     badgeClass: 'bg-slate-50 text-slate-700 border-slate-200',
                     nodeBg: 'bg-slate-400 text-white ring-4 ring-slate-100',
                     icon: Clock,
-                  };
+                  });
 
                   const NodeIcon = statusConfig.icon;
 

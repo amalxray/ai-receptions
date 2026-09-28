@@ -535,12 +535,15 @@ export function deriveCriticalAlerts(
 /* ------------------------------------------------------------------ */
 
 /**
- * Converts a human phone into wa.me digits. Defaults to Jordan (+962) because
- * local numbers are written 07XXXXXXXX. Returns null when undialable.
+ * Converts a human phone into wa.me digits. Defaults to Palestine (+970):
+ * every clinic in this deployment is Palestinian and local numbers are written
+ * 05XXXXXXXX — wa.me rejects the leading 0, so `0599123456` MUST become
+ * `970599123456` or the chat button opens an invalid link (B38).
+ * Returns null when the number is undialable.
  */
 export function normalizePhoneForWhatsApp(
   phone?: string | null,
-  defaultCountryCode = '962'
+  defaultCountryCode = '970'
 ): string | null {
   if (!phone) return null;
   const digits = phone.replace(/[^\d+]/g, '');
