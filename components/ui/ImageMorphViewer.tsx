@@ -9,6 +9,7 @@
  */
 
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export type MorphRect = { top: number; left: number; width: number; height: number };
@@ -35,7 +36,16 @@ export default function ImageMorphViewer({
     };
   }, [viewing, onClose]);
 
-  return (
+  // B19 — portal the overlay into <body>. An ancestor with `backdrop-filter`
+  // (Tailwind `backdrop-blur-*`) or a `transform` becomes the containing block
+  // for `position: fixed` descendants, and an `overflow-hidden` ancestor then
+  // clips this "full-screen" overlay down to its own box — measured at 295x200
+  // inside the N11 medical-file cards instead of the viewport. Rendering in
+  // <body> is immune to every such ancestor. Hooks above have already run in a
+  // stable order, so the SSR guard below cannot change hook count.
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {viewing && (
         <motion.div
@@ -82,6 +92,7 @@ export default function ImageMorphViewer({
           </button>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
