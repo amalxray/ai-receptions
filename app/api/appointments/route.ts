@@ -6,7 +6,16 @@ import { logEvent } from '@/lib/server/logging';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { getCalendarRange } from '@/lib/services/scheduling';
 import { getSupabaseEnvConfig } from '@/lib/config';
-import { createDemoAppointment, getDemoAppointments } from '@/lib/demoState';
+import { createDemoAppointment, getDemoAppointments, demoFallbackAllowed } from '@/lib/demoState';
+
+/**
+ * B51-D — fail-closed answer when the deployment has no Supabase env: in-memory
+ * demo rows are development/test only, so production never answers with fakes.
+ */
+const NOT_CONFIGURED_RESPONSE = {
+  error: 'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تنفيذ الطلب',
+  code: 'NOT_CONFIGURED',
+} as const;
 
 /**
  * B23 — storage contract for wall-clock times.
@@ -110,6 +119,10 @@ export async function GET(req: Request) {
   try {
     const config = getSupabaseEnvConfig();
     if (!config.isConfigured) {
+      // B51-D — demo data is development/test only.
+      if (!demoFallbackAllowed()) {
+        return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+      }
       const appointments = getDemoAppointments().map((appointment) => ({
         ...appointment,
         patient_name: 'مريض تجريبي',
@@ -178,6 +191,10 @@ export async function POST(req: Request) {
 
     const config = getSupabaseEnvConfig();
     if (!config.isConfigured) {
+      // B51-D — no silent demo writes in production.
+      if (!demoFallbackAllowed()) {
+        return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+      }
       const created = createDemoAppointment({
         clinic_id: parsed.data.clinic_id,
         patient_id: parsed.data.patient_id ?? null,

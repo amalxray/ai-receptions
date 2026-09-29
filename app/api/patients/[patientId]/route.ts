@@ -3,7 +3,16 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { toPatientShape } from '@/lib/services/patientShape';
-import { deleteDemoPatient, getDemoPatients, updateDemoPatient } from '@/lib/demoState';
+import { deleteDemoPatient, getDemoPatients, updateDemoPatient, demoFallbackAllowed } from '@/lib/demoState';
+
+/**
+ * B51-D — fail-closed answer when the deployment has no Supabase env: in-memory
+ * demo rows are development/test only, so production never answers with fakes.
+ */
+const NOT_CONFIGURED_RESPONSE = {
+  error: 'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تنفيذ الطلب',
+  code: 'NOT_CONFIGURED',
+} as const;
 
 /** `patients.id` is a `uuid` column — see 20260721_initial_schema.sql. */
 const PATIENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,6 +46,10 @@ export async function GET(request: Request) {
 
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
+    // B51-D — demo data is development/test only.
+    if (!demoFallbackAllowed()) {
+      return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+    }
     const demo = getDemoPatients().find((patient) => patient.id === patientId && patient.clinic_id === clinicId);
     if (!demo) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
@@ -89,6 +102,10 @@ export async function PUT(request: Request) {
 
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
+    // B51-D — no silent demo writes in production.
+    if (!demoFallbackAllowed()) {
+      return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+    }
     const existing = updateDemoPatient(patientId, {});
     const existingMeta = (existing?.metadata as Record<string, unknown> | undefined) ?? {};
     const mergedMeta = {
@@ -169,6 +186,10 @@ export async function DELETE(request: Request) {
 
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
+    // B51-D — deleting from in-memory demo state must never happen in production.
+    if (!demoFallbackAllowed()) {
+      return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+    }
     const deleted = deleteDemoPatient(patientId);
     if (!deleted) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });

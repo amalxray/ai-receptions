@@ -4,7 +4,18 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { toPatientShape } from '@/lib/services/patientShape';
 import { sanitizeSearchQuery } from '@/lib/services/patientSearch';
-import { createDemoPatient, getDemoPatients } from '@/lib/demoState';
+import { createDemoPatient, getDemoPatients, demoFallbackAllowed } from '@/lib/demoState';
+
+/**
+ * B51-D — the fail-closed answer for a deployment that has NO Supabase env.
+ * In-memory demo rows may only ever be served outside production
+ * (`demoFallbackAllowed()`), so a misconfigured production deployment can never
+ * look "alive" while serving fake patients.
+ */
+const NOT_CONFIGURED_RESPONSE = {
+  error: 'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تنفيذ الطلب',
+  code: 'NOT_CONFIGURED',
+} as const;
 
 /** Default page size kept at the historic 50; callers may ask for more (N28). */
 const DEFAULT_LIMIT = 50;
@@ -13,7 +24,9 @@ const MAX_LIMIT = 500;
 export async function GET(req: Request) {
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
-    return NextResponse.json(getDemoPatients());
+    // B51-D — demo data is development/test only (see demoFallbackAllowed).
+    if (demoFallbackAllowed()) return NextResponse.json(getDemoPatients());
+    return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
   }
 
   try {
@@ -95,6 +108,10 @@ export async function POST(request: Request) {
   };
 
   if (!config.isConfigured) {
+    // B51-D — no silent demo writes in production.
+    if (!demoFallbackAllowed()) {
+      return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+    }
     const demoPayload = createDemoPatient(payload);
     return NextResponse.json(demoPayload, { status: 201 });
   }
