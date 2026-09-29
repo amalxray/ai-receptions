@@ -132,19 +132,28 @@ export async function GET(req: Request) {
     const date = url.searchParams.get('date');
     const status = url.searchParams.get('status');
     const providerId = url.searchParams.get('provider_id');
-    let query = supabaseAdmin
-      .from('appointments')
-      .select('*')
-      .eq('clinic_id', clinicId)
-      .order('scheduled_at', { ascending: true })
-      .limit(100);
+    /**
+     * B48 — the patient file MUST be able to ask for one patient.
+     *
+     * Before this filter existed the file page fetched the whole clinic (capped at
+     * 100 rows, ordered by `scheduled_at` ASC) and filtered in the browser, so on a
+     * busy clinic a future appointment could fall outside the window and look
+     * deleted. Rows are still enriched exactly the same way.
+     */
+    const patientId = url.searchParams.get('patient_id');
+    // كل الفلاتر تُبنى قبل `.order().limit()` — النتيجة واحدة في PostgREST، لكن
+    // القراءة أوضح: الفلترة ثم الترتيب ثم السقف.
+    let query = supabaseAdmin.from('appointments').select('*').eq('clinic_id', clinicId);
     if (view && date) {
       const range = getCalendarRange(date, view);
       query = query.gte('scheduled_at', range.start).lt('scheduled_at', range.end);
     }
     if (status) query = query.eq('status', status);
     if (providerId) query = query.eq('provider_id', providerId);
-    const { data, error } = await query;
+    if (patientId) query = query.eq('patient_id', patientId);
+    const { data, error } = await query
+      .order('scheduled_at', { ascending: true })
+      .limit(100);
     if (error) {
       logEvent('appointment_query_failure', { clinic_id: clinicId, error: error.message }, 'error');
       return NextResponse.json({ error: error.message }, { status: 500 });

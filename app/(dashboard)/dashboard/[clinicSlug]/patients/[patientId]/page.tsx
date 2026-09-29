@@ -155,10 +155,30 @@ export default function PatientDetailPage() {
       setApptsLoading(true);
       try {
         const headers = await authHeaders();
-        const res = await fetch(`/api/appointments?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        /**
+         * B48 — عُلّة «الموعد يُسجَّل ثم يختفي».
+         *
+         * GET /api/appointments answers `{ data: [...] }`, but this effect checked
+         * `Array.isArray(body)` and therefore stored an EMPTY list on every load.
+         * A created appointment only ever lived in local state (onCreated), so it
+         * looked saved until the page was refreshed — while the row was safely in
+         * the database the whole time. Read the envelope, and ask the API for this
+         * patient only (the clinic-wide list is capped and ordered oldest-first).
+         */
+        const res = await fetch(
+          `/api/appointments?clinic_id=${encodeURIComponent(clinicId)}&patient_id=${encodeURIComponent(patientId)}`,
+          { headers }
+        );
         if (!res.ok) throw new Error('تعذر تحميل المواعيد');
-        const all = (await res.json()) as PatientAppointment[];
-        setAppointments((Array.isArray(all) ? all : []).filter((a) => a.patient_id === patientId));
+        const payload = await res.json().catch(() => null);
+        const rows: PatientAppointment[] = Array.isArray(payload)
+          ? (payload as PatientAppointment[])
+          : Array.isArray(payload?.data)
+            ? (payload.data as PatientAppointment[])
+            : [];
+        // Defensive: a deployment that ignores `patient_id` still cannot leak
+        // another patient's appointment into this file.
+        setAppointments(rows.filter((a) => a.patient_id === patientId));
       } catch {
         setAppointments([]);
       } finally {
