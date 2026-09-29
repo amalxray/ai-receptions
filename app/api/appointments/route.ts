@@ -8,11 +8,25 @@ import { getCalendarRange } from '@/lib/services/scheduling';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { createDemoAppointment, getDemoAppointments } from '@/lib/demoState';
 
+/**
+ * B23 — storage contract for wall-clock times.
+ * `appointments` has NO time column: the time lives inside `scheduled_at`
+ * (timestamptz). This mirrors lib/services/appointmentReschedule exactly, so a
+ * CREATED and a RESCHEDULED appointment read back identically everywhere.
+ */
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const createAppointmentSchema = z.object({
   clinic_id: z.string().uuid(),
   patient_id: z.string().uuid().optional().nullable(),
   service: z.string().min(1),
   appointment_date: z.string().min(1),
+  /**
+   * B23 — HH:MM clinic-local. Before this existed the dashboard form collected a
+   * time, the API silently dropped it, `scheduled_at` stayed NULL and every new
+   * appointment was displayed as the hardcoded 09:00 fallback.
+   */
+  appointment_time: z.string().regex(TIME_PATTERN, 'appointment_time must be HH:MM').optional().nullable(),
   duration_minutes: z.coerce.number().int().min(15).max(480).default(30),
   provider_id: z.string().uuid().optional().nullable(),
   status: z.enum(['scheduled', 'confirmed', 'pending', 'cancelled']).optional().default('scheduled'),
@@ -24,6 +38,29 @@ const updateAppointmentSchema = z.object({
   appointment_date: z.string().min(1).optional(),
   scheduled_at: z.string().optional(),
 });
+
+/** "2026-09-29" + "14:30" → "2026-09-29T14:30:00.000Z" (reschedule convention). */
+function buildScheduledAt(date?: string | null, time?: string | null): string | null {
+  const day = (date ?? '').slice(0, 10);
+  const clock = (time ?? '').trim().slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !TIME_PATTERN.test(clock)) return null;
+  return `${day}T${clock}:00.000Z`;
+}
+
+/**
+ * B23 — resolves the display time of one row. `scheduled_at` is the source of
+ * truth; a legacy text column is honoured when present; only a row with neither
+ * keeps the historic 09:00 default. Never throws on a malformed timestamp.
+ */
+function readAppointmentTime(row: Record<string, unknown> | null | undefined): string {
+  const scheduled = row?.scheduled_at;
+  if (typeof scheduled === 'string' && scheduled.trim()) {
+    const parsed = new Date(scheduled);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(11, 16);
+  }
+  const legacy = typeof row?.appointment_time === 'string' ? row.appointment_time.trim().slice(0, 5) : '';
+  return TIME_PATTERN.test(legacy) ? legacy : '09:00';
+}
 
 async function getUserFromToken(req: Request) {
   const auth = req.headers.get('authorization') || '';
@@ -65,7 +102,7 @@ async function enrichAppointments(clinicId: string, rows: any[]) {
     ...row,
     patient_name: patientMap[row.patient_id] ?? 'Unknown patient',
     provider_name: providerMap[row.provider_id] ?? null,
-    appointment_time: row.scheduled_at ? new Date(row.scheduled_at).toISOString().slice(11, 16) : '09:00',
+    appointment_time: readAppointmentTime(row),
   }));
 }
 
@@ -76,7 +113,7 @@ export async function GET(req: Request) {
       const appointments = getDemoAppointments().map((appointment) => ({
         ...appointment,
         patient_name: 'مريض تجريبي',
-        appointment_time: appointment.appointment_time ?? '09:00',
+        appointment_time: readAppointmentTime(appointment),
       }));
       return NextResponse.json({ data: appointments });
     }
@@ -137,7 +174,7 @@ export async function POST(req: Request) {
         patient_id: parsed.data.patient_id ?? null,
         service: parsed.data.service,
         appointment_date: parsed.data.appointment_date,
-        appointment_time: parsed.data.appointment_date ? '09:00' : '09:00',
+        appointment_time: parsed.data.appointment_time ?? '09:00',
         duration_minutes: parsed.data.duration_minutes,
         provider_id: parsed.data.provider_id ?? null,
         status: parsed.data.status,
@@ -145,17 +182,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ data: { ...created, patient_name: 'مريض تجريبي', appointment_time: created.appointment_time ?? '09:00' } }, { status: 201 });
     }
 
-    const { clinic_id, patient_id, service, appointment_date, duration_minutes, provider_id, status } = parsed.data;
+    const { clinic_id, patient_id, service, appointment_date, duration_minutes, provider_id, status, appointment_time } = parsed.data;
     const authorization = await authorizeClinicRequest(req, clinic_id);
     if (!authorization.authorized) {
       logEvent('authorization_denied', { route: 'appointments_post', clinic_id, reason: authorization.status === 401 ? 'unauthorized' : 'forbidden' }, 'warn');
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
+    // B23 — the chosen time must actually be persisted: `scheduled_at` is what the
+    // agenda, the reminders and the patient profile all read. A caller that sends
+    // no time keeps the old NULL behaviour (no scheduled_at key at all).
+    const scheduledAt = buildScheduledAt(appointment_date, appointment_time);
+    const insertPayload: Record<string, unknown> = {
+      clinic_id,
+      patient_id,
+      service,
+      appointment_date,
+      duration_minutes,
+      provider_id,
+      status,
+    };
+    if (scheduledAt) insertPayload.scheduled_at = scheduledAt;
+
     const { data, error } = await supabaseAdmin.from('appointments').insert([
-      { clinic_id, patient_id, service, appointment_date, duration_minutes, provider_id, status },
+      insertPayload,
     ]).select('*').single();
     if (error) {
+      // The partial unique index on (provider_id, scheduled_at) rejects a slot
+      // that is already taken — that is a conflict, not a server fault.
+      if (error.code === '23505' || /duplicate key/i.test(error.message)) {
+        logEvent('appointment_slot_conflict', { clinic_id, provider_id: provider_id || undefined, scheduled_at: scheduledAt ?? undefined }, 'warn');
+        return NextResponse.json({ error: 'هذا الموعد محجوز بالفعل — اختر وقتاً آخر' }, { status: 409 });
+      }
       logEvent('appointment_create_failure', { clinic_id, patient_id: patient_id || undefined, provider_id: provider_id || undefined, error: error.message }, 'error');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }

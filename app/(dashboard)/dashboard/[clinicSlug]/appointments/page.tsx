@@ -74,6 +74,7 @@ export default function AppointmentsPage() {
   const [services, setServices] = useState<{ id: string; name: string }[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [dropSavingId, setDropSavingId] = useState<number | null>(null);
+  /** Page-level feedback banner (drag & drop AND create/reschedule share it). */
   const [dropFeedback, setDropFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ appointment: Appointment; status: string; label: string } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
@@ -224,6 +225,7 @@ export default function AppointmentsPage() {
     event.preventDefault();
     if (!clinicId) return;
     setSubmitting(true);
+    setDropFeedback(null);
     try {
       const auth = await authHeaders();
       const response = await fetch('/api/appointments', {
@@ -234,23 +236,34 @@ export default function AppointmentsPage() {
           patient_id: formState.patient_id || null,
           service: formState.service.trim(),
           appointment_date: formState.appointment_date,
+          // B23 — the time MUST travel with the request: without it the row was
+          // stored with scheduled_at = NULL and every appointment rendered 09:00.
+          appointment_time: formState.appointment_time,
           duration_minutes: 30,
           provider_id: null,
           status: formState.status,
         }),
       });
-      if (!response.ok) throw new Error('Unable to create appointment');
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        throw new Error(failure?.error && typeof failure.error === 'string' ? failure.error : 'Unable to create appointment');
+      }
       const createdPayload = await response.json();
       const created = createdPayload?.data ?? createdPayload;
+      const patientName = patients.find((patient) => patient.id === formState.patient_id)?.name ?? 'مريض غير معروف';
       setAppointments((current) => [{
         id: created?.id ?? Date.now(),
-        patient_name: patients.find((patient) => patient.id === formState.patient_id)?.name ?? 'مريض غير معروف',
+        patient_name: patientName,
         service: created?.service ?? formState.service,
         appointment_date: created?.appointment_date ?? formState.appointment_date,
         appointment_time: created?.appointment_time ?? formState.appointment_time,
         status: created?.status ?? formState.status,
         provider_name: created?.provider_name ?? null,
       }, ...current]);
+      setDropFeedback({
+        tone: 'success',
+        message: `✅ تم حفظ موعد ${patientName} — ${formState.appointment_date} في ${format12h(formState.appointment_time)}`,
+      });
       setIsFormOpen(false);
       setFormState({ patient_id: '', service: '', appointment_date: '', appointment_time: '09:00', status: 'scheduled' });
     } catch (caughtError) {

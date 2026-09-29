@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { supabase } from '@/lib/supabase';
-import { appointmentStatusAr, formatTimeAr, COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
+import { COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
 import { appendQuickNote, resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
+import PatientAppointmentsPanel, { type PatientAppointmentRow } from '@/components/dashboard/patients/PatientAppointmentsPanel';
 import SmartPatientProfile, {
   type SmartPatientData,
   type SmartPatientStats,
@@ -56,15 +57,6 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
-
-function formatDateAr(iso: string | null): string {
-  if (!iso) return 'بدون تاريخ';
-  try {
-    return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('ar', { day: 'numeric', month: 'long', year: 'numeric' });
-  } catch {
-    return iso;
-  }
-}
 
 function statusPill(status: string): string {
   const map: Record<string, string> = {
@@ -275,13 +267,27 @@ export default function PatientDetailPage() {
     [authHeaders, clinicId, patient, role]
   );
 
-  const upcoming = useMemo(
-    () =>
-      [...appointments]
-        .filter((a) => a.status === 'confirmed' || a.status === 'scheduled')
-        .sort((a, b) => (a.appointment_date + (a.appointment_time ?? '')).localeCompare(b.appointment_date + (b.appointment_time ?? ''))),
-    [appointments]
+  /**
+   * B23 — the appointment panel owns creation; the page merges the returned row
+   * (typed back into `PatientAppointment`) so the timeline, the visits counter
+   * and the overview refresh instantly.
+   */
+  const handleAppointmentCreated = useCallback(
+    (created: PatientAppointmentRow) => {
+      const row: PatientAppointment = {
+        id: String(created.id),
+        service: created.service ?? '',
+        appointment_date: created.appointment_date,
+        appointment_time: created.appointment_time ?? '',
+        status: created.status,
+        provider_name: created.provider_name ?? null,
+        patient_id: patientId,
+      };
+      setAppointments((current) => [row, ...current.filter((item) => String(item.id) !== row.id)]);
+    },
+    [patientId]
   );
+
   const past = useMemo(
     () => appointments.filter((a) => a.status === 'completed' || a.status === 'cancelled' || a.status === 'no_show'),
     [appointments]
@@ -397,23 +403,19 @@ export default function PatientDetailPage() {
                     </dl>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                    <p className="text-sm font-semibold text-white">المواعيد القادمة</p>
-                    {upcoming.length === 0 ? (
-                      <p className="mt-3 text-sm text-slate-500">لا مواعيد قادمة.</p>
-                    ) : (
-                      <ul className="mt-3 space-y-2">
-                        {upcoming.slice(0, 5).map((a) => (
-                          <li key={a.id} className="rounded-xl bg-slate-950/60 p-3 text-sm text-slate-300">
-                            <p>🦷 {a.service || 'خدمة'} · {appointmentStatusAr(a.status)}</p>
-                            <p className="mt-1 text-xs text-slate-400">
-                              📅 {formatDateAr(a.appointment_date)} · 🕐 {formatTimeAr(a.appointment_time ?? '')}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="mt-5 text-sm font-semibold text-white">الزيارات السابقة ({past.length})</p>
-                    <p className="mt-1 text-xs text-slate-500">التفاصيل الكاملة في تبويب «📅 المواعيد».</p>
+                    <PatientAppointmentsPanel
+                      variant="compact"
+                      clinicId={clinicId}
+                      patientId={patientId}
+                      patientName={patient.name}
+                      appointments={appointments}
+                      loading={apptsLoading}
+                      authHeaders={authHeaders}
+                      onCreated={handleAppointmentCreated}
+                    />
+                    <p className="mt-4 text-xs text-slate-500">
+                      التفاصيل الكاملة في تبويب «📅 المواعيد» — {past.length} زيارة سابقة.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -421,31 +423,16 @@ export default function PatientDetailPage() {
 
 
             {tab === 'appointments' && (
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                {apptsLoading ? (
-                  <p className="text-sm text-slate-400">جارٍ تحميل المواعيد...</p>
-                ) : appointments.length === 0 ? (
-                  <p className="text-sm text-slate-500">لا توجد مواعيد لهذا المريض.</p>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {appointments.map((appt) => (
-                      <div key={appt.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-slate-100">🦷 {appt.service ?? 'خدمة غير محددة'}</span>
-                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusPill(appt.status)}`}>
-                            {appointmentStatusAr(appt.status)}
-                          </span>
-                        </div>
-                        <div className="mt-3 space-y-1 text-sm text-slate-300">
-                          <p>📅 {formatDateAr(appt.appointment_date)}</p>
-                          <p>🕐 {formatTimeAr(appt.appointment_time ?? '')}</p>
-                          {appt.provider_name ? <p>👨‍⚕️ {appt.provider_name}</p> : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <PatientAppointmentsPanel
+                variant="full"
+                clinicId={clinicId}
+                patientId={patientId}
+                patientName={patient.name}
+                appointments={appointments}
+                loading={apptsLoading}
+                authHeaders={authHeaders}
+                onCreated={handleAppointmentCreated}
+              />
             )}
 
             {tab === 'financial' && (
