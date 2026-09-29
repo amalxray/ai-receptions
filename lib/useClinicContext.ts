@@ -4,6 +4,34 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 
+/* -------------------------------------------------------------------------- */
+/* B51-H — configuration failures must be distinguished, in Arabic             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The runtime health-check (`/api/supabase-config`) can fail in TWO completely
+ * different worlds, and they need different words — and different actions:
+ *
+ *   network  → the user's connection (or the request) failed; retrying helps.
+ *   env      → the DEPLOYMENT itself has no Supabase env vars; retrying never
+ *              helps, support has to fix it.
+ *
+ * Reporting both as the old English «Supabase is not configured» sent users
+ * chasing a config problem that did not exist (B51 incident: `.env.local` was
+ * found corrupted — but the same message also appeared whenever the health
+ * check merely timed out).
+ */
+export const CLINIC_CTX_NETWORK_ERROR_AR =
+  'تعذّر الاتصال بالخادم — تحقّق من الإنترنت ثم أعد المحاولة';
+
+export const CLINIC_CTX_NOT_CONFIGURED_ERROR_AR =
+  'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تحميل بيانات العيادة';
+
+/** Single source of the message → network vs. deployment-configuration. */
+export function configErrorMessage(checkFailed: boolean): string {
+  return checkFailed ? CLINIC_CTX_NETWORK_ERROR_AR : CLINIC_CTX_NOT_CONFIGURED_ERROR_AR;
+}
+
 type ClinicMembership = {
   clinic_id: string;
   role: string;
@@ -32,7 +60,15 @@ export type ClinicContext = {
  * Never trusts a clinic_id sent from the client.
  */
 export function useClinicContext(): ClinicContext {
-  const { isConfigured } = useSupabaseConfig();
+  /**
+   * B51-H — the verdict arrives ASYNCHRONOUSLY (a live fetch to
+   * `/api/supabase-config`). Reading ONLY `isConfigured` meant its initial
+   * `false` fired the error path on the first paint of every dashboard page,
+   * and a FAILED check (network/server) left a permanent «not configured»
+   * message on a deployment that was configured all along. `loading` +
+   * `checkFailed` let us wait for the answer and then name the real cause.
+   */
+  const { isConfigured, loading: isConfigLoading, checkFailed } = useSupabaseConfig();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clinicId, setClinicId] = useState<string | null>(null);
@@ -55,9 +91,15 @@ export function useClinicContext(): ClinicContext {
   }, []);
 
   const resolveClinic = useCallback(async () => {
+    // B51-H — while the health-check is still in flight, STAY loading: the old
+    // code treated "not answered yet" as "not configured" and flashed an error
+    // on every first paint.
+    if (isConfigLoading) return;
+
     if (!isConfigured) {
       setLoading(false);
-      setError('Supabase is not configured');
+      // Never blame configuration when the check itself failed (B51-H).
+      setError(configErrorMessage(checkFailed));
       return;
     }
 
@@ -112,7 +154,7 @@ export function useClinicContext(): ClinicContext {
 
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfigured]);
+  }, [isConfigured, isConfigLoading, checkFailed]);
 
   useEffect(() => {
     void resolveClinic();
