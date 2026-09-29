@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+// N30 — React is imported explicitly (like SmartPatientProfile / the sessions
+// panel) so the component can be server-rendered in unit tests exactly as the
+// server ships it.
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UploadCloud,
@@ -36,6 +40,19 @@ export interface PatientMedicalFilesTabProps {
   patientId: string;
   authHeaders: () => Promise<Record<string, string>>;
   onCountChange?: (count: number) => void;
+  /**
+   * N30 — `imaging` is the imaging-center reading of the SAME data: study
+   * summary tiles (🟦 بانوراما / 🟪 CBCT / 🟩 DICOM / 🟨 تقارير), the
+   * «مرتبط بطلب» chip and radiology wording. The default (`dental`) renders the
+   * clinic UI unchanged.
+   */
+  variant?: 'dental' | 'imaging';
+  /**
+   * `imaging_request_id` → the request it documents, so a study card can say
+   * WHICH referral produced it. Supplied by the imaging patient-file tab, which
+   * already loads those rows for the 🩹 tab (no second fetch).
+   */
+  requestsById?: Record<string, { label: string; status: string }>;
 }
 
 export function formatFileSize(bytes: number): string {
@@ -128,7 +145,11 @@ export default function PatientMedicalFilesTab({
   patientId,
   authHeaders,
   onCountChange,
+  variant = 'dental',
+  requestsById,
 }: PatientMedicalFilesTabProps) {
+  /** N30 — imaging-center reading of the same tab (summaries + request chips). */
+  const imagingVariant = variant === 'imaging';
   const [files, setFiles] = useState<MedicalFileRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<MedicalCategory>('all');
@@ -392,13 +413,15 @@ export default function PatientMedicalFilesTab({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              <span>🖼️ ملفات الأشعة والتحاليل الطبية</span>
+              <span>{imagingVariant ? '🩻 الدراسات الشعاعية' : '🖼️ ملفات الأشعة والتحاليل الطبية'}</span>
               <span className="rounded-full bg-cyan-500/20 px-2.5 py-0.5 text-xs font-semibold text-cyan-300 border border-cyan-500/30">
-                {files.length} ملف
+                {files.length} {imagingVariant ? 'دراسة' : 'ملف'}
               </span>
             </h3>
             <p className="mt-1 text-xs text-slate-400">
-              ارفع صور البانوراما، دراسات CBCT ثلاثية الأبعاد، ملفات الـ DICOM، والتقارير الطبية حتى 2 GiB عبر قنوات مشفرة.
+              {imagingVariant
+                ? 'دراسات البانوراما وCBCT والـ DICOM وتقارير الأطباء لهذا المريض — رفع مباشر حتى 2 GiB عبر قنوات مشفرة.'
+                : 'ارفع صور البانوراما، دراسات CBCT ثلاثية الأبعاد، ملفات الـ DICOM، والتقارير الطبية حتى 2 GiB عبر قنوات مشفرة.'}
             </p>
           </div>
 
@@ -525,6 +548,36 @@ export default function PatientMedicalFilesTab({
         </div>
       )}
 
+      {/* N30 — imaging summary tiles (🟦 بانوراما / 🟪 CBCT / 🟩 DICOM / 🟨 تقارير).
+          A radiology desk reads counts before it reads file names, so the four
+          clinical categories are surfaced as one-glance tiles that double as
+          filters. Dental clinics never see this block. */}
+      {imagingVariant && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {(['panorama', 'cbct', 'dicom', 'report'] as MedicalCategory[]).map((cat) => {
+            const meta = CATEGORY_METAS[cat];
+            const count = files.filter(
+              (f) => detectFileCategory(f.file_type, f.original_filename, f.mime_type) === cat
+            ).length;
+            const active = filter === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setFilter(active ? 'all' : cat)}
+                aria-pressed={active}
+                className={`rounded-2xl border ${meta.border} ${meta.bgBadge} p-3 text-right transition-all duration-200 hover:-translate-y-0.5 ${meta.glow} ${
+                  active ? 'ring-1 ring-cyan-500/40' : ''
+                }`}
+              >
+                <span className={`text-[11px] font-bold ${meta.textBadge}`}>{meta.label}</span>
+                <p className={`mt-1 text-2xl font-bold ${meta.textBadge}`}>{count}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
         {(Object.keys(CATEGORY_METAS) as MedicalCategory[]).map((cat) => {
           const meta = CATEGORY_METAS[cat];
@@ -565,10 +618,16 @@ export default function PatientMedicalFilesTab({
             <HardDrive className="h-7 w-7" />
           </div>
           <h4 className="mt-4 text-base font-bold text-slate-200">
-            {filter === 'all' ? 'لا توجد ملفات أشعة بعد' : 'لا توجد ملفات في هذا التصنيف'}
+            {filter === 'all'
+              ? imagingVariant
+                ? '🩻 لا توجد دراسات لهذا المريض بعد'
+                : 'لا توجد ملفات أشعة بعد'
+              : 'لا توجد ملفات في هذا التصنيف'}
           </h4>
           <p className="mt-1 text-xs text-slate-400 max-w-sm mx-auto">
-            يمكنك إرفاق صور بانوراما أو دراسات DICOM أو تقارير طبية عبر زر الإرفاق أعلاه.
+            {imagingVariant
+              ? 'ارفع الدراسة (بانوراما / CBCT / DICOM) أو التقرير المرافق عبر زر «إرفاق ملف جديد» أعلاه.'
+              : 'يمكنك إرفاق صور بانوراما أو دراسات DICOM أو تقارير طبية عبر زر الإرفاق أعلاه.'}
           </p>
         </div>
       ) : (
@@ -590,6 +649,9 @@ export default function PatientMedicalFilesTab({
               const meta = CATEGORY_METAS[cat];
               const isImage = file.file_type === 'image' || file.mime_type.startsWith('image/');
               const isBusy = busyActionId === file.id;
+              /** N30 — which referral produced this study (imaging variant only). */
+              const linked =
+                imagingVariant && file.imaging_request_id ? requestsById?.[file.imaging_request_id] : undefined;
 
               return (
                 <motion.div
@@ -631,6 +693,12 @@ export default function PatientMedicalFilesTab({
                         <p className="mt-1 text-[11px] text-slate-400">
                           {file.created_at ? new Date(file.created_at).toLocaleDateString('ar', { day: 'numeric', month: 'short', year: 'numeric' }) : 'تاريخ غير محدد'}
                         </p>
+                        {linked && (
+                          <span className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-200">
+                            <span>🩹</span>
+                            <span className="truncate">مرتبط بطلب: {linked.label}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

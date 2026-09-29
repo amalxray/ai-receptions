@@ -279,7 +279,12 @@ describe('N27 — wiring guards', () => {
   });
 
   it('opens the 🦷 tab when a session event is clicked', () => {
-    expect(page).toContain("setTab(item.iconType === 'session' ? 'sessions' : 'appointments')");
+    // N30 — routing is activity-aware now: a dental clinic opens the treatment
+    // tab, while an imaging center (which never has a 🦷 tab) opens its own
+    // referral tab for the same event instead of a dead end.
+    expect(page).toContain(
+      "item.iconType === 'session' ? (imagingMode ? 'requests' : 'sessions') : 'appointments'"
+    );
   });
 
   it('exposes the N27 helpers from the domain module', () => {

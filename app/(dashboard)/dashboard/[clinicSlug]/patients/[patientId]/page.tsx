@@ -21,6 +21,17 @@ import {
 } from '@/components/dashboard/patients/smartProfile';
 import PatientAppointmentsPanel, { type PatientAppointmentRow } from '@/components/dashboard/patients/PatientAppointmentsPanel';
 import PatientSessionsPanel, { SessionsSkeleton } from '@/components/dashboard/patients/PatientSessionsPanel';
+import PatientImagingRequestsPanel from '@/components/dashboard/patients/PatientImagingRequestsPanel';
+import {
+  belongsToPatient,
+  filesTabKey,
+  isImagingFile,
+  patientFileTabs,
+  resolvePatientFileTab,
+  type ImagingRequestRow,
+  type PatientFileTabKey,
+} from '@/lib/services/imagingPatientFile';
+import { imagingTypeLabel } from '@/lib/services/referralWorkflow';
 import SmartPatientProfile, {
   type SmartPatientData,
   type SmartPatientStats,
@@ -34,6 +45,13 @@ import SmartPatientProfile, {
  * communications)
  * real width, the shell is responsive, and each tab fetches its own data
  * lazily. All data comes from membership-guarded APIs.
+ *
+ * N30 — the tab set is ACTIVITY-AWARE (`patientFileTabs(activity_type)`): a
+ * dental clinic keeps its treatment-session and file tabs exactly as before,
+ * while an imaging center gets 🩹 طلبات الأشعة (the referral inbox for this
+ * patient) and 🩻 الدراسات (the same files, read as radiology studies). Nothing
+ * is migrated and no other domain changes: an unknown activity type (or a
+ * transient unresolved one) falls back to the dental reading.
  */
 
 type PatientRecord = SmartPatientData;
@@ -58,16 +76,11 @@ type PatientCommunication = {
   last_error: string | null;
 };
 
-const TABS = [
-  { key: 'overview', label: '📋 نظرة عامة' },
-  { key: 'appointments', label: '📅 المواعيد' },
-  { key: 'sessions', label: '🦷 الجلسات' },
-  { key: 'financial', label: '💰 المالية' },
-  { key: 'files', label: '🖼️ ملفات الأشعة' },
-  { key: 'communications', label: '🗨️ التواصل' },
-] as const;
-
-type TabKey = (typeof TABS)[number]['key'];
+/**
+ * N30 — the tab set is NOT a local constant anymore: it is derived per activity
+ * by `patientFileTabs()` (lib/services/imagingPatientFile), which is also what
+ * the tests pin. `TabKey` → `PatientFileTabKey`.
+ */
 
 function statusPill(status: string): string {
   const map: Record<string, string> = {
@@ -86,9 +99,20 @@ function statusPill(status: string): string {
 
 export default function PatientDetailPage() {
   const { patientId, clinicSlug } = useParams<{ patientId: string; clinicSlug: string }>();
-  const { clinicId, authHeaders, role, loading: clinicLoading } = useClinicContext();
+  const { clinicId, authHeaders, role, activityType, loading: clinicLoading } = useClinicContext();
 
-  const [tab, setTab] = useState<TabKey>('overview');
+  /** N30 — activity-aware tabs + derived shortcuts (single source: the model). */
+  const tabs = useMemo(() => patientFileTabs(activityType), [activityType]);
+  const imagingMode = isImagingFile(activityType);
+  const studiesTab = filesTabKey(activityType);
+
+  const [tab, setTab] = useState<PatientFileTabKey>('overview');
+  /**
+   * `activity_type` resolves asynchronously, so a requested tab can briefly be
+   * one this activity does not have (e.g. 'sessions' inside an imaging center).
+   * Everything renders from the clamped value instead of a blank body.
+   */
+  const effectiveTab = resolvePatientFileTab(activityType, tab);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferMsg, setTransferMsg] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientRecord | null>(null);
@@ -108,6 +132,12 @@ export default function PatientDetailPage() {
     referralsCount: 0,
     invoicesCount: 0,
   });
+  /**
+   * N30 — `imaging_request_id` → label, so a study card in the 🩻 tab can say
+   * WHICH referral produced it. Loaded only while that tab is open (the 🩹 tab
+   * loads its own full rows), so the two never fetch the same thing twice.
+   */
+  const [requestsById, setRequestsById] = useState<Record<string, { label: string; status: string }>>({});
 
 
   useEffect(() => {
@@ -149,7 +179,7 @@ export default function PatientDetailPage() {
   useEffect(() => {
     // The smart profile (overview) renders the appointment timeline, so the
     // same lazy fetch serves both tabs.
-    if (tab !== 'appointments' && tab !== 'overview') return;
+    if (effectiveTab !== 'appointments' && effectiveTab !== 'overview') return;
     if (!clinicId || !patientId) return;
     void (async () => {
       setApptsLoading(true);
@@ -186,7 +216,7 @@ export default function PatientDetailPage() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, clinicId, patientId]);
+  }, [effectiveTab, clinicId, patientId]);
 
   /**
    * N14 activity counters (files / invoices / referrals). Informational only:
@@ -194,7 +224,7 @@ export default function PatientDetailPage() {
    * of blocking the profile from rendering.
    */
   useEffect(() => {
-    if (tab !== 'overview' || !clinicId || !patientId) return;
+    if (effectiveTab !== 'overview' || !clinicId || !patientId) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -203,7 +233,9 @@ export default function PatientDetailPage() {
         const [filesRes, invoicesRes, referralsRes] = await Promise.all([
           fetch(`/api/clinic/medical-files/list?${q}`, { headers }),
           fetch(`/api/clinic/accounting/invoices?${q}`, { headers }),
-          fetch(`/api/imaging/referrals?clinic_id=${encodeURIComponent(clinicId)}&direction=all`, { headers }),
+          // N30 — the same patient scope the 🩹 tab uses (direction=all keeps the
+          // counter honest for both sides of a referral).
+          fetch(`/api/imaging/referrals?${q}&direction=all`, { headers }),
         ]);
         const [filesJson, invoicesJson, referralsJson] = await Promise.all([
           filesRes.json().catch(() => null),
@@ -219,7 +251,22 @@ export default function PatientDetailPage() {
           visitsCount: 0,
           filesCount: filesRes.ok ? rows(filesJson).length : 0,
           invoicesCount: invoicesRes.ok ? rows(invoicesJson).length : 0,
-          referralsCount: referralsRes.ok ? rows(referralsJson).filter((r) => r.patient_id === patientId).length : 0,
+          // N30 — for an imaging center the patient may be linked as
+          // `patient_id_center` (its own file created from the referral), so the
+          // counter must accept either link; clinics keep the exact old rule.
+          referralsCount: referralsRes.ok
+            ? rows(referralsJson).filter((r) =>
+                imagingMode
+                  ? belongsToPatient(
+                      {
+                        patient_id: (r.patient_id as string | null) ?? null,
+                        patient_id_center: (r.patient_id_center as string | null) ?? null,
+                      },
+                      patientId
+                    )
+                  : r.patient_id === patientId
+              ).length
+            : 0,
         });
       } catch {
         /* counters stay at zero — the profile still renders */
@@ -229,11 +276,11 @@ export default function PatientDetailPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, clinicId, patientId]);
+  }, [effectiveTab, clinicId, patientId]);
 
 
   useEffect(() => {
-    if (tab !== 'communications' || !clinicId || !patientId) return;
+    if (effectiveTab !== 'communications' || !clinicId || !patientId) return;
     void (async () => {
       setCommsLoading(true);
       try {
@@ -249,7 +296,55 @@ export default function PatientDetailPage() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, clinicId, patientId]);
+  }, [effectiveTab, clinicId, patientId]);
+
+  /**
+   * N30 — the requested tab may not exist for the resolved activity (see
+   * `effectiveTab`): mirror the clamped value back into state so the nav
+   * highlight matches what is actually rendered.
+   */
+  useEffect(() => {
+    if (effectiveTab !== tab) setTab(effectiveTab);
+  }, [effectiveTab, tab]);
+
+  /**
+   * N30 — the 🩻 الدراسات tab shows WHICH referral each study documents, so it
+   * needs an id → label index of this patient's requests. It runs only while
+   * that tab is open (the 🩹 tab loads the full rows itself), which keeps the
+   * two tabs from ever fetching the same list in the same view.
+   */
+  useEffect(() => {
+    if (!imagingMode || effectiveTab !== studiesTab || !clinicId || !patientId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(
+          `/api/imaging/referrals?clinic_id=${encodeURIComponent(clinicId)}&patient_id=${encodeURIComponent(patientId)}&direction=all`,
+          { headers }
+        );
+        const json = await res.json().catch(() => null);
+        const rows: ImagingRequestRow[] = res.ok && Array.isArray(json?.data) ? (json.data as ImagingRequestRow[]) : [];
+        if (cancelled) return;
+        setRequestsById(
+          Object.fromEntries(
+            rows
+              .filter((row) => belongsToPatient(row, patientId))
+              .map((row) => [
+                row.id,
+                { label: imagingTypeLabel(row.modality, row.requested_service), status: row.status },
+              ])
+          )
+        );
+      } catch {
+        if (!cancelled) setRequestsById({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagingMode, effectiveTab, studiesTab, clinicId, patientId]);
 
   /**
    * B39 — "ملاحظة سريعة" only toggled a collapsed block, so nothing was ever
@@ -458,13 +553,13 @@ export default function PatientDetailPage() {
             aria-label="أقسام ملف المريض"
             className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-1.5"
           >
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
                 className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                  tab === t.key ? 'bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40' : 'text-slate-300 hover:bg-slate-800/70'
+                  effectiveTab === t.key ? 'bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40' : 'text-slate-300 hover:bg-slate-800/70'
                 }`}
               >
                 {t.label}
@@ -473,21 +568,26 @@ export default function PatientDetailPage() {
           </nav>
 
           <div className="min-h-[40vh]">
-            {tab === 'overview' && (
+            {effectiveTab === 'overview' && (
               <div className="space-y-4">
                 {/* N14 — Smart Patient Profile (3-level cognitive layout).
                     N27 — the profile merges `metadata.sessions` itself, so only the
-                    click target needs routing: a 🦷 event opens the sessions tab. */}
+                    click target needs routing: a 🦷 event opens the sessions tab.
+                    N30 — an imaging center has no treatment sessions, so the same
+                    click routes to its own referral tab instead, and the referral
+                    counter opens the 🩹 list rather than a transfer dialog. */}
                 <SmartPatientProfile
                   patient={patient}
                   stats={smartStats}
                   appointments={smartAppointments}
                   onOpenVisits={() => setTab('appointments')}
-                  onOpenFiles={() => setTab('files')}
+                  onOpenFiles={() => setTab(studiesTab)}
                   onOpenInvoices={() => setTab('financial')}
-                  onOpenReferrals={() => setShowTransfer(true)}
+                  onOpenReferrals={() => (imagingMode ? setTab('requests') : setShowTransfer(true))}
                   onOpenTimelineDetail={(item) =>
-                    setTab(item.iconType === 'session' ? 'sessions' : 'appointments')
+                    setTab(
+                      item.iconType === 'session' ? (imagingMode ? 'requests' : 'sessions') : 'appointments'
+                    )
                   }
                   onSaveQuickNote={saveQuickNote}
                 />
@@ -521,20 +621,42 @@ export default function PatientDetailPage() {
                   </div>
                 </div>
 
-                {/* N26 — خطة العلاج: شريط «ما تم / ما بقي» وأقرب الجلسات دون مغادرة النظرة العامة. */}
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                  <PatientSessionsPanel
-                    variant="compact"
-                    sessions={sessions}
-                    onAdd={addSession}
-                    onStatusChange={changeSessionStatus}
-                  />
-                </div>
+                {/* N26 — خطة العلاج: شريط «ما تم / ما بقي» وأقرب الجلسات دون مغادرة النظرة العامة.
+                    N30 — an imaging center has no treatment plan, so the same slot
+                    carries its referral workload (🩹) with a one-click jump. */}
+                {imagingMode ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                    <div>
+                      <p className="text-sm font-semibold text-white">🩹 طلبات الأشعة لهذا المريض</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {overviewCounts.referralsCount > 0
+                          ? `${overviewCounts.referralsCount} طلب مرتبط بهذا الملف (واردة من عيادات محوِّلة أو صادرة).`
+                          : 'لا توجد طلبات أشعة مرتبطة بهذا الملف حتى الآن.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTab('requests')}
+                      className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+                    >
+                      عرض الطلبات
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                    <PatientSessionsPanel
+                      variant="compact"
+                      sessions={sessions}
+                      onAdd={addSession}
+                      onStatusChange={changeSessionStatus}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
 
-            {tab === 'appointments' && (
+            {effectiveTab === 'appointments' && (
               <PatientAppointmentsPanel
                 variant="full"
                 clinicId={clinicId}
@@ -547,7 +669,26 @@ export default function PatientDetailPage() {
               />
             )}
 
-            {tab === 'sessions' && (
+            {/* N30 — 🩹 طلبات الأشعة: imaging centers only (never rendered for a
+                clinic, whose tab set has no 'requests' key at all). */}
+            {effectiveTab === 'requests' && clinicId && (
+              <PatientImagingRequestsPanel
+                clinicId={clinicId}
+                patientId={patient.id}
+                clinicSlug={clinicSlug}
+                authHeaders={authHeaders}
+                onOpenStudies={() => setTab(studiesTab)}
+                onCountChange={(count) =>
+                  setOverviewCounts((prev) =>
+                    prev.referralsCount === count ? prev : { ...prev, referralsCount: count }
+                  )
+                }
+              />
+            )}
+
+            {/* Dental treatment plan (N26) — `effectiveTab` can never be
+                'sessions' inside an imaging center (the tab does not exist). */}
+            {effectiveTab === 'sessions' && !imagingMode && (
               <PatientSessionsPanel
                 variant="full"
                 sessions={sessions}
@@ -556,12 +697,14 @@ export default function PatientDetailPage() {
               />
             )}
 
-            {tab === 'financial' && (
+            {effectiveTab === 'financial' && (
               <PatientFinancialFilesPanel patientId={patient.id} patientName={patient.name} />
             )}
 
-            {/* Medical imaging files: direct upload up to 2 GiB (X-ray / CBCT / DICOM). */}
-            {tab === 'files' && clinicId && (
+            {/* Medical imaging files: direct upload up to 2 GiB (X-ray / CBCT / DICOM).
+                `files` (dental wording) and `studies` (radiology wording) are the
+                SAME data and the SAME component — only the reading differs. */}
+            {effectiveTab === 'files' && clinicId && (
               <PatientMedicalFilesTab
                 clinicId={clinicId}
                 patientId={patient.id}
@@ -574,7 +717,22 @@ export default function PatientDetailPage() {
               />
             )}
 
-            {tab === 'communications' && (
+            {effectiveTab === 'studies' && clinicId && (
+              <PatientMedicalFilesTab
+                variant="imaging"
+                clinicId={clinicId}
+                patientId={patient.id}
+                authHeaders={authHeaders}
+                requestsById={requestsById}
+                onCountChange={(count) =>
+                  setOverviewCounts((prev) =>
+                    prev.filesCount === count ? prev : { ...prev, filesCount: count }
+                  )
+                }
+              />
+            )}
+
+            {effectiveTab === 'communications' && (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
                 {commsLoading ? (
                   <p className="text-sm text-slate-400">جارٍ تحميل سجل التواصل...</p>

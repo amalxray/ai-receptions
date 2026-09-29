@@ -171,6 +171,13 @@ type ReferralDirectionFilter = (typeof REFERRAL_DIRECTIONS)[number];
 const REFERRAL_LIST_COLS =
   'id, clinic_id, referring_clinic_id, patient_id, patient_id_center, patient_ref, requested_service, service_id, modality, status, imaging_status, priority, notes, scheduled_at, completed_at, created_at, updated_at';
 
+/**
+ * N30 — a patient file asks for its OWN referrals only. The patient scope is
+ * interpolated into a PostgREST `or=(…)` filter, so it is validated as a UUID
+ * first: an unvalidated value there would be query-language injection.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -183,6 +190,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'direction غير صحيح' }, { status: 400 });
     }
     const direction = (directionParam ?? 'outgoing') as ReferralDirectionFilter;
+
+    // N30 — optional patient scope for the patient-file tab. Validated (never
+    // interpolated raw) and fail-closed like `direction`.
+    const patientParam = url.searchParams.get('patient_id');
+    if (patientParam && !UUID_RE.test(patientParam)) {
+      return NextResponse.json({ error: 'patient_id غير صحيح' }, { status: 400 });
+    }
+    const patientId = patientParam || null;
 
     const auth = await authorizeClinicRequest(req, clinicId);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
@@ -204,6 +219,14 @@ export async function GET(req: Request) {
       query = query.eq('clinic_id', clinicId);
     } else {
       query = query.or(`referring_clinic_id.eq.${clinicId},clinic_id.eq.${clinicId}`);
+    }
+
+    if (patientId) {
+      // Either link counts as "this patient": `patient_id` is the referring
+      // clinic's file, `patient_id_center` is the activity tenant's own file
+      // created from the referral. PostgREST ANDs top-level params, so this
+      // OR-group narrows the direction filter instead of widening it.
+      query = query.or(`patient_id.eq.${patientId},patient_id_center.eq.${patientId}`);
     }
 
     const { data, error } = await query;

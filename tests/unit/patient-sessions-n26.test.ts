@@ -237,7 +237,13 @@ describe('N26 — wiring guards', () => {
   const profile = read('components/dashboard/patients/smartProfile.ts');
 
   it('adds the 🦷 الجلسات tab to the patient file', () => {
-    expect(page).toContain("{ key: 'sessions', label: '🦷 الجلسات' },");
+    // N30 — the tab SET now has ONE source (`patientFileTabs`): a dental clinic
+    // still gets the 🦷 tab (and an imaging center deliberately does not). The
+    // page renders whatever the model returns for the active activity_type.
+    const model = read('lib/services/imagingPatientFile.ts');
+    expect(model).toContain("{ key: 'sessions', label: '🦷 الجلسات' },");
+    expect(page).toContain('patientFileTabs(activityType)');
+    expect(page).toContain('{tabs.map((t) => (');
     expect(page).toContain('SessionsSkeleton');
   });
 
