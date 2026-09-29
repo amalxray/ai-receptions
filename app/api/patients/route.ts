@@ -3,7 +3,12 @@ import { getSupabaseEnvConfig } from '@/lib/config';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { toPatientShape } from '@/lib/services/patientShape';
+import { sanitizeSearchQuery } from '@/lib/services/patientSearch';
 import { createDemoPatient, getDemoPatients } from '@/lib/demoState';
+
+/** Default page size kept at the historic 50; callers may ask for more (N28). */
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 500;
 
 export async function GET(req: Request) {
   const config = getSupabaseEnvConfig();
@@ -21,17 +26,37 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
-    const searchQuery = url.searchParams.get('q') || undefined;
+    // N28 — the raw query used to be interpolated into PostgREST's `.or()` as-is,
+    // so a comma / parenthesis / `*` produced `failed to parse logic tree` (500).
+    // Sanitising here keeps the filter syntax intact AND searches the same folded
+    // shape the browser matches on (hamza forms, ة/ه, Arabic-Indic digits).
+    const searchQuery = sanitizeSearchQuery(url.searchParams.get('q') ?? '');
+    const requestedLimit = Number(url.searchParams.get('limit'));
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(Math.floor(requestedLimit), MAX_LIMIT)
+        : DEFAULT_LIMIT;
+
     const supabase = supabaseAdmin;
     let query = supabase
       .from('patients')
       .select('*')
       .eq('clinic_id', clinicId)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(limit);
 
     if (searchQuery) {
-      query = query.or(`full_name.ilike.%${searchQuery}%,phone_number.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`);
+      // N28 — `notes` joins the three original columns: "الملاحظة" is one of the
+      // four fields the receptionist is told to search by.
+      const pattern = `%${searchQuery}%`;
+      query = query.or(
+        [
+          `full_name.ilike.${pattern}`,
+          `phone_number.ilike.${pattern}`,
+          `email.ilike.${pattern}`,
+          `notes.ilike.${pattern}`,
+        ].join(',')
+      );
     }
 
     const { data, error } = await query;
