@@ -1,9 +1,16 @@
 // Stripe webhook (server-side, no auth — protected by Stripe signature verification).
-// Idempotent by checkout session id. No user faces this route.
+// Handles both platform subscription webhooks and patient-portal billing events.
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { getStripeConfig, verifyStripeSignature } from '@/lib/payments/stripe';
+import {
+  handleConnectAccountUpdated,
+  handlePortalDispute,
+  handlePortalIntentFailed,
+  handlePortalIntentSucceeded,
+} from '@/lib/services/portalPayments';
+import { handlePortalRefundEvent } from '@/lib/services/portalRefunds';
 
 export const runtime = 'nodejs';
 
@@ -24,14 +31,23 @@ export async function POST(req: Request) {
   }
 
   try {
-    if (event.type === 'checkout.session.completed') {
+    if (event.type === 'payment_intent.succeeded') {
+      await handlePortalIntentSucceeded(event.data?.object);
+    } else if (event.type === 'payment_intent.payment_failed') {
+      await handlePortalIntentFailed(event.data?.object);
+    } else if (event.type === 'charge.dispute.created') {
+      await handlePortalDispute(event.data?.object);
+    } else if (event.type === 'account.updated') {
+      await handleConnectAccountUpdated(event.data?.object);
+    } else if (event.type === 'refund.updated' || event.type === 'refund.failed') {
+      await handlePortalRefundEvent(event.data?.object);
+    } else if (event.type === 'checkout.session.completed') {
       await handleCheckoutCompleted(event.data?.object);
     } else if (event.type === 'invoice.payment_failed') {
       await handlePaymentFailed(event.data?.object);
     } else if (event.type === 'customer.subscription.deleted') {
       await handleSubscriptionDeleted(event.data?.object);
     }
-    // Unknown events are acknowledged (idempotent/no-op).
     return NextResponse.json({ received: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -47,16 +63,11 @@ async function handleCheckoutCompleted(checkout: any) {
   const customer: string | undefined = checkout?.customer;
   const stripeSubscription: string | undefined = checkout?.subscription;
   if (!clinicId || !sessionId) return;
-  // v2 — a session without plan metadata is never activated (the old hard-coded
-  // 'growth' default would now grant limits for a plan that no longer exists).
   if (!planMeta) {
     logEvent('payment_webhook_missing_plan_metadata', { clinic_id: clinicId, session_id: sessionId }, 'error');
     return;
   }
 
-  // Idempotency: skip ONLY if this session was already fully processed
-  // (activated). A pre-created pending row from the checkout route shares the
-  // same session id with status='unpaid' and MUST still be activated here.
   const { data: existing } = await supabaseAdmin
     .from('subscriptions')
     .select('id, stripe_checkout_session_id, status')
@@ -65,8 +76,6 @@ async function handleCheckoutCompleted(checkout: any) {
     .maybeSingle();
   if (existing?.stripe_checkout_session_id === sessionId && existing?.status === 'active') return;
 
-  // v2 — monthly vs yearly comes from the checkout metadata (set server-side by
-  // POST /api/payments/checkout), never from client input.
   const isYearly = checkout?.metadata?.billing_interval === 'year';
   const now = new Date();
   const periodEnd = new Date(now);

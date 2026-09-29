@@ -1,22 +1,44 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES, roleDenied } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { validateIanaTimezone } from '@/lib/clinic/localization';
 
 const profileSchema = z.object({
-  name: z.string().min(1).max(200),
+  name: z.string().min(1).max(200).optional(),
   phone: z.string().max(30).optional().nullable(),
   address: z.string().max(500).optional().nullable(),
   website: z.string().url().max(500).optional().nullable(),
   email: z.string().email().max(254).optional().nullable(),
-  // Location (20261005_clinic_location columns) — optional; only written when sent.
+  currency: z.string().regex(/^[A-Za-z]{3}$/).optional().nullable(),
+  timezone: z.string().optional().nullable(),
+  locale: z.enum(['ar', 'en']).optional().nullable(),
+  date_format: z.string().max(30).optional().nullable(),
+  number_format: z.enum(['en', 'ar']).optional().nullable(),
+  fiscal_year: z.enum(['calendar', 'custom']).optional().nullable(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   city: z.string().max(120).optional().nullable(),
   area: z.string().max(120).optional().nullable(),
   address_detail: z.string().max(500).optional().nullable(),
 });
+
+function buildProfileEnvelope(data: any, settings: any = null) {
+  const legacyTimezone = (data?.settings && typeof data.settings === 'object' && 'timezone' in data.settings)
+    ? String((data.settings as Record<string, unknown>).timezone ?? '')
+    : null;
+
+  return {
+    ...data,
+    currency: settings?.currency ?? null,
+    timezone: settings?.timezone ?? legacyTimezone ?? null,
+    locale: settings?.locale ?? null,
+    date_format: settings?.date_format ?? null,
+    number_format: settings?.number_format ?? null,
+    fiscal_year: settings?.fiscal_year ?? null,
+  };
+}
 
 export async function GET(req: Request) {
   try {
@@ -29,17 +51,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
-    const supabase = supabaseAdmin;
-    const { data, error } = await supabase
+    const { data: clinic, error: clinicError } = await supabaseAdmin
       .from('clinics')
-      .select('id, name, phone, address, address_detail, city, area, website, email, slug, latitude, longitude, created_at, updated_at')
+      .select('id, name, phone, address, address_detail, city, area, website, email, slug, settings, latitude, longitude, created_at, updated_at')
       .eq('id', clinicId)
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    if (clinicError || !clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
 
-    return NextResponse.json({ data });
+    const { data: settings } = await supabaseAdmin
+      .from('clinic_settings')
+      .select('clinic_id, currency, timezone, locale, date_format, number_format, fiscal_year')
+      .eq('clinic_id', clinicId)
+      .maybeSingle();
+
+    return NextResponse.json({ data: buildProfileEnvelope(clinic, settings) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('clinic_profile_get_error', { error: message }, 'error');
@@ -54,8 +81,9 @@ export async function PUT(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
+    const denied = roleDenied(authorization, ADMIN_ROLES);
+    if (denied) {
+      return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     }
 
     const body = await req.json();
@@ -64,34 +92,67 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Invalid profile payload', details: parsed.error.errors }, { status: 400 });
     }
 
-    const supabase = supabaseAdmin;
-    // Base fields are always written; location fields only when sent so a
-    // plain profile edit never wipes previously set coordinates.
+    if (parsed.data.timezone !== undefined && parsed.data.timezone !== null && !validateIanaTimezone(parsed.data.timezone)) {
+      return NextResponse.json({ error: 'INVALID_TIMEZONE' }, { status: 400 });
+    }
+
     const patch: Record<string, unknown> = {
-      name: parsed.data.name,
+      name: parsed.data.name ?? undefined,
       phone: parsed.data.phone ?? null,
       address: parsed.data.address ?? null,
       website: parsed.data.website ?? null,
       email: parsed.data.email ?? null,
     };
+    const localizationPatch: Record<string, unknown> = {};
+
+    if (parsed.data.name !== undefined) patch.name = parsed.data.name;
     if (parsed.data.latitude !== undefined) patch.latitude = parsed.data.latitude;
     if (parsed.data.longitude !== undefined) patch.longitude = parsed.data.longitude;
     if (parsed.data.city !== undefined) patch.city = parsed.data.city;
     if (parsed.data.area !== undefined) patch.area = parsed.data.area;
     if (parsed.data.address_detail !== undefined) patch.address_detail = parsed.data.address_detail;
 
-    const { data, error } = await supabase
+    if (parsed.data.currency !== undefined) localizationPatch.currency = String(parsed.data.currency).toUpperCase();
+    if (parsed.data.timezone !== undefined) localizationPatch.timezone = parsed.data.timezone ?? null;
+    if (parsed.data.locale !== undefined) localizationPatch.locale = parsed.data.locale ?? null;
+    if (parsed.data.date_format !== undefined) localizationPatch.date_format = parsed.data.date_format ?? null;
+    if (parsed.data.number_format !== undefined) localizationPatch.number_format = parsed.data.number_format ?? null;
+    if (parsed.data.fiscal_year !== undefined) localizationPatch.fiscal_year = parsed.data.fiscal_year ?? null;
+
+    const { data: existingClinic, error: clinicError } = await supabaseAdmin
       .from('clinics')
-      .update(patch)
+      .update(Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)))
       .eq('id', clinicId)
       .is('deleted_at', null)
-      .select('id, name, phone, address, address_detail, city, area, website, email, slug, latitude, longitude, created_at, updated_at')
-      .single();
+      .select('id, name, phone, address, address_detail, city, area, website, email, slug, settings, latitude, longitude, created_at, updated_at')
+      .maybeSingle();
 
-    if (error || !data) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    if (clinicError || !existingClinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+
+    if (Object.keys(localizationPatch).length > 0) {
+      const row = {
+        clinic_id: clinicId,
+        currency: localizationPatch.currency ?? 'ils',
+        timezone: localizationPatch.timezone ?? 'UTC',
+        locale: localizationPatch.locale ?? 'ar',
+        date_format: localizationPatch.date_format ?? 'YYYY-MM-DD',
+        number_format: localizationPatch.number_format ?? 'en',
+        fiscal_year: localizationPatch.fiscal_year ?? 'calendar',
+      };
+      if (!validateIanaTimezone(row.timezone as string | null)) {
+        return NextResponse.json({ error: 'INVALID_TIMEZONE' }, { status: 400 });
+      }
+      await supabaseAdmin.from('clinic_settings').upsert(row, { onConflict: 'clinic_id' });
+    }
+
+    const { data: settings } = await supabaseAdmin
+      .from('clinic_settings')
+      .select('clinic_id, currency, timezone, locale, date_format, number_format, fiscal_year')
+      .eq('clinic_id', clinicId)
+      .maybeSingle();
 
     logEvent('clinic_profile_updated', { clinic_id: clinicId });
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: buildProfileEnvelope(existingClinic, settings) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('clinic_profile_put_error', { error: message }, 'error');
