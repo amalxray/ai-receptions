@@ -2,6 +2,73 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-29 — ✅ B51-H + B51-D: تصلّب الإعدادات ومنع البيانات الوهمية (+ درس تلف `.env.local`)
+
+**الحالة: مُنجَز ومُتحقَّق منه — `tsc` نظيف · `next build` ناجح (EXIT=0) · 12 اختبارًا جديدًا ناجحًا · لا انحدار (2482 ناجح / 17 فاشل = نفس فشل B21 القائم قبل التغيير في 4 ملفات غير متعلقة). لم يُنفَّذ commit (بانتظار موافقة المالك).**
+
+### B51-H — التباس «Supabase is not configured» (ملف واحد: `lib/useClinicContext.ts`)
+**العلّة:** الواجهة تعرض رسالة إنجليزية واحدة لحالتين مختلفتين تمامًا:
+1. **الشبكة فشلت** (فحص `/api/supabase-config` لم يصل) — إعادة المحاولة تنفع.
+2. **النشر غير مُهيّأ فعلًا** (لا متغيرات بيئة) — إعادة المحاولة لا تنفع.
+والأسوأ: `useSupabaseConfig` يبدأ بـ`isConfigured:false` قبل وصول الجواب، وكان الـhook يقرأ هذه القيمة الأولى فقط ⇒ **وميض خطأ في أول رسم لكل صفحة لوحة تحكم**، ورسالة دائمة مُضلِّلة عند فشل الفحص على نشر سليم.
+
+**الإصلاح:** `if (isConfigLoading) return;` (انتظار الحكم) + تفريق الرسائل عبر `configErrorMessage(checkFailed)`:
+- شبكة: «تعذّر الاتصال بالخادم — تحقّق من الإنترنت ثم أعد المحاولة»
+- بيئة: «قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تحميل بيانات العيادة»
+وأُضيفت الحالات الثلاث إلى deps (`isConfigured, isConfigLoading, checkFailed`) وحُذفت الرسالة الإنجليزية نهائيًا من الكود.
+
+### B51-D — لا بيانات DEMO بصمت (3 مسارات)
+**العلّة (خطر إنتاجي مُثبَت حيًّا):** عند غياب متغيرات Supabase كان `GET /api/patients` يعيد **مرضى وهميين بـ200** و`POST` ينشئ «مريضًا» في الذاكرة و`/api/appointments` يعرض مواعيد وهمية ⇒ نشر مُعيَّب **يبدو شغّالًا** ببيانات عيادة ملفَّقة. (النمط الصحيح كان موجودًا أصلًا في `ai/messages` و`ai/conversations` فقط.)
+
+**الإصلاح (نفس النمط الموجود):** `if (!config.isConfigured && demoFallbackAllowed()) { demo }` وإلا **503** بجسم `{ error: 'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تنفيذ الطلب', code: 'NOT_CONFIGURED' }`، و`demoFallbackAllowed()` = `NODE_ENV !== 'production'` (وضع التطوير/الاختبار فقط).
+- `app/api/patients/route.ts` (GET + POST)
+- `app/api/patients/[patientId]/route.ts` (GET + PUT + DELETE)
+- `app/api/appointments/route.ts` (GET + POST)
+
+**⚠️ فجوة متبقية مُثبَّتة في الاختبار (B51-D2، ملف واحد):** `app/api/leads/route.ts` يحتفظ بمصفوفة `demoLeads` **محلية** (ليست في `lib/demoState`) ويعيدها عند غياب الإعداد ⇒ نفس المعالجة بانتظار موافقة المالك (الحد المتفق عليه ≤5 ملفات: استُهلكت كاملة). الاختبار `tests/unit/b51-config-failclosed.test.ts` يحتوي قائمة `KNOWN_UNGUARDED_RESIDUAL = ['app/api/leads/route.ts']` تجعله **يفشل فورًا** إذا ظهر تسريب جديد، وتفشل أيضًا عند إصلاح هذا التسريب حتى تُحدَّث القائمة.
+
+### B51-H2 — لماذا استمرّت الرسالة أمام المستخدم؟ (ملف واحد: صفحة المرضى)
+**الشكوى:** `amalxraycenter@gmail.com` على `/dashboard/amal-x-ray-center/patients` → عند فتح نموذج «إضافة مريض» تظهر «Supabase is not configured» **رغم أن `/api/supabase-config` يعيد `isConfigured:true`**.
+
+**السلسلة (مُثبتة بالكود، لا تخمين):**
+1. `useSupabaseConfig()` يبدأ `{ isConfigured: false, loading: true }` قبل وصول جواب الفحص (fetch غير متزامن).
+2. الـhook في **البناء المنشور** (722320d، ما قبل B51-H) بلا بوابة `loading` ⇒ أول تشغيل يُسجّل `error = 'Supabase is not configured'` و`clinicId = null`.
+3. `app/.../patients/page.tsx` كان ينسخ الخطأ إلى حالته المحلية: `if (clinicError) setError(clinicError)`.
+4. بعد وصول الفحص يُشفى السياق (`isConfigured:true`, `clinicId` حقيقي, `clinicError=null`) — لكن **لا شيء يُفرِّغ `error` المحلي** ⇒ الرسالة **تلتصق لبقية الجلسة**.
+5. نموذج الإضافة يعرضها في صف الأزرار (`{formError ?? error}`)، ومنطقة النتائج تُستبدل بـ«خدمة المرضى غير متاحة».
+**الفرق الجوهري:** بقية الصفحات تعرض `clinicError` **حيًّا** (`if (clinicError) return <EmptyState … description={clinicError} />`) فتختفي الرسالة تلقائيًا عند الشفاء — صفحة المرضى وحدها كانت «تكاش» الخطأ.
+
+**الإصلاح:** حُذف النسخ نهائيًا، والخطأ يُعرض حيًّا: `{formError ?? clinicError ?? error}` على صف النموذج و`description={clinicError ?? error}` على منطقة النتائج، مع بقاء `if (clinicLoading)` لمنع البحث قبل وصول الحكم.
+
+**مثبَّت في الاختبار:** 3 صفحات ما زالت تحمل نفس العطب (سطر واحد لكل منها) — `ai-settings` · `appointments` · `conversations` — بقائمة `KNOWN_STICKY_RESIDUAL` تُفشل الاختبار إن **زادت** القائمة أو إن أُصلحت صفحة دون تحديثها (إصلاحها المقترح: B51-H3).
+
+**⚠️ للنشر:** الأسطر القديمة ما زالت **حيّة في بناء الإنتاج** (النص الإنجليزي موجود فعلًا في `8656-*.js` المُقدَّم من www.dentairec.com) ⇒ لا بد من `push` + نشر جديد ليتوقف المستخدم عن رؤية الرسالة محليًا في ذلك النموذج.
+
+
+**ماذا حدث:** لُصقت في أول الملف كتلة أوامر `node -e ' … '` (24 سطرًا: تقرأ `.env.local` ثم تستدعي `api.supabase.com/v1/projects/<ref>/api-keys?reveal=true`) فاستبدلت أول 24 سطرًا، ومنها سطرا `NEXT_PUBLIC_SUPABASE_URL` و`NEXT_PUBLIC_SUPABASE_ANON_KEY` ⇒ `isConfigured:false` ⇒ رسالة «غير مُهيّأ» (محليًا/أي بناء من هذه النسخة)، **بينما Vercel سليم تمامًا**.
+**كيف شُخِّص (بدون تخمين):** استعلام الإنتاج العام `GET /api/supabase-config` على كل النطاقات = `isConfigured:true` (والقيم الثلاث موجودة في `production` على Vercel) + فحص bundle العميل المُسلَّم (`8656-*.js`) يُظهر تضمين `NEXT_PUBLIC_SUPABASE_URL` والمفتاح العام فعلًا + مقارنة `.env.local` بـ`.env.local.backup` ⇒ الفرق **سطران فقط** بقيم مطابقة لمشروع الإنتاج.
+**الإصلاح:** أُعيد بناء `.env.local` **نظيفًا صالحًا** (95 سطرًا · 39 مفتاحًا · صفر أسطر JS) من النسخة الاحتياطية مع حذف كتلة الـJS، والنسخة التالفة نُقلت خارج المستودع.
+**القاعدة الذهبية (تُضاف للدروس):** لا تلصق أوامر أو سكربتات داخل `.env*`؛ وأي إضافة لمتغير `NEXT_PUBLIC_*` على Vercel تتطلب **Redeploy** (تُضمَّن وقت البناء).
+**تحقّق A/B:** بدون البيئة → `isConfigured:false` و`/api/patients` 200 ببيانات DEMO؛ بعد الإصلاح → `isConfigured:true` و`/api/patients` 401 (المسار الحقيقي).
+
+### الأمن — المفاتيح المُعرَّضة (قرار التدوير للمالك)
+كانت الظاهرة في نص صريح داخل المستودع (`.env.local` + نسخته التالفة): **9 أسرار مختلفة** (بصمات SHA-256 لتمييز التكرار، بلا قيم):
+| # | النوع | البصمة | أين |
+|---|---|---|---|
+| 1 | Gemini API key (`GEMINI_API_KEY`) | `102ef6fa` | live + archived |
+| 2 | Gemini API key (احتياطي في تعليق) | `0145d2ea` | live + archived |
+| 3 | Gemini API key (`GEMINI_API_KEY_FALLBACK` + تعليق) | `f40b75ed` | live + archived |
+| 4 | Gemini API key (احتياطي ثانٍ في تعليق) | `409c17a0` | live + archived |
+| 5 | **Supabase personal access token** (`sbp_…`) | `bed03fe1` | archived فقط |
+| 6 | Supabase secret key (`SUPABASE_SERVICE_ROLE_KEY`) | `72b411a4` | live + archived |
+| 7 | Vercel token (`vcp_…`) | `0709bfcf` | live (سطران + تعليق) + archived |
+| 8 | Vercel OIDC JWT (`VERCEL_OIDC_TOKEN`) | `f0b630de` | live + archived |
+| 9 | Stripe TEST secret (`STRIPE_SECRET_KEY` = `sk_test_…`) | `a005f3de` | live + archived |
+
+**ما نُفِّذ:** (1) `SUPABASE_ACCESS_TOKEN` (`sbp_…`) **حُذف** من `.env.local` ومن `.env.local.backup` (غير مطلوب للبناء؛ أخطر مفتاح لأنه يمنح واجهة إدارة الحساب). (2) `.env.local.corrupted-20260929` **نُقل خارج المستودع** إلى `~/dhs-env-audit/`. (3) نُسخة كاملة سابقة للتغيير محفوظة في `~/dhs-env-audit/env.local.preb51h.bak`.
+**توصية:** تدوير مفاتيح Gemini الأربعة و`vcp_` و`sk_test_` (حسب قرار المالك)، وحذف `~/dhs-env-audit/` بعد إتمام التدوير، وإزالة المفاتيح من التعليقات نهائيًا. (الملف مُستثنى من Git عبر `.gitignore: .env*` فلم يُرفع أي سرّ إلى المستودع.)
+
+
 ## 2026-09-29 — ✅ N30: ملف المريض الواعي بالنشاط (مركز أشعة ≠ عيادة أسنان) — بدون أي Migration
 
 **الحالة: مُنجَز ومُتحقَّق منه (`tsc` نظيف · `next build` ناجح (EXIT=0) · 36 اختبار وحدة جديد ناجح · لا انحدار: نفس 17 فشل قائم مسبقًا قبل التغيير في 4 ملفات غير متعلقة).**
