@@ -46,6 +46,7 @@ export default function AISettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [settings, setSettings] = useState<AISettings>({});
+  const displayError = clinicError ?? error;
 
   async function loadSettings(id: string) {
     setLoading(true);
@@ -78,7 +79,7 @@ export default function AISettingsPage() {
     if (!isSupabaseConfigured && !checkFailed) { setLoading(false); return; }
     if (clinicLoading) { setLoading(true); return; }
     if (!clinicId) {
-      if (clinicError) setError(clinicError);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -120,8 +121,13 @@ export default function AISettingsPage() {
         </div>
       ) : !isSupabaseConfigured && !checkFailed ? (
         <EmptyState title="Supabase غير مهيأ" description="فعّل بيئة العيادة الخلفية لتحميل إعدادات الذكاء الاصطناعي وحفظها." />
-      ) : error ? (
-        <EmptyState title="إعدادات الذكاء الاصطناعي غير متاحة" description={error} />
+      ) : displayError ? (
+        <div className="space-y-4">
+          <div className="rounded-[1.5rem] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 shadow-[0_0_20px_-10px_rgba(251,191,36,0.85)]">
+            {displayError}
+          </div>
+          <EmptyState title="إعدادات الذكاء الاصطناعي غير متاحة" description={displayError} />
+        </div>
       ) : (
         <form onSubmit={handleSave} className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">

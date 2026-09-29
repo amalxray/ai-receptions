@@ -81,6 +81,7 @@ export default function ConversationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const displayError = clinicError ?? error;
 
   async function loadConversations(id: string) {
     setLoading(true);
@@ -104,7 +105,7 @@ export default function ConversationsPage() {
       return;
     }
     if (!clinicId) {
-      if (clinicError) setError(clinicError);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -158,8 +159,13 @@ export default function ConversationsPage() {
           <Skeleton className="h-28" />
           <Skeleton className="h-28" />
         </div>
-      ) : error ? (
-        <EmptyState title="خدمة المحادثات غير متاحة" description={error} />
+      ) : displayError ? (
+        <div className="space-y-4">
+          <div className="rounded-[1.5rem] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 shadow-[0_0_20px_-10px_rgba(251,191,36,0.85)]">
+            {displayError}
+          </div>
+          <EmptyState title="خدمة المحادثات غير متاحة" description={displayError} />
+        </div>
       ) : sortedConversations.length === 0 ? (
         <EmptyState title="لا توجد محادثات" description="ستظهر الرسائل هنا عندما يتفاعل المرضى مع موظف الاستقبال الذكي." />
       ) : (

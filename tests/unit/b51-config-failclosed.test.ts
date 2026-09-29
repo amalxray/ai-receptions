@@ -266,15 +266,11 @@ describe('B51-H2 — no page may cache/latch the clinic-context error', () => {
   })(dashboardDir);
 
   /**
-   * The reported symptom's page is FIXED (it renders the hook error live, so it
-   * disappears the moment the context recovers). The three below still latch it
-   * — same defect class, one line each; their list must only ever shrink.
+   * The reported page is fixed and the remaining latched pages were removed in
+   * B51-H3. The list must shrink to zero; if a new latch reappears, this test
+   * fails immediately.
    */
-  const KNOWN_STICKY_RESIDUAL = [
-    'app/(dashboard)/dashboard/[clinicSlug]/ai-settings/page.tsx',
-    'app/(dashboard)/dashboard/[clinicSlug]/appointments/page.tsx',
-    'app/(dashboard)/dashboard/[clinicSlug]/conversations/page.tsx',
-  ];
+  const KNOWN_STICKY_RESIDUAL: string[] = [];
 
   it('the reported page shows the error LIVE instead of latching it', () => {
     const src = read('app/(dashboard)/dashboard/[clinicSlug]/patients/page.tsx');
@@ -285,7 +281,7 @@ describe('B51-H2 — no page may cache/latch the clinic-context error', () => {
     expect(src).toContain('if (clinicLoading) {');
   });
 
-  it('pins the remaining latched pages (the list must shrink, never grow)', () => {
+  it('the latched-clinic-error list must be empty after the live-render fix', () => {
     const offenders = pageFiles.filter((f) => STICKY.test(read(relPath(f)))).map(relPath).sort();
     expect(offenders).toEqual([...KNOWN_STICKY_RESIDUAL].sort());
   });

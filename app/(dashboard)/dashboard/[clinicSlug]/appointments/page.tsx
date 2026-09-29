@@ -86,6 +86,7 @@ export default function AppointmentsPage() {
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
+  const displayError = clinicError ?? error;
   // B52-B — the edit panel needs a provider list: rescheduling an appointment
   // that has no provider (walk-in / legacy row) previously asked availability for
   // `appointment.id` as if it were a provider id, so the slot list could never
@@ -125,7 +126,7 @@ export default function AppointmentsPage() {
       return;
     }
     if (!clinicId) {
-      if (clinicError) setError(clinicError);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -676,8 +677,13 @@ export default function AppointmentsPage() {
             <Skeleton className="h-32" />
             <Skeleton className="h-32" />
           </div>
-        ) : error ? (
-          <EmptyState title="خدمة المواعيد غير متاحة" description={error} />
+        ) : displayError ? (
+          <div className="space-y-4">
+            <div className="rounded-[1.5rem] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 shadow-[0_0_20px_-10px_rgba(251,191,36,0.85)]">
+              {displayError}
+            </div>
+            <EmptyState title="خدمة المواعيد غير متاحة" description={displayError} />
+          </div>
         ) : appointments.length === 0 ? (
           <EmptyState title="لا توجد مواعيد مجدولة" description="ستظهر هنا المواعيد التي تم إنشاؤها من خلال سير عمل العيادة." />
         ) : (
