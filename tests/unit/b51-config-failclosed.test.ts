@@ -216,13 +216,10 @@ describe('B51-D — the guard cannot be bypassed (source invariant)', () => {
     /\b(getDemo[A-Za-z]*|createDemo[A-Za-z]*|appendDemo[A-Za-z]*|updateDemo[A-Za-z]*|deleteDemo[A-Za-z]*)\(|\bdemoLeads\b/;
 
   /**
-   * KNOWN RESIDUAL, pinned on purpose: `app/api/leads/route.ts` keeps its own
-   * `demoLeads` array (not `lib/demoState`) and still serves it when the deploy
-   * is unconfigured. It is one file away from the same 503 treatment — listing
-   * it here means this test FAILS as soon as a NEW leak appears, and fails again
-   * once this one is fixed (forcing the list to shrink).
+   * B51-D2 closed the last demo leak in the leads route. The residual list must
+   * stay empty; if a new unguarded demo accessor appears, this test fails.
    */
-  const KNOWN_UNGUARDED_RESIDUAL = ['app/api/leads/route.ts'];
+  const KNOWN_UNGUARDED_RESIDUAL: string[] = [];
 
   it('lists exactly the expected residual demo leak (must shrink, never grow)', () => {
     const offenders = apiFiles

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getLeads, createLead, createPublicLead } from '@/lib/services/leads';
 import { getSupabaseEnvConfig } from '@/lib/config';
+import { demoFallbackAllowed } from '@/lib/demoState';
+
+const NOT_CONFIGURED_RESPONSE = {
+  error: 'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تنفيذ الطلب',
+  code: 'NOT_CONFIGURED',
+} as const;
 
 let demoLeads = [
   {
@@ -44,7 +50,8 @@ export async function GET() {
   const config = getSupabaseEnvConfig();
 
   if (!config.isConfigured) {
-    return NextResponse.json(demoLeads);
+    if (demoFallbackAllowed()) return NextResponse.json(demoLeads);
+    return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
   }
 
   try {
@@ -59,6 +66,10 @@ export async function POST(request: NextRequest) {
   const config = getSupabaseEnvConfig();
 
   if (!config.isConfigured) {
+    if (!demoFallbackAllowed()) {
+      return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
+    }
+
     const body = await request.json();
     const nextLead = { id: nextLeadId++, ...body };
     demoLeads = [nextLead, ...demoLeads];
