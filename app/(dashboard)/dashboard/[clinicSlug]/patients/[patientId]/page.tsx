@@ -9,8 +9,18 @@ import { COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboa
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
-import { appendQuickNote, resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
+import {
+  appendPatientSession,
+  appendQuickNote,
+  parsePatientSessions,
+  resolvePatientAgeLabel,
+  updatePatientSession,
+  type PatientSession,
+  type PatientSessionDraft,
+  type PatientSessionStatus,
+} from '@/components/dashboard/patients/smartProfile';
 import PatientAppointmentsPanel, { type PatientAppointmentRow } from '@/components/dashboard/patients/PatientAppointmentsPanel';
+import PatientSessionsPanel, { SessionsSkeleton } from '@/components/dashboard/patients/PatientSessionsPanel';
 import SmartPatientProfile, {
   type SmartPatientData,
   type SmartPatientStats,
@@ -51,6 +61,7 @@ type PatientCommunication = {
 const TABS = [
   { key: 'overview', label: '📋 نظرة عامة' },
   { key: 'appointments', label: '📅 المواعيد' },
+  { key: 'sessions', label: '🦷 الجلسات' },
   { key: 'financial', label: '💰 المالية' },
   { key: 'files', label: '🖼️ ملفات الأشعة' },
   { key: 'communications', label: '🗨️ التواصل' },
@@ -288,6 +299,60 @@ export default function PatientDetailPage() {
     [patientId]
   );
 
+  /** N26 — the treatment plan lives in `metadata.sessions` (no migration). */
+  const sessions = useMemo(() => parsePatientSessions(patient?.metadata), [patient?.metadata]);
+
+  /**
+   * N26 — one writer for the whole plan. Like the notes path, ONLY the `sessions`
+   * key is sent: the PUT route shallow-merges `body.metadata` over the stored
+   * JSONB, so a session can never clobber quick notes, medical history or the
+   * manual age. Local state is updated from the same payload, so the progress bar
+   * and the cards move without a refetch.
+   */
+  const persistSessions = useCallback(
+    async (next: { sessions: PatientSession[] }, failureMessage: string) => {
+      if (!clinicId || !patient) throw new Error('لم يتم تحديد المريض');
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/patients/${encodeURIComponent(patient.id)}?clinic_id=${encodeURIComponent(clinicId)}`,
+        {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metadata: { sessions: next.sessions } }),
+        }
+      );
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('انتهت الجلسة — أعد تسجيل الدخول ثم أعد المحاولة');
+        if (res.status === 404) throw new Error('لم يُعثر على هذا المريض في هذه العيادة');
+        throw new Error(failureMessage);
+      }
+      setPatient((prev) =>
+        prev ? { ...prev, metadata: { ...(prev.metadata ?? {}), sessions: next.sessions } } : prev
+      );
+    },
+    [authHeaders, clinicId, patient]
+  );
+
+  const addSession = useCallback(
+    async (draft: PatientSessionDraft) => {
+      if (!patient) throw new Error('لم يتم تحديد المريض');
+      await persistSessions(appendPatientSession(patient.metadata, draft), 'تعذر حفظ الجلسة — حاول مرة أخرى');
+    },
+    [patient, persistSessions]
+  );
+
+  const changeSessionStatus = useCallback(
+    async (session: PatientSession, status: PatientSessionStatus) => {
+      if (!patient) throw new Error('لم يتم تحديد المريض');
+      await persistSessions(
+        updatePatientSession(patient.metadata, session.id, { status }),
+        'تعذر تحديث الجلسة — حاول مرة أخرى'
+      );
+    },
+    [patient, persistSessions]
+  );
+
+
   const past = useMemo(
     () => appointments.filter((a) => a.status === 'completed' || a.status === 'cancelled' || a.status === 'no_show'),
     [appointments]
@@ -338,8 +403,21 @@ export default function PatientDetailPage() {
         </div>
       </div>
 
+      {/* N26 — a skeleton instead of a text loading line: the patient row carries
+          `metadata.sessions`, so this is exactly what the page is waiting for. */}
       {loading && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400">جارٍ التحميل...</div>
+        <div className="space-y-3">
+          <div className="animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+            <div className="h-4 w-40 rounded-full bg-slate-800" />
+            <div className="mt-3 h-3 w-64 rounded-full bg-slate-800/70" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="h-16 rounded-xl bg-slate-800/50" />
+              <div className="h-16 rounded-xl bg-slate-800/50" />
+              <div className="h-16 rounded-xl bg-slate-800/50" />
+            </div>
+          </div>
+          <SessionsSkeleton variant="full" />
+        </div>
       )}
       {!loading && error && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
@@ -418,6 +496,16 @@ export default function PatientDetailPage() {
                     </p>
                   </div>
                 </div>
+
+                {/* N26 — خطة العلاج: شريط «ما تم / ما بقي» وأقرب الجلسات دون مغادرة النظرة العامة. */}
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+                  <PatientSessionsPanel
+                    variant="compact"
+                    sessions={sessions}
+                    onAdd={addSession}
+                    onStatusChange={changeSessionStatus}
+                  />
+                </div>
               </div>
             )}
 
@@ -432,6 +520,15 @@ export default function PatientDetailPage() {
                 loading={apptsLoading}
                 authHeaders={authHeaders}
                 onCreated={handleAppointmentCreated}
+              />
+            )}
+
+            {tab === 'sessions' && (
+              <PatientSessionsPanel
+                variant="full"
+                sessions={sessions}
+                onAdd={addSession}
+                onStatusChange={changeSessionStatus}
               />
             )}
 

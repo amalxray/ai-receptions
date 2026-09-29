@@ -78,6 +78,31 @@ export type QuickNote = {
   by?: string;
 };
 
+/** N26 — the only three states a treatment session can be in. */
+export const PATIENT_SESSION_STATUSES = ['done', 'planned', 'cancelled'] as const;
+export type PatientSessionStatus = (typeof PATIENT_SESSION_STATUSES)[number];
+
+/**
+ * N26 — one item of the dental treatment plan, stored in
+ * `patients.metadata.sessions` (no migration: the patient row already owns the
+ * JSONB). `id` is optional on input — legacy / hand-written entries have none —
+ * and is always synthesised while parsing, so the UI can key, patch and colour a
+ * session without a database column.
+ */
+export type PatientSession = {
+  id: string;
+  /** YYYY-MM-DD — the day the session took place (or is planned for). */
+  date: string;
+  service: string;
+  /** Free tooth notation ("36", "الفك الأيسر") — never coerced to a number. */
+  tooth?: string;
+  status: PatientSessionStatus;
+  note?: string;
+};
+
+/** What the modal collects; the id is assigned when the session is appended. */
+export type PatientSessionDraft = Omit<PatientSession, 'id'> & { id?: string };
+
 export type MedicalHistory = {
   allergies: string[];
   medications: string[];
@@ -125,6 +150,8 @@ export type SmartPatientMetadata = {
   insurance: InsuranceInfo;
   emergency_contact: EmergencyContact;
   quick_notes: QuickNote[];
+  /** N26 — the dental treatment plan (done / planned / cancelled sessions). */
+  sessions: PatientSession[];
   /** Anything the rest of the app already stores (source, status, alerts…). */
   [key: string]: unknown;
 };
@@ -228,6 +255,7 @@ export function parsePatientMetadata(metadata: unknown): SmartPatientMetadata {
       relation: pickScalar(emergency.relation, source.emergency_contact_relation),
     },
     quick_notes: notes,
+    sessions: parsePatientSessions(source.sessions),
   };
 }
 
@@ -280,6 +308,8 @@ export type SerializedPatientMetadata = {
   insurance?: Partial<InsuranceInfo>;
   emergency_contact?: Partial<EmergencyContact>;
   quick_notes?: QuickNote[];
+  /** N26 — the normalised treatment plan. */
+  sessions?: PatientSession[];
   /** Any custom key already stored by other features survives the round-trip. */
   [key: string]: unknown;
 };
@@ -288,7 +318,7 @@ export function serializePatientMetadata(metadata: unknown): SerializedPatientMe
   const meta = parsePatientMetadata(metadata);
   const out: Record<string, unknown> = {};
 
-  const owned = new Set<string>([...GROUP_KEYS, 'age', 'date_of_birth', 'quick_notes']);
+  const owned = new Set<string>([...GROUP_KEYS, 'age', 'date_of_birth', 'quick_notes', 'sessions']);
   for (const [key, value] of Object.entries(meta)) {
     if (owned.has(key) || value === undefined || value === null) continue;
     if (typeof value === 'string' && !value.trim()) continue;
@@ -329,6 +359,10 @@ export function serializePatientMetadata(metadata: unknown): SerializedPatientMe
   const notes = meta.quick_notes.filter((note) => note.text.trim());
   if (notes.length) out.quick_notes = notes;
 
+  // N26 — the plan is written back normalised and bounded, never as raw input.
+  const sessions = meta.sessions.filter((session) => session.service.trim());
+  if (sessions.length) out.sessions = sessions;
+
   return out;
 }
 
@@ -350,6 +384,7 @@ export function emptyMetadata(): SmartPatientMetadata {
     insurance: { provider: '', card_number: '', coverage: '', expiry: '' },
     emergency_contact: { name: '', phone: '', relation: '' },
     quick_notes: [],
+    sessions: [],
   };
 }
 
@@ -1057,4 +1092,221 @@ export function appendQuickNote(current: unknown, note: QuickNote, max = 50): Sm
     quick_notes: [entry, ...base.quick_notes.filter((n) => n.text !== text || n.date !== entry.date)].slice(0, max),
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* N26 — جلسات العلاج (Dental treatment sessions)                      */
+/* ------------------------------------------------------------------ */
+
+/** Stable key for a session: legacy entries with no id still parse to the same one. */
+export function sessionId(date: string, service: string): string {
+  const day = asString(date).trim().slice(0, 10);
+  const name = asString(service).trim();
+  if (!day && !name) return 'session';
+  return `${day}|${name}`;
+}
+
+/** Accepts the three English states plus the Arabic labels doctors actually type. */
+function normalizeSessionStatus(value: unknown): PatientSessionStatus {
+  const raw = asString(value).trim().toLowerCase();
+  if (raw === 'done' || raw === 'completed' || raw === 'منجزة' || raw === 'مكتملة' || raw === 'تمت') return 'done';
+  if (raw === 'cancelled' || raw === 'canceled' || raw === 'ملغاة' || raw === 'ملغية') return 'cancelled';
+  return 'planned';
+}
+
+/**
+ * Reads `metadata.sessions` defensively — the one rule of this codebase's JSONB:
+ * a malformed plan must never break the patient file. Junk entries are dropped,
+ * a bare string becomes a session, a missing id is synthesised, and two sessions
+ * on the same day for the same service both survive (the key gets a suffix).
+ */
+export function parsePatientSessions(value: unknown): PatientSession[] {
+  const raw = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const out: PatientSession[] = [];
+
+  for (const entry of raw) {
+    const record: Record<string, unknown> | null =
+      typeof entry === 'string' ? { service: entry } : isRecord(entry) ? entry : null;
+    if (!record) continue;
+
+    const service = asString(record.service).trim();
+    if (!service) continue;
+
+    const date = asString(record.date).trim().slice(0, 10);
+    const tooth = asString(record.tooth).trim();
+    const note = asString(record.note).trim();
+    const declared = asString(record.id).trim();
+
+    let id = declared || sessionId(date, service);
+    let suffix = 2;
+    while (seen.has(id)) id = `${declared || sessionId(date, service)}#${suffix++}`;
+    seen.add(id);
+
+    out.push({
+      id,
+      date,
+      service,
+      status: normalizeSessionStatus(record.status),
+      ...(tooth ? { tooth } : {}),
+      ...(note ? { note } : {}),
+    });
+  }
+
+  return out;
+}
+
+export type SessionProgress = {
+  /** done + planned — cancelled sessions are not part of the plan. */
+  total: number;
+  done: number;
+  remaining: number;
+  cancelled: number;
+  percent: number;
+  /** "3 من 6 جلسات" — ready for the progress bar label. */
+  label: string;
+};
+
+/** "ما تم / ما بقي" for the treatment progress bar. */
+export function sessionProgress(sessions: readonly PatientSession[]): SessionProgress {
+  const done = sessions.filter((session) => session.status === 'done').length;
+  const remaining = sessions.filter((session) => session.status === 'planned').length;
+  const cancelled = sessions.filter((session) => session.status === 'cancelled').length;
+  const total = done + remaining;
+  return {
+    total,
+    done,
+    remaining,
+    cancelled,
+    percent: total === 0 ? 0 : Math.round((done / total) * 100),
+    label: `${done} من ${total} جلسات`,
+  };
+}
+
+/** New sessions go on top; the plan is bounded and never wipes a sibling key. */
+export function appendPatientSession(
+  current: unknown,
+  session: PatientSessionDraft,
+  max = 100
+): SmartPatientMetadata {
+  const base = parsePatientMetadata(current);
+  const draft = parsePatientSessions([session])[0];
+  if (!draft) return base;
+  return {
+    ...base,
+    sessions: [draft, ...base.sessions.filter((entry) => entry.id !== draft.id)].slice(0, max),
+  };
+}
+
+/** Status patch for one session ("تسجيل جلسة مكتملة" / إلغاء / إرجاع إلى مخطّطة). */
+export function updatePatientSession(
+  current: unknown,
+  id: string,
+  patch: Partial<Pick<PatientSession, 'status' | 'date' | 'service' | 'tooth' | 'note'>>
+): SmartPatientMetadata {
+  const base = parsePatientMetadata(current);
+  return {
+    ...base,
+    sessions: base.sessions.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+  };
+}
+
+export type ProcedureTone = {
+  /** Colour dot shown next to the procedure name. */
+  emoji: string;
+  /** Card border + background wash. */
+  ring: string;
+  /** Procedure chip (Tailwind ring + text). */
+  chip: string;
+  /** Accent bar on the card's leading edge. */
+  bar: string;
+  /** Hover glow for the action rail. */
+  glow: string;
+};
+
+/**
+ * N26 — colour by procedure: حشوة أزرق · عصب بنفسجي · خلع أحمر · تلبيس ذهبي ·
+ * تنظيف أخضر. Matching is a substring test so "حشوة ضرس 36" still lands on blue.
+ */
+const PROCEDURE_TONES: { match: string[]; tone: ProcedureTone }[] = [
+  {
+    match: ['حشو', 'حشوة', 'filling'],
+    tone: {
+      emoji: '🟦',
+      ring: 'border-blue-500/40 bg-blue-500/[0.06]',
+      chip: 'bg-blue-500/15 text-blue-200 ring-blue-500/30',
+      bar: 'bg-blue-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(59,130,246,0.55)]',
+    },
+  },
+  {
+    // NOTE: no bare "لب" token here — it is a substring of "تلبيس" (crown) and
+    // painted every crown violet. Real endo labels always contain "عصب" or "جذر".
+    match: ['عصب', 'قناة الجذر', 'root canal', 'endo'],
+    tone: {
+      emoji: '🟪',
+      ring: 'border-violet-500/40 bg-violet-500/[0.06]',
+      chip: 'bg-violet-500/15 text-violet-200 ring-violet-500/30',
+      bar: 'bg-violet-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(139,92,246,0.55)]',
+    },
+  },
+  {
+    match: ['خلع', 'قلع', 'extraction'],
+    tone: {
+      emoji: '🟥',
+      ring: 'border-rose-500/40 bg-rose-500/[0.06]',
+      chip: 'bg-rose-500/15 text-rose-200 ring-rose-500/30',
+      bar: 'bg-rose-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(244,63,94,0.55)]',
+    },
+  },
+  {
+    match: ['تلبيس', 'تاج', 'crown'],
+    tone: {
+      emoji: '🟨',
+      ring: 'border-amber-500/40 bg-amber-500/[0.06]',
+      chip: 'bg-amber-500/15 text-amber-200 ring-amber-500/30',
+      bar: 'bg-amber-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(245,158,11,0.55)]',
+    },
+  },
+  {
+    match: ['تنظيف', 'cleaning', 'scaling'],
+    tone: {
+      emoji: '🟩',
+      ring: 'border-emerald-500/40 bg-emerald-500/[0.06]',
+      chip: 'bg-emerald-500/15 text-emerald-200 ring-emerald-500/30',
+      bar: 'bg-emerald-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(16,185,129,0.55)]',
+    },
+  },
+];
+
+const DEFAULT_PROCEDURE_TONE: ProcedureTone = {
+  emoji: '🦷',
+  ring: 'border-slate-700 bg-slate-950/50',
+  chip: 'bg-slate-800 text-slate-300 ring-slate-700',
+  bar: 'bg-slate-500',
+  glow: 'hover:shadow-[0_0_20px_-6px_rgba(148,163,184,0.45)]',
+};
+
+export function sessionProcedureTone(service: string | null | undefined): ProcedureTone {
+  const name = asString(service).trim().toLowerCase();
+  if (!name) return DEFAULT_PROCEDURE_TONE;
+  for (const entry of PROCEDURE_TONES) {
+    if (entry.match.some((token) => name.includes(token.toLowerCase()))) return entry.tone;
+  }
+  return DEFAULT_PROCEDURE_TONE;
+}
+
+export const SESSION_STATUS_AR: Record<PatientSessionStatus, string> = {
+  done: 'مكتملة',
+  planned: 'مخطّطة',
+  cancelled: 'ملغاة',
+};
+
+export function sessionStatusAr(status: unknown): string {
+  return SESSION_STATUS_AR[normalizeSessionStatus(status)];
+}
+
 
