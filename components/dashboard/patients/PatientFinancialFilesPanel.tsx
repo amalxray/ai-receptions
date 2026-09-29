@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useClinicContext } from '@/lib/useClinicContext';
 
 /**
@@ -9,7 +10,29 @@ import { useClinicContext } from '@/lib/useClinicContext';
  * Reusable panel inside the patient page when a patient is selected.
  * Reads only; all mutations go through the authoritative RPCs
  * (issue_invoice / record_payment) and the medical-file upload route.
+ *
+ * B50 — the owner once saw the raw Postgres text
+ * `insert or update on table "invoice_items" violates foreign key constraint
+ * "invoice_items_clinic_id_service_id_fkey"` here. Two layers now prevent that:
+ * the server maps catalog mismatches to a friendly Arabic code, and
+ * `humanizePanelError` below is the last line of defence for any other route.
  */
+
+/**
+ * B50 — never render SQL at the owner. Anything that still looks like Postgres
+ * (a constraint name, `violates`, a column error) becomes one clear sentence
+ * plus the action that fixes it.
+ */
+function humanizePanelError(message: string): string {
+  if (!message) return 'حدث خطأ غير متوقع. أعد المحاولة.';
+  if (/foreign key|violates|constraint|duplicate key|syntax error|column .* does not exist|relation .* does not exist/i.test(message)) {
+    if (/service/i.test(message)) {
+      return 'الخدمة المختارة ليست ضمن كتالوج خدمات هذا المركز: حدّث الصفحة واختر الخدمة من قائمة الكتالوج، أو اكتب وصف البند يدويًا.';
+    }
+    return 'تعذّر حفظ العملية بسبب تعارض في البيانات المرتبطة. أعد تحميل الصفحة ثم حاول مرة أخرى — ولو تكرر الخطأ فأبلغ الدعم.';
+  }
+  return message;
+}
 
 type InvoiceRow = {
   id: string;
@@ -226,7 +249,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setBalances(bal.data ?? []);
       setFiles(fl.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'حدث خطأ في تحميل البيانات');
+      setError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ في تحميل البيانات'));
     } finally {
       setLoading(false);
     }
@@ -246,7 +269,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         if (!res.ok) throw new Error(json.error || 'تعذر فتح الملف');
         window.open(json.data.signed_url, '_blank', 'noopener,noreferrer');
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : 'تعذر فتح الملف');
+        setActionError(humanizePanelError(err instanceof Error ? err.message : 'تعذر فتح الملف'));
       }
     },
     [clinicId, authHeaders]
@@ -297,7 +320,8 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setReissueFrom(null);
       await loadAll();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'حدث خطأ');
+      // B50 — the API answers with Arabic now; this guards any legacy path.
+      setActionError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ'));
     } finally {
       setSubmitting(false);
     }
@@ -332,7 +356,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setVoidingInvoice(null);
       await loadAll();
     } catch (err) {
-      setVoidError(err instanceof Error ? err.message : 'حدث خطأ أثناء الإلغاء');
+      setVoidError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ أثناء الإلغاء'));
     } finally {
       setVoidBusy(false);
     }
@@ -365,7 +389,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setActionSuccess(`إعادة إصدار من: ${inv.invoice_number ?? ''} — عدّل البيانات ثم أصدِر الفاتورة الجديدة`);
       if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'تعذر تحضير إعادة الإصدار');
+      setActionError(humanizePanelError(err instanceof Error ? err.message : 'تعذر تحضير إعادة الإصدار'));
     } finally {
       setReissueBusy(false);
     }
@@ -407,7 +431,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setPayDate(new Date().toISOString().split('T')[0]);
       await loadAll();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'حدث خطأ');
+      setActionError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ'));
     } finally {
       setSubmitting(false);
     }
@@ -455,7 +479,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setActionSuccess('تم رفع الملف الطبي ✓');
       await loadAll();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'حدث خطأ في الرفع');
+      setActionError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ في الرفع'));
     } finally {
       setUploadBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -602,12 +626,44 @@ return (
       {error && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>
       )}
-      {actionError && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{actionError}</div>
-      )}
-      {actionSuccess && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{actionSuccess}</div>
-      )}
+      <AnimatePresence initial={false}>
+        {actionError && (
+          <motion.div
+            key="action-error"
+            role="alert"
+            aria-live="assertive"
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -6, height: 0 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-start gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200 shadow-[0_0_28px_-10px_rgba(244,63,94,0.55)]">
+              <span aria-hidden className="mt-0.5 text-base leading-none">⚠️</span>
+              <p className="leading-relaxed">{actionError}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {actionSuccess && (
+          <motion.div
+            key="action-success"
+            role="status"
+            aria-live="polite"
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -6, height: 0 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-start gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200 shadow-[0_0_28px_-10px_rgba(16,185,129,0.55)]">
+              <span aria-hidden className="mt-0.5 text-base leading-none">✅</span>
+              <p className="leading-relaxed">{actionSuccess}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Balance summary */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

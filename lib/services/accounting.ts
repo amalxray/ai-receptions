@@ -6,6 +6,7 @@
 // Platform Billing (subscriptions/billing_plans/Stripe) is never touched here.
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { writeAuditLog } from '@/lib/services/auditService';
+import { resolveCanonicalServiceIds } from '@/lib/services/clinicServiceCatalog';
 
 export type InvoiceItemInput = {
   service_id?: string | null;
@@ -61,16 +62,49 @@ function invalidParams(input: IssueInvoiceInput): string | null {
   return null;
 }
 
+/**
+ * B50 — a raw Postgres error must never reach the owner's screen. The invoice
+ * screen used to print the literal FK text
+ * (`... violates foreign key constraint "invoice_items_clinic_id_service_id_fkey"`).
+ * Each mapping below is a stable code the API route turns into Arabic.
+ */
+export function friendlyInvoiceError(message: string): string {
+  if (/invoice_items_clinic_id_service_id_fkey/i.test(message)) return 'SERVICE_NOT_IN_CATALOG';
+  if (/invoice_items_clinic_id_invoice_id_fkey|clinic_invoices/i.test(message) && /foreign key|violates/i.test(message)) {
+    return 'INVOICE_LINK_INVALID';
+  }
+  if (/patient/i.test(message) && /foreign key|violates/i.test(message)) return 'PATIENT_NOT_FOUND';
+  // Anything still shaped like SQL / a constraint name is hidden as a generic
+  // save failure — the real text stays in the server logs (writeAuditLog below).
+  if (/violates|constraint|foreign key|syntax error|duplicate key/i.test(message)) return 'INVOICE_SAVE_FAILED';
+  if (/column .+ does not exist|relation .+ does not exist/i.test(message)) return 'INVOICE_SAVE_FAILED';
+  return message;
+}
+
 /** Issues an invoice (directly as `issued` — no draft in Phase A). */
 export async function issueInvoice(input: IssueInvoiceInput): Promise<{ invoiceId: string; invoiceNumber: string }> {
   const bad = invalidParams(input);
   if (bad) throw new Error(bad);
 
+  // B50 — `GET /api/clinic/services` is the ACTIVITY-AWARE catalog
+  // (clinicServiceCatalog), so an imaging centre / dental lab posts DOMAIN ids
+  // while `invoice_items` is FK-bound to the CANONICAL `clinic_services`. Map
+  // them before the RPC so a domain id becomes its by-name mirror (or is
+  // dropped to NULL) instead of failing the whole invoice.
+  const resolution = await resolveCanonicalServiceIds(
+    input.clinicId,
+    input.items.map((item) => item.service_id ?? null)
+  );
+  const resolvedItems = input.items.map((item) => ({
+    ...item,
+    service_id: item.service_id ? resolution.get(item.service_id)?.canonical ?? null : null,
+  }));
+
   const { data, error } = await supabaseAdmin.rpc('issue_invoice', {
     p_clinic_id: input.clinicId,
     p_patient_id: input.patientId,
     p_appointment_id: input.appointmentId ?? null,
-    p_items: input.items.map((item) => ({
+    p_items: resolvedItems.map((item) => ({
       service_id: item.service_id ?? null,
       provider_id: item.provider_id ?? null,
       description: item.description,
@@ -85,7 +119,7 @@ export async function issueInvoice(input: IssueInvoiceInput): Promise<{ invoiceI
     p_payer_type: input.payerType ?? null,
     p_payer_ref: input.payerRef ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(friendlyInvoiceError(error.message));
   await writeAuditLog({
     clinicId: input.clinicId,
     actorUserId: input.actorUserId,

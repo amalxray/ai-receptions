@@ -475,3 +475,203 @@ export async function deleteCatalogService(clinicId: string, serviceId: string):
 
   return true;
 }
+
+/* -------------------------------------------------------------------------- */
+/* B50 — canonical service_id resolution for invoice lines                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * B50 THE BUG: the patient file's invoice composer fills its dropdown from
+ * `GET /api/clinic/services`, which is exactly `listCatalogServices()` above —
+ * so an imaging centre (or a dental lab) receives DOMAIN ids
+ * (`imaging_services.id` / `lab_services.id`). Those ids were posted straight
+ * into `issue_invoice`, whose line rows are guarded by the composite FK
+ * `invoice_items (clinic_id, service_id) → clinic_services (clinic_id, id)`.
+ * A domain id never exists in `clinic_services` → every manual invoice from an
+ * imaging centre failed with:
+ *
+ *   insert or update on table "invoice_items" violates foreign key constraint
+ *   "invoice_items_clinic_id_service_id_fkey"
+ *
+ * (Surfaced verbatim to the owner in the UI.) The only invoices that ever
+ * worked were the free-text ones (`service_id: null`) or the ones produced by
+ * `imagingBilling.issueInvoiceForImagingRequest`, which resolves the id from
+ * `clinic_services` itself.
+ *
+ * THE FIX (no migration): before the RPC runs, map every incoming id onto the
+ * canonical row. The mirror is matched BY NAME — the same rule
+ * `syncCanonicalMirror` already uses — so a domain id resolves to the exact
+ * mirror row the catalog UI would have shown for a clinic. When it cannot be
+ * resolved the line keeps its description + price and stores `service_id: null`
+ * (`on delete set null` is the schema's own answer for "service gone"), because
+ * losing an invoice over a catalog mismatch is far worse than losing the link.
+ */
+export type ServiceIdResolution = {
+  requested: string;
+  /** The `clinic_services.id` to persist, or null when unresolvable. */
+  canonical: string | null;
+  outcome: 'canonical' | 'mirrored' | 'dropped';
+  /** Mirrored row name — handy for logs/tests. */
+  name?: string | null;
+};
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Name key for the loose mirror match. Real catalogs differ cosmetically:
+ * the incident's centre stores «تصوير طبقي  cbct» (double space) in BOTH tables,
+ * and its canonical rows carry trailing spaces («…للفكين  »). Collapsing
+ * internal whitespace too keeps the match stable across those edits.
+ */
+function looseNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+type CanonicalNameRow = { id: string; name: string | null };
+
+/**
+ * Resolves a batch of requested `service_id`s to canonical
+ * `clinic_services.id`s (one canonical lookup + at most one domain lookup).
+ * Never throws for a bad id: an unknown id is DROPPED, not an error.
+ */
+export async function resolveCanonicalServiceIds(
+  clinicId: string,
+  requestedIds: readonly (string | null | undefined)[]
+): Promise<Map<string, ServiceIdResolution>> {
+  const result = new Map<string, ServiceIdResolution>();
+  const candidates = Array.from(
+    new Set(requestedIds.filter((id): id is string => typeof id === 'string' && id.length > 0))
+  );
+  if (candidates.length === 0) return result;
+
+  // 1) Which requested ids are already canonical? (uuid-shape guard first —
+  //    a non-uuid string would make PostgREST reject the whole query.)
+  const uuidShaped = candidates.filter((id) => UUID_SHAPE.test(id));
+  const canonicalIds = new Set<string>();
+  if (uuidShaped.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from('clinic_services')
+      .select('id, name')
+      .eq('clinic_id', clinicId)
+      .in('id', uuidShaped);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as CanonicalNameRow[]) canonicalIds.add(String(row.id));
+  }
+
+  const unresolved = candidates.filter((id) => !canonicalIds.has(id));
+  if (unresolved.length === 0) {
+    for (const id of candidates) result.set(id, { requested: id, canonical: id, outcome: 'canonical' });
+    return result;
+  }
+
+  // A non-uuid id can NEVER match a catalog row (both id columns are uuid), and
+  // posting one to PostgREST would break the query itself — so it is dropped
+  // here, without issuing a single request for it.
+  const resolvable = unresolved.filter((id) => UUID_SHAPE.test(id));
+  if (resolvable.length === 0) {
+    for (const id of candidates) {
+      result.set(
+        id,
+        canonicalIds.has(id)
+          ? { requested: id, canonical: id, outcome: 'canonical' }
+          : { requested: id, canonical: null, outcome: 'dropped', name: null }
+      );
+    }
+    return finishResolution(clinicId, result);
+  }
+
+  // 2) Fall back to a name map (exact, then whitespace/case-insensitive) so a
+  //    domain id whose mirror row differs only cosmetically still resolves.
+  //    Bounded: only fetched when something is actually unresolved.
+  const canonicalByName = new Map<string, string>();
+  const { data: names, error: namesError } = await supabaseAdmin
+    .from('clinic_services')
+    .select('id, name')
+    .eq('clinic_id', clinicId);
+  if (namesError) throw new Error(namesError.message);
+  for (const row of (names ?? []) as CanonicalNameRow[]) {
+    const name = typeof row.name === 'string' ? row.name : '';
+    if (!name) continue;
+    const exact = `=${name}`;
+    const loose = `~${looseNameKey(name)}`;
+    if (!canonicalByName.has(exact)) canonicalByName.set(exact, String(row.id));
+    if (!canonicalByName.has(loose)) canonicalByName.set(loose, String(row.id));
+  }
+
+  // 3) The remaining ids may live in a domain catalog — read BOTH tables so a
+  //    clinic that was re-classified still resolves its historical ids.
+  const domainNames = new Map<string, string>();
+  const domainIds = resolvable;
+  if (domainIds.length > 0) {
+    for (const table of ['imaging_services', 'lab_services'] as const) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from(table)
+          .select('id, name')
+          .eq('clinic_id', clinicId)
+          .in('id', domainIds);
+        if (error) throw new Error(error.message);
+        for (const row of (data ?? []) as CanonicalNameRow[]) {
+          if (row?.id && typeof row.name === 'string' && row.name.length > 0) {
+            domainNames.set(String(row.id), row.name);
+          }
+        }
+      } catch (err) {
+        // A database without that domain table must not break invoicing.
+        logEvent(
+          'invoice_service_domain_lookup_failed',
+          { clinic_id: clinicId, table, error: err instanceof Error ? err.message : String(err) },
+          'error'
+        );
+      }
+    }
+  }
+
+  for (const id of candidates) {
+    if (canonicalIds.has(id)) {
+      result.set(id, { requested: id, canonical: id, outcome: 'canonical' });
+      continue;
+    }
+    const name = domainNames.get(id) ?? null;
+    const mirror = name
+      ? canonicalByName.get(`=${name}`) ?? canonicalByName.get(`~${looseNameKey(name)}`) ?? null
+      : null;
+    result.set(
+      id,
+      mirror
+        ? { requested: id, canonical: mirror, outcome: 'mirrored', name }
+        : { requested: id, canonical: null, outcome: 'dropped', name }
+    );
+  }
+
+  return finishResolution(clinicId, result);
+}
+
+/**
+ * Single exit point: logs what happened (the owner never sees it, the logs do)
+ * and hands the map back. Mirrored = fixed silently; dropped = the line keeps
+ * its description + price with `service_id: null`.
+ */
+function finishResolution(
+  clinicId: string,
+  result: Map<string, ServiceIdResolution>
+): Map<string, ServiceIdResolution> {
+  const dropped = Array.from(result.values()).filter((r) => r.outcome === 'dropped');
+  const mirrored = Array.from(result.values()).filter((r) => r.outcome === 'mirrored');
+  if (dropped.length > 0) {
+    logEvent(
+      'invoice_service_id_dropped',
+      { clinic_id: clinicId, requested: dropped.map((d) => d.requested) },
+      'error'
+    );
+  }
+  if (mirrored.length > 0) {
+    logEvent('invoice_service_id_mirrored', {
+      clinic_id: clinicId,
+      mapped: mirrored.map((m) => ({ from: m.requested, to: m.canonical, name: m.name })),
+    });
+  }
+  return result;
+}
+
+
