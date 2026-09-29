@@ -5,6 +5,67 @@ import { checkSlotAvailability } from './scheduling';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 
 /**
+ * B52 — typed failure contract for rescheduling.
+ *
+ * The route used to derive the HTTP status by sniffing substrings of
+ * `err.message`. Two *expected business outcomes* matched no pattern and fell
+ * through to `500 Internal server error`:
+ *   • an appointment with no provider (walk-in / legacy rows) → "…no provider assigned…"
+ *   • an appointment whose provider row was deleted           → "Provider not found…"
+ * `hala-clinic` really has such rows (e.g. status=scheduled with provider_id NULL),
+ * so dragging that card produced a generic server error for the receptionist.
+ *
+ * Failures now carry an explicit code; the message text is unchanged so every
+ * existing caller/assertion keeps working.
+ */
+export type RescheduleErrorCode =
+  | 'not_found'
+  | 'ineligible_status'
+  | 'no_provider'
+  | 'provider_not_assigned'
+  | 'provider_not_found'
+  | 'slot_unavailable'
+  | 'conflict'
+  | 'update_failed';
+
+export class RescheduleError extends Error {
+  readonly code: RescheduleErrorCode;
+
+  constructor(code: RescheduleErrorCode, message: string) {
+    super(message);
+    this.name = 'RescheduleError';
+    this.code = code;
+  }
+}
+
+/**
+ * HTTP status per failure. Business rejections are 4xx — never 5xx — so the UI
+ * can show the real reason instead of "Internal server error".
+ */
+export const RESCHEDULE_HTTP_STATUS: Record<RescheduleErrorCode, number> = {
+  not_found: 404,
+  ineligible_status: 409,
+  no_provider: 409,
+  provider_not_assigned: 403,
+  provider_not_found: 404,
+  slot_unavailable: 409,
+  conflict: 409,
+  update_failed: 500,
+};
+
+/** Arabic, actionable copy for the dashboard banner (B52: no bare English 500). */
+export const RESCHEDULE_USER_MESSAGE: Record<RescheduleErrorCode, string> = {
+  not_found: 'لم يتم العثور على هذا الموعد في هذه العيادة — قد يكون حُذف أو نُقل.',
+  ineligible_status: 'لا يمكن إعادة جدولة موعد مكتمل أو ملغي أو مسجّل كـ«لم يحضر».',
+  no_provider: 'لا يمكن إعادة الجدولة: هذا الموعد غير مرتبط بمقدّم خدمة. افتح «تعديل الموعد» وحدّد الطبيب ثم أعِد المحاولة.',
+  provider_not_assigned: 'مقدّم الخدمة غير مسجّل لهذه الخدمة — صحّح ارتباطه بها من صفحة «الخدمات».',
+  provider_not_found: 'مقدّم الخدمة المرتبط بهذا الموعد لم يعد موجودًا في هذه العيادة — حدّد بديلًا أولًا.',
+  slot_unavailable: 'التوقيت المختار غير متاح لمقدّم الخدمة في هذا اليوم — اختر وقتًا آخر.',
+  conflict: 'تم حجز هذا الوقت للتو من جهاز آخر — اختر وقتًا آخر.',
+  update_failed: 'تعذر حفظ الموعد — أعد المحاولة، وإن تكرّر الخطأ تواصل مع الدعم.',
+};
+
+/**
  * Validates that a provider is assigned to a service (when assignments configured).
  * Returns true if assigned, false if explicitly not assigned, null if table unavailable.
  */
@@ -35,7 +96,17 @@ export async function rescheduleAppointment(params: {
   appointmentId: string;
   date: string;
   time: string;
-}): Promise<{ id: string; scheduled_at: string; appointment_date: string; status: string; patient_id: string | null }> {
+  /**
+   * B52-B — optional provider change ("تعديل الموعد"). Two production needs:
+   *   • rows created without a provider (walk-in / legacy) had NO way out — the
+   *     agenda fell back to `appointment.id` as a provider id, so the slot query
+   *     could never succeed and the edit panel looked broken;
+   *   • re-assigning a patient to another doctor must go through the SAME
+   *     assignment / schedule / availability / unique-index validation, never
+   *     through a raw PATCH that could double-book a slot.
+   */
+  providerId?: string | null;
+}): Promise<{ id: string; scheduled_at: string; appointment_date: string; status: string; patient_id: string | null; provider_id: string | null }> {
   const { clinicId, appointmentId, date, time } = params;
 
   // 1. Load the existing appointment
@@ -48,18 +119,22 @@ export async function rescheduleAppointment(params: {
     .maybeSingle();
 
   if (loadError || !appointment) {
-    throw new Error('Appointment not found for this clinic');
+    throw new RescheduleError('not_found', 'Appointment not found for this clinic');
   }
 
   // 2. Check eligibility
   const INELIGIBLE = new Set(['cancelled', 'completed', 'no_show']);
   if (INELIGIBLE.has(appointment.status)) {
-    throw new Error(`Appointment cannot be rescheduled from status: ${appointment.status}`);
+    throw new RescheduleError('ineligible_status', `Appointment cannot be rescheduled from status: ${appointment.status}`);
   }
 
-  if (!appointment.provider_id) {
-    throw new Error('Appointment has no provider assigned — reschedule not possible');
+  if (!appointment.provider_id && !params.providerId) {
+    throw new RescheduleError('no_provider', 'Appointment has no provider assigned — reschedule not possible');
   }
+
+  /** The provider this appointment belongs to AFTER the move: the one picked in
+   * the edit panel when given, otherwise the one it already has. */
+  const targetProviderId = params.providerId?.trim() || appointment.provider_id;
 
   // 3. Resolve service duration
   let durationMinutes = appointment.duration_minutes ?? 30;
@@ -70,16 +145,16 @@ export async function rescheduleAppointment(params: {
 
   // 4. Verify provider is assigned to the service (when assignments used)
   if (appointment.service_id) {
-    const assigned = await providerAssignedToService(clinicId, appointment.provider_id, appointment.service_id);
+    const assigned = await providerAssignedToService(clinicId, targetProviderId, appointment.service_id);
     if (assigned === false) {
-      throw new Error('Provider is not assigned to this service');
+      throw new RescheduleError('provider_not_assigned', 'Provider is not assigned to this service');
     }
   }
 
   // 5. Load schedule for chosen date
-  const schedule = await loadProviderSchedule(clinicId, appointment.provider_id);
+  const schedule = await loadProviderSchedule(clinicId, targetProviderId);
   if (!schedule) {
-    throw new Error('Provider not found for this clinic');
+    throw new RescheduleError('provider_not_found', 'Provider not found for this clinic');
   }
 
   // 6. Check availability of new slot
@@ -87,7 +162,7 @@ export async function rescheduleAppointment(params: {
   const holiday = await isClinicHoliday(clinicId, date);
 
   // Load existing appointments EXCLUDING the one being rescheduled (so self-overlap isn't flagged)
-  const existing = await loadExistingAppointments(clinicId, appointment.provider_id, date);
+  const existing = await loadExistingAppointments(clinicId, targetProviderId, date);
   const otherAppointments = existing.filter((a) => a.id !== appointment.id);
 
   const availability = checkSlotAvailability({
@@ -99,7 +174,7 @@ export async function rescheduleAppointment(params: {
   });
 
   if (!availability.available) {
-    throw new Error(`Requested slot is unavailable: ${availability.reason}`);
+    throw new RescheduleError('slot_unavailable', `Requested slot is unavailable: ${availability.reason}`);
   }
 
   // 7. Atomically update the appointment
@@ -109,19 +184,24 @@ export async function rescheduleAppointment(params: {
       appointment_date: date,
       scheduled_at: startsAt,
       duration_minutes: durationMinutes,
+      // B52-B — part of the move: the (provider_id, scheduled_at) unique index
+      // has to see the NEW provider, otherwise two patients could be booked into
+      // the same doctor+slot from the edit panel.
+      provider_id: targetProviderId,
     })
     .eq('id', appointmentId)
     .eq('clinic_id', clinicId)
-    .select('id, scheduled_at, appointment_date, status, patient_id')
+    .select('id, scheduled_at, appointment_date, status, patient_id, provider_id')
     .single();
 
   if (updateError) {
     // A unique violation on provider_id+scheduled_at indicates a concurrent booking
     if (updateError.code === '23505' || /duplicate key/i.test(updateError.message)) {
       logEvent('reschedule_concurrent_collision', { clinic_id: clinicId, appointment_id: appointmentId }, 'error');
-      throw new Error('Slot was just booked by another request. Please choose another time.');
+      throw new RescheduleError('conflict', 'Slot was just booked by another request. Please choose another time.');
     }
-    throw new Error('Failed to reschedule appointment');
+    logEvent('reschedule_update_failed', { clinic_id: clinicId, appointment_id: appointmentId, code: updateError.code, detail: updateError.message }, 'error');
+    throw new RescheduleError('update_failed', 'Failed to reschedule appointment');
   }
 
   // 8. Cancel old pending reminders (best-effort — communication failure must NOT fail the reschedule)

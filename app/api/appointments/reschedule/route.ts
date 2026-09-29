@@ -1,13 +1,25 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
-import { rescheduleAppointment } from '@/lib/services/appointmentReschedule';
+import {
+  rescheduleAppointment,
+  RescheduleError,
+  RESCHEDULE_HTTP_STATUS,
+  RESCHEDULE_USER_MESSAGE,
+} from '@/lib/services/appointmentReschedule';
 import { logEvent } from '@/lib/server/logging';
 
 const rescheduleSchema = z.object({
   appointment_id: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM'),
+  /**
+   * B52-B — optional provider change from the edit panel. Validated as a UUID
+   * here, then re-validated by the service against the clinic, the service
+   * assignment, the provider schedule and the slot unique index — so a raw
+   * provider id can never bypass availability.
+   */
+  provider_id: z.string().uuid().optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -35,6 +47,7 @@ export async function POST(req: Request) {
       appointmentId: parsed.data.appointment_id,
       date: parsed.data.date,
       time: parsed.data.time,
+      providerId: parsed.data.provider_id ?? null,
     });
 
     logEvent('appointment_reschedule_api', {
@@ -47,6 +60,24 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
 
+    // B52 — typed business failure → its own status + Arabic, actionable copy.
+    // Before this, "…no provider assigned…" (walk-in/legacy rows) and
+    // "Provider not found…" matched none of the string checks below and reached
+    // the receptionist as a bare `500 Internal server error`.
+    if (err instanceof RescheduleError) {
+      const status = RESCHEDULE_HTTP_STATUS[err.code] ?? 500;
+      logEvent(
+        'appointment_reschedule_rejected',
+        { clinic_id: clinicId, error_code: err.code, detail: message },
+        status >= 500 ? 'error' : 'warn',
+      );
+      return NextResponse.json(
+        { error: RESCHEDULE_USER_MESSAGE[err.code], error_code: err.code },
+        { status },
+      );
+    }
+
+    // Legacy safety net for anything thrown outside the service contract.
     if (message.includes('Appointment not found')) {
       return NextResponse.json({ error: 'Appointment not found for this clinic' }, { status: 404 });
     }

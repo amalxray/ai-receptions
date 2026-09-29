@@ -1,7 +1,8 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, Pencil } from 'lucide-react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
@@ -85,6 +86,13 @@ export default function AppointmentsPage() {
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
+  // B52-B — the edit panel needs a provider list: rescheduling an appointment
+  // that has no provider (walk-in / legacy row) previously asked availability for
+  // `appointment.id` as if it were a provider id, so the slot list could never
+  // load. The receptionist now picks the doctor explicitly.
+  const [providers, setProviders] = useState<{ id: string; name: string; title?: string | null }[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const [rescheduleProviderId, setRescheduleProviderId] = useState('');
 
   async function loadAppointments(id: string) {
     setLoading(true);
@@ -273,22 +281,47 @@ export default function AppointmentsPage() {
     }
   }
 
+  async function loadProviderOptions() {
+    if (!clinicId || providersLoading) return;
+    setProvidersLoading(true);
+    try {
+      const auth = await authHeaders();
+      const response = await fetch(`/api/clinic/providers?clinic_id=${encodeURIComponent(clinicId)}`, { headers: auth });
+      const payload = await response.json().catch(() => null);
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      setProviders(rows.map((provider: any) => ({ id: provider.id, name: provider.name, title: provider.title ?? null })));
+    } catch {
+      // Non-fatal: the select stays empty and the panel explains what to do.
+    } finally {
+      setProvidersLoading(false);
+    }
+  }
+
   async function openReschedule(appointment: Appointment) {
     setRescheduleTarget(appointment);
+    setRescheduleProviderId(appointment.provider_id ? String(appointment.provider_id) : '');
     setRescheduleDate('');
     setRescheduleSlots([]);
     setRescheduleError(null);
+    if (providers.length === 0) void loadProviderOptions();
   }
 
   async function loadRescheduleSlots() {
     if (!rescheduleTarget || !clinicId || !rescheduleDate) return;
+    // B52 — never invent a provider id. Without a doctor the only honest answer
+    // is to ask for one (previously the appointment id was used instead, so the
+    // availability call always failed for walk-in rows).
+    if (!rescheduleProviderId) {
+      setRescheduleSlots([]);
+      setRescheduleError('اختر الطبيب أولًا ثم اعرض المواعيد المتاحة.');
+      return;
+    }
     setRescheduleLoading(true);
     setRescheduleError(null);
     setRescheduleSlots([]);
     try {
       const auth = await authHeaders();
-      const providerId = rescheduleTarget.provider_id ?? rescheduleTarget.id;
-      const res = await fetch(`/api/booking/availability?clinic_id=${encodeURIComponent(clinicId)}&provider_id=${encodeURIComponent(String(providerId))}&date=${encodeURIComponent(rescheduleDate)}`, { headers: auth });
+      const res = await fetch(`/api/booking/availability?clinic_id=${encodeURIComponent(clinicId)}&provider_id=${encodeURIComponent(rescheduleProviderId)}&date=${encodeURIComponent(rescheduleDate)}`, { headers: auth });
       const body = await res.json();
       setRescheduleSlots(Array.isArray(body?.data?.slots) ? body.data.slots : []);
     } catch (e) {
@@ -300,6 +333,10 @@ export default function AppointmentsPage() {
 
   async function confirmReschedule(slot: string) {
     if (!rescheduleTarget || !clinicId || !rescheduleDate) return;
+    if (!rescheduleProviderId) {
+      setRescheduleError('اختر الطبيب أولًا.');
+      return;
+    }
     setRescheduleSaving(true);
     setRescheduleError(null);
     try {
@@ -312,12 +349,17 @@ export default function AppointmentsPage() {
           appointment_id: String(rescheduleTarget.id),
           date: rescheduleDate,
           time,
+          provider_id: rescheduleProviderId,
         }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || 'تعذر إعادة جدولة الموعد');
-      const updated = body?.data;
-      setAppointments((current) => current.map((a) => a.id === rescheduleTarget.id ? { ...a, ...updated, appointment_date: rescheduleDate, appointment_time: time } : a));
+      const updated = body?.data ?? {};
+      const providerName = providers.find((provider) => provider.id === rescheduleProviderId)?.name ?? null;
+      setAppointments((current) => current.map((a) => a.id === rescheduleTarget.id
+        ? { ...a, ...updated, appointment_date: rescheduleDate, appointment_time: time, provider_id: rescheduleProviderId, provider_name: providerName }
+        : a));
+      setDropFeedback({ tone: 'success', message: `✅ تم تعديل موعد ${rescheduleTarget.patient_name} إلى ${rescheduleDate} (${format12h(time)})${providerName ? ` مع ${providerName}` : ''}.` });
       setRescheduleTarget(null);
       setRescheduleDate('');
       setRescheduleSlots([]);
@@ -412,6 +454,14 @@ export default function AppointmentsPage() {
       if (!response.ok) throw new Error(payload?.error || 'تعذر تحديث الموعد');
       const updated = payload?.data ?? payload;
       setAppointments((current) => current.map((a) => a.id === confirmTarget.appointment.id ? { ...a, ...updated } : a));
+      // B52-B — cancelling from inside the edit panel must close that panel too,
+      // otherwise the receptionist keeps staring at an editor for a dead slot.
+      if (rescheduleTarget && rescheduleTarget.id === confirmTarget.appointment.id) {
+        setRescheduleTarget(null);
+        setRescheduleDate('');
+        setRescheduleSlots([]);
+        setRescheduleError(null);
+      }
       setConfirmTarget(null);
     } catch (caughtError) {
       setConfirmError(caughtError instanceof Error ? caughtError.message : 'تعذر تحديث الموعد');
@@ -470,40 +520,117 @@ export default function AppointmentsPage() {
         )}
 
         {rescheduleTarget && (
-          <div className="mb-5 rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5">
-            <p className="text-sm font-semibold text-white">إعادة جدولة الموعد</p>
-            <p className="mt-1 text-xs text-slate-400">{rescheduleTarget.patient_name} — {rescheduleTarget.service}</p>
-            {rescheduleError && <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">{rescheduleError}</div>}
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className="mb-5 rounded-[1.5rem] border border-cyan-500/40 bg-slate-950/70 p-5"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <label className="text-xs text-slate-400">التاريخ الجديد</label>
-                <input type="date" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" />
+                <p className="flex items-center gap-2 text-sm font-semibold text-white"><Pencil size={14} className="text-cyan-300" />تعديل الموعد</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {rescheduleTarget.patient_name} — {rescheduleTarget.service} — {format12h(rescheduleTarget.appointment_time)}
+                </p>
               </div>
+              <span className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-300">
+                الطبيب الحالي: {rescheduleTarget.provider_name ?? 'غير محدد'}
+              </span>
+            </div>
+
+            {rescheduleError && (
+              <motion.div
+                role="alert"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+              >
+                {rescheduleError}
+              </motion.div>
+            )}
+
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="block">
+                <span className="text-xs text-slate-400">الطبيب / مقدّم الخدمة</span>
+                <select
+                  value={rescheduleProviderId}
+                  onChange={(event) => { setRescheduleProviderId(event.target.value); setRescheduleSlots([]); setRescheduleError(null); }}
+                  disabled={providersLoading}
+                  className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100 disabled:opacity-60"
+                >
+                  <option value="">{providersLoading ? 'جارٍ تحميل الأطباء...' : 'اختر الطبيب'}</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}{provider.title ? ` — ${provider.title}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {!providersLoading && providers.length === 0 && (
+                  <span className="mt-1 block text-[11px] text-amber-300">لا يوجد أطباء مسجّلون لهذه العيادة — أضفهم من صفحة «الفريق» أولًا.</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs text-slate-400">التاريخ الجديد</span>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  onChange={(e) => { setRescheduleDate(e.target.value); setRescheduleSlots([]); }}
+                  className="mt-1 w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100"
+                />
+              </label>
               <div className="flex items-end">
-                <button type="button" onClick={loadRescheduleSlots} disabled={!rescheduleDate || rescheduleLoading} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">
+                <button
+                  type="button"
+                  onClick={loadRescheduleSlots}
+                  disabled={!rescheduleDate || !rescheduleProviderId || rescheduleLoading}
+                  className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 hover:shadow-[0_0_20px_-4px_rgba(6,182,212,0.7)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   {rescheduleLoading ? 'جارٍ التحميل...' : 'عرض المواعيد المتاحة'}
                 </button>
               </div>
             </div>
             <div className="mt-4">
               {rescheduleLoading ? (
-                <p className="text-sm text-slate-400">جارٍ تحميل المواعيد المتاحة...</p>
+                <div className="flex flex-wrap gap-2" aria-busy="true" aria-label="جارٍ تحميل المواعيد المتاحة">
+                  {[0, 1, 2, 3, 4].map((chip) => <Skeleton key={chip} className="h-7 w-16 rounded-full" />)}
+                </div>
               ) : rescheduleSlots.length === 0 && rescheduleDate ? (
                 <p className="text-sm text-slate-500">لا توجد مواعيد متاحة لهذا التاريخ.</p>
+              ) : rescheduleSlots.length === 0 ? (
+                <p className="text-sm text-slate-500">اختر الطبيب والتاريخ لعرض الأوقات المتاحة.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {rescheduleSlots.map((slot) => (
-                    <button key={slot} type="button" onClick={() => confirmReschedule(slot)} disabled={rescheduleSaving} className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-cyan-500/70 hover:text-cyan-300 disabled:opacity-60">
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => confirmReschedule(slot)}
+                      disabled={rescheduleSaving}
+                      className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cyan-500/70 hover:text-cyan-300 hover:shadow-[0_0_18px_-6px_rgba(6,182,212,0.8)] active:scale-95 disabled:opacity-60"
+                    >
                       {slot.slice(11, 16)}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <div className="mt-4 flex gap-3">
-              <button type="button" onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlots([]); setRescheduleError(null); }} className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300">إلغاء</button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => requestStatusChange(rescheduleTarget, 'cancelled', 'إلغاء الموعد')}
+                className="rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/25 hover:shadow-[0_0_18px_-6px_rgba(239,68,68,0.8)] active:scale-95"
+              >
+                إلغاء الموعد
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRescheduleTarget(null); setRescheduleDate(''); setRescheduleSlots([]); setRescheduleError(null); }}
+                className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-slate-800/60 active:scale-95"
+              >
+                إغلاق
+              </button>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {isFormOpen ? (
@@ -607,20 +734,30 @@ export default function AppointmentsPage() {
                             {!isTouchDevice && <span className="hidden items-center gap-1 text-slate-500 sm:flex"><GripVertical size={11} />اسحب لإعادة الجدولة</span>}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
+                            {appointment.status !== 'completed' && appointment.status !== 'cancelled' && appointment.status !== 'no_show' && (
+                              <button
+                                type="button"
+                                onClick={() => void openReschedule(appointment)}
+                                title="تعديل الطبيب أو التاريخ أو الوقت"
+                                className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-3 py-1.5 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/25 hover:shadow-[0_0_18px_-6px_rgba(59,130,246,0.9)] active:scale-95"
+                              >
+                                <Pencil size={11} />تعديل
+                              </button>
+                            )}
                             {appointment.status !== 'confirmed' && appointment.status !== 'completed' && appointment.status !== 'no_show' && (
-                              <button type="button" onClick={() => confirmAppointment(appointment)} className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25">تأكيد</button>
+                              <button type="button" onClick={() => confirmAppointment(appointment)} className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25 active:scale-95">تأكيد</button>
                             )}
                             {appointment.status !== 'completed' && appointment.status !== 'cancelled' && appointment.status !== 'no_show' && (
-                              <button type="button" onClick={() => requestStatusChange(appointment, 'completed', 'تعليم الموعد كمكتمل')} className="rounded-full bg-cyan-500/15 px-3 py-1 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/25">مكتمل</button>
+                              <button type="button" onClick={() => requestStatusChange(appointment, 'completed', 'تعليم الموعد كمكتمل')} className="rounded-full bg-cyan-500/15 px-3 py-1.5 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-500/25 active:scale-95">مكتمل</button>
                             )}
                             {appointment.status !== 'cancelled' && appointment.status !== 'completed' && appointment.status !== 'no_show' && (
-                              <button type="button" onClick={() => requestStatusChange(appointment, 'cancelled', 'إلغاء الموعد')} className="rounded-full bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-300 hover:bg-red-500/25">إلغاء</button>
+                              <button type="button" onClick={() => requestStatusChange(appointment, 'cancelled', 'إلغاء الموعد')} className="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/25 hover:shadow-[0_0_18px_-6px_rgba(239,68,68,0.9)] active:scale-95">إلغاء</button>
                             )}
                             {appointment.status !== 'cancelled' && appointment.status !== 'completed' && appointment.status !== 'no_show' && (
-                              <button type="button" onClick={() => requestStatusChange(appointment, 'no_show', 'تعليم الموعد كلم يحضر')} className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/25">لم يحضر</button>
+                              <button type="button" onClick={() => requestStatusChange(appointment, 'no_show', 'تعليم الموعد كلم يحضر')} className="rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 active:scale-95">لم يحضر</button>
                             )}
-                            {appointment.status !== 'cancelled' && appointment.status !== 'completed' && appointment.status !== 'no_show' && (
-                              <button type="button" onClick={() => openReschedule(appointment)} className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/25">إعادة الجدولة</button>
+                            {(appointment.status === 'cancelled' || appointment.status === 'completed' || appointment.status === 'no_show') && (
+                              <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-500">موعد مُغلق — لا إجراءات متاحة</span>
                             )}
                           </div>
                         </div>
