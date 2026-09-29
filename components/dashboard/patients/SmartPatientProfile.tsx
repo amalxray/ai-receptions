@@ -23,9 +23,18 @@ import { calculatePatientAge, formatAgeAr } from '@/lib/patientAge';
 import { formatTimeAr } from '@/lib/dashboard/labels-ar';
 // B38/B39 — the profile reads the shared phone normalizer and the defensive
 // metadata reader instead of re-implementing either next to the component.
+// N27 — sessions (`metadata.sessions`) enter the journey line through the very
+// same pure helpers the 🦷 panel uses, so both read one colour palette.
 import {
   normalizePhoneForWhatsApp,
   parsePatientMetadata,
+  buildSessionTimelineItems,
+  dedupeTimelineItems,
+  sessionProcedureTone,
+  sessionProgress,
+  sessionStatusAr,
+  sortTimelineDesc,
+  type PatientSessionStatus,
   type QuickNote,
 } from '@/components/dashboard/patients/smartProfile';
 
@@ -70,7 +79,11 @@ export type SmartTimelineItem = {
   time?: string;
   status: 'completed' | 'in_progress' | 'remaining' | 'cancelled';
   /** Kept in sync with `smartProfile.ts#SmartTimelineItem` so either can be passed in. */
-  iconType?: 'visit' | 'file' | 'referral' | 'invoice' | 'note' | 'medical';
+  iconType?: 'visit' | 'file' | 'referral' | 'invoice' | 'note' | 'medical' | 'session';
+  /** N27 — session events only: the procedure that colours the node (same palette as the 🦷 cards). */
+  procedure?: string;
+  /** N27 — session events only: done / planned / cancelled, for the Arabic badge. */
+  sessionStatus?: PatientSessionStatus;
 };
 
 interface SmartPatientProfileProps {
@@ -236,7 +249,15 @@ export default function SmartPatientProfile({
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
 
-  const quickNotes: QuickNote[] = parsePatientMetadata(patient.metadata).quick_notes;
+  const metadata = parsePatientMetadata(patient.metadata);
+  const quickNotes: QuickNote[] = metadata.quick_notes;
+
+  // N27 — the treatment plan is metadata-owned (the page owns `metadata.sessions`),
+  // so it joins the journey line on EVERY path: a parent that passes
+  // `timelineItems` still gets the 🦷 events, and the de-dupe pass guarantees a
+  // session is never drawn twice. `treatment` feeds the header progress pill.
+  const sessionTimeline: SmartTimelineItem[] = buildSessionTimelineItems(metadata.sessions);
+  const treatment = sessionProgress(metadata.sessions);
 
   // B38 — wa.me needs country-code digits. A local 05XXXXXXXX used to be pasted
   // verbatim (https://wa.me/0599123456) and WhatsApp reported the number as
@@ -319,8 +340,10 @@ export default function SmartPatientProfile({
           };
         });
 
-  const timeline: SmartTimelineItem[] = [...appointmentTimeline, ...noteTimeline].sort((a, b) =>
-    `${b.date}${b.time ?? ''}`.localeCompare(`${a.date}${a.time ?? ''}`)
+  // N27 — sessions first (they carry the procedure colour), then appointments and
+  // notes; newest first, one event per id.
+  const timeline: SmartTimelineItem[] = sortTimelineDesc(
+    dedupeTimelineItems([...sessionTimeline, ...appointmentTimeline, ...noteTimeline])
   );
 
   return (
@@ -752,10 +775,10 @@ export default function SmartPatientProfile({
                 ⏳ الخط الزمني لرحلة المريض
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                تتبع متكامل للمحطات: المنجزة، الجارية، والمتبقية
+                تتبع متكامل للمحطات: المواعيد 📅 والجلسات 🦷 والملاحظات 📝 — منجزة، جارية، ومتبقية
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 border border-emerald-200/60">
                 <CheckCircle2 className="h-3 w-3" /> تم
               </span>
@@ -765,6 +788,18 @@ export default function SmartPatientProfile({
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 border border-amber-200/60">
                 <Hourglass className="h-3 w-3" /> متبقي
               </span>
+              {/* N27 — الجلسات أصبحت جزءاً من الخط الزمني: مفتاح لوني + ملخّص الخطة. */}
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-slate-700 border border-slate-200/60">
+                🦷 جلسة
+              </span>
+              {treatment.total > 0 && (
+                <span
+                  title="خطة العلاج من ملف الجلسات"
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-200/70 bg-gradient-to-l from-emerald-100 to-cyan-100 px-2.5 py-0.5 font-bold text-slate-800"
+                >
+                  خطة العلاج: {treatment.label} · {treatment.percent}%
+                </span>
+              )}
             </div>
           </div>
 
@@ -787,10 +822,27 @@ export default function SmartPatientProfile({
                     nodeBg: 'bg-purple-500 text-white ring-4 ring-purple-100',
                     icon: FileText,
                   };
+                  // N27 — a treatment session keeps its PROCEDURE colour (the exact
+                  // palette of the 🦷 cards) while the badge states the plan status.
+                  const isSession = item.iconType === 'session';
+                  const sessionTone = sessionProcedureTone(item.procedure ?? item.title);
+                  const sessionConfig = {
+                    badge: `🦷 جلسة ${sessionStatusAr(item.sessionStatus)}`,
+                    badgeClass:
+                      item.sessionStatus === 'cancelled'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : item.sessionStatus === 'planned'
+                          ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    nodeBg: `${sessionTone.bar} text-white ring-4 ring-white/80`,
+                    icon: CheckCircle2,
+                  };
                   const statusConfig =
-                    (item.iconType === 'note'
-                      ? noteConfig
-                      : {
+                    item.iconType === 'session'
+                      ? sessionConfig
+                      : item.iconType === 'note'
+                        ? noteConfig
+                        : {
                     completed: {
                       badge: '✅ تم بنجاح',
                       badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -820,7 +872,7 @@ export default function SmartPatientProfile({
                     badgeClass: 'bg-slate-50 text-slate-700 border-slate-200',
                     nodeBg: 'bg-slate-400 text-white ring-4 ring-slate-100',
                     icon: Clock,
-                  });
+                  };
 
                   const NodeIcon = statusConfig.icon;
 
@@ -829,19 +881,37 @@ export default function SmartPatientProfile({
                       key={item.id}
                       initial={{ opacity: 0, x: -12 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 * idx, duration: 0.35 }}
+                      transition={{ delay: Math.min(idx, 10) * 0.07, duration: 0.35 }}
                       onClick={() => onOpenTimelineDetail?.(item)}
                       className="group relative flex items-start gap-4 cursor-pointer"
                     >
                       <div
                         className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm transition-transform duration-200 group-hover:scale-125 ${statusConfig.nodeBg}`}
                       >
-                        <NodeIcon className="h-3.5 w-3.5" />
+                        {isSession ? (
+                          <span className="text-[13px] leading-none" aria-hidden="true">
+                            🦷
+                          </span>
+                        ) : (
+                          <NodeIcon className="h-3.5 w-3.5" />
+                        )}
                       </div>
 
-                      <div className="flex-1 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:border-blue-300 group-hover:shadow-md">
+                      <div
+                        className={`relative flex-1 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-md ${
+                          isSession ? sessionTone.glow : 'group-hover:border-blue-300'
+                        }`}
+                      >
+                        {/* N27 — شريط الإجراء على حافة البطاقة: نفس لون بطاقات 🦷 الجلسات. */}
+                        {isSession && (
+                          <span
+                            className={`absolute inset-y-0 right-0 w-1 ${sessionTone.bar}`}
+                            aria-hidden="true"
+                          />
+                        )}
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {isSession && <span className="ml-1">{sessionTone.emoji}</span>}
                             {item.title}
                           </h3>
                           <span

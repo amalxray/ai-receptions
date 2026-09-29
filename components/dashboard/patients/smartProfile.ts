@@ -59,6 +59,16 @@ export type SmartPatientBalance = {
   due: number;
 };
 
+/** Every node the journey line can draw (N27 added the 🦷 treatment session). */
+export type SmartTimelineIconType =
+  | 'visit'
+  | 'file'
+  | 'referral'
+  | 'invoice'
+  | 'note'
+  | 'medical'
+  | 'session';
+
 export type SmartTimelineItem = {
   id: string;
   title: string;
@@ -66,7 +76,14 @@ export type SmartTimelineItem = {
   date: string;
   time?: string;
   status: 'completed' | 'in_progress' | 'remaining' | 'cancelled';
-  iconType?: 'visit' | 'file' | 'referral' | 'invoice' | 'note' | 'medical';
+  iconType?: SmartTimelineIconType;
+  /**
+   * N27 — session events only: the procedure name. Drives the same colour
+   * palette the 🦷 cards use (`sessionProcedureTone`).
+   */
+  procedure?: string;
+  /** N27 — session events only: the raw plan state, so the badge can be Arabic. */
+  sessionStatus?: PatientSessionStatus;
 };
 
 export type QuickNote = {
@@ -719,12 +736,80 @@ export function appointmentTimelineStatus(status: string): SmartTimelineItem['st
 }
 
 /**
- * The journey timeline = appointments + every quick note ("الخط الزمني يسجّل
- * كل إضافة"), newest first.
+ * N27 — a session state expressed as a timeline state: مكتملة → «تم بنجاح»،
+ * ملغاة → «ملغي»، ومخطّطة → «متبقي ومجدول». The Arabic labels doctors type are
+ * accepted too, because the reader is `normalizeSessionStatus` itself.
+ */
+export function sessionTimelineStatus(status: unknown): SmartTimelineItem['status'] {
+  const normalized = normalizeSessionStatus(status);
+  if (normalized === 'done') return 'completed';
+  if (normalized === 'cancelled') return 'cancelled';
+  return 'remaining';
+}
+
+/**
+ * N27 — one timeline event per treatment session (`metadata.sessions`), so the
+ * journey line finally shows the dental plan next to visits and notes.
+ *
+ * The id is prefixed with `session-`, which is what makes «الجلسة تظهر مرة
+ * واحدة» enforceable: the merged timeline is de-duplicated by id, so a session
+ * that reaches the profile through two paths is still drawn once.
+ */
+export function buildSessionTimelineItems(
+  sessions: readonly PatientSession[] | null | undefined
+): SmartTimelineItem[] {
+  const plan = Array.isArray(sessions) ? sessions : [];
+  return plan.map((session) => {
+    const details = [session.tooth ? `السن ${session.tooth}` : '', session.note ?? ''].filter(
+      (part) => part.trim().length > 0
+    );
+    return {
+      id: `session-${session.id}`,
+      title: session.service,
+      // فقط التفاصيل الحقيقية تُكتب هنا؛ الحالة تحملها الشارة، فلا تكرار للنص.
+      subtitle: details.length > 0 ? details.join(' · ') : undefined,
+      date: session.date,
+      status: sessionTimelineStatus(session.status),
+      iconType: 'session' as const,
+      procedure: session.service,
+      sessionStatus: session.status,
+    };
+  });
+}
+
+/**
+ * Keeps the first event per id. Sessions are passed first by the callers, so the
+ * richest version (procedure + plan state) wins over a thinner duplicate.
+ */
+export function dedupeTimelineItems(items: readonly SmartTimelineItem[]): SmartTimelineItem[] {
+  const seen = new Set<string>();
+  const out: SmartTimelineItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
+/** Newest first — ISO `YYYY-MM-DD` + `HH:MM` sort correctly as strings. */
+export function sortTimelineDesc(items: readonly SmartTimelineItem[]): SmartTimelineItem[] {
+  return [...items].sort((a, b) =>
+    `${b.date}${b.time ?? ''}`.localeCompare(`${a.date}${a.time ?? ''}`)
+  );
+}
+
+/**
+ * The journey timeline = treatment sessions + appointments + every quick note
+ * ("الخط الزمني يسجّل كل إضافة"), newest first and de-duplicated by id.
+ *
+ * `sessions` is optional so every existing caller keeps working untouched.
  */
 export function buildSmartTimeline(params: {
   appointments: SmartAppointment[];
   quickNotes: QuickNote[];
+  /** N27 — the dental plan (`metadata.sessions`) joins the journey line. */
+  sessions?: readonly PatientSession[];
 }): SmartTimelineItem[] {
   const visits: SmartTimelineItem[] = params.appointments.map((appt) => ({
     id: `appt-${appt.id}`,
@@ -745,11 +830,9 @@ export function buildSmartTimeline(params: {
     iconType: 'note',
   }));
 
-  return [...visits, ...notes].sort((a, b) => {
-    const left = `${a.date}${a.time ?? ''}`;
-    const right = `${b.date}${b.time ?? ''}`;
-    return right.localeCompare(left);
-  });
+  return sortTimelineDesc(
+    dedupeTimelineItems([...buildSessionTimelineItems(params.sessions), ...visits, ...notes])
+  );
 }
 
 /** Free-text search across ALL profile sections (name, phone, medical, notes…). */

@@ -455,7 +455,9 @@ export default function PatientDetailPage() {
           <div className="min-h-[40vh]">
             {tab === 'overview' && (
               <div className="space-y-4">
-                {/* N14 — Smart Patient Profile (3-level cognitive layout). */}
+                {/* N14 — Smart Patient Profile (3-level cognitive layout).
+                    N27 — the profile merges `metadata.sessions` itself, so only the
+                    click target needs routing: a 🦷 event opens the sessions tab. */}
                 <SmartPatientProfile
                   patient={patient}
                   stats={smartStats}
@@ -464,7 +466,9 @@ export default function PatientDetailPage() {
                   onOpenFiles={() => setTab('files')}
                   onOpenInvoices={() => setTab('financial')}
                   onOpenReferrals={() => setShowTransfer(true)}
-                  onOpenTimelineDetail={() => setTab('appointments')}
+                  onOpenTimelineDetail={(item) =>
+                    setTab(item.iconType === 'session' ? 'sessions' : 'appointments')
+                  }
                   onSaveQuickNote={saveQuickNote}
                 />
 
