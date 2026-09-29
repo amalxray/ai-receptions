@@ -386,6 +386,13 @@ export default function AppointmentsPage() {
       setDropFeedback({ tone: 'error', message: 'تعذر إعادة جدولة هذا الموعد لعدم توفر وقت صالح.' });
       return;
     }
+    if (!appointment.provider_id) {
+      setDropFeedback({
+        tone: 'error',
+        message: 'لا يمكن إعادة الجدولة: هذا الموعد غير مرتبط بمقدّم خدمة. استخدم «تعديل» وحدّد الطبيب ثم أعد المحاولة.',
+      });
+      return;
+    }
     setDropSavingId(appointment.id);
     setDropFeedback(null);
     try {
@@ -397,6 +404,7 @@ export default function AppointmentsPage() {
           appointment_id: String(appointment.id),
           date: targetDate,
           time,
+          provider_id: appointment.provider_id,
         }),
       });
       const body = await response.json().catch(() => null);

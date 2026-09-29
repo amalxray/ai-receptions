@@ -163,10 +163,12 @@ export default function PatientAppointmentsPanel({
 }: PatientAppointmentsPanelProps) {
   const [services, setServices] = useState<string[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
+  const [providers, setProviders] = useState<{ id: string; name: string; title?: string | null }[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => {
     const slot = defaultSlotFor();
-    return { service: '', appointment_date: slot.date, appointment_time: slot.time, status: 'scheduled' };
+    return { service: '', provider_id: '', appointment_date: slot.date, appointment_time: slot.time, status: 'scheduled' };
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,10 +198,35 @@ export default function PatientAppointmentsPanel({
     }
   }, [clinicId]);
 
+  const loadProviders = useCallback(async () => {
+    if (!clinicId) return;
+    setProvidersLoading(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/providers?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+      const payload = await res.json().catch(() => null);
+      const list = Array.isArray(payload?.data) ? payload.data : [];
+      const nextProviders = list
+        .filter((provider: any) => provider && typeof provider.id === 'string' && typeof provider.name === 'string' && provider.name.trim())
+        .map((provider: any) => ({ id: String(provider.id), name: provider.name.trim(), title: typeof provider.title === 'string' ? provider.title : null }));
+      setProviders(nextProviders);
+      setForm((current) => (current.provider_id || nextProviders.length === 0 ? current : { ...current, provider_id: nextProviders[0].id }));
+    } catch {
+      setProviders([]);
+    } finally {
+      setProvidersLoading(false);
+    }
+  }, [authHeaders, clinicId]);
+
   useEffect(() => {
     if (!open || services.length > 0) return;
     void loadServices();
   }, [open, services.length, loadServices]);
+
+  useEffect(() => {
+    if (!open || providers.length > 0 || !clinicId) return;
+    void loadProviders();
+  }, [open, providers.length, clinicId, loadProviders]);
 
   /** Success note and the "أُضيف الآن" ring are transient — they must not linger. */
   useEffect(() => {
@@ -213,6 +240,10 @@ export default function PatientAppointmentsPanel({
     if (!clinicId || saving) return;
     if (!form.service.trim()) {
       setError('اختر الخدمة أولاً');
+      return;
+    }
+    if (providers.length > 0 && !form.provider_id) {
+      setError('اختر الطبيب أولاً');
       return;
     }
     setSaving(true);
@@ -231,6 +262,7 @@ export default function PatientAppointmentsPanel({
           // as `scheduled_at`, which is what every reader displays.
           appointment_time: form.appointment_time,
           duration_minutes: 30,
+          provider_id: form.provider_id || null,
           status: form.status,
         }),
       });
@@ -253,7 +285,7 @@ export default function PatientAppointmentsPanel({
       setHighlightId(String(row.id));
       setFeedback(`✅ تم حفظ الموعد: ${row.service} — ${row.appointment_date} في ${formatTimeAr(row.appointment_time ?? '')}`);
       const slot = defaultSlotFor();
-      setForm({ service: form.service, appointment_date: slot.date, appointment_time: slot.time, status: 'scheduled' });
+      setForm({ service: form.service, provider_id: form.provider_id, appointment_date: slot.date, appointment_time: slot.time, status: 'scheduled' });
       setOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'تعذر حفظ الموعد — حاول مرة أخرى');
@@ -331,6 +363,21 @@ export default function PatientAppointmentsPanel({
                     <option value="">{servicesLoading ? 'جارٍ تحميل الخدمات...' : 'اختر الخدمة'}</option>
                     {services.map((name) => (
                       <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-300">
+                  الطبيب
+                  <select
+                    value={form.provider_id}
+                    onChange={(event) => setForm((current) => ({ ...current, provider_id: event.target.value }))}
+                    disabled={providersLoading || providers.length === 0}
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    required={providers.length > 0}
+                  >
+                    <option value="">{providersLoading ? 'جارٍ تحميل الأطباء...' : providers.length === 0 ? 'لا يوجد أطباء في هذه العيادة' : 'اختر الطبيب'}</option>
+                    {providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>{provider.name}{provider.title ? ` — ${provider.title}` : ''}</option>
                     ))}
                   </select>
                 </label>
