@@ -1,12 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { usePathname } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { groupNavLinks, type NavModule } from '@/lib/services/dashboardNavModel';
+import { groupNavLinks, type NavGroupId, type NavModule } from '@/lib/services/dashboardNavModel';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import {
+  moduleFromPathname,
+  navTone,
+  readStoredTab,
+  storeTab,
+  type NavStats,
+} from '@/lib/services/navBentoModel';
+import NavBentoGrid, { type BentoGroup } from '@/components/dashboard/NavBentoGrid';
+import { Dock, DockIcon } from '@/components/ui/dock';
+import {
   getLockedFeatures,
+  getPlanDisplayNameAr,
   getRequiredPlanNameAr,
   type FeatureKey,
 } from '@/lib/subscription/featureGate';
@@ -149,24 +160,28 @@ const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
   'my-payslips': 'view_own_payslips',
 };
 
-/** localStorage key remembering open/collapsed sidebar groups. */
-const OPEN_STATE_KEY = 'dashnav_open_groups_v1';
+/**
+ * N29 — the sidebar accordion is gone; the nav is now a sticky top bar with four
+ * tabs (one per NAV_GROUPS group) and a bento grid per tab. The "remember my
+ * choice" behaviour moved from open/collapsed GROUPS to the selected TAB
+ * (`NAV_TAB_STORAGE_KEY` in lib/services/navBentoModel).
+ */
 
-function readOpenState(): Record<string, boolean> {
-  try {
-    const raw = window.localStorage.getItem(OPEN_STATE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-export default function DashboardNav() {
+export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' | 'drawer' }) {
+  const pathname = usePathname();
   const { role, clinicId, clinicSlug, activityType, authHeaders } = useClinicContext();
   const isAdmin = role === 'owner' || role === 'manager';
   const groups = groupNavLinks(getActivityNavigation(activityType));
   const firstGroupId = groups.length > 0 ? groups[0].id : undefined;
+  /** The module the user is looking at right now — drives tab + card highlight. */
+  const activeModule = moduleFromPathname(pathname);
+
+  /** Canonical tenant URL for a module (flat path before the slug resolves). */
+  const hrefFor = useCallback(
+    (module: string): string =>
+      clinicSlug ? tenantDashboardUrl(clinicSlug, module) : `/dashboard/${module}`,
+    [clinicSlug]
+  );
 
   // Subscription-driven locks. `planId === undefined` means "still resolving" —
   // the sidebar fails OPEN while loading (no lock flash); the API routes keep
@@ -224,85 +239,206 @@ export default function DashboardNav() {
     [planId]
   );
 
-  // Open/closed state: persisted in localStorage; the FIRST group (التشغيل
-  // اليومي) is open by default unless the user collapsed it before.
-  const persisted = useMemo(readOpenState, []);
-  const [openState, setOpenState] = useState<Record<string, boolean>>({});
+  /* ------------------------------------------------------------------------ */
+  /* N29 — tab state (persisted), bento groups, live stats, panel             */
+  /* ------------------------------------------------------------------------ */
 
-  const isOpen = (id: string): boolean =>
-    openState[id] ?? persisted[id] ?? id === firstGroupId;
+  /** Remembered tab, else the group of the CURRENT route, else the first group. */
+  const [tab, setTab] = useState<NavGroupId | null>(null);
+  const [stored, setStored] = useState<NavGroupId | null>(null);
+  const [open, setOpen] = useState(false);
+  const [stats, setStats] = useState<NavStats>({});
 
-  const toggle = (id: string) => {
-    const next = { ...openState, [id]: !isOpen(id) };
-    setOpenState(next);
-    try {
-      window.localStorage.setItem(OPEN_STATE_KEY, JSON.stringify(next));
-    } catch {
-      /* storage unavailable — keep session-only */
-    }
-  };
+  useEffect(() => {
+    setStored(readStoredTab());
+  }, []);
 
-  const hrefFor = (module: string): string =>
-    clinicSlug ? tenantDashboardUrl(clinicSlug, module) : `/dashboard/${module}`;
+  const activeGroupId = useMemo<NavGroupId | undefined>(
+    () =>
+      activeModule
+        ? groups.find((group) => group.items.some((item) => item.module === activeModule))?.id
+        : undefined,
+    [groups, activeModule]
+  );
 
-  return (
-    <nav aria-label="قائمة لوحة التحكم" className="space-y-2">
-      {groups.map((group) => {
+  const selectedTab: NavGroupId | undefined = tab ?? activeGroupId ?? stored ?? firstGroupId;
+
+  /** One coloured bento per tab — gated exactly like the old accordion was. */
+  const bentoGroups: BentoGroup[] = useMemo(
+    () =>
+      groups.map((group) => {
         const items = group.items
           .filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module))
           .filter((item) => {
             if (perms === null || perms === undefined) return true; // loading/owner → fail open
             const required = MODULE_PERMISSIONS[item.module];
             return required === undefined || perms.has(required);
+          })
+          .map((item) => {
+            const feature = MODULE_FEATURES[item.module];
+            const locked = feature !== undefined && lockedFeatures.has(feature);
+            return {
+              module: item.module,
+              label: item.label,
+              href: locked ? `/dashboard/upgrade/${feature}` : hrefFor(item.module),
+              active: item.module === activeModule,
+              locked,
+              lockTitle: locked && feature ? `متاح في باقة ${getRequiredPlanNameAr(feature)}` : undefined,
+            };
           });
-        if (items.length === 0) return null;
-        return (
-          <details key={group.id} open={isOpen(group.id)} className="group rounded-xl border border-slate-800/70 bg-slate-950/40">
-            <summary
-              onClick={(e) => {
-                e.preventDefault();
-                toggle(group.id);
-              }}
-              className="flex cursor-pointer list-none items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-200"
+        return { id: group.id, label: group.label, icon: group.icon, items };
+      }),
+    [groups, isAdmin, perms, lockedFeatures, hrefFor, activeModule]
+  );
+
+  /** Live chips: today's counts, conversations needing a human, outstanding money. */
+  useEffect(() => {
+    if (!clinicId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const getJson = (url: string) =>
+          fetch(url, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(url))));
+        const [overview, invoices] = await Promise.allSettled([
+          getJson(`/api/clinic/overview?clinic_id=${encodeURIComponent(clinicId)}`),
+          getJson(`/api/clinic/accounting/invoices?clinic_id=${encodeURIComponent(clinicId)}`),
+        ]);
+        if (!alive) return;
+        const next: NavStats = {};
+        if (overview.status === 'fulfilled') {
+          next.patientsCount = overview.value?.data?.patients_count ?? null;
+          next.todayAppointments = Array.isArray(overview.value?.data?.today_appointments)
+            ? overview.value.data.today_appointments.length
+            : null;
+          next.conversations = overview.value?.data?.new_conversations_count ?? null;
+          next.needsAttention = overview.value?.data?.needs_attention_count ?? null;
+        }
+        if (invoices.status === 'fulfilled') {
+          const rows = Array.isArray(invoices.value?.data) ? invoices.value.data : [];
+          next.outstanding = rows.reduce(
+            (sum: number, row: { balance_amount?: number }) =>
+              sum + Math.max(Number(row?.balance_amount ?? 0) || 0, 0),
+            0
+          );
+        }
+        // The plan name was already fetched above for the lock state.
+        if (typeof planId === 'string') next.planName = getPlanDisplayNameAr(planId);
+        setStats(next);
+      } catch {
+        /* never block navigation on a stats failure */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [clinicId, authHeaders, planId]);
+
+  // Navigate → close; Escape → close (the backdrop closes it too).
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const selectTab = (id: NavGroupId) => {
+    setTab(id);
+    storeTab(id);
+    // Re-selecting the active tab toggles the panel, like any mega-menu.
+    setOpen((current) => !(current && selectedTab === id));
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* Drawer surface — the mobile drawer keeps every module reachable           */
+  /* ------------------------------------------------------------------------ */
+
+  if (surface === 'drawer') {
+    return (
+      <div className="space-y-5">
+        {bentoGroups.map((group) => (
+          <NavBentoGrid key={group.id} group={group} stats={stats} variant="drawer" />
+        ))}
+      </div>
+    );
+  }
+
+  const activeGroup = bentoGroups.find((group) => group.id === selectedTab) ?? bentoGroups[0];
+  const tone = navTone(activeGroup?.id ?? 'ops');
+
+  return (
+    <div className="relative">
+      {/* Four tabs — the Dock embedded INLINE (N29). */}
+      <div className="flex items-center gap-3 overflow-x-auto pb-1">
+        <Dock variant="inline" className="shrink-0">
+          {bentoGroups.map((group) => {
+            const selected = group.id === selectedTab;
+            return (
+              <DockIcon
+                key={group.id}
+                active={selected}
+                onClick={() => selectTab(group.id)}
+                ariaLabel={group.label}
+                lift={3}
+                hoverScale={1.04}
+                className="h-11 gap-2 px-3.5 text-sm font-semibold"
+              >
+                {selected ? (
+                  <motion.span
+                    layoutId="dash-topnav-tab"
+                    className={`absolute inset-0 rounded-xl bg-gradient-to-l ring-1 ${navTone(group.id).tab}`}
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                ) : null}
+                <span className="relative z-10 flex items-center gap-2 whitespace-nowrap">
+                  <motion.span aria-hidden animate={{ scale: selected ? 1.15 : 1 }}>
+                    {group.icon}
+                  </motion.span>
+                  <span className={selected ? 'text-white' : 'text-slate-300'}>{group.label}</span>
+                  <span className="rounded-full bg-slate-950/60 px-2 py-0.5 text-[10px] font-bold text-slate-300">
+                    {group.items.length}
+                  </span>
+                </span>
+              </DockIcon>
+            );
+          })}
+        </Dock>
+
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          aria-label="إظهار وحدات القسم"
+          className="ms-auto shrink-0 rounded-full border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-cyan-500/50 hover:text-white"
+        >
+          {open ? '✕ إغلاق القسم' : '▾ عرض الوحدات'}
+        </button>
+      </div>
+
+      {/* The bento of the selected tab. */}
+      <AnimatePresence initial={false}>
+        {open && activeGroup ? (
+          <motion.div
+            key="panel"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div
+              className={`mt-3 rounded-[1.75rem] border bg-slate-950/95 p-5 shadow-2xl shadow-slate-950/60 ring-1 backdrop-blur-xl ${tone.ring}`}
             >
-              <span>
-                {group.icon} {group.label}
-              </span>
-              <span className="text-slate-600 transition group-open:rotate-90" aria-hidden="true">
-                ▸
-              </span>
-            </summary>
-            <div className="space-y-1 px-2 pb-2 pt-1">
-              {items.map((item) => {
-                const feature = MODULE_FEATURES[item.module];
-                const locked = feature !== undefined && lockedFeatures.has(feature);
-                if (locked) {
-                  return (
-                    <Link
-                      key={item.module}
-                      href={`/dashboard/upgrade/${feature}`}
-                      title={`متاح في باقة ${getRequiredPlanNameAr(feature)}`}
-                      className="flex items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-500 transition hover:bg-slate-800/70 hover:text-slate-300"
-                    >
-                      <span>{item.label}</span>
-                      <span aria-hidden="true">🔒</span>
-                    </Link>
-                  );
-                }
-                return (
-                  <Link
-                    key={item.module}
-                    href={hrefFor(item.module)}
-                    className="block rounded-xl px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800/70 hover:text-white"
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
+              <NavBentoGrid group={activeGroup} stats={stats} variant="panel" onNavigate={() => setOpen(false)} />
             </div>
-          </details>
-        );
-      })}
-    </nav>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }

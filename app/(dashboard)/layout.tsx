@@ -1,17 +1,21 @@
 import type { ReactNode } from 'react';
 import DashboardAuthGuard from '@/components/auth/DashboardAuthGuard';
 import DashboardHeader from '@/components/auth/DashboardHeader';
-import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
-import DashboardMobileNav from '@/components/dashboard/DashboardMobileNav';
+import DashboardTopNav from '@/components/dashboard/DashboardTopNav';
 import { ToastViewport } from '@/components/ui/Toast';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
  * TENANT-ISOLATED DASHBOARD — Arabic shell for every dashboard route.
- * The old hard-coded English chrome ("Dental AI Receptionist", Home/Patients/
- * Appointments pills, English sidebar) is retired: the sidebar is the grouped,
- * activity-aware Arabic DashboardSidebar and every module lives on the
- * canonical `/dashboard/{clinicSlug}/{module}` route.
+ *
+ * N29 — the 280px sidebar column is gone: navigation now lives in the sticky top
+ * bar (four colour-coded tabs + a bento grid per tab, one entry point per module).
+ * The module list itself is unchanged (32 modules, activity-aware, role- and
+ * plan-gated) — only WHERE it renders moved.
+ *
+ * `DashboardSidebar` / `DashboardMobileNav` are kept in the tree (nothing was
+ * deleted) but are no longer mounted here: the top bar is responsive and keeps
+ * every module reachable on phones, and the tenant switcher moved into it.
  */
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
@@ -26,18 +30,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               </p>
             </div>
           )}
+
           <DashboardHeader />
 
-          {/* #40 — mobile: the 27-module sidebar collapses into a hamburger drawer;
-              desktop keeps the static sidebar column below. */}
-          <DashboardMobileNav />
+          {/* N29 — sticky top bar: identity + tenant switcher + the 4-tab bento nav. */}
+          <DashboardTopNav />
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="hidden h-fit rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6 shadow-lg shadow-slate-950/20 lg:block">
-              <DashboardSidebar />
-            </aside>
-            <section className="space-y-6">{children}</section>
-          </div>
+          <section className="space-y-6">{children}</section>
         </div>
 
         {/* Global toast viewport — one instance for the whole dashboard shell */}
