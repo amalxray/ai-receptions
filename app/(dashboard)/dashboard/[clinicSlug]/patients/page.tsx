@@ -125,14 +125,20 @@ export default function PatientsPage() {
     [authHeaders, clinicId]
   );
 
-  /** No query → no rows. That is the whole point of a search-only page. */
+  /**
+   * B51-H2 — the clinic-context failure is rendered LIVE below, never copied
+   * into this page's state: a one-shot copy of `clinicError` into the page's
+   * `error` was never cleared, so one transient config/network failure
+   * (including the async health-check's initial `false`, pre-B51-H) stuck to the
+   * page forever — and re-appeared inside the «إضافة مريض» form's action row
+   * even though `/api/supabase-config` reported `isConfigured: true`.
+   */
   useEffect(() => {
     if (clinicLoading) {
       setSearching(true);
       return;
     }
     if (!clinicId) {
-      if (clinicError) setError(clinicError);
       setSearching(false);
       return;
     }
@@ -558,9 +564,9 @@ export default function PatientsPage() {
               >
                 إلغاء
               </button>
-              {formError || error ? (
+              {formError || clinicError || error ? (
                 <p role="alert" className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-                  {formError ?? error}
+                  {formError ?? clinicError ?? error}
                 </p>
               ) : null}
             </div>
@@ -584,8 +590,8 @@ export default function PatientsPage() {
                   <Skeleton key={index} className="h-24" />
                 ))}
               </div>
-            ) : error ? (
-              <EmptyState title="خدمة المرضى غير متاحة" description={error} />
+            ) : clinicError || error ? (
+              <EmptyState title="خدمة المرضى غير متاحة" description={clinicError ?? error} />
             ) : outcome.results.length === 0 ? (
               <EmptyState
                 title="لا نتائج مطابقة"
