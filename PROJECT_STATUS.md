@@ -2,6 +2,35 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-09-29 — ✅ N30: ملف المريض الواعي بالنشاط (مركز أشعة ≠ عيادة أسنان) — بدون أي Migration
+
+**الحالة: مُنجَز ومُتحقَّق منه (`tsc` نظيف · `next build` ناجح (EXIT=0) · 36 اختبار وحدة جديد ناجح · لا انحدار: نفس 17 فشل قائم مسبقًا قبل التغيير في 4 ملفات غير متعلقة).**
+
+**المشكلة:** صفحة ملف المريض الواحدة كانت تعرض لمركز الأشعة تبويب «🦷 الجلسات» (خطة علاج أسنان لا معنى لها لمركز تصوير) وتُخفي أهم شيء عنده: طلبات الأشعة الواردة من العيادات المحوِّلة.
+
+**القرار المعماري:** `clinics.activity_type` هو الفاصل الوحيد (كما في B50)، والقيمة الافتراضية دائمًا السلوك الحالي (dental) — أي نشاط غير معروف/غير مُحمَّل/مستقبلي يرجع للقراءة القديمة، فلا خطر على `clinic` ولا على `dental_lab`.
+
+**ما أُضيف:**
+- `lib/services/imagingPatientFile.ts` — موديل نقي (لا React ولا سيرفر) بمصدر واحد للتبويبات والتصنيفات الزمنية:
+  - `patientFileTabs(activityType)` → عيادة: 📋 📅 🦷 💰 🖼️ 🗨️ · مركز أشعة: 📋 📅 🩹 💰 🩻 🗨️ (نفس العدد والترتيب: لا قفزة تصميم).
+  - `resolvePatientFileTab` يحبس التبويب المطلوب داخل مجموعة النشاط (لا جسم صفحة فارغ أثناء تحميل `activity_type`).
+  - `filesTabKey` / `referralsTabKey` / `isImagingFile` / `patientFileScopeLabel`.
+  - فترات **تقويمية** لا نوافذ متدحرجة: `imagingRequestPeriod` + `groupImagingRequestsByPeriod` (اليوم · هذا الأسبوع يبدأ الأحد · هذا الشهر من الأول · أقدم · بدون تاريخ، والتاريخ التالف لا يُسقط الصف).
+  - `summarizeImagingRequests` / `filterImagingRequests` (تعتمد `isReferralTerminal` من `referralWorkflow` — لا رأي ثانٍ في الحالات)، `belongsToPatient` (يقبل `patient_id` و`patient_id_center`)، `counterpartyName` (اسم العيادة المحوِّلة من `partners`)، `imagingRequestTimestamp`.
+- `components/dashboard/patients/PatientImagingRequestsPanel.tsx` — تبويب «🩹 طلبات الأشعة»: عدادات (الإجمالي/نشِطة/عاجلة/مكتملة)، فلترة فترة + حالة، تجميع زمني بعناوين مجموعات، كروت ملوّنة حسب حالة الـworkflow (شريط جانبي) مع نبض Ripple للعاجل النشِط، اسم الجهة المحوِّلة ونشاطها، `StatusPill` + `imagingTypeLabel`، حالات تحميل/فراغ/خطأ، وزر انتقال إلى «🩻 الدراسات» وصندوق الطلبات. يستخدم `direction=all&patient_id=` ثم يعيد الترشيح محليًا (منهج B48).
+- `components/dashboard/patients/PatientMedicalFilesTab.tsx` — نمط **اختياري** `variant="imaging"` (`dental` هو الافتراضي، فلا يتغير سلوك العيادات): عنوان «🩻 الدراسات الشعاعية»، بلاطات خلاصة 🟦 بانوراما / 🟪 CBCT / 🟩 DICOM / 🟨 تقارير (بلاطة = فلتر)، وشارة «مرتبط بطلب: …» على الكرت إن وُجد `imaging_request_id` (تُمرَّر عبر `requestsById`)، ونصوص فراغ خاصة بالمركز. أُضيف `import React` صريح ليكون المكوّن قابلًا للـSSR مثل `SmartPatientProfile`.
+- `app/(dashboard)/dashboard/[clinicSlug]/patients/[patientId]/page.tsx` — التبويبات صارت مشتقة (`tabs`/`effectiveTab`)، النظرة العامة تستبدل بطاقة خطة العلاج ببطاقة عدّاد طلبات الأشعة للمركز (`onOpenReferrals` يفتح التبويب لا نافذة التحويل)، عدّاد الإحوالات يقبل `patient_id_center`، وتبويب الدراسات يحمّل فهرس الطلبات (`requestsById`) مرة واحدة عند فتحه فقط. تم حذف `const TABS` المحلي (المصدر الواحد صار الموديل).
+- `app/api/imaging/referrals/route.ts` — `patient_id` اختياري في `GET`، **مُتحقَّق كـUUID قبل حقنه** في `or=(…)` (لا حقن في لغة الاستعلام) وfail-closed مثل `direction`، ويُضاف كمجموعة OR على الرابطين فيُضيّق لا يُوسّع.
+- `tests/unit/imaging-patient-file-n30.test.ts` — 36 اختبار: مجموعات التبويبات (عيادة/مركز/lab/قيم مجهولة/الحالات الدقيقة)، الحبس، الفترات التقويمية على تاريخ ثابت (الأربعاء 2026-09-30)، التجميع والترتيب، العدادات والفلاتر، ربط المريض والطرف المقابل، SSR فعلي للمكوّنين (عيادة ومركز)، وحرّاس مصدر للصفحة/المكوّن/المسار.
+- تحديث حرّاس قديمين بسبب نقل المصدر (لا بسبب تغيير سلوك): `tests/unit/patient-sessions-n26.test.ts` و`tests/unit/patient-timeline-n27.test.ts` يتأكدان الآن من التسمية في الموديل ومن توجيه الحدث الواعي بالنشاط.
+
+**تنبيهات:**
+- **لا Migration ولا عمود جديد** — كل شيء فوق `patients.metadata`/`imaging_requests`/`medical_files` القائمة.
+- ملفات N29 غير المدفوعة بقيت كما هي (لم تُلمس): `DashboardNav.tsx` · `DashboardTopNav.tsx` · `NavBentoGrid.tsx` · `navBentoModel.ts` · `dock.tsx` · `layout.tsx` · `nav-bento-n29.test.ts`.
+- لم يُنفَّذ أي `commit` ولا `push` لـN30 (بطلب المالك).
+- ملاحظة وظيفية: الرفع من تبويب «🩻 الدراسات» لا يربط الملف بطلب أشعة محدد (الربط الحالي يتم من صفحة تفاصيل الطلب عبر `imaging_request_id`); يمكن إضافة `linkRequestId` لاحقًا إذا لزم.
+
+
 ## 2026-09-27 — ✅ N14: الملف الذكي للمريض (Smart Patient Profile) + حاسبة العمر
 
 **الحالة: مُنجَز ومُتحقَّق منه (`tsc` نظيف · `next build` ناجح · 12 اختبار وحدة ناجح).**
@@ -463,3 +492,29 @@ or remediation is planned for this issue at this time.
 - توصيل الأتمتة: تسجيل عيادة → subdomain + بريد تلقائي (commit `574b4f2`)
 - **15 مقالاً منشوراً** (5 دفعة أولى + 10 GEO/AEO — كلها حية بـ HTTP 200 + FAQPage + IndexNow 200)
 - إصلاح is_active → enabled، التوقيت الفلسطيني، الفهرس الجزئي للبريد
+
+---
+
+## 🚨 حادث + درس تقني — 2026-09-29 (B50)
+
+### الحادث
+- أثناء التحقق الفعلي من إصلاح **B50** (تعارض `imaging_services` ↔ `clinic_services` في بنود الفاتورة) استُخدمت ميزة PostgREST `Prefer: tx=rollback` لاختبار إصدار فاتورة حقيقية ثم التراجع.
+- **الميزة لم تُنفَّذ:** التُزمت **4 فواتير حقيقية** على ملف «عمر صقر» في Amal X-Ray Center:
+  `amal-x-ray-center-000031` … `amal-x-ray-center-000034` (30 ₪ لكل واحدة = **120 ₪**) بحالة `issued`.
+- **السبب المُثبَت (لا تخمين):** استُدعي الـRPC بمعامل يُطلق استثناءً قبل أي كتابة (`quantity: 0` → `INVALID_QUANTITY`) فأُعيد `HTTP 400` بلا أي أثر — **وبلا ترويسة `Preference-Applied`**.
+  ⇒ البوابة (**Cloudflare → Envoy → PostgREST**) **تُسقط `Prefer: tx=rollback` بصمت**: لا خطأ، لا تحذير، والكتابة تُلتزم عادةً.
+
+### المعالجة (بموافقة المالك)
+- أُلغيت الفواتير الأربع عبر **`void_invoice`** (المسار المُعتمد في التصميم — الحذف ممنوع بـ`before delete` trigger): **4 × HTTP 204**.
+- الأرصدة: الاستحقاق **360 ₪ → 240 ₪** (‎−120 ₪ بالضبط) · الأربع صارت `voided` مع `void_reason = "B50 tx=rollback test — accidental production write"` و`voided_at`.
+- سجل التدقيق `financial_transactions`: **4 × `invoice_issued` (in 30) + 4 × `invoice_voided` (out 30)** — متوازن تماماً، والبنود محفوظة (insert-only)، وأرقام الفواتير لم تُعَد (بالتصميم: never reused).
+- تم التحقق أن الإصلاح نفسه يعمل: المعرّف الخام → `HTTP 409 / code 23503` (الحادثة الأصلية) · المعرّف بعد `resolveCanonicalServiceIds` → `HTTP 200` + `invoice_number`.
+
+### ❌ قاعدة صارمة — يُمنع تكرارها
+1. **يُمنع** الاعتماد على `Prefer: tx=rollback` في هذه البيئة لأي كتابة — يُسقَط بصمت بلا أي مؤشر.
+2. البدائل المسموحة للاختبار الفعلي:
+   - **`psql` عبر مجمّع IPv4** (`aws-<n>-<region>.pooler.supabase.com`) مع `BEGIN; … ROLLBACK;`. الاتصال المباشر `db.<ref>.supabase.co` **IPv6 فقط** وغير قابل للتوجيه محلياً ("Network is unreachable").
+   - **مستأجر تجريبي** (عيادة/مركز وهمي) بدل بيانات عميل حقيقي.
+3. توكن **Supabase Management API** في `.env.local` غير مُصرَّح (يعيد `401 Unauthorized`) → مسار «تنفيذ SQL» غير متاح حالياً.
+4. أي كتابة إنتاجية لأغراض الاختبار = **موافقة صريحة مسبقة** من المالك.
+
