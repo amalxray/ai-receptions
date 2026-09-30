@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
@@ -137,8 +138,10 @@ export default function PatientDetailPage() {
 
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [apptsLoading, setApptsLoading] = useState(false);
+  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
   const [communications, setCommunications] = useState<PatientCommunication[]>([]);
   const [commsLoading, setCommsLoading] = useState(false);
+  const [communicationsError, setCommunicationsError] = useState<string | null>(null);
   /** Counters powering the N14 smart-profile activity cards (best effort). */
   const [overviewCounts, setOverviewCounts] = useState<SmartPatientStats>({
     visitsCount: 0,
@@ -197,10 +200,11 @@ export default function PatientDetailPage() {
     if (!clinicId || !patientId) return;
     void (async () => {
       setApptsLoading(true);
+      setAppointmentsError(null);
       try {
         const headers = await authHeaders();
         /**
-         * B48 — عُلّة «الموعد يُسجَّل ثم يختفي».
+         * B48 — عُلّة «الموعد يُسجَّل ثم يختفي».
          *
          * GET /api/appointments answers `{ data: [...] }`, but this effect checked
          * `Array.isArray(body)` and therefore stored an EMPTY list on every load.
@@ -213,7 +217,10 @@ export default function PatientDetailPage() {
           `/api/appointments?clinic_id=${encodeURIComponent(clinicId)}&patient_id=${encodeURIComponent(patientId)}`,
           { headers }
         );
-        if (!res.ok) throw new Error('تعذر تحميل المواعيد');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error || 'تعذر تحميل المواعيد');
+        }
         const payload = await res.json().catch(() => null);
         const rows: PatientAppointment[] = Array.isArray(payload)
           ? (payload as PatientAppointment[])
@@ -223,8 +230,9 @@ export default function PatientDetailPage() {
         // Defensive: a deployment that ignores `patient_id` still cannot leak
         // another patient's appointment into this file.
         setAppointments(rows.filter((a) => a.patient_id === patientId));
-      } catch {
+      } catch (error) {
         setAppointments([]);
+        setAppointmentsError(error instanceof Error ? error.message : 'تعذر تحميل المواعيد');
       } finally {
         setApptsLoading(false);
       }
@@ -297,14 +305,19 @@ export default function PatientDetailPage() {
     if (effectiveTab !== 'communications' || !clinicId || !patientId) return;
     void (async () => {
       setCommsLoading(true);
+      setCommunicationsError(null);
       try {
         const headers = await authHeaders();
         const res = await fetch(`/api/clinic/patients/${patientId}/communications?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-        if (!res.ok) throw new Error('تعذر تحميل سجل التواصل');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error || 'تعذر تحميل سجل التواصل');
+        }
         const json = await res.json();
         setCommunications((Array.isArray(json) ? json : json.data ?? []) as PatientCommunication[]);
-      } catch {
+      } catch (error) {
         setCommunications([]);
+        setCommunicationsError(error instanceof Error ? error.message : 'تعذر تحميل سجل التواصل');
       } finally {
         setCommsLoading(false);
       }
@@ -685,19 +698,39 @@ export default function PatientDetailPage() {
                     </dl>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                    <PatientAppointmentsPanel
-                      variant="compact"
-                      clinicId={clinicId}
-                      patientId={patientId}
-                      patientName={patient.name}
-                      appointments={appointments}
-                      loading={apptsLoading}
-                      authHeaders={authHeaders}
-                      onCreated={handleAppointmentCreated}
-                    />
-                    <p className="mt-4 text-xs text-slate-500">
-                      التفاصيل الكاملة في تبويب «📅 المواعيد» — {past.length} زيارة سابقة.
-                    </p>
+                    {appointmentsError ? (
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={appointmentsError}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200"
+                        >
+                          <div className="flex items-center gap-2 font-semibold">
+                            <span>⚠️</span>
+                            <span>تعذّر تحميل المواعيد</span>
+                          </div>
+                          <p className="mt-2 text-rose-100/90">{appointmentsError}</p>
+                        </motion.div>
+                      </AnimatePresence>
+                    ) : (
+                      <>
+                        <PatientAppointmentsPanel
+                          variant="compact"
+                          clinicId={clinicId}
+                          patientId={patientId}
+                          patientName={patient.name}
+                          appointments={appointments}
+                          loading={apptsLoading}
+                          authHeaders={authHeaders}
+                          onCreated={handleAppointmentCreated}
+                        />
+                        <p className="mt-4 text-xs text-slate-500">
+                          التفاصيل الكاملة في تبويب «📅 المواعيد» — {past.length} زيارة سابقة.
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -813,9 +846,29 @@ export default function PatientDetailPage() {
             )}
 
             {effectiveTab === 'communications' && (
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+              >
                 {commsLoading ? (
                   <p className="text-sm text-slate-400">جارٍ تحميل سجل التواصل...</p>
+                ) : communicationsError ? (
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={communicationsError}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200"
+                    >
+                      <div className="flex items-center gap-2 font-semibold">
+                        <span>⚠️</span>
+                        <span>تعذّر تحميل سجل التواصل</span>
+                      </div>
+                      <p className="mt-2 text-rose-100/90">{communicationsError}</p>
+                    </motion.div>
+                  </AnimatePresence>
                 ) : communications.length === 0 ? (
                   <p className="text-sm text-slate-500">لا توجد عمليات تواصل بعد.</p>
                 ) : (
@@ -840,7 +893,7 @@ export default function PatientDetailPage() {
                     ))}
                   </div>
                 )}
-              </div>
+              </motion.div>
             )}
           </div>
         </>
