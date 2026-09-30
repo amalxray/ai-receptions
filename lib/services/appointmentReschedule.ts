@@ -128,13 +128,9 @@ export async function rescheduleAppointment(params: {
     throw new RescheduleError('ineligible_status', `Appointment cannot be rescheduled from status: ${appointment.status}`);
   }
 
-  if (!appointment.provider_id && !params.providerId) {
-    throw new RescheduleError('no_provider', 'Appointment has no provider assigned — reschedule not possible');
-  }
-
   /** The provider this appointment belongs to AFTER the move: the one picked in
    * the edit panel when given, otherwise the one it already has. */
-  const targetProviderId = params.providerId?.trim() || appointment.provider_id;
+  const targetProviderId = params.providerId?.trim() || appointment.provider_id || null;
 
   // 3. Resolve service duration
   let durationMinutes = appointment.duration_minutes ?? 30;
@@ -143,38 +139,43 @@ export async function rescheduleAppointment(params: {
     if (service) durationMinutes = service.duration_minutes;
   }
 
-  // 4. Verify provider is assigned to the service (when assignments used)
-  if (appointment.service_id) {
-    const assigned = await providerAssignedToService(clinicId, targetProviderId, appointment.service_id);
-    if (assigned === false) {
-      throw new RescheduleError('provider_not_assigned', 'Provider is not assigned to this service');
-    }
-  }
-
-  // 5. Load schedule for chosen date
-  const schedule = await loadProviderSchedule(clinicId, targetProviderId);
-  if (!schedule) {
-    throw new RescheduleError('provider_not_found', 'Provider not found for this clinic');
-  }
-
-  // 6. Check availability of new slot
   const startsAt = `${date}T${time}:00.000Z`;
   const holiday = await isClinicHoliday(clinicId, date);
 
-  // Load existing appointments EXCLUDING the one being rescheduled (so self-overlap isn't flagged)
-  const existing = await loadExistingAppointments(clinicId, targetProviderId, date);
-  const otherAppointments = existing.filter((a) => a.id !== appointment.id);
+  if (targetProviderId) {
+    // 4. Verify provider is assigned to a service (when assignments used)
+    if (appointment.service_id) {
+      const assigned = await providerAssignedToService(clinicId, targetProviderId, appointment.service_id);
+      if (assigned === false) {
+        throw new RescheduleError('provider_not_assigned', 'Provider is not assigned to this service');
+      }
+    }
 
-  const availability = checkSlotAvailability({
-    startsAt,
-    durationMinutes,
-    schedule,
-    existingAppointments: otherAppointments,
-    holiday,
-  });
+    // 5. Load schedule for chosen date
+    const schedule = await loadProviderSchedule(clinicId, targetProviderId);
+    if (!schedule) {
+      throw new RescheduleError('provider_not_found', 'Provider not found for this clinic');
+    }
 
-  if (!availability.available) {
-    throw new RescheduleError('slot_unavailable', `Requested slot is unavailable: ${availability.reason}`);
+    // 6. Check availability of new slot
+    const existing = await loadExistingAppointments(clinicId, targetProviderId, date);
+    const otherAppointments = existing.filter((a) => a.id !== appointment.id);
+
+    const availability = checkSlotAvailability({
+      startsAt,
+      durationMinutes,
+      schedule,
+      existingAppointments: otherAppointments,
+      holiday,
+    });
+
+    if (!availability.available) {
+      throw new RescheduleError('slot_unavailable', `Requested slot is unavailable: ${availability.reason}`);
+    }
+  } else if (holiday) {
+    // With no assigned provider there is no provider schedule to check; retain
+    // the clinic-wide holiday guard and leave provider_id NULL on the appointment.
+    throw new RescheduleError('slot_unavailable', 'Requested slot is unavailable: holiday');
   }
 
   // 7. Atomically update the appointment

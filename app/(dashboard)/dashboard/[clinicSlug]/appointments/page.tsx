@@ -76,7 +76,7 @@ export default function AppointmentsPage() {
   const [servicesLoading, setServicesLoading] = useState(false);
   const [dropSavingId, setDropSavingId] = useState<number | null>(null);
   /** Page-level feedback banner (drag & drop AND create/reschedule share it). */
-  const [dropFeedback, setDropFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const [dropFeedback, setDropFeedback] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ appointment: Appointment; status: string; label: string } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -386,13 +386,6 @@ export default function AppointmentsPage() {
       setDropFeedback({ tone: 'error', message: 'تعذر إعادة جدولة هذا الموعد لعدم توفر وقت صالح.' });
       return;
     }
-    if (!appointment.provider_id) {
-      setDropFeedback({
-        tone: 'error',
-        message: 'لا يمكن إعادة الجدولة: هذا الموعد غير مرتبط بمقدّم خدمة. استخدم «تعديل» وحدّد الطبيب ثم أعد المحاولة.',
-      });
-      return;
-    }
     setDropSavingId(appointment.id);
     setDropFeedback(null);
     try {
@@ -404,7 +397,7 @@ export default function AppointmentsPage() {
           appointment_id: String(appointment.id),
           date: targetDate,
           time,
-          provider_id: appointment.provider_id,
+          provider_id: appointment.provider_id ?? null,
         }),
       });
       const body = await response.json().catch(() => null);
@@ -413,7 +406,12 @@ export default function AppointmentsPage() {
       setAppointments((current) => current.map((item) => item.id === appointment.id
         ? { ...item, ...updated, appointment_date: targetDate, appointment_time: updated?.appointment_time ?? time }
         : item));
-      setDropFeedback({ tone: 'success', message: `تم تحديث موعد ${appointment.patient_name} إلى ${targetDate} (${time}).` });
+      setDropFeedback({
+        tone: appointment.provider_id ? 'success' : 'warning',
+        message: appointment.provider_id
+          ? `تم تحديث موعد ${appointment.patient_name} إلى ${targetDate} (${time}).`
+          : `تم تحديث موعد ${appointment.patient_name} إلى ${targetDate} (${time})، وسيظل دون مقدّم خدمة؛ لم يُتحقق من جدول طبيب.`,
+      });
     } catch (caughtError) {
       setDropFeedback({
         tone: 'error',
@@ -672,7 +670,7 @@ export default function AppointmentsPage() {
         {dropFeedback && (
           <div
             role={dropFeedback.tone === 'error' ? 'alert' : 'status'}
-            className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${dropFeedback.tone === 'error' ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'}`}
+            className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${dropFeedback.tone === 'error' ? 'border-red-500/40 bg-red-500/10 text-red-300' : dropFeedback.tone === 'warning' ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'}`}
           >
             {dropFeedback.message}
           </div>

@@ -112,19 +112,18 @@ beforeEach(() => {
 });
 
 describe('B52 service — typed failure codes', () => {
-  it('rejects with code "no_provider" for an appointment without a provider (production repro)', async () => {
-    db.tables.appointments = { load: { data: appointmentRow({ provider_id: null, status: 'scheduled' }), error: null } };
+  it('reschedules a legacy appointment without a provider and preserves NULL', async () => {
+    db.tables.appointments = {
+      load: { data: appointmentRow({ provider_id: null, status: 'scheduled' }), error: null },
+      update: { data: { id: APPOINTMENT, scheduled_at: '2026-10-06T09:00:00.000Z', appointment_date: '2026-10-06', status: 'scheduled', patient_id: null, provider_id: null }, error: null },
+    };
 
-    await expect(
-      rescheduleAppointment({ clinicId: CLINIC, appointmentId: APPOINTMENT, date: '2026-10-06', time: '09:00' }),
-    ).rejects.toMatchObject({ name: 'RescheduleError', code: 'no_provider' });
-  });
+    const updated = await rescheduleAppointment({ clinicId: CLINIC, appointmentId: APPOINTMENT, date: '2026-10-06', time: '09:00', providerId: null });
 
-  it('keeps the legacy message text so existing string-based callers still work', async () => {
-    db.tables.appointments = { load: { data: appointmentRow({ provider_id: null }), error: null } };
-    const error = await rescheduleAppointment({ clinicId: CLINIC, appointmentId: APPOINTMENT, date: '2026-10-06', time: '09:00' }).catch((e) => e);
-    expect(error).toBeInstanceOf(RescheduleError);
-    expect(error.message).toBe('Appointment has no provider assigned — reschedule not possible');
+    expect(updated.provider_id).toBeNull();
+    expect(booking.loadProviderSchedule).not.toHaveBeenCalled();
+    expect(scheduling.checkSlotAvailability).not.toHaveBeenCalled();
+    expect(db.tables.appointments.lastUpdate).toMatchObject({ provider_id: null, scheduled_at: '2026-10-06T09:00:00.000Z' });
   });
 
   it('codes a missing row as not_found', async () => {
@@ -218,11 +217,6 @@ describe('B52 service — typed failure codes', () => {
     expect(db.tables.appointments.lastUpdate).toMatchObject({ provider_id: OTHER_PROVIDER });
   });
 
-  it('B52-B: without a picked provider the legacy no_provider rejection is unchanged', async () => {
-    db.tables.appointments = { load: { data: appointmentRow({ provider_id: null }), error: null } };
-    await expect(rescheduleAppointment({ clinicId: CLINIC, appointmentId: APPOINTMENT, date: '2026-10-06', time: '09:00' }))
-      .rejects.toMatchObject({ code: 'no_provider' });
-  });
 });
 
 describe('B52-B — agenda wiring guards', () => {
@@ -259,6 +253,22 @@ describe('B52-B — agenda wiring guards', () => {
     expect(page).toContain('<Skeleton key={chip}');
     expect(page).toContain('initial={{ opacity: 0, y: -6 }}');
     expect(page).toContain("import { motion } from 'framer-motion';");
+  });
+
+  it('sends null for unassigned drag moves and shows the warning state', async () => {
+    const page = await read('app/(dashboard)/dashboard/[clinicSlug]/appointments/page.tsx');
+    expect(page).toContain('provider_id: appointment.provider_id ?? null,');
+    expect(page).toContain("tone: appointment.provider_id ? 'success' : 'warning'");
+    expect(page).toContain('border-amber-500/40 bg-amber-500/10 text-amber-300');
+  });
+
+  it('shares the image-backed marquee across public activity spaces', async () => {
+    const chrome = await read('components/public/ActivitySpaceChrome.tsx');
+    const marquee = await read('components/ui/RotatingMarquee.tsx');
+    expect(chrome).toContain('<RotatingMarquee');
+    expect(chrome).toContain("item.media_type === 'image'");
+    expect(chrome).toContain('space.coverUrl || space.logo');
+    expect(marquee).toContain("isCenter ? 'saturate-100' : 'grayscale saturate-50'");
   });
 });
 
