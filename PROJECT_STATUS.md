@@ -2,6 +2,13 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-10-01 — B60 + production Router smoke test
+
+- B60 committed and pushed as `2262b2166c41a496860e586ceac01c7baef7eaf3` (`main` matches `origin/main`).
+- Clean `rm -rf .next && npm run build`: passed; Next.js reports dynamic dashboard routes as server-rendered.
+- Production smoke test on port 3010: `GET /dashboard/hala-clinic` returned **200** and rendered the Arabic login guard. No Router/hook/rendering error was observed in the response or server startup.
+- **Classification:** not reproduced in production. The dev server on port 3000 was unavailable (connection refused), so “dev-only” is not independently confirmed. No code fix was indicated by this production test.
+
 ## 2026-09-29 — ✅ B51-H + B51-D: تصلّب الإعدادات ومنع البيانات الوهمية (+ درس تلف `.env.local`)
 
 **الحالة: مُنجَز ومُتحقَّق منه — `tsc` نظيف · `next build` ناجح (EXIT=0) · 12 اختبارًا جديدًا ناجحًا · لا انحدار (2482 ناجح / 17 فاشل = نفس فشل B21 القائم قبل التغيير في 4 ملفات غير متعلقة). لم يُنفَّذ commit (بانتظار موافقة المالك).**
