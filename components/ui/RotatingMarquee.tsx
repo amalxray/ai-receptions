@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useEffect, useRef } from 'react';
 
 export type RotatingMarqueeItem = {
   id: string;
@@ -74,6 +75,23 @@ export default function RotatingMarquee({
   title = 'قصص عياداتنا في حركة مستمرة',
 }: RotatingMarqueeProps) {
   const list = [...items, ...items];
+  const viewportRef = useRef<HTMLDivElement>(null), trackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = viewportRef.current, track = trackRef.current;
+    if (!viewport || !track) return;
+    const update = () => {
+      const bounds = viewport.getBoundingClientRect(), center = bounds.left + bounds.width / 2;
+      track.querySelectorAll<HTMLElement>('[data-marquee-card]').forEach((card) => {
+        const rect = card.getBoundingClientRect(), delta = rect.left + rect.width / 2 - center;
+        const distance = Math.min(1, Math.abs(delta) / (bounds.width / 2));
+        Object.entries({ scale: 1 - distance * 0.3, rotate: `${Math.sign(delta) * distance * 25}deg`, opacity: 1 - distance * 0.5, blur: `${distance * 8}px`, gray: distance }).forEach(([key, value]) => card.style.setProperty(`--marquee-${key}`, String(value)));
+      });
+    };
+    const timer = window.setInterval(update, 50);
+    update();
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <section className={`relative overflow-hidden py-10 sm:py-14 ${className}`}>
@@ -87,36 +105,28 @@ export default function RotatingMarquee({
         </div>
       </div>
 
-      <div className="relative [perspective:1800px]">
+      <div ref={viewportRef} className="relative [perspective:1800px]">
         <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-[#0b1120] to-transparent" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-[#0b1120] to-transparent" />
 
         <motion.div
           animate={{ x: ['0%', '-50%'] }}
-          transition={{ duration: 26, ease: 'linear', repeat: Infinity }}
+          transition={{ duration: 52, ease: 'linear', repeat: Infinity }}
           className="flex w-max gap-5 px-4 sm:px-6 lg:px-8"
           style={{ transformStyle: 'preserve-3d' }}
+          ref={trackRef}
         >
-          {list.map((item, index) => {
-            const phase = index % 3;
-            const isCenter = phase === 1;
-            const angle = phase === 0 ? -25 : phase === 1 ? 0 : 25;
-            const scale = isCenter ? 1 : 0.72;
-            const opacity = isCenter ? 1 : 0.62;
-            const blur = isCenter ? '0px' : '2px';
-            const width = isCenter ? 'w-[250px] sm:w-[290px]' : 'w-[200px] sm:w-[220px]';
-
-            return (
+          {list.map((item, index) => (
               <motion.article
                 key={`${item.id}-${index}`}
-                className={`group relative shrink-0 overflow-hidden rounded-[28px] border border-white/10 bg-slate-900/40 p-3 shadow-[0_30px_70px_-35px_rgba(15,23,42,0.85)] backdrop-blur-sm ${width}`}
+                data-marquee-card
+                className="group relative w-[250px] shrink-0 overflow-hidden rounded-[28px] border border-white/10 bg-slate-900/40 p-3 shadow-[0_30px_70px_-35px_rgba(15,23,42,0.85)] backdrop-blur-sm sm:w-[290px]"
                 style={{
-                  transform: `perspective(1200px) rotateY(${angle}deg) scale(${scale})`,
-                  opacity,
-                  filter: `blur(${blur})`,
+                  transform: 'perspective(1200px) rotateY(var(--marquee-rotate, 25deg)) scale(var(--marquee-scale, 0.7))',
+                  opacity: 'var(--marquee-opacity, 0.5)',
+                  transition: 'transform 500ms ease-out, opacity 500ms ease-out',
                   transformStyle: 'preserve-3d',
                 }}
-                whileHover={{ y: -6, scale: isCenter ? 1.02 : 0.75 }}
               >
                 <div className={`relative overflow-hidden rounded-[22px] bg-gradient-to-br ${item.color}`}>
                   {item.image ? (
@@ -124,7 +134,8 @@ export default function RotatingMarquee({
                     <img
                       src={item.image}
                       alt={item.imageAlt ?? item.title}
-                      className={`absolute inset-0 h-full w-full object-cover ${isCenter ? 'saturate-100' : 'grayscale saturate-50'}`}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{ filter: 'blur(var(--marquee-blur, 8px)) grayscale(var(--marquee-gray, 1))', transition: 'filter 500ms ease-out' }}
                     />
                   ) : null}
                   <div className={`absolute inset-0 ${item.image ? 'bg-slate-950/35' : 'bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]'}`} />
@@ -148,8 +159,7 @@ export default function RotatingMarquee({
                   <p className="text-xs font-medium text-slate-300">{item.subtitle}</p>
                 </div>
               </motion.article>
-            );
-          })}
+            ))}
         </motion.div>
       </div>
     </section>
