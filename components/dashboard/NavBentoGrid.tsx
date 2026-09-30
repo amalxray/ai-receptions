@@ -163,7 +163,7 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
           initial="hidden"
           animate="visible"
           variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-          className={`relative grid gap-4 ${columns}`}
+          className={`relative grid gap-3 ${columns}`}
         >
           {group.items.map((item, index) => (
             <BentoCard
@@ -201,7 +201,7 @@ function BentoCard({
   return (
     <motion.div
       variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
-      whileHover={{ y: -6, scale: 1.01 }}
+      whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
       className={cardClass}
@@ -212,7 +212,7 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex h-full min-h-[180px] flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br p-4 text-left shadow-[0_20px_40px_-28px_rgba(15,23,42,0.9)] transition-all duration-300 ease-out ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
+        className={`group relative flex h-full min-h-[120px] flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br p-4 text-left shadow-[0_20px_40px_-28px_rgba(15,23,42,0.9)] transition-all duration-300 ease-out ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
           item.active ? 'ring-2 ring-white/20 shadow-[0_0_30px_-18px_rgba(255,255,255,0.9)]' : 'ring-1 ring-white/5'
         }`}
       >
@@ -248,12 +248,12 @@ function BentoCard({
           </div>
         </span>
 
-        <span className="relative z-10 mt-5 flex flex-col gap-2">
-          <span className="block text-[18px] font-bold leading-6 text-white">{item.label}</span>
-          <span className="block text-[14px] leading-5 text-slate-300/85">{presentation.description}</span>
+        <span className="relative z-10 mt-3 flex flex-col gap-1">
+          <span className="block text-lg font-bold leading-6 text-white">{item.label}</span>
+          <span className="block text-sm leading-5 text-slate-300/85">{presentation.description}</span>
         </span>
 
-        <span className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-4">
+        <span className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">
           {item.active ? (
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
               <span className={`h-2 w-2 rounded-full ${tone.bar}`} aria-hidden />
