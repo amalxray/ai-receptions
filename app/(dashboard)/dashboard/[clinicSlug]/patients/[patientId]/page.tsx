@@ -872,6 +872,8 @@ export default function PatientDetailPage() {
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
                     <PatientSessionsPanel
                       variant="compact"
+                      clinicId={clinicId}
+                      authHeaders={authHeaders}
                       sessions={sessions}
                       onAdd={addSession}
                       onStatusChange={changeSessionStatus}
@@ -917,6 +919,8 @@ export default function PatientDetailPage() {
             {effectiveTab === 'sessions' && !imagingMode && (
               <PatientSessionsPanel
                 variant="full"
+                clinicId={clinicId}
+                authHeaders={authHeaders}
                 sessions={sessions}
                 onAdd={addSession}
                 onStatusChange={changeSessionStatus}

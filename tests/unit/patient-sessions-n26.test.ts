@@ -38,7 +38,15 @@ describe('N26 — parsePatientSessions tolerance', () => {
       { id: 's2', date: '2026-09-08', service: 'تنظيف', status: 'planned' },
     ]);
     expect(parsed).toHaveLength(2);
-    expect(parsed[0]).toEqual({ id: 's1', date: '2026-09-01', service: 'حشوة', tooth: '36', status: 'done', note: 'بنج موضعي' });
+    expect(parsed[0]).toEqual({
+      id: 's1',
+      date: '2026-09-01',
+      service: 'حشوة',
+      tooth: '36',
+      treatment_type: 'حشوة',
+      status: 'done',
+      note: 'بنج موضعي',
+    });
     expect(parsed[1].tooth).toBeUndefined();
   });
 
@@ -76,6 +84,31 @@ describe('N26 — parsePatientSessions tolerance', () => {
     expect(parsePatientSessions(null)).toEqual([]);
     expect(parsePatientSessions('حشوة')).toEqual([]);
     expect(parsePatientSessions({})).toEqual([]);
+  });
+
+  it('keeps the new N33 treatment fields without breaking legacy sessions', () => {
+    const parsed = parsePatientSessions([
+      {
+        id: 's1',
+        date: '2026-09-01',
+        service: 'حشوة ضرس',
+        treatment_type: 'حشوة',
+        doctor_id: 'provider-42',
+        next_plan: 'مراجعة بعد 7 أيام',
+        status: 'done',
+        note: 'تقدم جيد',
+      },
+      { date: '2026-09-08', service: 'تنظيف', status: 'planned' },
+    ]);
+
+    expect(parsed[0]).toMatchObject({
+      treatment_type: 'حشوة',
+      doctor_id: 'provider-42',
+      next_plan: 'مراجعة بعد 7 أيام',
+      service: 'حشوة ضرس',
+      status: 'done',
+    });
+    expect(parsed[1].treatment_type).toBe('تنظيف');
   });
 });
 

@@ -99,6 +99,9 @@ export type QuickNote = {
 export const PATIENT_SESSION_STATUSES = ['done', 'planned', 'cancelled'] as const;
 export type PatientSessionStatus = (typeof PATIENT_SESSION_STATUSES)[number];
 
+export const PATIENT_TREATMENT_TYPES = ['حشوة', 'عصب', 'خلع', 'تلبيس', 'تنظيف', 'تقويم', 'زراعة', 'أخرى'] as const;
+export type PatientTreatmentType = (typeof PATIENT_TREATMENT_TYPES)[number];
+
 /**
  * N26 — one item of the dental treatment plan, stored in
  * `patients.metadata.sessions` (no migration: the patient row already owns the
@@ -113,6 +116,12 @@ export type PatientSession = {
   service: string;
   /** Free tooth notation ("36", "الفك الأيسر") — never coerced to a number. */
   tooth?: string;
+  /** N33 — dental treatment type kept in the same metadata JSONB bucket. */
+  treatment_type?: PatientTreatmentType;
+  /** N33 — the doctor who owns the plan step, selected from clinic providers. */
+  doctor_id?: string | null;
+  /** N33 — next planned session / follow-up note. */
+  next_plan?: string;
   status: PatientSessionStatus;
   note?: string;
 };
@@ -1405,6 +1414,24 @@ function normalizeSessionStatus(value: unknown): PatientSessionStatus {
   return 'planned';
 }
 
+function normalizeTreatmentType(value: unknown): PatientTreatmentType | undefined {
+  const raw = asString(value).trim().toLowerCase();
+  if (!raw) return undefined;
+  const aliases: Array<[PatientTreatmentType, string[]]> = [
+    ['حشوة', ['حشوة', 'حشو', 'filling', 'fill']],
+    ['عصب', ['عصب', 'القناة', 'root canal', 'endo', 'endodontic']],
+    ['خلع', ['خلع', 'قلع', 'extraction', 'extractions']],
+    ['تلبيس', ['تلبيس', 'تاج', 'crown', 'veneer']],
+    ['تنظيف', ['تنظيف', 'cleaning', 'scaling', 'polishing']],
+    ['تقويم', ['تقويم', 'orthodontic', 'orthodontics', 'brace']],
+    ['زراعة', ['زراعة', 'implant', 'implants']],
+  ];
+  for (const [label, tokens] of aliases) {
+    if (tokens.some((token) => raw.includes(token.toLowerCase()))) return label;
+  }
+  return 'أخرى';
+}
+
 /**
  * Reads `metadata.sessions` defensively — the one rule of this codebase's JSONB:
  * a malformed plan must never break the patient file. Junk entries are dropped,
@@ -1427,6 +1454,9 @@ export function parsePatientSessions(value: unknown): PatientSession[] {
     const date = asString(record.date).trim().slice(0, 10);
     const tooth = asString(record.tooth).trim();
     const note = asString(record.note).trim();
+    const treatmentType = normalizeTreatmentType(record.treatment_type ?? record.procedure_type ?? record.type ?? service);
+    const doctorId = asString(record.doctor_id ?? record.provider_id ?? record.doctorId).trim();
+    const nextPlan = asString(record.next_plan ?? record.plan_next ?? record.nextPlan).trim();
     const declared = asString(record.id).trim();
 
     let id = declared || sessionId(date, service);
@@ -1440,6 +1470,9 @@ export function parsePatientSessions(value: unknown): PatientSession[] {
       service,
       status: normalizeSessionStatus(record.status),
       ...(tooth ? { tooth } : {}),
+      ...(treatmentType ? { treatment_type: treatmentType } : {}),
+      ...(doctorId ? { doctor_id: doctorId } : {}),
+      ...(nextPlan ? { next_plan: nextPlan } : {}),
       ...(note ? { note } : {}),
     });
   }
@@ -1493,7 +1526,7 @@ export function appendPatientSession(
 export function updatePatientSession(
   current: unknown,
   id: string,
-  patch: Partial<Pick<PatientSession, 'status' | 'date' | 'service' | 'tooth' | 'note'>>
+  patch: Partial<Pick<PatientSession, 'status' | 'date' | 'service' | 'tooth' | 'treatment_type' | 'doctor_id' | 'next_plan' | 'note'>>
 ): SmartPatientMetadata {
   const base = parsePatientMetadata(current);
   return {
@@ -1570,6 +1603,26 @@ const PROCEDURE_TONES: { match: string[]; tone: ProcedureTone }[] = [
       chip: 'bg-emerald-500/15 text-emerald-200 ring-emerald-500/30',
       bar: 'bg-emerald-400',
       glow: 'hover:shadow-[0_0_24px_-4px_rgba(16,185,129,0.55)]',
+    },
+  },
+  {
+    match: ['تقويم', 'orthodontic', 'orthodontics'],
+    tone: {
+      emoji: '🟦',
+      ring: 'border-cyan-500/40 bg-cyan-500/[0.06]',
+      chip: 'bg-cyan-500/15 text-cyan-200 ring-cyan-500/30',
+      bar: 'bg-cyan-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(34,211,238,0.55)]',
+    },
+  },
+  {
+    match: ['زراعة', 'implant', 'implants'],
+    tone: {
+      emoji: '🟧',
+      ring: 'border-orange-500/40 bg-orange-500/[0.06]',
+      chip: 'bg-orange-500/15 text-orange-200 ring-orange-500/30',
+      bar: 'bg-orange-400',
+      glow: 'hover:shadow-[0_0_24px_-4px_rgba(251,146,60,0.55)]',
     },
   },
 ];

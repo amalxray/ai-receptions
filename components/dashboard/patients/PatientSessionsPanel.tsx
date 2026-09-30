@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, CheckCircle2, Loader2, Plus, RotateCcw, X } from 'lucide-react';
 import { localIsoDate } from '@/lib/calendar/weeks';
 import {
+  PATIENT_TREATMENT_TYPES,
   sessionProgress,
   sessionProcedureTone,
   sessionStatusAr,
@@ -29,6 +30,10 @@ export type PatientSessionsPanelProps = {
   variant?: 'full' | 'compact';
   /** True while the patient row itself is still loading. */
   loading?: boolean;
+  /** Clinic id used to load the provider dropdown for the new session modal. */
+  clinicId?: string;
+  /** Auth headers for the provider dropdown. */
+  authHeaders?: () => Promise<Record<string, string>>;
   /** Persists a new session; must reject to surface the failure in the modal. */
   onAdd?: (draft: PatientSessionDraft) => Promise<void>;
   /** Persists a status change (مكتملة / ملغاة / إرجاع إلى مخطّطة). */
@@ -175,7 +180,7 @@ function SessionCard({
   busy: boolean;
   onStatusChange: (session: PatientSession, status: PatientSessionStatus) => void;
 }) {
-  const tone = sessionProcedureTone(session.service);
+  const tone = sessionProcedureTone(session.treatment_type ?? session.service);
   return (
     <motion.article
       layout
@@ -201,11 +206,16 @@ function SessionCard({
           <CalendarDays className="h-3 w-3" />
           {session.date || 'بدون تاريخ'}
         </span>
+        <span className={`rounded-full px-2.5 py-1 font-bold ring-1 ${tone.chip}`}>
+          {session.treatment_type ?? 'أخرى'}
+        </span>
         {session.tooth ? (
           <span className={`rounded-full px-2.5 py-1 font-bold ring-1 ${tone.chip}`}>🦷 سن {session.tooth}</span>
         ) : null}
       </div>
 
+      {session.doctor_id ? <p className="mt-2 text-[11px] text-slate-300">👨‍⚕️ الطبيب: {session.doctor_id}</p> : null}
+      {session.next_plan ? <p className="mt-2 text-xs leading-relaxed text-cyan-100/90">📌 خطة قادمة: {session.next_plan}</p> : null}
       {session.note ? <p className="mt-2 text-xs leading-relaxed text-slate-400">{session.note}</p> : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -248,14 +258,20 @@ export default function PatientSessionsPanel({
   sessions,
   variant = 'full',
   loading = false,
+  clinicId,
+  authHeaders,
   onAdd,
   onStatusChange,
 }: PatientSessionsPanelProps) {
   const [open, setOpen] = useState(false);
+  const [providers, setProviders] = useState<Array<{ id: string; name: string; title?: string | null }>>([]);
   const [draft, setDraft] = useState<PatientSessionDraft>(() => ({
     date: localIsoDate(new Date()),
     service: '',
     tooth: '',
+    treatment_type: 'حشوة',
+    doctor_id: '',
+    next_plan: '',
     note: '',
     status: 'done',
   }));
@@ -264,9 +280,30 @@ export default function PatientSessionsPanel({
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!clinicId || !authHeaders) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`/api/clinic/providers?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const list = Array.isArray(json?.data) ? json.data : [];
+        if (!cancelled) setProviders(list as Array<{ id: string; name: string; title?: string | null }>);
+      } catch {
+        if (!cancelled) setProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, clinicId]);
+
   const sorted = useMemo(() => sortSessions(sessions), [sessions]);
   const shown = variant === 'compact' ? sorted.slice(0, 3) : sorted;
   const progress = useMemo(() => sessionProgress(sessions), [sessions]);
+  const doctorLabel = providers.find((provider) => provider.id === draft.doctor_id)?.name ?? 'بدون طبيب';
 
   /** Success notes are transient so the timeline stays clean. */
   useEffect(() => {
@@ -286,9 +323,23 @@ export default function PatientSessionsPanel({
     setSaving(true);
     setError(null);
     try {
-      await onAdd({ ...draft, service, date: draft.date || localIsoDate(new Date()) });
+      await onAdd({
+        ...draft,
+        service,
+        treatment_type: draft.treatment_type || 'أخرى',
+        date: draft.date || localIsoDate(new Date()),
+      });
       setFeedback(`✅ تمت إضافة جلسة «${service}»`);
-      setDraft({ date: localIsoDate(new Date()), service: '', tooth: '', note: '', status: 'done' });
+      setDraft({
+        date: localIsoDate(new Date()),
+        service: '',
+        tooth: '',
+        treatment_type: 'حشوة',
+        doctor_id: '',
+        next_plan: '',
+        note: '',
+        status: 'done',
+      });
       setOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'تعذر حفظ الجلسة — حاول مرة أخرى');
@@ -444,8 +495,22 @@ export default function PatientSessionsPanel({
                     value={draft.service}
                     onChange={(event) => setDraft((current) => ({ ...current, service: event.target.value }))}
                     placeholder="مثال: حشوة ضرس، علاج عصب"
-                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500/60"
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
                   />
+                </label>
+                <label className="text-xs font-semibold text-slate-300">
+                  نوع العلاج
+                  <select
+                    value={draft.treatment_type ?? 'أخرى'}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, treatment_type: event.target.value as PatientSession['treatment_type'] }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+                  >
+                    {PATIENT_TREATMENT_TYPES.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
                 </label>
                 <label className="text-xs font-semibold text-slate-300">
                   التاريخ
@@ -453,7 +518,7 @@ export default function PatientSessionsPanel({
                     type="date"
                     value={draft.date}
                     onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500/60"
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
                   />
                 </label>
                 <label className="text-xs font-semibold text-slate-300">
@@ -462,17 +527,26 @@ export default function PatientSessionsPanel({
                     value={draft.tooth ?? ''}
                     onChange={(event) => setDraft((current) => ({ ...current, tooth: event.target.value }))}
                     placeholder="36"
-                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500/60"
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
                   />
                 </label>
-                <label className="text-xs font-semibold text-slate-300 sm:col-span-2">
-                  ملاحظة (اختياري)
-                  <textarea
-                    value={draft.note ?? ''}
-                    onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
-                    rows={2}
-                    className="mt-1 w-full resize-y rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500/60"
-                  />
+                <label className="text-xs font-semibold text-slate-300">
+                  الطبيب
+                  <select
+                    value={draft.doctor_id ?? ''}
+                    onChange={(event) => setDraft((current) => ({ ...current, doctor_id: event.target.value || undefined }))}
+                    disabled={!clinicId || providers.length === 0}
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition disabled:cursor-not-allowed disabled:opacity-60 focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+                  >
+                    <option value="">{clinicId ? 'اختر الطبيب' : 'غير متاح'}</option>
+                    {providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.name}
+                        {provider.title ? ` · ${provider.title}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-[10px] text-slate-400">{doctorLabel}</span>
                 </label>
                 <label className="text-xs font-semibold text-slate-300">
                   الحالة
@@ -481,11 +555,31 @@ export default function PatientSessionsPanel({
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, status: event.target.value as PatientSessionStatus }))
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500/60"
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
                   >
                     <option value="done">مكتملة (تمت)</option>
                     <option value="planned">مخطّطة (قادمة)</option>
+                    <option value="cancelled">ملغاة</option>
                   </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-300 sm:col-span-2">
+                  خطة الجلسة القادمة (اختياري)
+                  <textarea
+                    value={draft.next_plan ?? ''}
+                    onChange={(event) => setDraft((current) => ({ ...current, next_plan: event.target.value }))}
+                    rows={2}
+                    placeholder="مثل: متابعة بعد 10 أيام، أو تنظيف روتيني، أو مراجعة بعد أسبوع"
+                    className="mt-1 w-full resize-y rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-300 sm:col-span-2">
+                  ملاحظة (اختياري)
+                  <textarea
+                    value={draft.note ?? ''}
+                    onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
+                    rows={2}
+                    className="mt-1 w-full resize-y rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20"
+                  />
                 </label>
               </div>
 
