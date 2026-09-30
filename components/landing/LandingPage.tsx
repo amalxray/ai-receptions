@@ -17,6 +17,7 @@ import LeadForm from './LeadForm';
 import Navbar from './Navbar';
 import UrgencyBar from './UrgencyBar';
 import Hero from './Hero';
+import RotatingMarquee from '@/components/ui/RotatingMarquee';
 
 export default function LandingPage() {
   const copy = useLandingCopy();
@@ -27,6 +28,7 @@ export default function LandingPage() {
       <main className="bg-landing-bg text-landing-text">
         <Hero />
         <WhySection />
+        <RotatingMarquee />
         <ResultsSection />
         <ForDoctorsSection />
         <HowItWorksSection />
