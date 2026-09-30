@@ -20,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { calculatePatientAge, formatAgeAr } from '@/lib/patientAge';
+import { calculateProfileCompletion, resolvePatientAgeLabel } from '@/components/dashboard/patients/smartProfile';
 import { formatTimeAr } from '@/lib/dashboard/labels-ar';
 // B38/B39 — the profile reads the shared phone normalizer and the defensive
 // metadata reader instead of re-implementing either next to the component.
@@ -95,6 +96,7 @@ interface SmartPatientProfileProps {
   onOpenFiles?: () => void;
   onOpenReferrals?: () => void;
   onOpenInvoices?: () => void;
+  onEditPatient?: () => void;
   onOpenTimelineDetail?: (item: SmartTimelineItem) => void;
   /**
    * B39 — persists a quick note (`metadata.quick_notes`). Throwing rejects keep
@@ -237,6 +239,7 @@ export default function SmartPatientProfile({
   onOpenFiles,
   onOpenReferrals,
   onOpenInvoices,
+  onEditPatient,
   onOpenTimelineDetail,
   onSaveQuickNote,
 }: SmartPatientProfileProps) {
@@ -289,6 +292,14 @@ export default function SmartPatientProfile({
     (patient as unknown as { date_of_birth?: string }).date_of_birth ||
     null;
   const ageResult = calculatePatientAge(dob);
+  const ageLabel = resolvePatientAgeLabel(patient.metadata ?? patient);
+  const profileCompletion = calculateProfileCompletion(patient);
+  const completionPercent = profileCompletion.percent;
+  const completionTone =
+    completionPercent >= 80 ? 'bg-emerald-100 text-emerald-800' :
+    completionPercent >= 50 ? 'bg-amber-100 text-amber-800' :
+    'bg-slate-100 text-slate-700';
+  const completionLabel = completionPercent >= 80 ? 'محدّث وجاهز' : completionPercent >= 50 ? 'قيد التحديث' : 'يتطلب بيانات';
 
   const criticalAlert =
     patient.metadata?.critical_alert ||
@@ -478,7 +489,7 @@ export default function SmartPatientProfile({
                         العمر
                       </span>
                       <span className="text-base font-extrabold text-slate-900">
-                        {formatAgeAr(ageResult)}
+                        {ageLabel}
                       </span>
                     </div>
                   </div>
@@ -500,9 +511,9 @@ export default function SmartPatientProfile({
               <div className="flex items-center gap-2 text-slate-700">
                 <Sparkles className="h-4 w-4 text-amber-500" />
                 <span className="font-semibold text-slate-900">حالة الملف:</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  محدّث وجاهز
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${completionTone}`}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+                  {completionLabel} • {completionPercent}%
                 </span>
               </div>
             </div>
@@ -644,6 +655,16 @@ export default function SmartPatientProfile({
                     setNoteError(null);
                   }}
                 />
+                {onEditPatient && (
+                  <MultiStateActionButton
+                    icon={User}
+                    label="تعديل الملف"
+                    subLabel="بيانات المريض"
+                    color="blue"
+                    badgeLetter="E"
+                    onClick={onEditPatient}
+                  />
+                )}
               </div>
             </div>
           </div>

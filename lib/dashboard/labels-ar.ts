@@ -30,6 +30,10 @@ export function appointmentStatusAr(status: unknown): string {
 }
 
 export const COMMUNICATION_STATUS_AR: Record<string, string> = {
+  pending: 'قيد الإرسال',
+  queued: 'في قائمة الانتظار',
+  scheduled: 'مجدول',
+  processing: 'قيد المعالجة',
   sent: 'أُرسلت',
   failed: 'فشلت',
   cancelled: 'ألغيت',
@@ -40,7 +44,31 @@ export const COMMUNICATION_CHANNEL_AR: Record<string, string> = {
   email: 'بريد إلكتروني',
   whatsapp: 'واتساب',
   sms: 'رسالة نصية',
+  telegram: 'تليجرام',
 };
+
+export const COMMUNICATION_TYPE_AR: Record<string, string> = {
+  appointment_reminder: 'تذكير الموعد',
+  reminder: 'تذكير',
+  appointment_confirmation: 'تأكيد الموعد',
+  confirmation: 'تأكيد',
+  appointment_cancellation: 'إلغاء الموعد',
+  cancellation: 'إلغاء',
+  booking_acknowledgement: 'إشعار الحجز',
+  acknowledgement: 'إشعار',
+  billing: 'الفوترة',
+  system: 'إشعار النظام',
+  platform_announcement: 'إعلان المنصة',
+  human_handoff: 'نقل يدوي',
+  follow_up: 'متابعة',
+  recall: 'استدعاء',
+  welcome: 'ترحيب',
+};
+
+export function communicationTypeAr(type: unknown): string {
+  const normalized = String(type ?? '');
+  return COMMUNICATION_TYPE_AR[normalized] ?? normalized.replace(/_/g, ' ');
+}
 
 export const ACTIVE_AR: Record<string, string> = {
   true: 'نشط',

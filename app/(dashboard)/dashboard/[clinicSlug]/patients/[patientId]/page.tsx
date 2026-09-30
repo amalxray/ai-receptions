@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { supabase } from '@/lib/supabase';
-import { COMMUNICATION_STATUS_AR, COMMUNICATION_CHANNEL_AR } from '@/lib/dashboard/labels-ar';
+import {
+  COMMUNICATION_STATUS_AR,
+  COMMUNICATION_CHANNEL_AR,
+  COMMUNICATION_TYPE_AR,
+  communicationTypeAr,
+} from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
@@ -114,6 +119,15 @@ export default function PatientDetailPage() {
    */
   const effectiveTab = resolvePatientFileTab(activityType, tab);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    date_of_birth: '',
+    notes: '',
+  });
+  const [savingPatient, setSavingPatient] = useState(false);
   const [transferMsg, setTransferMsg] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -414,6 +428,71 @@ export default function PatientDetailPage() {
     [patientId]
   );
 
+  const openPatientEdit = useCallback(() => {
+    if (!patient) return;
+
+    setEditForm({
+      name: patient.name ?? '',
+      phone: patient.phone ?? '',
+      email: patient.email ?? '',
+      date_of_birth: patient.metadata?.date_of_birth ?? '',
+      notes: patient.notes ?? '',
+    });
+    setShowEditModal(true);
+  }, [patient]);
+
+  const savePatientEdits = useCallback(async () => {
+    if (!patient || !clinicId || !patientId) return;
+
+    setSavingPatient(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}?clinic_id=${encodeURIComponent(clinicId)}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editForm.name.trim() || null,
+          phone: editForm.phone.trim() || null,
+          email: editForm.email.trim() || null,
+          date_of_birth: editForm.date_of_birth || null,
+          notes: editForm.notes.trim() || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || 'تعذر حفظ بيانات المريض');
+      }
+
+      const saved = (await res.json()) as Partial<PatientRecord>;
+      const nextPatient = {
+        ...patient,
+        ...saved,
+        name: saved.name ?? patient.name,
+        phone: saved.phone ?? patient.phone,
+        email: saved.email ?? patient.email,
+        notes: saved.notes ?? patient.notes,
+        metadata: {
+          ...(patient.metadata ?? {}),
+          ...(saved.metadata ?? {}),
+          date_of_birth:
+            saved.metadata?.date_of_birth ??
+            patient.metadata?.date_of_birth ??
+            (editForm.date_of_birth || null),
+        },
+      } as PatientRecord;
+
+      setPatient(nextPatient);
+      setShowEditModal(false);
+      setTransferMsg('تم حفظ بيانات المريض بنجاح.');
+    } catch (error) {
+      console.error('Error updating patient', error);
+      setTransferMsg(error instanceof Error ? error.message : 'تعذر حفظ تعديل المريض.');
+    } finally {
+      setSavingPatient(false);
+    }
+  }, [authHeaders, clinicId, editForm, patient, patientId]);
+
   /** N26 — the treatment plan lives in `metadata.sessions` (no migration). */
   const sessions = useMemo(() => parsePatientSessions(patient?.metadata), [patient?.metadata]);
 
@@ -584,6 +663,7 @@ export default function PatientDetailPage() {
                   onOpenFiles={() => setTab(studiesTab)}
                   onOpenInvoices={() => setTab('financial')}
                   onOpenReferrals={() => (imagingMode ? setTab('requests') : setShowTransfer(true))}
+                  onEditPatient={openPatientEdit}
                   onOpenTimelineDetail={(item) =>
                     setTab(
                       item.iconType === 'session' ? (imagingMode ? 'requests' : 'sessions') : 'appointments'
@@ -743,7 +823,9 @@ export default function PatientDetailPage() {
                     {communications.map((comm) => (
                       <div key={comm.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 text-sm">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-slate-200">{comm.type}</span>
+                          <span className="font-semibold text-slate-200">
+                            {COMMUNICATION_TYPE_AR[comm.type] ?? communicationTypeAr(comm.type)}
+                          </span>
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusPill(comm.status)}`}>
                             {COMMUNICATION_STATUS_AR[comm.status] ?? comm.status}
                           </span>
@@ -781,6 +863,86 @@ export default function PatientDetailPage() {
           onClose={() => setShowTransfer(false)}
           onDone={(r) => setTransferMsg(r.ok ? r.message : null)}
         />
+      )}
+
+      {showEditModal && patient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-3xl border border-slate-700 bg-slate-900 p-5 text-slate-100 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-white">تعديل بيانات المريض</h2>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              >
+                إغلاق
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-2 text-sm text-slate-300">
+                الاسم
+                <input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                />
+              </label>
+              <label className="text-sm text-slate-300">
+                الهاتف
+                <input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                />
+              </label>
+              <label className="text-sm text-slate-300">
+                البريد الإلكتروني
+                <input
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                />
+              </label>
+              <label className="text-sm text-slate-300">
+                تاريخ الميلاد
+                <input
+                  type="date"
+                  value={editForm.date_of_birth}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, date_of_birth: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                />
+              </label>
+              <label className="sm:col-span-2 text-sm text-slate-300">
+                ملاحظات
+                <textarea
+                  rows={4}
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => void savePatientEdits()}
+                disabled={savingPatient}
+                className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingPatient ? 'جارٍ الحفظ...' : 'حفظ التغييرات'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
