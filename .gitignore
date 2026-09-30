@@ -27,6 +27,9 @@ build.exit
 *.zip
 migrations.zip
 ai-solutions-deliverables.zip
+*.egg-info/
+main-page-pic/
+docs/seo/
 scripts/classify-images.py
 scripts/test-one-image.py
 classify-images.py
