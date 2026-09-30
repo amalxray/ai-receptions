@@ -120,6 +120,26 @@ export type PatientSession = {
 /** What the modal collects; the id is assigned when the session is appended. */
 export type PatientSessionDraft = Omit<PatientSession, 'id'> & { id?: string };
 
+export const PATIENT_TREATMENT_STATUSES = ['active', 'closed'] as const;
+export type PatientTreatmentStatus = (typeof PATIENT_TREATMENT_STATUSES)[number];
+
+export function normalizePatientTreatmentStatus(value: unknown): PatientTreatmentStatus {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (raw === 'open') return 'active';
+  if (raw === 'closed') return 'closed';
+  return raw === 'active' ? 'active' : 'active';
+}
+
+export type PatientTreatmentEpisode = {
+  id: string;
+  started_at: string;
+  opened_at?: string | null;
+  status: PatientTreatmentStatus;
+  closed_at?: string | null;
+  reason?: string | null;
+  note?: string | null;
+};
+
 export type MedicalHistory = {
   allergies: string[];
   medications: string[];
@@ -169,6 +189,10 @@ export type SmartPatientMetadata = {
   quick_notes: QuickNote[];
   /** N26 — the dental treatment plan (done / planned / cancelled sessions). */
   sessions: PatientSession[];
+  /** N21 — patient treatment lifecycle history kept in metadata without a migration. */
+  episodes: PatientTreatmentEpisode[];
+  /** N21 — current active episode reference, kept in metadata so the UI can reopen/close without a schema change. */
+  current_episode_id: string | null;
   /** Anything the rest of the app already stores (source, status, alerts…). */
   [key: string]: unknown;
 };
@@ -206,6 +230,164 @@ export function formatStringList(list: readonly string[]): string {
   return list.join('، ');
 }
 
+export function normalizeTreatmentEpisode(raw: unknown, fallbackIndex = 0): PatientTreatmentEpisode | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const episode = raw as Record<string, unknown>;
+  const status = normalizePatientTreatmentStatus(episode.status);
+  const startedAt = asString(episode.started_at || episode.startedAt || episode.opened_at || episode.openedAt) || new Date().toISOString();
+
+  return {
+    id: asString(episode.id) || `episode-${fallbackIndex + 1}`,
+    started_at: startedAt,
+    opened_at: startedAt,
+    status,
+    closed_at: typeof episode.closed_at === 'string' || typeof episode.closedAt === 'string' ? asString(episode.closed_at || episode.closedAt) : null,
+    reason: typeof episode.reason === 'string' ? episode.reason : null,
+    note: typeof episode.note === 'string' ? episode.note : null,
+  };
+}
+
+export function getPatientTreatmentEpisodes(metadata: unknown): PatientTreatmentEpisode[] {
+  const source = isRecord(metadata) ? metadata : {};
+  const candidate = Array.isArray(source.episodes)
+    ? source.episodes
+    : Array.isArray(source.treatment_episodes)
+      ? source.treatment_episodes
+      : [];
+
+  return candidate
+    .map((episode, index) => normalizeTreatmentEpisode(episode, index))
+    .filter((episode): episode is PatientTreatmentEpisode => Boolean(episode));
+}
+
+export function getCurrentPatientTreatmentEpisode(metadata: unknown): PatientTreatmentEpisode | null {
+  const source = isRecord(metadata) ? metadata : {};
+  const episodes = getPatientTreatmentEpisodes(metadata);
+  const currentId = asString(source.current_episode_id ?? source.currentEpisodeId);
+  if (currentId) {
+    const byId = episodes.find((episode) => episode.id === currentId);
+    if (byId) return byId;
+  }
+  const activeEpisode = [...episodes].reverse().find((episode) => episode.status === 'active');
+  return activeEpisode ?? episodes[episodes.length - 1] ?? null;
+}
+
+export function getPatientTreatmentStatus(metadata: unknown): PatientTreatmentStatus {
+  return getCurrentPatientTreatmentEpisode(metadata)?.status ?? 'active';
+}
+
+export function patientTreatmentStatusLabel(metadata: unknown): 'نشط' | 'منتهي' {
+  return getPatientTreatmentStatus(metadata) === 'closed' ? 'منتهي' : 'نشط';
+}
+
+export function getPatientOutstandingDebt(metadata: unknown): number {
+  const source = isRecord(metadata) ? metadata : {};
+  const balance = isRecord(source.balance) ? (source.balance as Record<string, unknown>) : {};
+  const financial = isRecord(source.financial) ? (source.financial as Record<string, unknown>) : {};
+  const candidates = [
+    source.balance_due,
+    source.debt_due,
+    source.outstanding_amount,
+    source.outstanding,
+    source.account_balance,
+    source.current_balance,
+    balance.due,
+    balance.outstanding,
+    financial.outstanding,
+    financial.balance_due,
+  ];
+
+  const toNumber = (value: unknown): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (isRecord(value)) {
+      const record = value as Record<string, unknown>;
+      return toNumber(record.amount ?? record.total ?? record.due ?? record.outstanding ?? record.balance_due);
+    }
+    return 0;
+  };
+
+  return candidates.reduce<number>((sum, value) => sum + toNumber(value), 0);
+}
+
+export function canClosePatientTreatment(metadata: unknown): boolean {
+  return getPatientOutstandingDebt(metadata) <= 0;
+}
+
+function generateEpisodeId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `episode-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function closePatientTreatment(
+  metadata: unknown,
+  options?: { reason?: string; note?: string; closedAt?: string; allowDebtOverride?: boolean }
+): SmartPatientMetadata {
+  const base = parsePatientMetadata(metadata);
+  const nextEpisodes = [...base.episodes];
+  const current = getCurrentPatientTreatmentEpisode(base);
+  const closedAt = options?.closedAt ?? new Date().toISOString();
+
+  if (!options?.allowDebtOverride && !canClosePatientTreatment(base)) {
+    return { ...base, episodes: nextEpisodes, current_episode_id: current?.id ?? base.current_episode_id ?? null };
+  }
+
+  const target = current && current.status !== 'closed' ? current : nextEpisodes.find((episode) => episode.status !== 'closed') ?? null;
+  if (target) {
+    const closed: PatientTreatmentEpisode = {
+      ...target,
+      started_at: target.started_at || closedAt,
+      opened_at: target.opened_at ?? target.started_at ?? closedAt,
+      status: 'closed',
+      closed_at: closedAt,
+      reason: options?.reason ?? target.reason ?? null,
+      note: options?.note ?? target.note ?? null,
+    };
+    const idx = nextEpisodes.findIndex((episode) => episode.id === target.id);
+    if (idx >= 0) nextEpisodes[idx] = closed;
+    else nextEpisodes.push(closed);
+  } else if (nextEpisodes.length === 0) {
+    nextEpisodes.push({
+      id: generateEpisodeId(),
+      started_at: closedAt,
+      opened_at: closedAt,
+      status: 'closed',
+      closed_at: closedAt,
+      reason: options?.reason ?? null,
+      note: options?.note ?? null,
+    });
+  }
+
+  return { ...base, episodes: nextEpisodes, current_episode_id: null };
+}
+
+export function reopenPatientTreatment(metadata: unknown, options?: { note?: string; openedAt?: string }): SmartPatientMetadata {
+  const base = parsePatientMetadata(metadata);
+  const nextEpisodes = [...base.episodes];
+  const current = getCurrentPatientTreatmentEpisode(base);
+  const openedAt = options?.openedAt ?? new Date().toISOString();
+
+  if (current && current.status === 'active') return { ...base, episodes: nextEpisodes, current_episode_id: current.id };
+
+  const nextEpisode: PatientTreatmentEpisode = {
+    id: generateEpisodeId(),
+    started_at: openedAt,
+    opened_at: openedAt,
+    status: 'active',
+    closed_at: null,
+    reason: null,
+    note: options?.note ?? null,
+  };
+  nextEpisodes.push(nextEpisode);
+
+  return { ...base, episodes: nextEpisodes, current_episode_id: nextEpisode.id };
+}
+
 /** Reads `patients.metadata` defensively — never throws on malformed shapes. */
 export function parsePatientMetadata(metadata: unknown): SmartPatientMetadata {
   const source = isRecord(metadata) ? metadata : {};
@@ -240,6 +422,18 @@ export function parsePatientMetadata(metadata: unknown): SmartPatientMetadata {
         .filter((entry): entry is QuickNote => Boolean(entry && entry.text.trim()))
     : [];
 
+  const episodeSource = Array.isArray(source.episodes)
+    ? source.episodes
+    : Array.isArray(source.treatment_episodes)
+      ? source.treatment_episodes
+      : [];
+
+  const episodes = episodeSource
+    .map((episode, index) => normalizeTreatmentEpisode(episode, index))
+    .filter((episode): episode is PatientTreatmentEpisode => Boolean(episode));
+
+  const normalizedCurrentEpisodeId = asString(source.current_episode_id ?? source.currentEpisodeId) || null;
+
   return {
     ...source,
     // N15.1 — the manual age is read flat (`age`) or nested (`basic_info.age`).
@@ -273,6 +467,8 @@ export function parsePatientMetadata(metadata: unknown): SmartPatientMetadata {
     },
     quick_notes: notes,
     sessions: parsePatientSessions(source.sessions),
+    episodes,
+    current_episode_id: normalizedCurrentEpisodeId,
   };
 }
 
@@ -296,6 +492,7 @@ export function mergeMetadataPatch(
   }
 
   if (!Array.isArray(patch.quick_notes)) next.quick_notes = base.quick_notes;
+  if (patch.current_episode_id !== undefined) next.current_episode_id = patch.current_episode_id ?? null;
   return next;
 }
 
@@ -327,6 +524,9 @@ export type SerializedPatientMetadata = {
   quick_notes?: QuickNote[];
   /** N26 — the normalised treatment plan. */
   sessions?: PatientSession[];
+  /** N21 — patient treatment lifecycle without DB migration. */
+  episodes?: PatientTreatmentEpisode[];
+  current_episode_id?: string | null;
   /** Any custom key already stored by other features survives the round-trip. */
   [key: string]: unknown;
 };
@@ -335,7 +535,7 @@ export function serializePatientMetadata(metadata: unknown): SerializedPatientMe
   const meta = parsePatientMetadata(metadata);
   const out: Record<string, unknown> = {};
 
-  const owned = new Set<string>([...GROUP_KEYS, 'age', 'date_of_birth', 'quick_notes', 'sessions']);
+  const owned = new Set<string>([...GROUP_KEYS, 'age', 'date_of_birth', 'quick_notes', 'sessions', 'episodes']);
   for (const [key, value] of Object.entries(meta)) {
     if (owned.has(key) || value === undefined || value === null) continue;
     if (typeof value === 'string' && !value.trim()) continue;
@@ -380,6 +580,13 @@ export function serializePatientMetadata(metadata: unknown): SerializedPatientMe
   const sessions = meta.sessions.filter((session) => session.service.trim());
   if (sessions.length) out.sessions = sessions;
 
+  const episodes = meta.episodes.filter((episode) => episode.id.trim());
+  if (episodes.length) out.episodes = episodes;
+
+  const currentEpisodeId = asString(meta.current_episode_id).trim();
+  if (currentEpisodeId) out.current_episode_id = currentEpisodeId;
+  else if ('current_episode_id' in meta && meta.current_episode_id === null) out.current_episode_id = null;
+
   return out;
 }
 
@@ -402,6 +609,8 @@ export function emptyMetadata(): SmartPatientMetadata {
     emergency_contact: { name: '', phone: '', relation: '' },
     quick_notes: [],
     sessions: [],
+    episodes: [],
+    current_episode_id: null,
   };
 }
 

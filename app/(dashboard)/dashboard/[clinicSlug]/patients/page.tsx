@@ -14,8 +14,10 @@ import PatientSearchResult from '@/components/dashboard/patients/PatientSearchRe
 import {
   MAX_PATIENT_AGE,
   appendPatientSession,
+  getPatientTreatmentStatus,
   isValidManualAge,
   parseManualAge,
+  patientTreatmentStatusLabel,
   readManualAge,
   updatePatientSession,
   type PatientSession,
@@ -80,6 +82,7 @@ export default function PatientsPage() {
   const [error, setError] = useState<string | null>(null);
   /** Debounced query — the bar owns the raw draft and calls back after 300ms. */
   const [query, setQuery] = useState('');
+  const [treatmentFilter, setTreatmentFilter] = useState<'all' | 'active' | 'closed'>('all');
   /** «عرض الكل (N)» lifts the 10-row display cap. */
   const [showAll, setShowAll] = useState(false);
   /** The patient whose panel is open — it survives later searches. */
@@ -358,11 +361,21 @@ export default function PatientsPage() {
     }
   }
 
+  const visiblePatients = useMemo(
+    () =>
+      patients.filter((patient) => {
+        const status = getPatientTreatmentStatus(patient.metadata);
+        if (treatmentFilter === 'all') return true;
+        return treatmentFilter === 'active' ? status === 'active' : status === 'closed';
+      }),
+    [patients, treatmentFilter]
+  );
+
   /** Ranked + capped view of the API rows for the current query. */
   const outcome = useMemo(
     () =>
-      searchPatients(patients, query, showAll ? Math.max(patients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT),
-    [patients, query, showAll]
+      searchPatients(visiblePatients, query, showAll ? Math.max(visiblePatients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT),
+    [visiblePatients, query, showAll]
   );
 
   const greeting = useMemo(() => greetingAr(), []);
@@ -574,6 +587,25 @@ export default function PatientsPage() {
         ) : null}
       </AnimatePresence>
 
+      {hasQuery && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {['all', 'active', 'closed'].map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setTreatmentFilter(filter as 'all' | 'active' | 'closed')}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                treatmentFilter === filter
+                  ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-100'
+                  : 'border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              {filter === 'all' ? 'الكل' : filter === 'active' ? 'نشط' : 'منتهي'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 🔎 Results (max 10) — the panel opens UNDER them, never in a modal. */}
       <AnimatePresence mode="wait">
         {hasQuery ? (
@@ -603,10 +635,13 @@ export default function PatientsPage() {
                   {outcome.results.map((result) => (
                     <PatientSearchResult
                       key={result.id}
-                      patient={result}
+                      patient={{
+                        ...result,
+                        status: patientTreatmentStatusLabel(result.metadata),
+                      }}
                       query={outcome.query}
                       active={selected?.id === result.id}
-                      onSelect={setSelected}
+                      onSelect={(next) => setSelected({ ...next, status: patientTreatmentStatusLabel(next.metadata) })}
                     />
                   ))}
                 </div>
@@ -646,7 +681,7 @@ export default function PatientsPage() {
           <div className="mt-6">
             <PatientPanel
               key={selected.id}
-              patient={selected}
+              patient={{ ...selected, status: patientTreatmentStatusLabel(selected.metadata) }}
               clinicId={clinicId ?? null}
               clinicSlug={clinicSlug}
               authHeaders={authHeaders}

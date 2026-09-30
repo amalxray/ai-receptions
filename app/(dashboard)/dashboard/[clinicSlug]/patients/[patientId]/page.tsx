@@ -18,8 +18,14 @@ import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
 import {
   appendPatientSession,
   appendQuickNote,
+  closePatientTreatment,
+  getPatientOutstandingDebt,
+  getPatientTreatmentStatus,
   parsePatientSessions,
+  patientTreatmentStatusLabel,
+  reopenPatientTreatment,
   resolvePatientAgeLabel,
+  serializePatientMetadata,
   updatePatientSession,
   type PatientSession,
   type PatientSessionDraft,
@@ -131,6 +137,10 @@ export default function PatientDetailPage() {
   const [savingPatient, setSavingPatient] = useState(false);
   const [transferMsg, setTransferMsg] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientRecord | null>(null);
+  const [treatmentModal, setTreatmentModal] = useState<{
+    mode: 'close' | 'reopen';
+    blocked: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** B37 — bump to re-run the patient load from the error state. */
@@ -559,6 +569,72 @@ export default function PatientDetailPage() {
     [patient, persistSessions]
   );
 
+  const outstandingDebt = useMemo(
+    () => (patient ? getPatientOutstandingDebt(patient.metadata) : 0),
+    [patient?.metadata]
+  );
+
+  const persistPatientMetadata = useCallback(
+    async (nextMetadata: Record<string, unknown>, failureMessage: string) => {
+      if (!clinicId || !patient) throw new Error('لم يتم تحديد المريض');
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/patients/${encodeURIComponent(patient.id)}?clinic_id=${encodeURIComponent(clinicId)}`,
+        {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metadata: serializePatientMetadata(nextMetadata) }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || failureMessage);
+      }
+      const saved = (await res.json()) as Partial<PatientRecord>;
+      setPatient((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...saved,
+              metadata: {
+                ...(prev.metadata ?? {}),
+                ...(saved.metadata ?? {}),
+                ...serializePatientMetadata(nextMetadata),
+              },
+            }
+          : prev
+      );
+    },
+    [authHeaders, clinicId, patient]
+  );
+
+  const openTreatmentModal = useCallback(
+    (mode: 'close' | 'reopen') => {
+      if (!patient) return;
+      const blocked = mode === 'close' && outstandingDebt > 0;
+      setTreatmentModal({ mode, blocked });
+    },
+    [outstandingDebt, patient]
+  );
+
+  const confirmTreatmentAction = useCallback(async () => {
+    if (!patient) return;
+    if (treatmentModal?.mode === 'close' && outstandingDebt > 0) {
+      setTreatmentModal({ mode: 'close', blocked: true });
+      return;
+    }
+
+    try {
+      const nextMetadata =
+        treatmentModal?.mode === 'close'
+          ? closePatientTreatment(patient.metadata, { reason: 'إغلاق العلاج' })
+          : reopenPatientTreatment(patient.metadata, { note: 'إعادة فتح الحساب' });
+      await persistPatientMetadata(nextMetadata, treatmentModal?.mode === 'close' ? 'تعذر إنهاء العلاج' : 'تعذر إعادة فتح الحساب');
+      setTreatmentModal(null);
+    } catch (error) {
+      setTransferMsg(error instanceof Error ? error.message : 'تعذر تحديث حالة العلاج');
+    }
+  }, [outstandingDebt, patient, persistPatientMetadata, treatmentModal]);
 
   const past = useMemo(
     () => appointments.filter((a) => a.status === 'completed' || a.status === 'cancelled' || a.status === 'no_show'),
@@ -569,6 +645,19 @@ export default function PatientDetailPage() {
   const smartStats = useMemo<SmartPatientStats>(
     () => ({ ...overviewCounts, visitsCount: appointments.length }),
     [appointments, overviewCounts]
+  );
+
+  const treatmentStatus = useMemo(
+    () => (patient ? getPatientTreatmentStatus(patient.metadata) : 'active'),
+    [patient?.metadata]
+  );
+  const upcomingAppointmentsCount = useMemo(
+    () => appointments.filter((item) => ['scheduled', 'confirmed', 'pending'].includes(item.status)).length,
+    [appointments]
+  );
+  const profilePatient = useMemo(
+    () => (patient ? { ...patient, status: patientTreatmentStatusLabel(patient.metadata) } : null),
+    [patient]
   );
 
   const smartAppointments = useMemo<SmartAppointment[]>(
@@ -598,6 +687,30 @@ export default function PatientDetailPage() {
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           {patient && <h1 className="text-lg font-bold text-white">👤 {patient.name}</h1>}
+          {patient && (
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${
+                treatmentStatus === 'closed'
+                  ? 'bg-slate-700/80 text-slate-200 ring-slate-600'
+                  : 'bg-emerald-500/15 text-emerald-200 ring-emerald-500/40'
+              }`}
+            >
+              {treatmentStatus === 'closed' ? '⚫ منتهي' : '🟢 نشط'}
+            </span>
+          )}
+          {patient && (
+            <button
+              type="button"
+              onClick={() => (treatmentStatus === 'closed' ? openTreatmentModal('reopen') : openTreatmentModal('close'))}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                treatmentStatus === 'closed'
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                  : 'border-amber-500/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+              }`}
+            >
+              {treatmentStatus === 'closed' ? '🔓 إعادة فتح حساب جديد' : '🛑 إنهاء العلاج'}
+            </button>
+          )}
           {patient && clinicId && !clinicLoading && (
             <button
               type="button"
@@ -669,7 +782,7 @@ export default function PatientDetailPage() {
                     click routes to its own referral tab instead, and the referral
                     counter opens the 🩹 list rather than a transfer dialog. */}
                 <SmartPatientProfile
-                  patient={patient}
+                  patient={profilePatient ?? patient}
                   stats={smartStats}
                   appointments={smartAppointments}
                   onOpenVisits={() => setTab('appointments')}
@@ -995,6 +1108,69 @@ export default function PatientDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {treatmentModal && patient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            className="w-full max-w-md rounded-[28px] border border-amber-500/30 bg-slate-900/95 p-5 text-slate-100 shadow-2xl shadow-amber-950/30"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">تأكيد</p>
+                <h3 className="mt-1 text-xl font-black text-white">
+                  {treatmentModal.mode === 'close' ? 'إنهاء العلاج' : 'إعادة فتح الحساب'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTreatmentModal(null)}
+                className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              >
+                إغلاق
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100">
+              {treatmentModal.mode === 'close' ? (
+                <>
+                  <p className="font-semibold text-amber-200">⚠️ قبل إنهاء العلاج</p>
+                  <ul className="space-y-2 text-amber-100/90">
+                    <li>• فواتير غير مدفوعة: {outstandingDebt} شيكل</li>
+                    <li>• مواعيد قادمة: {upcomingAppointmentsCount}</li>
+                  </ul>
+                </>
+              ) : (
+                <p className="font-medium text-emerald-100">سيتم إنشاء حساب جديد مع جلسة علاج جديدة.</p>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setTreatmentModal(null)}
+                className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmTreatmentAction()}
+                disabled={treatmentModal.blocked}
+                className={`rounded-xl px-4 py-2 text-sm font-bold text-slate-950 ${
+                  treatmentModal.mode === 'close'
+                    ? 'bg-amber-400 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50'
+                    : 'bg-emerald-400 hover:bg-emerald-300'
+                }`}
+              >
+                {treatmentModal.mode === 'close' ? 'تأكيد الإغلاق' : 'تأكيد إعادة الفتح'}
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>
