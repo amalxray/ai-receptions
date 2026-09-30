@@ -5,6 +5,7 @@ import {
 } from '@/lib/services/clinicPublicProfile';
 import { brandMetadataIcons } from '@/lib/services/pwaManifest';
 import { requestCache } from '@/lib/server/requestCache';
+import RotatingMarquee from '@/components/ui/RotatingMarquee';
 
 /**
  * STEP 15D / Digital Healthcare Space — LEGACY COMPATIBILITY page (`/c/{slug}`).
@@ -144,6 +145,23 @@ export default async function ClinicPublicPage({ params }: ClinicPublicPageProps
           </a>
           */}
         </div>
+        {(profile.cover_url || profile.logo) && (
+          <RotatingMarquee
+            title={`لقطات من ${profile.name}`}
+            className="mb-10 rounded-3xl"
+            items={[{
+              id: `${profile.slug}-public-cover`,
+              title: profile.name,
+              subtitle: profile.tagline || profile.description || `الصفحة العامة لـ${profile.name}`,
+              Badge: 'العيادة',
+              color: 'from-slate-800 via-slate-700 to-slate-900',
+              accent: 'from-cyan-400 to-blue-500',
+              chip: 'معرض العيادة',
+              image: profile.cover_url || profile.logo || undefined,
+              imageAlt: `صورة ${profile.name}`,
+            }]}
+          />
+        )}
 {/* Services */}
         <section className="mb-10">
           <h2 className="mb-4 text-xl font-semibold text-white">الخدمات</h2>
