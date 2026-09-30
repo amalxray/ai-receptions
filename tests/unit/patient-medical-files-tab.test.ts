@@ -3,6 +3,8 @@ import {
   detectFileCategory,
   formatFileSize,
   CATEGORY_METAS,
+  inferMimeFromFilename,
+  resolveUploadFileType,
   type MedicalCategory,
 } from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import { getAllMedicalSizeLimits, getMedicalSizeLimit } from '@/lib/services/medicalFiles';
@@ -102,6 +104,22 @@ describe('detectFileCategory', () => {
   it('is case-insensitive on filename and MIME', () => {
     expect(detectFileCategory('IMAGE', 'CBCT_UPPER.DCM', 'APPLICATION/DICOM')).toBe('cbct');
     expect(detectFileCategory('PDF', 'REPORT.PDF', 'APPLICATION/PDF')).toBe('report');
+  });
+});
+
+describe('upload selection helpers', () => {
+  it('derives a filename-safe MIME for unknown browser metadata', () => {
+    expect(inferMimeFromFilename('panorama_2026.jpg')).toBe('image/jpeg');
+    expect(inferMimeFromFilename('study.dcm')).toBe('application/dicom');
+    expect(inferMimeFromFilename('report.pdf')).toBe('application/pdf');
+  });
+
+  it('maps each clinical category to a valid persisted medical file type', () => {
+    expect(resolveUploadFileType('panorama', 'pano.jpg', 'image/jpeg')).toBe('image');
+    expect(resolveUploadFileType('cbct', 'cbct_lower.dcm', 'application/dicom')).toBe('medical_image');
+    expect(resolveUploadFileType('dicom', 'scan.dcm', 'application/dicom')).toBe('medical_image');
+    expect(resolveUploadFileType('report', 'report.pdf', 'application/pdf')).toBe('pdf');
+    expect(resolveUploadFileType('other', 'photo.png', 'image/png')).toBe('image');
   });
 });
 

@@ -25,7 +25,7 @@ const schema = z.object({
   mime_type: z.string().min(1).max(120),
   size_bytes: z.number().int().positive(),
   filename: z.string().min(1).max(255),
-  file_type: z.enum(MEDICAL_FILE_TYPES),
+  file_type: z.enum(MEDICAL_FILE_TYPES).optional(),
   magic: z.string().max(64).nullable().optional(),
 });
 
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       mimeType: mime_type,
       sizeBytes: size_bytes,
       originalFilename: filename,
-      fileType: file_type,
+      fileType: file_type ?? 'document',
       uploadedBy: auth.user?.id ?? null,
       magicHex: magic ?? null,
     });

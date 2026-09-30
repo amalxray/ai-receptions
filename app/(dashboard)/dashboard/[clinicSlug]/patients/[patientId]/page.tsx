@@ -132,6 +132,7 @@ export default function PatientDetailPage() {
     phone: '',
     email: '',
     date_of_birth: '',
+    gender: '' as '' | 'male' | 'female' | 'mr' | 'mrs',
     notes: '',
   });
   const [savingPatient, setSavingPatient] = useState(false);
@@ -454,11 +455,20 @@ export default function PatientDetailPage() {
   const openPatientEdit = useCallback(() => {
     if (!patient) return;
 
+    const metadata = (patient.metadata as Record<string, unknown> | undefined) ?? {};
+    const nextGender =
+      (typeof metadata.gender === 'string' && metadata.gender.trim()) ||
+      (typeof (metadata.basic_info as Record<string, unknown> | undefined)?.gender === 'string'
+        ? String((metadata.basic_info as Record<string, unknown>).gender)
+        : '') ||
+      '';
+
     setEditForm({
       name: patient.name ?? '',
       phone: patient.phone ?? '',
       email: patient.email ?? '',
       date_of_birth: patient.metadata?.date_of_birth ?? '',
+      gender: (nextGender === 'male' || nextGender === 'female' || nextGender === 'mr' || nextGender === 'mrs') ? nextGender : '',
       notes: patient.notes ?? '',
     });
     setShowEditModal(true);
@@ -470,6 +480,16 @@ export default function PatientDetailPage() {
     setSavingPatient(true);
     try {
       const headers = await authHeaders();
+      const metadataPayload = {
+        gender: editForm.gender || null,
+        basic_info: {
+          ...(typeof (patient.metadata as Record<string, unknown> | undefined)?.basic_info === 'object'
+            ? ((patient.metadata as Record<string, unknown>).basic_info as Record<string, unknown>)
+            : {}),
+          gender: editForm.gender || null,
+        },
+      };
+
       const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}?clinic_id=${encodeURIComponent(clinicId)}`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -479,6 +499,7 @@ export default function PatientDetailPage() {
           email: editForm.email.trim() || null,
           date_of_birth: editForm.date_of_birth || null,
           notes: editForm.notes.trim() || null,
+          metadata: metadataPayload,
         }),
       });
 
@@ -488,6 +509,21 @@ export default function PatientDetailPage() {
       }
 
       const saved = (await res.json()) as Partial<PatientRecord>;
+      const mergedMetadata = {
+        ...(patient.metadata ?? {}),
+        ...(saved.metadata ?? {}),
+        gender: editForm.gender || null,
+        basic_info: {
+          ...((patient.metadata as Record<string, unknown> | undefined)?.basic_info as Record<string, unknown> | undefined ?? {}),
+          ...(((saved.metadata as Record<string, unknown> | undefined)?.basic_info as Record<string, unknown> | undefined) ?? {}),
+          gender: editForm.gender || null,
+        },
+        date_of_birth:
+          saved.metadata?.date_of_birth ??
+          patient.metadata?.date_of_birth ??
+          (editForm.date_of_birth || null),
+      };
+
       const nextPatient = {
         ...patient,
         ...saved,
@@ -495,14 +531,7 @@ export default function PatientDetailPage() {
         phone: saved.phone ?? patient.phone,
         email: saved.email ?? patient.email,
         notes: saved.notes ?? patient.notes,
-        metadata: {
-          ...(patient.metadata ?? {}),
-          ...(saved.metadata ?? {}),
-          date_of_birth:
-            saved.metadata?.date_of_birth ??
-            patient.metadata?.date_of_birth ??
-            (editForm.date_of_birth || null),
-        },
+        metadata: mergedMetadata,
       } as PatientRecord;
 
       setPatient(nextPatient);
@@ -1083,6 +1112,43 @@ export default function PatientDetailPage() {
                   className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
                 />
               </label>
+              <div className="sm:col-span-2 text-sm text-slate-300">
+                <span className="mb-2 block text-sm text-slate-300">الجنس</span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { value: 'male', label: 'ذكر', icon: '👨' },
+                    { value: 'female', label: 'أنثى', icon: '👩' },
+                    { value: 'mr', label: 'سيد', icon: '🧔' },
+                    { value: 'mrs', label: 'سيدة', icon: '👩‍🦰' },
+                  ].map((option) => {
+                    const active = editForm.gender === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setEditForm((prev) => ({ ...prev, gender: option.value as 'male' | 'female' | 'mr' | 'mrs' }))}
+                        className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-right transition ${
+                          active
+                            ? 'border-cyan-400 bg-cyan-500/10 text-cyan-100 ring-2 ring-cyan-500/30'
+                            : 'border-slate-700 bg-slate-950/70 text-slate-200 hover:border-slate-500 hover:bg-slate-800/80'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-xl">{option.icon}</span>
+                          <span className="font-medium">{option.label}</span>
+                        </span>
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                            active ? 'border-cyan-400 bg-cyan-500 text-slate-950' : 'border-slate-500 bg-transparent'
+                          }`}
+                        >
+                          {active ? '✓' : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="sm:col-span-2 text-sm text-slate-300">
                 ملاحظات
                 <textarea

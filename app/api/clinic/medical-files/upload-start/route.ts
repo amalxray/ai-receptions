@@ -16,6 +16,8 @@ import { logEvent } from '@/lib/server/logging';
  */
 export const runtime = 'nodejs';
 
+const MEDICAL_FILE_TYPES = ['image', 'video', 'pdf', 'document', 'medical_report', 'medical_image'] as const;
+
 const schema = z.object({
   clinic_id: z.string().uuid(),
   patient_id: z.string().uuid(),
@@ -23,6 +25,7 @@ const schema = z.object({
   filename: z.string().min(1).max(255),
   mime_type: z.string().min(1).max(120),
   size_bytes: z.number().int().positive(),
+  file_type: z.enum(MEDICAL_FILE_TYPES).optional(),
   magic: z.string().max(64).nullable().optional(),
 });
 
@@ -33,7 +36,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'بيانات غير صحيحة', details: parsed.error.errors }, { status: 400 });
     }
-    const { clinic_id, patient_id, imaging_request_id, filename, mime_type, size_bytes, magic } = parsed.data;
+    const { clinic_id, patient_id, imaging_request_id, filename, mime_type, size_bytes, file_type, magic } = parsed.data;
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
@@ -56,6 +59,7 @@ export async function POST(req: Request) {
       sizeBytes: size_bytes,
       magicHex: magic ?? null,
       uploadedBy: auth.user?.id ?? null,
+      fileTypeOverride: file_type ?? null,
     });
     if (!intent.ok || 'message' in intent) return NextResponse.json({ error: 'message' in intent ? intent.message : 'فشل تجهيز الرفع' }, { status: 400 });
 

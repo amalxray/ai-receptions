@@ -227,6 +227,7 @@ export type MedicalUploadIntentInput = {
   sizeBytes: number;
   magicHex?: string | null;
   uploadedBy: string | null;
+  fileTypeOverride?: MedicalFileType | null;
 };
 
 export type MedicalUploadIntent =
@@ -236,6 +237,9 @@ export type MedicalUploadIntent =
 export async function createMedicalUploadIntent(input: MedicalUploadIntentInput): Promise<MedicalUploadIntent> {
   const validation = validateMedicalFile({ name: input.filename, type: input.mimeType, size: input.sizeBytes });
   if ('message' in validation) return validation;
+
+  const allowedOverrides = new Set<MedicalFileType>(['image', 'video', 'pdf', 'document', 'medical_report', 'medical_image']);
+  const resolvedType = input.fileTypeOverride && allowedOverrides.has(input.fileTypeOverride) ? input.fileTypeOverride : validation.type;
 
   // Server-side magic-bytes gate: rejects a spoofed MIME/extension when a known
   // signature exists for that type, WITHOUT buffering the whole file.
@@ -261,7 +265,7 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
       token: data.token,
       mime_type: input.mimeType,
       size_bytes: input.sizeBytes,
-      file_type: validation.type,
+      file_type: resolvedType,
       original_filename: input.filename,
       status: 'started',
       created_by: input.uploadedBy,
@@ -270,7 +274,7 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
     { onConflict: 'clinic_id,storage_path' }
   );
 
-  return { ok: true, storagePath: path, uploadUrl: data.signedUrl, token: data.token, fileType: validation.type, maxBytes: validation.maxBytes };
+  return { ok: true, storagePath: path, uploadUrl: data.signedUrl, token: data.token, fileType: resolvedType, maxBytes: validation.maxBytes };
 }
 
 export type MedicalUploadConfirmInput = {
@@ -299,6 +303,8 @@ export async function confirmMedicalUpload(
     size: input.sizeBytes,
   });
   if ('message' in validation) return validation;
+  const allowedOverrides = new Set<MedicalFileType>(['image', 'video', 'pdf', 'document', 'medical_report', 'medical_image']);
+  const resolvedType = allowedOverrides.has(input.fileType) ? input.fileType : validation.type;
   if (!magicBytesMatch(input.mimeType, input.magicHex)) {
     return { ok: false, message: 'توقيع الملف غير مطابق لنوعه المعلن' };
   }
@@ -324,7 +330,7 @@ export async function confirmMedicalUpload(
       patient_id: input.patientId,
       imaging_request_id: input.imagingRequestId,
       appointment_id: input.appointmentId,
-      file_type: input.fileType,
+      file_type: resolvedType,
       mime_type: input.mimeType,
       size_bytes: input.sizeBytes,
       storage_path: input.storagePath,
