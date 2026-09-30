@@ -1,6 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
+import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
@@ -381,6 +382,36 @@ export default function PatientsPage() {
   const greeting = useMemo(() => greetingAr(), []);
   const longDate = useMemo(() => formatDateLongAr(), []);
   const hijriDate = useMemo(() => formatHijriAr(), []);
+  const quickActions = useMemo(
+    () => [
+      { label: '+ مريض', href: '#', icon: '＋', tone: 'cyan' },
+      { label: '+ موعد', href: `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/appointments?date=today`, icon: '📅', tone: 'sky' },
+      { label: '+ فاتورة', href: `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/financial-intelligence?status=unpaid`, icon: '💰', tone: 'amber' },
+      { label: '🩻 رفع', href: `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/medical-files?status=new`, icon: '🩻', tone: 'violet' },
+    ],
+    [clinicSlug]
+  );
+
+  const smartAlerts = useMemo(
+    () => [
+      { icon: '⚠️', label: '3 مرضى بأدين متأخرة', tone: 'rose', description: 'إجراءات متابعة مطلوبة خلال 24 ساعة' },
+      { icon: '🩻', label: '2 بانتظار نتائج أشعة', tone: 'violet', description: 'نتائج قادمة من المعمل أو الأشعة' },
+      { icon: '📅', label: '5 مرضى جدد هذا الأسبوع', tone: 'cyan', description: 'تحديثات حديثة في قائمة المرضى' },
+      { icon: '💬', label: '1 رسالة غير مقروءة', tone: 'amber', description: 'رسالة جديدة من المريض أو من العيادة' },
+    ],
+    []
+  );
+
+  const recentActivities = useMemo(
+    () => [
+      { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
+      { name: 'نبيله جابر', action: 'موعد جديد', time: 'اليوم', tone: 'cyan', icon: '📅' },
+      { name: 'سارة عبد الله', action: 'دفعة تم استلامها', time: 'قبل 20 د', tone: 'emerald', icon: '💰' },
+      { name: 'فهد حمود', action: 'تحديث ملف طبي', time: 'قبل ساعة', tone: 'amber', icon: '📝' },
+      { name: 'مريم عزيز', action: 'رسالة جديدة', time: 'قبل 2 س', tone: 'sky', icon: '💬' },
+    ],
+    []
+  );
 
   const hasQuery = query.trim().length > 0;
   const hint = hasQuery ? (outcome.total === 1 ? 'نتيجة واحدة' : `${outcome.total} نتائج`) : null;
@@ -456,29 +487,150 @@ export default function PatientsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12, height: 0 }}
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="mb-6 grid gap-3 sm:grid-cols-3"
+            className="mb-6 space-y-4"
           >
-            <SummaryTile
-              emoji="📅"
-              label="مواعيد اليوم"
-              value={summary.appointmentsToday}
-              loading={summaryLoading}
-              accent="from-cyan-500/20 to-sky-500/10 ring-cyan-500/25"
-            />
-            <SummaryTile
-              emoji="🩻"
-              label="ملفات جديدة"
-              value={summary.newFiles}
-              loading={summaryLoading}
-              accent="from-violet-500/20 to-fuchsia-500/10 ring-violet-500/25"
-            />
-            <SummaryTile
-              emoji="💰"
-              label="مستحقات غير مسدَّدة"
-              value={summary.outstanding}
-              loading={summaryLoading}
-              accent="from-amber-500/20 to-orange-500/10 ring-amber-500/25"
-            />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/appointments?date=today`}
+                emoji="📅"
+                label="مواعيد اليوم"
+                value={summary.appointmentsToday}
+                loading={summaryLoading}
+                accent="from-cyan-500/20 to-sky-500/10 ring-cyan-500/25"
+              />
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/medical-files?status=new`}
+                emoji="🩻"
+                label="ملفات جديدة"
+                value={summary.newFiles}
+                loading={summaryLoading}
+                accent="from-violet-500/20 to-fuchsia-500/10 ring-violet-500/25"
+              />
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/financial-intelligence?status=unpaid`}
+                emoji="💰"
+                label="مستحقات غير مسدَّدة"
+                value={summary.outstanding}
+                loading={summaryLoading}
+                accent="from-amber-500/20 to-orange-500/10 ring-amber-500/25"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {quickActions.map((action) => {
+                const classes =
+                  action.tone === 'cyan'
+                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
+                    : action.tone === 'sky'
+                      ? 'border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20'
+                      : action.tone === 'amber'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
+                        : 'border-violet-500/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20';
+
+                if (action.href === '#') {
+                  return (
+                    <QuickActionPill
+                      key={action.label}
+                      className={classes}
+                      onClick={() => {
+                        setEditingPatient(null);
+                        setFormState({ ...EMPTY_PATIENT_FORM });
+                        setFormError(null);
+                        setIsFormOpen(true);
+                      }}
+                    >
+                      {action.label}
+                    </QuickActionPill>
+                  );
+                }
+
+                return (
+                  <QuickActionPill key={action.label} href={action.href} className={classes}>
+                    {action.label}
+                  </QuickActionPill>
+                );
+              })}
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-white">تنبيهات ذكية</p>
+                  <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
+                    4 عناصر
+                  </span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {smartAlerts.map((alert) => (
+                    <motion.div
+                      key={alert.label}
+                      whileHover={{ y: -4, scale: 1.01 }}
+                      whileTap={{ scale: 0.98 }}
+                      transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+                      className={`group relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 ${
+                        alert.tone === 'rose'
+                          ? 'from-rose-500/10 to-red-500/5'
+                          : alert.tone === 'violet'
+                            ? 'from-violet-500/10 to-indigo-500/5'
+                            : alert.tone === 'cyan'
+                              ? 'from-cyan-500/10 to-sky-500/5'
+                              : 'from-amber-500/10 to-orange-500/5'
+                      }`}
+                    >
+                      <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                      <div className="relative z-10 flex items-start gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
+                          {alert.icon}
+                        </span>
+                        <div>
+                          <p className="text-sm font-bold text-white">{alert.label}</p>
+                          <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-white">آخر النشاطات</p>
+                  <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
+                    5 آخرين
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {recentActivities.map((activity) => (
+                    <motion.div
+                      key={`${activity.name}-${activity.action}`}
+                      whileHover={{ x: 2 }}
+                      whileTap={{ scale: 0.99 }}
+                      transition={{ type: 'spring', stiffness: 240, damping: 24 }}
+                      className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 px-3 py-2.5"
+                    >
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-sm ${
+                        activity.tone === 'violet'
+                          ? 'bg-violet-500/10'
+                          : activity.tone === 'cyan'
+                            ? 'bg-cyan-500/10'
+                            : activity.tone === 'emerald'
+                              ? 'bg-emerald-500/10'
+                              : activity.tone === 'amber'
+                                ? 'bg-amber-500/10'
+                                : 'bg-sky-500/10'
+                      }`}>
+                        {activity.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">{activity.name}</p>
+                        <p className="truncate text-[11px] text-slate-400">{activity.action}</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500">{activity.time}</span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -713,6 +865,73 @@ export default function PatientsPage() {
   );
 }
 
+type RippleDot = { id: number; x: number; y: number; size: number };
+
+function QuickActionPill({
+  children,
+  href,
+  onClick,
+  className,
+}: {
+  children: React.ReactNode;
+  href?: string;
+  onClick?: () => void;
+  className: string;
+}) {
+  const [ripples, setRipples] = useState<RippleDot[]>([]);
+
+  const spawn = (event: React.PointerEvent<HTMLElement>) => {
+    const host = event.currentTarget;
+    const rect = host.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 1.5;
+    const id = Date.now() + Math.random();
+    setRipples((current) => [...current, { id, x: event.clientX - rect.left - size / 2, y: event.clientY - rect.top - size / 2, size }]);
+    window.setTimeout(() => setRipples((current) => current.filter((dot) => dot.id !== id)), 650);
+  };
+
+  const content = (
+    <>
+      <span className="relative z-10">{children}</span>
+      <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
+        {ripples.map((dot) => (
+          <motion.span
+            key={dot.id}
+            initial={{ scale: 0, opacity: 0.4 }}
+            animate={{ scale: 1, opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7, ease: 'easeOut' }}
+            style={{
+              position: 'absolute',
+              left: dot.x,
+              top: dot.y,
+              width: dot.size,
+              height: dot.size,
+              borderRadius: '9999px',
+              background: 'currentColor',
+            }}
+          />
+        ))}
+      </span>
+    </>
+  );
+
+  const sharedClassName = `group relative inline-flex items-center overflow-hidden rounded-full border px-3 py-2 text-xs font-bold shadow-[0_12px_22px_-18px_rgba(15,23,42,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_25px_-20px_rgba(59,130,246,0.6)] ${className}`;
+
+  if (href) {
+    return (
+      <Link href={href} onPointerDown={spawn} className={sharedClassName}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onPointerDown={spawn} onClick={onClick} className={sharedClassName}>
+      {content}
+    </button>
+  );
+}
+
 /**
  * One KPI of the daily summary. A value of `null` means the source was not
  * readable for this role — that renders as a note, never as a fake zero.
@@ -723,19 +942,17 @@ function SummaryTile({
   value,
   loading,
   accent,
+  href,
 }: {
   emoji: string;
   label: string;
   value: number | null;
   loading: boolean;
   accent: string;
+  href: string;
 }) {
-  return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-      className={`rounded-[1.5rem] border border-slate-800 bg-gradient-to-br ${accent} px-4 py-4 ring-1 backdrop-blur-sm`}
-    >
+  const content = (
+    <>
       <p className="text-xs text-slate-300">
         <span aria-hidden>{emoji}</span> {label}
       </p>
@@ -748,6 +965,22 @@ function SummaryTile({
           <NumberTicker value={value} />
         </p>
       )}
+    </>
+  );
+
+  return (
+    <motion.div whileHover={{ y: -4, scale: 1.01 }} whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 300, damping: 24 }} className="relative h-full">
+      <Link
+        href={href}
+        className={`group relative block h-full overflow-hidden rounded-[1.5rem] border border-slate-800 bg-gradient-to-br ${accent} px-4 py-4 ring-1 backdrop-blur-sm shadow-[0_20px_35px_-28px_rgba(14,165,233,0.7)] transition-all duration-300 before:absolute before:inset-0 before:opacity-0 before:transition-opacity before:duration-200 before:content-[''] hover:shadow-[0_28px_38px_-24px_rgba(94,234,212,0.9)] hover:before:opacity-100 hover:before:bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.18),_transparent_45%)]`}
+      >
+        <span className="absolute inset-0 bg-[linear-gradient(135deg,transparent,rgba(255,255,255,0.08),transparent)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+        <span aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 scale-0 rounded-full bg-white/25 transition-transform duration-500 group-active:scale-[12]" />
+        <span className="relative z-10 block">{content}</span>
+        <span className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold text-white/80">
+          افتح <span aria-hidden>→</span>
+        </span>
+      </Link>
     </motion.div>
   );
 }
