@@ -35,6 +35,9 @@ import {
   sessionProgress,
   sessionStatusAr,
   sortTimelineDesc,
+  patientGenderAvatar,
+  patientGenderLabel,
+  normalizePatientGender,
   type PatientSessionStatus,
   type QuickNote,
 } from '@/components/dashboard/patients/smartProfile';
@@ -254,6 +257,7 @@ export default function SmartPatientProfile({
 
   const metadata = parsePatientMetadata(patient.metadata);
   const quickNotes: QuickNote[] = metadata.quick_notes;
+  const patientGender = patientGenderAvatar(metadata.basic_info.gender || normalizePatientGender((patient.metadata as Record<string, unknown> | undefined)?.gender));
 
   // N27 — the treatment plan is metadata-owned (the page owns `metadata.sessions`),
   // so it joins the journey line on EVERY path: a parent that passes
@@ -442,9 +446,9 @@ export default function SmartPatientProfile({
                 <div className="relative">
                   <motion.div
                     whileHover={{ scale: 1.05, rotate: 3 }}
-                    className="relative flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 text-white shadow-md shadow-blue-500/20"
+                    className={`relative flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-gradient-to-br ${patientGender.gradient} text-white shadow-md shadow-blue-500/20 ring-2 ring-white`}
                   >
-                    <User className="h-9 w-9 sm:h-11 sm:w-11" />
+                    <span className="text-2xl sm:text-3xl">{patientGender.icon}</span>
                     <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-[10px] text-white font-bold">
                       ✓
                     </span>
@@ -456,6 +460,9 @@ export default function SmartPatientProfile({
                     <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                       {patient.name}
                     </h1>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${patientGender.tone}`}>
+                      {patientGender.badge}
+                    </span>
                     <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
                       {patient.status || 'نشط'}
                     </span>

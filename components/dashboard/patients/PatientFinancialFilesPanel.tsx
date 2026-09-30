@@ -128,6 +128,21 @@ const escapeHtml = (value: unknown): string =>
 /** Strict UUID v4-shape guard — invoice ids must be UUIDs before hitting the RPC. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const normalizeStatusValue = (value?: string | null) => String(value ?? '').trim().toLowerCase();
+
+const isVoidedStatus = (value?: string | null) => {
+  const normalized = normalizeStatusValue(value);
+  return ['voided', 'cancelled', 'canceled', 'ملغاة', 'ملغية', 'ملغي', 'ملغى'].includes(normalized);
+};
+
+const invoiceStatusLabel = (value?: string | null): string => {
+  const normalized = normalizeStatusValue(value);
+  if (isVoidedStatus(value)) return 'ملغاة';
+  if (normalized === 'paid') return 'مدفوعة';
+  if (normalized === 'partially_paid') return 'مدفوعة جزئياً';
+  return 'غير مدفوعة';
+};
+
 export default function PatientFinancialFilesPanel({ patientId, patientName }: Props) {
   const { clinicId, authHeaders, clinicName } = useClinicContext();
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
@@ -527,11 +542,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const printInvoice = async (inv: InvoiceRow) => {
     const total = Number(inv.total_amount ?? inv.total ?? inv.total_due ?? 0);
     const date = inv.created_at ? new Date(inv.created_at).toLocaleDateString('ar') : '—';
-    const statusAr = inv.status === 'voided'
-      ? 'ملغاة'
-      : inv.status === 'paid'
-        ? 'مدفوعة'
-        : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة';
+    const statusAr = invoiceStatusLabel(inv.status);
 
     // The printable invoice must list WHAT was billed. Old invoices were issued
     // before line items existed, so a missing/empty items list falls back to the
@@ -605,11 +616,11 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const invoiceTotal = useMemo(() => {
     const g = (r: InvoiceRow) => Number(r.total_amount ?? r.total ?? r.total_due ?? r.balance_due ?? 0);
-    return invoices.filter((r) => r.status !== 'voided').reduce((s, r) => s + g(r), 0);
+    return invoices.filter((r) => !isVoidedStatus(r.status)).reduce((s, r) => s + g(r), 0);
   }, [invoices]);
 
   const paymentTotal = useMemo(
-    () => payments.filter((p) => p.status === 'recorded').reduce((s, p) => s + Number(p.amount ?? 0), 0),
+    () => payments.filter((p) => !isVoidedStatus(p.status)).reduce((s, p) => s + Number(p.amount ?? 0), 0),
     [payments]
   );
 
@@ -927,8 +938,8 @@ return (
                 </div>
                 <div className="text-left">
                   <p className="font-bold text-white">{Number(inv.total_amount ?? inv.total ?? 0).toFixed(2)}</p>
-                  <p className={`text-xs ${inv.status === 'voided' ? 'text-slate-400' : inv.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>
-                    {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
+                  <p className={`text-xs ${isVoidedStatus(inv.status) ? 'text-slate-400' : normalizeStatusValue(inv.status) === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {invoiceStatusLabel(inv.status)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -940,7 +951,7 @@ return (
                   >
                     🖨️ طباعة
                   </button>
-                  {inv.status !== 'voided' && (
+                  {!isVoidedStatus(inv.status) && (
                     <button
                       type="button"
                       onClick={() => openVoidDialog(inv)}
@@ -950,7 +961,7 @@ return (
                       ❌ إلغاء
                     </button>
                   )}
-                  {inv.status === 'voided' && (
+                  {isVoidedStatus(inv.status) && (
                     <button
                       type="button"
                       onClick={() => void startReissue(inv)}
@@ -976,7 +987,7 @@ return (
         ) : (
           <ul className="divide-y divide-slate-800">
             {payments.map((p) => {
-              const isVoided = p.status === 'voided';
+              const isVoided = isVoidedStatus(p.status);
               return (
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                   <div>

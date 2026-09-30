@@ -25,8 +25,16 @@ export const APPOINTMENT_STATUS_AR: Record<string, string> = {
   no_show: 'لم يحضر',
 };
 
+function normalizeEnumKey(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, '_');
+}
+
 export function appointmentStatusAr(status: unknown): string {
-  return APPOINTMENT_STATUS_AR[String(status)] ?? String(status ?? '');
+  const key = normalizeEnumKey(status);
+  return APPOINTMENT_STATUS_AR[key] ?? String(status ?? '');
 }
 
 export const COMMUNICATION_STATUS_AR: Record<string, string> = {
@@ -66,8 +74,9 @@ export const COMMUNICATION_TYPE_AR: Record<string, string> = {
 };
 
 export function communicationTypeAr(type: unknown): string {
-  const normalized = String(type ?? '');
-  return COMMUNICATION_TYPE_AR[normalized] ?? normalized.replace(/_/g, ' ');
+  const normalized = normalizeEnumKey(type);
+  const fallback = String(type ?? '').replace(/[_-]+/g, ' ').trim();
+  return COMMUNICATION_TYPE_AR[normalized] ?? (fallback || 'إشعار');
 }
 
 export const ACTIVE_AR: Record<string, string> = {

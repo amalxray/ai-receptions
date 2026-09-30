@@ -63,6 +63,50 @@ export function formatFileSize(bytes: number): string {
   return bytes + ' B';
 }
 
+export function inferMimeFromFilename(filename?: string | null): string {
+  const name = (filename || '').toLowerCase();
+  if (name.endsWith('.dcm')) return 'application/dicom';
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.gif')) return 'image/gif';
+  if (name.endsWith('.mp4')) return 'video/mp4';
+  if (name.endsWith('.webm')) return 'video/webm';
+  if (name.endsWith('.mov')) return 'video/quicktime';
+  return 'application/octet-stream';
+}
+
+export function resolveUploadFileType(
+  category: MedicalCategory,
+  filename?: string | null,
+  mime?: string | null
+): string {
+  const name = (filename || '').toLowerCase();
+  const m = (mime || '').toLowerCase();
+
+  switch (category) {
+    case 'panorama':
+      if (m.includes('dicom') || name.endsWith('.dcm')) return 'medical_image';
+      return 'image';
+    case 'cbct':
+      if (m.includes('dicom') || name.endsWith('.dcm')) return 'medical_image';
+      return m.includes('pdf') || name.endsWith('.pdf') ? 'pdf' : 'document';
+    case 'dicom':
+      return 'medical_image';
+    case 'report':
+      if (m.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+      return 'medical_report';
+    case 'other':
+      if (m.startsWith('video/')) return 'video';
+      if (m.startsWith('image/')) return 'image';
+      if (m.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+      return 'document';
+    default:
+      return 'document';
+  }
+}
+
 export function detectFileCategory(
   fileType: string,
   filename?: string | null,
@@ -167,6 +211,9 @@ export default function PatientMedicalFilesTab({
 
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [fileToDelete, setFileToDelete] = useState<MedicalFileRow | null>(null);
+  const [pendingUpload, setPendingUpload] = useState<File | null>(null);
+  const [uploadCategory, setUploadCategory] = useState<MedicalCategory>('other');
+  const [showUploadTypeModal, setShowUploadTypeModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -231,9 +278,12 @@ export default function PatientMedicalFilesTab({
     setInfoMsg('تم إلغاء عملية الرفع.');
   };
 
-  const handleSmartUpload = async (file: File) => {
+  const handleSmartUpload = async (file: File, overrideCategory?: MedicalCategory) => {
     if (!file || !clinicId || !patientId) return;
 
+    const mimeType = file.type || inferMimeFromFilename(file.name);
+    const selectedCategory = overrideCategory ?? detectFileCategory(file.type, file.name, mimeType);
+    const selectedFileType = resolveUploadFileType(selectedCategory, file.name, mimeType);
     const seq = (uploadSeqRef.current += 1);
 
     setErr(null);
@@ -256,8 +306,9 @@ export default function PatientMedicalFilesTab({
           clinic_id: clinicId,
           patient_id: patientId,
           filename: file.name,
-          mime_type: file.type || 'application/octet-stream',
+          mime_type: mimeType,
           size_bytes: file.size,
+          file_type: selectedFileType,
         }),
       });
 
@@ -300,7 +351,7 @@ export default function PatientMedicalFilesTab({
         };
 
         xhr.open('PUT', upload_url, true);
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.setRequestHeader('Content-Type', mimeType);
         xhr.send(file);
       });
 
@@ -317,10 +368,10 @@ export default function PatientMedicalFilesTab({
           clinic_id: clinicId,
           patient_id: patientId,
           storage_path,
-          mime_type: file.type || 'application/octet-stream',
+          mime_type: mimeType,
           size_bytes: file.size,
           filename: file.name,
-          file_type,
+          file_type: file_type || selectedFileType,
         }),
       });
 
@@ -407,6 +458,21 @@ export default function PatientMedicalFilesTab({
     return cat === filter;
   });
 
+  const openUploadTypeDialog = (file: File) => {
+    const mimeType = file.type || inferMimeFromFilename(file.name);
+    const detectedCategory = detectFileCategory(file.type, file.name, mimeType);
+    setPendingUpload(file);
+    setUploadCategory(detectedCategory);
+    setShowUploadTypeModal(true);
+  };
+
+  const confirmPendingUpload = () => {
+    if (!pendingUpload) return;
+    setShowUploadTypeModal(false);
+    void handleSmartUpload(pendingUpload, uploadCategory);
+    setPendingUpload(null);
+  };
+
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-md">
@@ -452,7 +518,9 @@ export default function PatientMedicalFilesTab({
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) void handleSmartUpload(f);
+                if (f) {
+                  openUploadTypeDialog(f);
+                }
                 e.target.value = '';
               }}
             />
@@ -469,7 +537,9 @@ export default function PatientMedicalFilesTab({
             e.preventDefault();
             setIsDragging(false);
             const f = e.dataTransfer.files?.[0];
-            if (f) void handleSmartUpload(f);
+            if (f) {
+              openUploadTypeDialog(f);
+            }
           }}
           onClick={() => {
             if (uploadProgress === null) fileInputRef.current?.click();
@@ -547,6 +617,76 @@ export default function PatientMedicalFilesTab({
           </button>
         </div>
       )}
+
+      <AnimatePresence>
+        {showUploadTypeModal && pendingUpload && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+            onClick={() => setShowUploadTypeModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.98, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">تأكيد نوع الملف</p>
+                  <p className="mt-1 text-xs text-slate-400">تم اكتشاف الملف تلقائيًا كـ "{CATEGORY_METAS[detectFileCategory(pendingUpload.type || inferMimeFromFilename(pendingUpload.name), pendingUpload.name, pendingUpload.type || inferMimeFromFilename(pendingUpload.name))].label}" — يمكنك تعديله قبل الرفع.</p>
+                </div>
+                <button type="button" onClick={() => setShowUploadTypeModal(false)} className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:bg-slate-800">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {(Object.keys(CATEGORY_METAS).filter((key) => key !== 'all') as MedicalCategory[]).map((key) => {
+                  const meta = CATEGORY_METAS[key];
+                  const active = uploadCategory === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setUploadCategory(key)}
+                      className={`rounded-xl border px-3 py-2 text-right text-sm transition ${
+                        active
+                          ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-100'
+                          : 'border-slate-700 bg-slate-950/60 text-slate-300 hover:border-slate-600 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="font-semibold">{meta.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                <div>
+                  <span className="text-slate-400">اسم الملف:</span> {pendingUpload.name}
+                </div>
+                <span className="rounded-full bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-200">
+                  {resolveUploadFileType(uploadCategory, pendingUpload.name, pendingUpload.type || inferMimeFromFilename(pendingUpload.name))}
+                </span>
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" onClick={() => setShowUploadTypeModal(false)} className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700">
+                  إلغاء
+                </button>
+                <button type="button" onClick={confirmPendingUpload} className="rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-cyan-500/20 hover:from-cyan-500 hover:to-blue-500">
+                  رفع الملف
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* N30 — imaging summary tiles (🟦 بانوراما / 🟪 CBCT / 🟩 DICOM / 🟨 تقارير).
           A radiology desk reads counts before it reads file names, so the four

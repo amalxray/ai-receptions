@@ -173,6 +173,50 @@ export type EmergencyContact = {
   relation: string;
 };
 
+export type PatientGender = 'male' | 'female' | 'mr' | 'mrs' | '';
+
+export const PATIENT_GENDERS: PatientGender[] = ['male', 'female', 'mr', 'mrs', ''];
+
+export function normalizePatientGender(value: unknown): PatientGender {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) return '';
+  if (raw === 'male' || raw === 'ذكر') return 'male';
+  if (raw === 'female' || raw === 'أنثى') return 'female';
+  if (raw === 'mr' || raw === 'مَرْ' || raw === 'السيد' || raw === 'سيد') return 'mr';
+  if (raw === 'mrs' || raw === 'السيدة' || raw === 'سيدة') return 'mrs';
+  return raw === 'man' || raw === 'm' ? 'male' : raw === 'woman' || raw === 'f' ? 'female' : '';
+}
+
+export function patientGenderLabel(value: unknown): string {
+  switch (normalizePatientGender(value)) {
+    case 'male':
+      return 'ذكر';
+    case 'female':
+      return 'أنثى';
+    case 'mr':
+      return 'سيد';
+    case 'mrs':
+      return 'سيدة';
+    default:
+      return 'غير محدد';
+  }
+}
+
+export function patientGenderAvatar(value: unknown): { icon: string; gradient: string; tone: string; badge: string } {
+  switch (normalizePatientGender(value)) {
+    case 'male':
+      return { icon: '👨', gradient: 'from-cyan-500 to-blue-600', tone: 'bg-cyan-100 text-cyan-800 ring-cyan-200', badge: 'ذكر' };
+    case 'female':
+      return { icon: '👩', gradient: 'from-pink-500 to-rose-600', tone: 'bg-pink-100 text-pink-800 ring-pink-200', badge: 'أنثى' };
+    case 'mr':
+      return { icon: '🧔', gradient: 'from-slate-500 to-slate-700', tone: 'bg-slate-100 text-slate-800 ring-slate-200', badge: 'سيد' };
+    case 'mrs':
+      return { icon: '👩‍🦰', gradient: 'from-rose-400 to-violet-600', tone: 'bg-violet-100 text-violet-800 ring-violet-200', badge: 'سيدة' };
+    default:
+      return { icon: '👤', gradient: 'from-cyan-500 to-blue-600', tone: 'bg-slate-100 text-slate-700 ring-slate-200', badge: 'غير محدد' };
+  }
+}
+
 export type BasicInfo = {
   age: string;
   gender: string;
