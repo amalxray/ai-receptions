@@ -268,7 +268,7 @@ describe('B52-B — agenda wiring guards', () => {
     expect(chrome).toContain('<RotatingMarquee');
     expect(chrome).toContain("item.media_type === 'image'");
     expect(chrome).toContain('space.coverUrl || space.logo');
-    expect(marquee).toContain("isCenter ? 'saturate-100' : 'grayscale saturate-50'");
+    expect(marquee).toContain('const distance = Math.min(1, Math.abs(delta) / (bounds.width / 2));');
   });
 });
 
