@@ -161,6 +161,10 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const [voidReason, setVoidReason] = useState('');
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
+  const [voidingPayment, setVoidingPayment] = useState<PaymentRow | null>(null);
+  const [paymentVoidReason, setPaymentVoidReason] = useState('');
+  const [paymentVoidBusy, setPaymentVoidBusy] = useState(false);
+  const [paymentVoidError, setPaymentVoidError] = useState<string | null>(null);
   const [reissueFrom, setReissueFrom] = useState<string | null>(null);
   const [reissueBusy, setReissueBusy] = useState(false);
 
@@ -335,6 +339,12 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     setVoidError(null);
   };
 
+  const openPaymentVoidDialog = (pay: PaymentRow) => {
+    setVoidingPayment(pay);
+    setPaymentVoidReason('');
+    setPaymentVoidError(null);
+  };
+
   /** POSTs to the existing void API (RPC void_invoice + audit log server-side). */
   const confirmVoid = async () => {
     if (!clinicId || !voidingInvoice) return;
@@ -360,6 +370,33 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setVoidError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ أثناء الإلغاء'));
     } finally {
       setVoidBusy(false);
+    }
+  };
+
+  const confirmPaymentVoid = async () => {
+    if (!clinicId || !voidingPayment) return;
+    if (!paymentVoidReason.trim()) {
+      setPaymentVoidError('سبب إلغاء الدفعة مطلوب');
+      return;
+    }
+    setPaymentVoidBusy(true);
+    setPaymentVoidError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/accounting/payments/${voidingPayment.id}/void?clinic_id=${clinicId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ reason: paymentVoidReason.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'فشل إلغاء الدفعة');
+      setActionSuccess(`تم إلغاء الدفعة ${voidingPayment.receipt_number ?? ''} — لا تُحسب في الإجمالي.`);
+      setVoidingPayment(null);
+      await loadAll();
+    } catch (err) {
+      setPaymentVoidError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ أثناء إلغاء الدفعة'));
+    } finally {
+      setPaymentVoidBusy(false);
     }
   };
 
@@ -568,7 +605,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const invoiceTotal = useMemo(() => {
     const g = (r: InvoiceRow) => Number(r.total_amount ?? r.total ?? r.total_due ?? r.balance_due ?? 0);
-    return invoices.reduce((s, r) => s + g(r), 0);
+    return invoices.filter((r) => r.status !== 'voided').reduce((s, r) => s + g(r), 0);
   }, [invoices]);
 
   const paymentTotal = useMemo(
@@ -890,7 +927,7 @@ return (
                 </div>
                 <div className="text-left">
                   <p className="font-bold text-white">{Number(inv.total_amount ?? inv.total ?? 0).toFixed(2)}</p>
-                  <p className={`text-xs ${inv.status === 'voided' ? 'text-rose-400' : inv.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                  <p className={`text-xs ${inv.status === 'voided' ? 'text-slate-400' : inv.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>
                     {inv.status === 'voided' ? 'ملغاة' : inv.status === 'paid' ? 'مدفوعة' : inv.status === 'partially_paid' ? 'مدفوعة جزئياً' : 'غير مدفوعة'}
                   </p>
                 </div>
@@ -938,17 +975,34 @@ return (
           <p className="text-sm text-slate-500">لا توجد دفعات مسجلة لهذا المريض.</p>
         ) : (
           <ul className="divide-y divide-slate-800">
-            {payments.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                <div>
-                  <p className="font-medium text-slate-200">
-                    {METHOD_AR[p.method ?? ''] ?? p.method} {p.receipt_number ? `· ${p.receipt_number}` : ''}
-                  </p>
-                  {p.created_at && <p className="text-xs text-slate-500">{new Date(p.created_at).toLocaleDateString('ar')}</p>}
-                </div>
-                <p className="font-bold text-emerald-300">+{Number(p.amount ?? 0).toFixed(2)}</p>
-              </li>
-            ))}
+            {payments.map((p) => {
+              const isVoided = p.status === 'voided';
+              return (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <div>
+                    <p className="font-medium text-slate-200">
+                      {METHOD_AR[p.method ?? ''] ?? p.method} {p.receipt_number ? `· ${p.receipt_number}` : ''}
+                    </p>
+                    {p.created_at && <p className="text-xs text-slate-500">{new Date(p.created_at).toLocaleDateString('ar')}</p>}
+                    {isVoided && <p className="mt-1 text-[11px] font-medium text-slate-400">ملغاة</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className={`font-bold ${isVoided ? 'text-slate-400' : 'text-emerald-300'}`}>
+                      {isVoided ? '—' : `+${Number(p.amount ?? 0).toFixed(2)}`}
+                    </p>
+                    {!isVoided && (
+                      <button
+                        type="button"
+                        onClick={() => openPaymentVoidDialog(p)}
+                        className="rounded-full bg-red-500/20 px-2.5 py-1 text-[10px] font-semibold text-red-300 transition hover:bg-red-500/30"
+                      >
+                        إلغاء دفعة
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -981,6 +1035,58 @@ return (
           </ul>
         )}
       </div>
+
+      {/* Void payment dialog — reason is mandatory for the payroll-safe RPC. */}
+      {voidingPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            role="presentation"
+            onClick={() => {
+              if (!paymentVoidBusy) setVoidingPayment(null);
+            }}
+            className="absolute inset-0 bg-slate-950/80"
+          />
+          <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-[2rem] border border-slate-800 bg-slate-950 p-6 shadow-2xl">
+            <h2 className="text-base font-bold text-white">❌ إلغاء الدفعة</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              الدفعة: <span className="font-mono">{voidingPayment.receipt_number ?? '—'}</span> —{' '}
+              <span className="font-bold">{Number(voidingPayment.amount ?? 0).toFixed(2)}₪</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">تُحذف من الحسابات كإلغاء محاسبي دون حذف السجل نفسه.</p>
+            <label className="mt-4 block text-xs text-slate-400">سبب الإلغاء (إلزامي):</label>
+            <textarea
+              value={paymentVoidReason}
+              onChange={(e) => setPaymentVoidReason(e.target.value)}
+              rows={3}
+              placeholder="مثال: تم إرجاع المبلغ — مراعاة للصحيحة"
+              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-500/70 focus:outline-none"
+            />
+            {paymentVoidError && (
+              <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {paymentVoidError}
+              </div>
+            )}
+            <div className="mt-5 flex justify-start gap-3">
+              <button
+                type="button"
+                onClick={() => void confirmPaymentVoid()}
+                disabled={!paymentVoidReason.trim() || paymentVoidBusy}
+                className="rounded-full bg-red-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {paymentVoidBusy ? 'جارٍ الإلغاء...' : 'تأكيد إلغاء الدفعة'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setVoidingPayment(null)}
+                disabled={paymentVoidBusy}
+                className="rounded-full border border-slate-700 px-5 py-2 text-sm font-semibold text-slate-300 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Void invoice dialog — reason is mandatory (RPC: VOID_REASON_REQUIRED). */}
       {voidingInvoice && (
