@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import Link from 'next/link';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 import { Particles } from '@/components/ui/particles';
@@ -45,6 +45,9 @@ const LOOP_DELAY_MS = 6000;
 
 export default function Hero() {
   const copy = useLandingCopy();
+  const sectionRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] });
+  const blobY = useTransform(scrollYProgress, [0, 1], [48, -48]);
   const [showTyping, setShowTyping] = useState(false);
   const [messages, setMessages] = useState<ChatStep[]>([]);
 
@@ -90,15 +93,14 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative overflow-hidden bg-slate-950 pt-36 pb-24 lg:pt-44 lg:pb-32">
+    <section ref={sectionRef} className="relative overflow-hidden bg-[#FAFBFC] pt-36 pb-24 lg:pt-44 lg:pb-32">
       {/* Ambient: particles + meteors + glows */}
       <Particles className="absolute inset-0 -z-20" quantity={90} color="#818CF8" size={2.2} ease={35} />
       <Meteors number={16} />
-      <div className="pointer-events-none absolute inset-0 -z-30">
-        <div className="absolute -left-24 top-0 h-96 w-96 rounded-full bg-violet-600/25 blur-3xl" />
-        <div className="absolute right-0 top-32 h-96 w-96 rounded-full bg-blue-500/20 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(2,6,23,0.9)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        <motion.div style={{ y: blobY }} animate={{ x: [0, 24, 0] }} transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }} className="absolute -left-24 top-4 h-96 w-96 rounded-full bg-[#8B5CF6]/20 blur-[110px]" />
+        <motion.div style={{ y: blobY }} animate={{ x: [0, -24, 0] }} transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }} className="absolute right-0 top-32 h-96 w-96 rounded-full bg-[#22D3EE]/25 blur-[100px]" />
+        <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-violet-950/80 to-transparent" />
       </div>
 
       <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-4 lg:grid-cols-2 lg:px-8">
@@ -108,25 +110,29 @@ export default function Hero() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="mb-6 inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-4 py-1.5 text-xs font-semibold text-violet-200"
+            className="mb-6 inline-flex items-center gap-2 rounded-full border border-violet-400/40 bg-violet-500/10 px-4 py-1.5 text-xs font-semibold text-violet-800"
           >
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            <TextShimmer duration={2.4} className="text-xs font-semibold text-slate-200">موظفة استقبال ذكية — ترد وتحجز 24/7</TextShimmer>
+            <TextShimmer duration={2.4} className="text-xs font-semibold text-slate-700">موظفة استقبال ذكية — ترد وتحجز 24/7</TextShimmer>
           </motion.div>
 
-          <h1 className="text-4xl font-black leading-[1.25] text-white md:text-5xl lg:text-[3.4rem]">
+          <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]">
             <TextReveal text={copy.hero.headline1} duration={0.7} delay={0.2} />
             <br />
-            <span className="bg-gradient-to-l from-emerald-400 via-cyan-400 to-violet-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-l from-[#8B5CF6] to-[#22D3EE] bg-clip-text text-transparent">
               <TextReveal text={copy.hero.headline2} duration={0.7} delay={0.9} />
             </span>
-          </h1>
+          </motion.h1>
+
+          <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9, duration: 0.6 }} className="mx-auto mt-4 max-w-xl text-xl font-semibold leading-8 text-slate-700 lg:mx-0">
+            كل مكالمة فائتة… <span className="font-black text-[#EF4444]">مريض</span> ذهب لعيادة أخرى
+          </motion.p>
 
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.6, duration: 0.6 }}
-            className="mx-auto mt-6 max-w-lg text-lg leading-8 text-slate-300 lg:mx-0"
+            className="mx-auto mt-5 max-w-lg text-lg leading-8 text-slate-600 lg:mx-0"
           >
             {copy.hero.paragraph}
           </motion.p>
@@ -139,16 +145,22 @@ export default function Hero() {
           >
             <Magnetic>
               <Link href="/register">
-                <ShimmerButton className="px-8 py-4 text-lg font-bold">{copy.hero.ctaPrimary}</ShimmerButton>
+                <ShimmerButton style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)]">{copy.hero.ctaPrimary}</ShimmerButton>
               </Link>
             </Magnetic>
             <a
               href="#how-it-works"
-              className="rounded-full border border-white/20 px-8 py-4 text-lg font-semibold text-slate-200 transition hover:border-violet-400/60 hover:bg-white/5"
+              className="rounded-full border border-slate-300 px-8 py-4 text-lg font-semibold text-slate-700 transition hover:border-violet-400/60 hover:bg-violet-50"
             >
               {copy.hero.ctaSecondary}
             </a>
           </motion.div>
+
+          <div className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-semibold text-slate-600 lg:justify-start">
+            {['بدون بطاقة', '5 دقائق', 'إلغاء حر'].map((item) => (
+              <span key={item} className="inline-flex items-center gap-1.5"><span className="text-emerald-600">✓</span>{item}</span>
+            ))}
+          </div>
 
           {/* Stats */}
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
@@ -158,13 +170,13 @@ export default function Hero() {
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 2 + i * 0.15, duration: 0.5 }}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm"
+                className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm"
               >
-                <div className="text-2xl font-black text-white md:text-3xl">
+                <div className="text-2xl font-black text-slate-900 md:text-3xl">
                   {/^[0-9]/.test(s.value) ? <NumberTicker value={parseInt(s.value, 10) || 0} /> : s.value}
                   {s.value === '24/7' ? '/7' : s.value.includes('%') ? '%' : s.value === '<3s' ? 's' : ''}
                 </div>
-                <div className="mt-1 text-xs text-slate-400">{s.label}</div>
+                <div className="mt-1 text-xs text-slate-500">{s.label}</div>
               </motion.div>
             ))}
           </div>
