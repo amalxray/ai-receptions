@@ -62,6 +62,7 @@ type PaymentRow = {
 
 type BalanceRow = {
   outstanding_amount?: number;
+  credit_amount?: number;
   invoiced_total?: number;
   paid_total?: number;
   balance_due?: number;
@@ -575,16 +576,32 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     [payments]
   );
 
-  const balance = useMemo(() => {
-    // patient_balances exposes `outstanding_amount` (NOT balance_due) — a wrong
-    // column name here silently zeroed the whole balance display.
-    const fromView = Number(balances[0]?.outstanding_amount ?? balances[0]?.balance_due);
-    if (Number.isFinite(fromView)) return fromView;
-    return invoiceTotal - paymentTotal;
+  const outstandingBalance = useMemo(() => {
+    const fromView = Number(balances[0]?.outstanding_amount ?? balances[0]?.balance_due ?? 0);
+    return Number.isFinite(fromView) ? fromView : Math.max(invoiceTotal - paymentTotal, 0);
   }, [balances, invoiceTotal, paymentTotal]);
 
+  const creditBalance = useMemo(() => Number(balances[0]?.credit_amount ?? 0), [balances]);
+
+  const primaryBalance = useMemo(() => {
+    if (creditBalance > 0) return { kind: 'credit', label: 'رصيد زائد', value: `+${creditBalance.toFixed(2)}` };
+    if (outstandingBalance > 0) return { kind: 'due', label: 'الرصيد المتبقي', value: outstandingBalance.toFixed(2) };
+    return { kind: 'zero', label: 'الرصيد المتبقي', value: '0.00' };
+  }, [creditBalance, outstandingBalance]);
+
   if (loading) {
-    return <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400">جارٍ تحميل الملف المالي والطبي...</div>;
+    return (
+      <div className="mt-6 space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[0, 1, 2].map((key) => (
+            <div key={key} className="animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <div className="h-3 w-20 rounded bg-slate-700" />
+              <div className="mt-3 h-6 w-24 rounded bg-slate-700" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 return (
     <div className="mt-6 space-y-4">
@@ -667,18 +684,36 @@ return (
 
       {/* Balance summary */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 transition-all duration-200 hover:border-cyan-500/40 hover:bg-slate-900">
           <p className="text-xs text-slate-400">إجمالي الفواتير</p>
           <p className="mt-1 text-lg font-bold text-white">{invoiceTotal.toFixed(2)}</p>
         </div>
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 transition-all duration-200 hover:border-emerald-500/40 hover:bg-slate-900">
           <p className="text-xs text-slate-400">المدفوع</p>
           <p className="mt-1 text-lg font-bold text-emerald-300">{paymentTotal.toFixed(2)}</p>
         </div>
-        <div className={`rounded-2xl border p-4 ${balance > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-800 bg-slate-900/60'}`}>
-          <p className="text-xs text-slate-400">الرصيد المتبقي</p>
-          <p className={`mt-1 text-lg font-bold ${balance > 0 ? 'text-amber-300' : 'text-slate-300'}`}>{balance.toFixed(2)}</p>
-        </div>
+        <motion.div
+          whileHover={{ y: -2, scale: 1.01 }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          className={`rounded-2xl border p-4 shadow-[0_0_24px_-14px_rgba(15,23,42,0.8)] transition-all duration-200 ${
+            primaryBalance.kind === 'credit'
+              ? 'border-emerald-500/40 bg-emerald-500/5'
+              : primaryBalance.kind === 'due'
+                ? 'border-red-500/40 bg-red-500/5'
+                : 'border-slate-800 bg-slate-900/60'
+          }`}
+        >
+          <p className="text-xs text-slate-400">{primaryBalance.label}</p>
+          <p className={`mt-1 text-lg font-bold ${
+            primaryBalance.kind === 'credit'
+              ? 'text-emerald-300'
+              : primaryBalance.kind === 'due'
+                ? 'text-red-300'
+                : 'text-slate-300'
+          }`}>
+            {primaryBalance.value} {primaryBalance.kind === 'credit' || primaryBalance.kind === 'due' ? 'شيكل' : ''}
+          </p>
+        </motion.div>
       </div>
 {/* Invoice form */}
       {showInvoiceForm && (
