@@ -85,7 +85,8 @@ export default function RotatingMarquee({
       track.querySelectorAll<HTMLElement>('[data-marquee-card]').forEach((card) => {
         const rect = card.getBoundingClientRect(), delta = rect.left + rect.width / 2 - center;
         const distance = Math.min(1, Math.abs(delta) / (bounds.width / 2));
-        Object.entries({ scale: 1 - distance * 0.3, rotate: `${Math.sign(delta) * distance * 25}deg`, opacity: 1 - distance * 0.5, blur: `${distance * 8}px`, gray: distance }).forEach(([key, value]) => card.style.setProperty(`--marquee-${key}`, String(value)));
+        const centerWidth = window.matchMedia('(min-width: 640px)').matches ? 390 : 350;
+        Object.entries({ scale: 1 - distance * (1 - 280 / centerWidth), rotate: `${Math.sign(delta) * distance * 25}deg`, opacity: 1 - distance * 0.5, blur: `${distance * 8}px`, gray: distance }).forEach(([key, value]) => card.style.setProperty(`--marquee-${key}`, String(value)));
       });
     };
     const timer = window.setInterval(update, 50);
@@ -94,25 +95,22 @@ export default function RotatingMarquee({
   }, []);
 
   return (
-    <section className={`relative overflow-hidden py-10 sm:py-14 ${className}`}>
-      <div className="mb-8 flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+    <section className={`relative overflow-hidden ${className}`}>
+      <div className="mb-8 flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-medium tracking-[0.22em] text-slate-400 uppercase">Gallery</p>
+          <p className="text-sm font-medium tracking-[0.22em] text-slate-300 uppercase">Gallery</p>
           <h3 className="mt-2 text-2xl font-black text-white sm:text-3xl">{title}</h3>
         </div>
-        <div className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-slate-200 sm:block">
+        <div className="hidden text-[11px] font-bold text-slate-500 sm:block">
           3D Motion
         </div>
       </div>
 
       <div ref={viewportRef} className="relative [perspective:1800px]">
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-[#0b1120] to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-[#0b1120] to-transparent" />
-
         <motion.div
           animate={{ x: ['0%', '-50%'] }}
           transition={{ duration: 52, ease: 'linear', repeat: Infinity }}
-          className="flex w-max gap-5 px-4 sm:px-6 lg:px-8"
+          className="flex w-max gap-10"
           style={{ transformStyle: 'preserve-3d' }}
           ref={trackRef}
         >
@@ -120,15 +118,15 @@ export default function RotatingMarquee({
               <motion.article
                 key={`${item.id}-${index}`}
                 data-marquee-card
-                className="group relative w-[250px] shrink-0 overflow-hidden rounded-[28px] border border-white/10 bg-slate-900/40 p-3 shadow-[0_30px_70px_-35px_rgba(15,23,42,0.85)] backdrop-blur-sm sm:w-[290px]"
+                className="relative w-[350px] shrink-0 overflow-hidden [--marquee-scale:0.8] sm:w-[390px] sm:[--marquee-scale:0.718]"
                 style={{
-                  transform: 'perspective(1200px) rotateY(var(--marquee-rotate, 25deg)) scale(var(--marquee-scale, 0.7))',
+                  transform: 'perspective(1200px) rotateY(var(--marquee-rotate, 25deg)) scale(var(--marquee-scale))',
                   opacity: 'var(--marquee-opacity, 0.5)',
                   transition: 'transform 500ms ease-out, opacity 500ms ease-out',
                   transformStyle: 'preserve-3d',
                 }}
               >
-                <div className={`relative overflow-hidden rounded-[22px] bg-gradient-to-br ${item.color}`}>
+                <div className={`relative overflow-hidden ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
                   {item.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -138,25 +136,25 @@ export default function RotatingMarquee({
                       style={{ filter: 'blur(var(--marquee-blur, 8px)) grayscale(var(--marquee-gray, 1))', transition: 'filter 500ms ease-out' }}
                     />
                   ) : null}
-                  <div className={`absolute inset-0 ${item.image ? 'bg-slate-950/35' : 'bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]'}`} />
-                  <div className={`absolute inset-x-3 top-3 flex items-center justify-between rounded-full bg-black/15 px-2.5 py-1 text-[10px] font-bold text-white/90 backdrop-blur-sm`}>
+                  {!item.image && <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />}
+                  <div className="absolute inset-x-3 top-3 flex items-center justify-between text-[10px] font-bold text-white drop-shadow-md">
                     <span>{item.chip}</span>
                     <span className={`inline-flex h-2 w-2 rounded-full bg-gradient-to-r ${item.accent}`} />
                   </div>
 
-                  <div className="relative flex h-[180px] items-end justify-between p-4 sm:h-[200px]">
-                    <div className="space-y-2">
+                  <div className="relative flex h-[180px] items-end justify-between sm:h-[200px]">
+                    <div className="space-y-2 text-white drop-shadow-md">
                       <div className="text-[11px] font-bold text-white/80">{item.Badge}</div>
-                      <div className="text-xl font-black text-white sm:text-2xl">{item.title}</div>
+                      <div className="text-xl font-black sm:text-2xl">{item.title}</div>
                     </div>
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${item.accent} text-xl shadow-lg shadow-black/20`}>
+                    <div className="flex h-12 w-12 items-center justify-center text-xl text-white drop-shadow-md">
                       ✦
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-3 space-y-1 px-1">
-                  <p className="text-xs font-medium text-slate-300">{item.subtitle}</p>
+                <div className="mt-3 space-y-1">
+                  <p className="text-xs font-medium text-slate-200">{item.subtitle}</p>
                 </div>
               </motion.article>
             ))}

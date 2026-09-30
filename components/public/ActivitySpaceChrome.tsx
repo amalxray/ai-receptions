@@ -399,11 +399,9 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
-        <PublicMediaGallery space={space} />
         <RotatingMarquee
           items={marqueeItems.length > 0 ? marqueeItems : undefined}
           title={`لقطات من ${space.name}`}
-          className="bg-slate-950"
         />
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
