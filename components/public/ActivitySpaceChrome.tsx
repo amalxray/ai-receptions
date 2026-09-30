@@ -10,6 +10,7 @@ import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import BeforeAfterSlider from '@/components/public/BeforeAfterSlider';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
+import RotatingMarquee, { type RotatingMarqueeItem } from '@/components/ui/RotatingMarquee';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
@@ -41,6 +42,14 @@ const GALLERY_CATEGORIES = [
   { value: 'cases', label: 'حالات', icon: '📋' },
   { value: 'other', label: 'أخرى', icon: '📁' },
 ] as const;
+
+const MARQUEE_PALETTE = [
+  { color: 'from-slate-800 via-slate-700 to-slate-900', accent: 'from-cyan-400 to-blue-500' },
+  { color: 'from-rose-700 via-orange-600 to-amber-500', accent: 'from-pink-500 to-orange-400' },
+  { color: 'from-indigo-700 via-violet-600 to-fuchsia-500', accent: 'from-violet-500 to-cyan-400' },
+  { color: 'from-emerald-800 via-teal-700 to-cyan-600', accent: 'from-emerald-400 to-cyan-400' },
+  { color: 'from-slate-800 via-neutral-700 to-zinc-900', accent: 'from-amber-400 to-orange-500' },
+];
 
 export function formatTime(time: string): string {
   const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
@@ -178,6 +187,37 @@ export function ActivitySpaceChrome({
       : d?.heading === 'large'
         ? 'text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl'
         : 'text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl';
+  const galleryImages = (space.media ?? []).filter(
+    (item) => item.media_type === 'image' && /^(https?:\/\/|\/)/i.test(item.public_url),
+  );
+  const fallbackImage = space.coverUrl || space.logo;
+  const marqueeSources = galleryImages.length > 0
+    ? galleryImages
+    : fallbackImage
+      ? [{
+          id: `${space.clinicId}-cover`,
+          media_type: 'image' as const,
+          public_url: fallbackImage,
+          title: space.name,
+          caption: space.tagline,
+          alt_text: `صورة ${space.name}`,
+          category: 'clinic' as const,
+        }]
+      : [];
+  const marqueeItems: RotatingMarqueeItem[] = marqueeSources.map((item, index) => {
+    const palette = MARQUEE_PALETTE[index % MARQUEE_PALETTE.length];
+    return {
+      id: item.id,
+      title: item.title || space.name,
+      subtitle: item.caption || item.alt_text || `لقطات من ${space.name}`,
+      Badge: ACTIVITY_TYPE_LABELS_AR[space.activityType],
+      color: palette.color,
+      accent: palette.accent,
+      chip: GALLERY_CATEGORIES.find((category) => category.value === item.category)?.label ?? 'المنشأة',
+      image: item.public_url,
+      imageAlt: item.alt_text || item.title || `صورة ${space.name}`,
+    };
+  });
 
   // Public Chat UX (Phase 8): the conversation opens INSIDE this public page
   // via the FloatingChatWidget (embedded ChatInterface) — never a redirect to
@@ -360,6 +400,11 @@ export function ActivitySpaceChrome({
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
         <PublicMediaGallery space={space} />
+        <RotatingMarquee
+          items={marqueeItems.length > 0 ? marqueeItems : undefined}
+          title={`لقطات من ${space.name}`}
+          className="bg-slate-950"
+        />
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
         {on('beforeAfter') && space.beforeAfter.length > 0 && (

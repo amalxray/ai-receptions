@@ -10,11 +10,14 @@ export type RotatingMarqueeItem = {
   color: string;
   accent: string;
   chip: string;
+  image?: string;
+  imageAlt?: string;
 };
 
 type RotatingMarqueeProps = {
   items?: RotatingMarqueeItem[];
   className?: string;
+  title?: string;
 };
 
 const defaultItems: RotatingMarqueeItem[] = [
@@ -65,7 +68,11 @@ const defaultItems: RotatingMarqueeItem[] = [
   },
 ];
 
-export default function RotatingMarquee({ items = defaultItems, className = '' }: RotatingMarqueeProps) {
+export default function RotatingMarquee({
+  items = defaultItems,
+  className = '',
+  title = 'قصص عياداتنا في حركة مستمرة',
+}: RotatingMarqueeProps) {
   const list = [...items, ...items];
 
   return (
@@ -73,7 +80,7 @@ export default function RotatingMarquee({ items = defaultItems, className = '' }
       <div className="mb-8 flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <div>
           <p className="text-sm font-medium tracking-[0.22em] text-slate-400 uppercase">Gallery</p>
-          <h3 className="mt-2 text-2xl font-black text-white sm:text-3xl">قصص عياداتنا في حركة مستمرة</h3>
+          <h3 className="mt-2 text-2xl font-black text-white sm:text-3xl">{title}</h3>
         </div>
         <div className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-slate-200 sm:block">
           3D Motion
@@ -112,7 +119,15 @@ export default function RotatingMarquee({ items = defaultItems, className = '' }
                 whileHover={{ y: -6, scale: isCenter ? 1.02 : 0.75 }}
               >
                 <div className={`relative overflow-hidden rounded-[22px] bg-gradient-to-br ${item.color}`}>
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />
+                  {item.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.image}
+                      alt={item.imageAlt ?? item.title}
+                      className={`absolute inset-0 h-full w-full object-cover ${isCenter ? 'saturate-100' : 'grayscale saturate-50'}`}
+                    />
+                  ) : null}
+                  <div className={`absolute inset-0 ${item.image ? 'bg-slate-950/35' : 'bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]'}`} />
                   <div className={`absolute inset-x-3 top-3 flex items-center justify-between rounded-full bg-black/15 px-2.5 py-1 text-[10px] font-bold text-white/90 backdrop-blur-sm`}>
                     <span>{item.chip}</span>
                     <span className={`inline-flex h-2 w-2 rounded-full bg-gradient-to-r ${item.accent}`} />
