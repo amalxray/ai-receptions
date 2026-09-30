@@ -143,23 +143,25 @@ type SubscriptionRow = {
 /** Approved 15C/15G-A/v2 status policy → the plan whose limits apply. */
 export function effectivePlanIdFor(row: SubscriptionRow | null): { planId: string; degraded: boolean } {
   if (!row || !row.plan_id) return { planId: 'limited', degraded: false };
+
   const status = (row.status ?? '').toLowerCase();
+  const planId = canonicalCatalogPlanId(row.plan_id);
+
   if (status === 'active') {
-    // v2 — resolve legacy ids to their successor (pro -> center, growth ->
-    // advanced, starter -> limited) so history keeps paying exactly what it did.
-    return { planId: canonicalCatalogPlanId(row.plan_id), degraded: false };
+    return { planId, degraded: false };
   }
-  // STEP 15G-A / v2 — approved trial mapping: 'trialing' (the DB enum value) —
-  // and the legacy literal 'free_trial' for old rows — with an active trial
-  // window resolve to the free_trial plan limits (now a 30-day trial). Once the
-  // window passes the clinic lands on 'limited' (degraded), matching the
-  // approved soft-downgrade policy.
+
+  // STEP 15G-A / v2 — active trial window resolves to the free_trial plan
+  // limits; once the trial expires, the clinic degrades to the soft-downgrade
+  // limited state. We accept both the DB enum value (`trialing`) and the older
+  // literal (`free_trial`) to preserve legacy compatibility.
   if (status === 'trialing' || status === 'free_trial') {
     const trialEnd = row.trial_end ? new Date(row.trial_end) : null;
     const trialExpired = trialEnd !== null && !Number.isNaN(trialEnd.getTime()) && trialEnd.getTime() < Date.now();
     if (trialExpired) return { planId: 'limited', degraded: true };
     return { planId: 'free_trial', degraded: false };
   }
+
   // past_due / unpaid / canceled / unknown → 'limited' limits (soft downgrade).
   return { planId: 'limited', degraded: true };
 }

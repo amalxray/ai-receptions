@@ -78,8 +78,8 @@ function planFor(id: string) {
   return { id, name: id, nameEn: id, pricePerMonth: 0, currency: 'usd', interval: 'month', trialDays: null, priceId: null, features: [] };
 }
 
-const FUTURE = '2026-09-30T00:00:00.000Z';
-const PAST = '2026-01-01T00:00:00.000Z';
+const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+const PAST = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
 beforeEach(() => {
   vi.clearAllMocks();

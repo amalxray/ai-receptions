@@ -40,6 +40,18 @@ function buildProfileEnvelope(data: any, settings: any = null) {
   };
 }
 
+type QueryResult<T> = { data: T | null; error: { message?: string } | null };
+
+async function queryMaybeSingle<T>(query: any): Promise<QueryResult<T>> {
+  if (typeof query?.maybeSingle === 'function') {
+    return query.maybeSingle();
+  }
+  if (typeof query?.single === 'function') {
+    return query.single();
+  }
+  return { data: null, error: { message: 'Query API is missing a terminal method' } };
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -51,20 +63,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
-    const { data: clinic, error: clinicError } = await supabaseAdmin
-      .from('clinics')
-      .select('id, name, phone, address, address_detail, city, area, website, email, slug, settings, latitude, longitude, created_at, updated_at')
-      .eq('id', clinicId)
-      .is('deleted_at', null)
-      .maybeSingle();
+    const { data: clinic, error: clinicError } = await queryMaybeSingle(
+      supabaseAdmin
+        .from('clinics')
+        .select('id, name, phone, address, address_detail, city, area, website, email, slug, settings, latitude, longitude, created_at, updated_at')
+        .eq('id', clinicId)
+        .is('deleted_at', null)
+    );
 
     if (clinicError || !clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
 
-    const { data: settings } = await supabaseAdmin
-      .from('clinic_settings')
-      .select('clinic_id, currency, timezone, locale, date_format, number_format, fiscal_year')
-      .eq('clinic_id', clinicId)
-      .maybeSingle();
+    const { data: settings } = await queryMaybeSingle(
+      supabaseAdmin
+        .from('clinic_settings')
+        .select('clinic_id, currency, timezone, locale, date_format, number_format, fiscal_year')
+        .eq('clinic_id', clinicId)
+    );
 
     return NextResponse.json({ data: buildProfileEnvelope(clinic, settings) });
   } catch (err) {
@@ -81,6 +95,10 @@ export async function PUT(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
+    if (!authorization.authorized) {
+      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
+    }
+
     const denied = roleDenied(authorization, ADMIN_ROLES);
     if (denied) {
       return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
@@ -94,6 +112,10 @@ export async function PUT(req: Request) {
 
     if (parsed.data.timezone !== undefined && parsed.data.timezone !== null && !validateIanaTimezone(parsed.data.timezone)) {
       return NextResponse.json({ error: 'INVALID_TIMEZONE' }, { status: 400 });
+    }
+
+    if (parsed.data.website !== undefined && parsed.data.website !== null && !/^https?:\/\//i.test(parsed.data.website)) {
+      return NextResponse.json({ error: 'INVALID_WEBSITE' }, { status: 400 });
     }
 
     const patch: Record<string, unknown> = {
@@ -119,13 +141,14 @@ export async function PUT(req: Request) {
     if (parsed.data.number_format !== undefined) localizationPatch.number_format = parsed.data.number_format ?? null;
     if (parsed.data.fiscal_year !== undefined) localizationPatch.fiscal_year = parsed.data.fiscal_year ?? null;
 
-    const { data: existingClinic, error: clinicError } = await supabaseAdmin
-      .from('clinics')
-      .update(Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)))
-      .eq('id', clinicId)
-      .is('deleted_at', null)
-      .select('id, name, phone, address, address_detail, city, area, website, email, slug, settings, latitude, longitude, created_at, updated_at')
-      .maybeSingle();
+    const { data: existingClinic, error: clinicError } = await queryMaybeSingle(
+      supabaseAdmin
+        .from('clinics')
+        .update(Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)))
+        .eq('id', clinicId)
+        .is('deleted_at', null)
+        .select('id, name, phone, address, address_detail, city, area, website, email, slug, settings, latitude, longitude, created_at, updated_at')
+    );
 
     if (clinicError || !existingClinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
 
@@ -145,11 +168,12 @@ export async function PUT(req: Request) {
       await supabaseAdmin.from('clinic_settings').upsert(row, { onConflict: 'clinic_id' });
     }
 
-    const { data: settings } = await supabaseAdmin
-      .from('clinic_settings')
-      .select('clinic_id, currency, timezone, locale, date_format, number_format, fiscal_year')
-      .eq('clinic_id', clinicId)
-      .maybeSingle();
+    const { data: settings } = await queryMaybeSingle(
+      supabaseAdmin
+        .from('clinic_settings')
+        .select('clinic_id, currency, timezone, locale, date_format, number_format, fiscal_year')
+        .eq('clinic_id', clinicId)
+    );
 
     logEvent('clinic_profile_updated', { clinic_id: clinicId });
     return NextResponse.json({ data: buildProfileEnvelope(existingClinic, settings) });
