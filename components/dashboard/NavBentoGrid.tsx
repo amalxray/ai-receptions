@@ -54,9 +54,80 @@ const SPAN_CLASS: Record<string, string> = {
   unit: '',
 };
 
+const ITEM_TONES: Record<string, ReturnType<typeof navTone>> = {
+  'my-payslips': {
+    ring: 'border-amber-500/30 from-amber-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(245,158,11,0.75)]',
+    bar: 'bg-amber-400',
+    chip: 'bg-amber-500/15 text-amber-100 ring-amber-500/30',
+    tab: 'from-amber-500/30 to-orange-500/10 ring-amber-400/40',
+  },
+  'knowledge-base': {
+    ring: 'border-blue-500/30 from-blue-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(59,130,246,0.75)]',
+    bar: 'bg-blue-400',
+    chip: 'bg-blue-500/15 text-blue-100 ring-blue-500/30',
+    tab: 'from-blue-500/30 to-cyan-500/10 ring-blue-400/40',
+  },
+  'public-page': {
+    ring: 'border-cyan-500/30 from-cyan-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(34,211,238,0.75)]',
+    bar: 'bg-cyan-400',
+    chip: 'bg-cyan-500/15 text-cyan-100 ring-cyan-500/30',
+    tab: 'from-cyan-500/30 to-sky-500/10 ring-cyan-400/40',
+  },
+  profile: {
+    ring: 'border-violet-500/30 from-violet-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(167,139,250,0.75)]',
+    bar: 'bg-violet-400',
+    chip: 'bg-violet-500/15 text-violet-100 ring-violet-500/30',
+    tab: 'from-violet-500/30 to-fuchsia-500/10 ring-violet-400/40',
+  },
+  'public-content': {
+    ring: 'border-pink-500/30 from-pink-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(236,72,153,0.75)]',
+    bar: 'bg-pink-400',
+    chip: 'bg-pink-500/15 text-pink-100 ring-pink-500/30',
+    tab: 'from-pink-500/30 to-rose-500/10 ring-pink-400/40',
+  },
+  ads: {
+    ring: 'border-orange-500/30 from-orange-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(251,146,60,0.75)]',
+    bar: 'bg-orange-400',
+    chip: 'bg-orange-500/15 text-orange-100 ring-orange-500/30',
+    tab: 'from-orange-500/30 to-amber-500/10 ring-orange-400/40',
+  },
+  'ai-settings': {
+    ring: 'border-emerald-500/30 from-emerald-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(16,185,129,0.75)]',
+    bar: 'bg-emerald-400',
+    chip: 'bg-emerald-500/15 text-emerald-100 ring-emerald-500/30',
+    tab: 'from-emerald-500/30 to-teal-500/10 ring-emerald-400/40',
+  },
+  'communication-settings': {
+    ring: 'border-indigo-500/30 from-indigo-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(99,102,241,0.75)]',
+    bar: 'bg-indigo-400',
+    chip: 'bg-indigo-500/15 text-indigo-100 ring-indigo-500/30',
+    tab: 'from-indigo-500/30 to-violet-500/10 ring-indigo-400/40',
+  },
+  'clinic-setup': {
+    ring: 'border-red-500/30 from-red-500/[0.14] to-slate-950/60',
+    glow: 'hover:shadow-[0_0_38px_-16px_rgba(239,68,68,0.75)]',
+    bar: 'bg-red-400',
+    chip: 'bg-red-500/15 text-red-100 ring-red-500/30',
+    tab: 'from-red-500/30 to-rose-500/10 ring-red-400/40',
+  },
+};
+
 export default function NavBentoGrid({ group, stats, variant = 'panel', onNavigate }: NavBentoGridProps) {
   const tone = navTone(group.id);
-  const columns = variant === 'drawer' ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
+  const columns =
+    variant === 'drawer'
+      ? 'grid-cols-1'
+      : group.items.length === 9
+        ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
+        : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
 
   return (
     <motion.section
@@ -66,36 +137,41 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="space-y-4"
+      className="relative space-y-5 rounded-[2rem] border border-white/5 bg-slate-950/60 p-3 shadow-[0_18px_60px_-32px_rgba(15,23,42,0.9)] backdrop-blur-xl sm:p-4"
     >
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <div className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),_transparent_34%),linear-gradient(rgba(148,163,184,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.03)_1px,transparent_1px)] bg-[size:100%_100%,18px_18px,18px_18px] opacity-80" />
+
+      <header className="relative flex flex-wrap items-center justify-between gap-3 px-1">
         <p className="flex items-center gap-2 text-sm font-semibold text-white">
-          <span aria-hidden>{group.icon}</span>
+          <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 text-lg shadow-inner shadow-white/5">
+            {group.icon}
+          </span>
           {group.label}
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${tone.chip}`}>
             {group.items.length}
           </span>
         </p>
-        <p className="text-[11px] text-slate-500">كل وحدات هذا القسم — لا شيء مخفي</p>
+        <p className="text-[11px] text-slate-400">كل وحدات هذا القسم — لا شيء مخفي</p>
       </header>
 
       {group.items.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-400">
+        <p className="relative rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-400">
           لا وحدات متاحة لصلاحيتك في هذا القسم.
         </p>
       ) : (
         <motion.div
           initial="hidden"
           animate="visible"
-          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }}
-          className={`grid gap-3 ${columns}`}
+          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
+          className={`relative grid gap-4 ${columns}`}
         >
-          {group.items.map((item) => (
+          {group.items.map((item, index) => (
             <BentoCard
               key={item.module}
               item={item}
               tone={tone}
               chip={stats ? statForModule(item.module, stats) : null}
+              index={index}
               onNavigate={onNavigate}
             />
           ))}
@@ -109,22 +185,26 @@ function BentoCard({
   item,
   tone,
   chip,
+  index,
   onNavigate,
 }: {
   item: BentoItem;
   tone: ReturnType<typeof navTone>;
   chip: ReturnType<typeof statForModule>;
+  index: number;
   onNavigate?: () => void;
 }) {
   const presentation = navPresentation(item.module);
   const { spawn, layer } = usePressRipple();
+  const cardClass = `${SPAN_CLASS[presentation.span] ?? ''} ${item.locked ? 'opacity-80' : ''}`;
 
   return (
     <motion.div
-      variants={{ hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0 } }}
-      whileHover={{ y: -4 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-      className={`${SPAN_CLASS[presentation.span] ?? ''} ${item.locked ? 'opacity-70' : ''}`}
+      variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
+      whileHover={{ y: -6, scale: 1.01 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+      className={cardClass}
     >
       <Link
         href={item.href}
@@ -132,46 +212,64 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex h-full flex-col gap-2 overflow-hidden rounded-[1.5rem] border bg-gradient-to-br p-4 transition-colors ${tone.ring} ${tone.glow} ${
-          item.active ? 'ring-2 ring-white/25' : ''
+        className={`group relative flex h-full min-h-[180px] flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br p-4 text-left shadow-[0_20px_40px_-28px_rgba(15,23,42,0.9)] transition-all duration-300 ease-out ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
+          item.active ? 'ring-2 ring-white/20 shadow-[0_0_30px_-18px_rgba(255,255,255,0.9)]' : 'ring-1 ring-white/5'
         }`}
       >
         {layer}
-        <span aria-hidden className={`absolute inset-y-0 right-0 w-1 ${tone.bar}`} />
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/6 to-transparent" />
+        <span aria-hidden className={`absolute inset-y-0 right-0 w-1 rounded-l-full ${ITEM_TONES[item.module]?.bar ?? tone.bar}`} />
+        <span className="absolute left-4 top-4 z-10 text-[10px] font-black tracking-[0.2em] text-slate-400/80">
+          {String(index + 1).padStart(2, '0')}
+        </span>
 
-        <span className="flex items-start justify-between gap-2">
+        <span className="relative z-10 flex items-start justify-between gap-3">
           <motion.span
             aria-hidden
-            className="text-2xl leading-none"
-            whileHover={{ scale: 1.12, rotate: -6 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/8 text-2xl shadow-inner shadow-white/5"
+            whileHover={{ scale: 1.1, rotate: -7 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
           >
             {presentation.emoji}
           </motion.span>
-          {item.locked ? (
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${tone.chip}`}>🔒</span>
-          ) : chip ? (
-            <motion.span
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${STAT_TONE_CLASS[chip.tone]}`}
-            >
-              {chip.text}
-            </motion.span>
-          ) : null}
+
+          <div className="flex items-center gap-2">
+            {item.locked ? (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${ITEM_TONES[item.module]?.chip ?? tone.chip}`}>🔒</span>
+            ) : chip ? (
+              <motion.span
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${STAT_TONE_CLASS[chip.tone]}`}
+              >
+                {chip.text}
+              </motion.span>
+            ) : null}
+          </div>
         </span>
 
-        <span className="mt-auto">
-          <span className="block text-base font-semibold text-white">{item.label}</span>
-          <span className="mt-1 block text-[11px] leading-5 text-slate-400">{presentation.description}</span>
+        <span className="relative z-10 mt-5 flex flex-col gap-2">
+          <span className="block text-[18px] font-bold leading-6 text-white">{item.label}</span>
+          <span className="block text-[14px] leading-5 text-slate-300/85">{presentation.description}</span>
         </span>
 
-        {item.active ? (
-          <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/90">
-            <span className={`h-1.5 w-1.5 rounded-full ${tone.bar}`} aria-hidden />
-            الوحدة الحالية
+        <span className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-4">
+          {item.active ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
+              <span className={`h-2 w-2 rounded-full ${tone.bar}`} aria-hidden />
+              الوحدة الحالية
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-200">
+              افتح
+              <span aria-hidden>→</span>
+            </span>
+          )}
+
+          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-900/50 text-base text-white/80 transition-transform duration-200 group-hover:translate-x-1">
+            →
           </span>
-        ) : null}
+        </span>
       </Link>
     </motion.div>
   );
