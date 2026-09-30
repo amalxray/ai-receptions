@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET(req: Request) {
   try {
     const { pathname, searchParams } = new URL(req.url);
-    const patientId = pathname.split('/').filter(Boolean).slice(-3, -2)[0];
+    const patientId = pathname.match(/\/patients\/([^/]+)\/communications(?:\/)?$/)?.[1];
     const clinicId = searchParams.get('clinic_id');
     const limit = Number(searchParams.get('limit') ?? '20');
 
