@@ -180,7 +180,7 @@ export default function ClinicSetupManager() {
   // Only claim "not configured" once the health-check actually answered that
   // way: while it is in flight we show the skeleton, and if it failed we fall
   // through to the real load error below.
-  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to set up your clinic." />;
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="قاعدة البيانات غير مُهيّأة على هذا النشر" description="فعّل قاعدة بيانات العيادة لإعداد عيادتك." />;
   if (error && !profile) return <EmptyState title="Service unavailable" description={error} />;
 
   return (

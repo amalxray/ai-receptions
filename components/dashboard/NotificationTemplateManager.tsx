@@ -238,8 +238,8 @@ export default function NotificationTemplateManager() {
   if (!isSupabaseConfigured && !checkFailed) {
     return (
       <EmptyState
-        title="Supabase is not configured"
-        description="Enable your clinic backend to manage templates."
+        title="قاعدة البيانات غير مُهيّأة على هذا النشر"
+        description="فعّل قاعدة بيانات العيادة لإدارة القوالب."
       />
     );
   }

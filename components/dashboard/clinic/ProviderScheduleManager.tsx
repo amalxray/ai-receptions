@@ -156,7 +156,7 @@ export default function ProviderScheduleManager() {
   }
 
   if (loading || configLoading) return <Skeleton className="h-60" />;
-  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage provider schedules." />;
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="قاعدة البيانات غير مُهيّأة على هذا النشر" description="فعّل قاعدة بيانات العيادة لإدارة مواعيد مقدمي الخدمة." />;
   if (error && providers.length === 0) return <EmptyState title="Service unavailable" description={error} />;
 
   return (

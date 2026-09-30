@@ -158,8 +158,8 @@ export default function NotificationsInbox() {
   if (!isSupabaseConfigured && !checkFailed) {
     return (
       <EmptyState
-        title="Supabase is not configured"
-        description="Enable your clinic backend to read in-app notifications."
+        title="قاعدة البيانات غير مُهيّأة على هذا النشر"
+        description="فعّل قاعدة بيانات العيادة لقراءة الإشعارات الداخلية."
       />
     );
   }

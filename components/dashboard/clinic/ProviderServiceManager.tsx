@@ -135,7 +135,7 @@ export default function ProviderServiceManager({ mode }: { mode: Mode }) {
   }
 
   if (loading || configLoading) return <Skeleton className="h-60" />;
-  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="Supabase is not configured" description="Enable your clinic backend to manage providers and services." />;
+  if (!isSupabaseConfigured && !checkFailed) return <EmptyState title="قاعدة البيانات غير مُهيّأة على هذا النشر" description="فعّل قاعدة بيانات العيادة لإدارة مقدمي الخدمة والخدمات." />;
   if (error) return <EmptyState title="Service unavailable" description={error} />;
 
   return (
