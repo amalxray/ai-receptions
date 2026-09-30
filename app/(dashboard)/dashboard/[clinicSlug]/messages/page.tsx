@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useClinicContext } from '@/lib/useClinicContext';
 import MessagingInterface from '@/components/dashboard/messaging/MessagingInterface';
 import DashboardSection from '@/components/dashboard/DashboardSection';
+import Skeleton from '@/components/ui/Skeleton';
 
 export default function MessagesPage() {
   const { clinicId, clinicSlug, loading, error } = useClinicContext();
@@ -15,8 +16,8 @@ export default function MessagesPage() {
 
   if (loading) {
     return (
-      <DashboardSection title="الرسائل" subtitle="جارٍ تحميل بيانات العيادة…">
-        <div className="text-center text-slate-500">جارٍ التحميل...</div>
+      <DashboardSection title="الرسائل">
+        <Skeleton className="mx-auto h-5 w-40" />
       </DashboardSection>
     );
   }

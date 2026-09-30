@@ -14,6 +14,7 @@ import {
 } from '@/lib/dashboard/labels-ar';
 import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientFinancialFilesPanel';
 import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
+import Skeleton from '@/components/ui/Skeleton';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
 import {
   appendPatientSession,
@@ -998,7 +999,10 @@ export default function PatientDetailPage() {
                 className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
               >
                 {commsLoading ? (
-                  <p className="text-sm text-slate-400">جارٍ تحميل سجل التواصل...</p>
+                  <div className="space-y-2" aria-busy="true" aria-label="جارٍ تحميل سجل التواصل">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
                 ) : communicationsError ? (
                   <AnimatePresence mode="wait">
                     <motion.div

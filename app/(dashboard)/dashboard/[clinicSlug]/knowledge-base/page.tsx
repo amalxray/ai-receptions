@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
+import Skeleton from '@/components/ui/Skeleton';
 import EmptyState from '@/components/dashboard/EmptyState';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
@@ -192,7 +193,7 @@ export default function KnowledgeBasePage() {
                 <input id="knowledge-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم الملف" className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20" />
                 <div className="mt-4 space-y-3">
                   {isLoading ? (
-                    <p className="text-center text-slate-400">جارٍ تحميل المستندات...</p>
+                    <Skeleton className="mx-auto h-5 w-48" />
                   ) : filteredDocuments.length > 0 ? (
                     filteredDocuments.map((doc) => (
                       <div key={doc.id} className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3 text-sm text-slate-300">
