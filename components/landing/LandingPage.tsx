@@ -19,7 +19,11 @@ import UrgencyBar from './UrgencyBar';
 import Hero from './Hero';
 import RotatingMarquee from '@/components/ui/RotatingMarquee';
 
-export default function LandingPage() {
+type LandingPageProps = {
+  galleryImages?: Array<{ id: string; title: string; image_url: string; category: string | null }>;
+};
+
+export default function LandingPage({ galleryImages = [] }: LandingPageProps) {
   const copy = useLandingCopy();
   return (
     <>
@@ -28,7 +32,7 @@ export default function LandingPage() {
       <main className="bg-landing-bg text-landing-text">
         <Hero />
         <WhySection />
-        <RotatingMarquee variant="light" />
+        <RotatingMarquee variant="light" items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined} />
         <ResultsSection />
         <ForDoctorsSection />
         <HowItWorksSection />
