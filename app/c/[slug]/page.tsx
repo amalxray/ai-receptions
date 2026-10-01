@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import {
   getPublicClinicProfile,
 } from '@/lib/services/clinicPublicProfile';
+import { buildClinicSchema } from '@/lib/services/doctorJsonLd';
 import { brandMetadataIcons } from '@/lib/services/pwaManifest';
 import { requestCache } from '@/lib/server/requestCache';
 import RotatingMarquee from '@/components/ui/RotatingMarquee';
@@ -61,6 +62,7 @@ export async function generateMetadata({
   // is registered on the Vercel project — otherwise this very page, which is
   // then self-canonical instead of canonicalising to an unreachable host.
   const canonical = resolved.pageUrl;
+
   return {
     title: resolved.name,
     description,
@@ -92,9 +94,26 @@ export default async function ClinicPublicPage({ params }: ClinicPublicPageProps
   const hasLocation = Boolean(profile.city || profile.area || profile.address);
   const hasServices = profile.services.length > 0;
   const hasHours = profile.workingHours.length > 0;
+  const jsonLd = buildClinicSchema({
+    name: profile.name,
+    pageUrl: profile.pageUrl,
+    description: profile.description,
+    logo: profile.logo,
+    phone: profile.phone ?? undefined,
+    city: profile.city,
+    area: profile.area,
+    address: profile.address,
+    socialLinks: profile.social_links,
+    services: profile.services,
+    openingHours: profile.workingHours,
+  });
 
   return (
     <main dir="rtl" className="min-h-screen bg-stone-950 text-stone-100">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\u003c') }}
+      />
       <div className="mx-auto max-w-3xl px-4 py-10">
         {/* Header */}
         <header className="mb-8 flex flex-col items-center text-center">

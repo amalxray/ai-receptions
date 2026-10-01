@@ -4,7 +4,8 @@ import {
   getDoctorPublicProfile,
   doctorPublicUrl,
 } from '@/lib/services/doctorPublicProfile';
-import { buildDoctorJsonLd } from '@/lib/services/doctorJsonLd';
+import { buildClinicSchema, buildDoctorJsonLd } from '@/lib/services/doctorJsonLd';
+import { buildHreflangLinks } from '@/lib/seo/hreflang';
 
 /**
  * PP-8B-ii — Public Doctor Profile page (/d/{publicSlug}).
@@ -64,10 +65,15 @@ export async function generateMetadata({
       ? `${profile.specialty} في ${profile.clinic.name} — احجز موعدك.`
       : `${profile.clinic.name} — احجز موعدك.`);
   const canonical = doctorPublicUrl(profile.slug);
+  const hreflang = profile.visibility === 'indexable' ? buildHreflangLinks(canonical) : undefined;
+
   return {
     title,
     description,
-    alternates: { canonical },
+    alternates: {
+      canonical,
+      ...(hreflang ? { languages: hreflang } : {}),
+    },
     // Visibility contract enforced at the page level from day one (PP-8B):
     robots:
       profile.visibility === 'noindex'
