@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { useToast } from '@/components/ui/Toast';
@@ -27,6 +28,7 @@ export default function AdsManager() {
   const { isConfigured: isSupabaseConfigured, checkFailed } = useSupabaseConfig();
   const {
     clinicId,
+    clinicSlug,
     authHeaders,
     loading: clinicLoading,
     error: clinicError,
@@ -225,6 +227,9 @@ export default function AdsManager() {
       {/* Form Modal */}
       {isFormOpen && (
         <AdFormModal
+          clinicId={clinicId}
+          clinicSlug={clinicSlug}
+          authHeaders={authHeaders}
           ad={editingId ? ads.find((a) => a.id === editingId) : undefined}
           form={form}
           setForm={setForm}
@@ -238,6 +243,9 @@ export default function AdsManager() {
 }
 
 function AdFormModal({
+  clinicId,
+  clinicSlug,
+  authHeaders,
   ad,
   form,
   setForm,
@@ -245,6 +253,9 @@ function AdFormModal({
   onClose,
   onSubmit,
 }: {
+  clinicId: string;
+  clinicSlug: string | null;
+  authHeaders: () => Promise<Record<string, string>>;
   ad?: Ad;
   form: Partial<Ad>;
   setForm: (f: Partial<Ad>) => void;
@@ -252,79 +263,72 @@ function AdFormModal({
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
 }) {
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadWarning, setUploadWarning] = useState(false);
+  const [ctaMode, setCtaMode] = useState<'url' | 'whatsapp' | 'phone' | 'booking' | 'none'>(() => {
+    const link = form.cta_link ?? '';
+    return !link ? 'none' : link.startsWith('https://wa.me/') ? 'whatsapp' : link.startsWith('tel:') ? 'phone' : link.includes('/book?slug=') ? 'booking' : 'url';
+  });
+  const [phoneTarget, setPhoneTarget] = useState(() => (form.cta_link ?? '').replace(/^(https:\/\/wa\.me\/|tel:)/, ''));
+  const bookingUrl = clinicSlug ? `/book?slug=${encodeURIComponent(clinicSlug)}` : '/book';
+
+  const handleImage = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setUploadError('اختر ملف صورة صالحاً.'); return; }
+    if (file.size > 25 * 1024 * 1024) { setUploadError('حجم الصورة يتجاوز الحد الأقصى 25MB.'); return; }
+    setUploading(true); setUploadError(null); setUploadWarning(file.size > 5 * 1024 * 1024);
+    try {
+      const headers = await authHeaders();
+      const body = new FormData(); body.append('file', file); body.append('title', form.title ?? 'إعلان'); body.append('category', 'other');
+      const response = await fetch(`/api/clinic/public-media?clinic_id=${encodeURIComponent(clinicId)}`, { method: 'POST', headers, body });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'تعذر رفع الصورة');
+      setForm({ ...form, image_url: result.data.public_url });
+    } catch (error) { setUploadError(error instanceof Error ? error.message : 'تعذر رفع الصورة'); }
+    finally { setUploading(false); }
+  };
+
+  const chooseCta = (mode: typeof ctaMode) => {
+    setCtaMode(mode);
+    setForm({ ...form, cta_link: mode === 'booking' ? bookingUrl : mode === 'none' ? null : mode === 'whatsapp' ? (phoneTarget ? `https://wa.me/${phoneTarget.replace(/\D/g, '')}` : '') : mode === 'phone' ? (phoneTarget ? `tel:${phoneTarget}` : '') : form.cta_link ?? '' });
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-        <h2 className="text-xl font-bold text-white">{ad ? 'تعديل الإعلان' : 'إنشاء إعلان جديد'}</h2>
-        <form onSubmit={onSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300">العنوان</label>
-            <input
-              type="text"
-              required
-              value={form.title ?? ''}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
-            />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <motion.div initial={{ opacity: 0, y: 18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.22 }} className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">{ad ? ' تعديل الإعلان' : 'إنشاء إعلان جديد'}</h2><button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100">✕</button></div>
+        <form onSubmit={onSubmit} className="grid max-h-[78vh] gap-6 overflow-y-auto lg:grid-cols-2">
+          <div className="space-y-4">
+            <label className="block text-sm font-medium text-slate-700">العنوان<input type="text" required value={form.title ?? ''} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" /></label>
+            {(form.title?.length ?? 0) > 60 && <p className="text-sm text-amber-700">⚠️ العنوان طويل — حاول ألا يتجاوز 60 حرفاً.</p>}
+            <label className="block text-sm font-medium text-slate-700">الوصف (اختياري)<textarea value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" /></label>
+            <div onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(e) => { e.preventDefault(); setDragging(false); void handleImage(e.dataTransfer.files[0]); }} className={`rounded-2xl border-2 border-dashed p-4 ${dragging ? 'border-violet-500 bg-violet-50' : 'border-slate-300'}`}>
+              <input ref={fileInput} hidden type="file" accept="image/*" onChange={(e) => void handleImage(e.target.files?.[0])} />
+              {form.image_url ? <img src={form.image_url} alt={form.title ?? 'معاينة الإعلان'} className="mb-3 h-36 w-full rounded-xl object-cover" /> : null}
+              {uploading ? <Skeleton className="mb-3 h-24 w-full" /> : null}
+              {form.image_url ? <button disabled={uploading} type="button" onClick={() => fileInput.current?.click()} className="ml-2 text-sm text-violet-700 disabled:opacity-50">🔄 استبدال</button> : <button disabled={uploading} type="button" onClick={() => fileInput.current?.click()} className="rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">📁 اختر صورة</button>}
+              {form.image_url ? <button type="button" onClick={() => setForm({ ...form, image_url: null })} className="text-sm text-rose-700">🗑 إزالة من الإعلان</button> : null}
+              <p className="mt-2 text-xs text-slate-500">أو اسحب الصورة وأفلتها هنا (حد 25MB).</p>
+              {uploadWarning && <p className="text-xs text-amber-700">⚠️ الصورة كبيرة وقد يستغرق رفعها وقتاً.</p>}
+              {uploadError && <p role="alert" className="mt-2 text-sm text-rose-700">{uploadError}</p>}
+            </div>
+            {form.image_url && <details><summary className="cursor-pointer text-sm text-slate-600">خيارات متقدمة: رابط الصورة</summary><input type="url" value={form.image_url ?? ''} onChange={(e) => setForm({ ...form, image_url: e.target.value || null })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800" /></details>}
+            <fieldset className="space-y-2"><legend className="mb-2 text-sm font-semibold text-slate-700">وجهة زر الإعلان</legend>
+              {([['url','🔗 صفحة/موقع'],['whatsapp','💬 واتساب'],['phone','📞 هاتف'],['booking','📅 صفحة الحجز'],['none','❌ بلا زر']] as const).map(([value,label]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-2 text-sm text-slate-700 hover:border-violet-300"><input type="radio" name="cta-mode" checked={ctaMode === value} onChange={() => chooseCta(value)} className="accent-violet-600" />{label}</label>)}
+              {ctaMode === 'url' && <input type="url" value={form.cta_link ?? ''} onChange={(e) => setForm({ ...form, cta_link: e.target.value || null })} placeholder="https://example.com" className="w-full rounded-xl border border-slate-200 px-3 py-2" />}
+              {(ctaMode === 'whatsapp' || ctaMode === 'phone') && <input type="tel" value={phoneTarget} onChange={(e) => { const value=e.target.value; setPhoneTarget(value); setForm({ ...form, cta_link: ctaMode === 'whatsapp' ? `https://wa.me/${value.replace(/\D/g,'')}` : `tel:${value}` }); }} placeholder="رقم الهاتف" className="w-full rounded-xl border border-slate-200 px-3 py-2" />}
+              {ctaMode === 'whatsapp' && phoneTarget.replace(/\D/g, '').length < 10 && <p className="text-xs text-amber-700">⚠️ رقم واتساب يبدو ناقصاً.</p>}
+            </fieldset>
+            <label className="block text-sm text-slate-700">نص الزر<input value={form.cta_text ?? ''} onChange={(e) => setForm({ ...form, cta_text: e.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
+            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={form.is_active ?? true} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />نشط</label>
+            <div className="flex gap-3"><Button variant="secondary" type="button" onClick={onClose} disabled={submitting}>إلغاء</Button><Button variant="primary" type="submit" loading={submitting}>حفظ الإعلان</Button></div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300">الوصف (اختياري)</label>
-            <textarea
-              value={form.description ?? ''}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
-              rows={3}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300">رابط الصورة (اختياري)</label>
-            <input
-              type="url"
-              value={form.image_url ?? ''}
-              onChange={(e) => setForm({ ...form, image_url: e.target.value || null })}
-              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
-              placeholder="https://..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300">نص زر CTA</label>
-            <input
-              type="text"
-              value={form.cta_text ?? ''}
-              onChange={(e) => setForm({ ...form, cta_text: e.target.value })}
-              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300">رابط CTA</label>
-            <input
-              type="text"
-              value={form.cta_link ?? ''}
-              onChange={(e) => setForm({ ...form, cta_link: e.target.value || null })}
-              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
-              placeholder="/book?slug=my-clinic"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.is_active ?? true}
-              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-              id="is_active"
-              className="h-4 w-4 rounded border-slate-600 text-cyan-500 focus:ring-cyan-500"
-            />
-            <label htmlFor="is_active" className="text-sm text-slate-300">نشط</label>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" type="button" onClick={onClose} disabled={submitting}>
-              إلغاء
-            </Button>
-            <Button variant="primary" type="submit" loading={submitting}>
-              {ad ? 'حفظ' : 'إنشاء'}
-            </Button>
-          </div>
-        </form>
-      </div>
+          <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><h3 className="mb-3 text-sm font-bold text-slate-700">معاينة مباشرة</h3><div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">{form.image_url ? <img src={form.image_url} alt="" className="h-44 w-full object-cover" /> : <div className="grid h-44 place-items-center bg-gradient-to-br from-violet-100 to-cyan-100 text-4xl">📢</div>}<div className="p-4"><h4 className="font-bold text-slate-900">{form.title || 'عنوان الإعلان'}</h4><p className="mt-2 text-sm text-slate-600">{form.description || 'وصف الإعلان سيظهر هنا.'}</p>{ctaMode !== 'none' && <span className="mt-4 inline-block rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white">{form.cta_text || 'إقرأ المزيد'}</span>}</div></div></aside>
+          </form>
+      </motion.div>
     </div>
   );
 }
