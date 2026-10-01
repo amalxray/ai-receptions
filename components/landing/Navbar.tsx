@@ -60,8 +60,8 @@ export default function Navbar() {
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
         scrolled
-          ? 'border-b border-white/10 bg-slate-950/85 backdrop-blur-md'
-          : 'border-b border-transparent'
+          ? 'border-b border-slate-200 bg-white/95 shadow-md shadow-slate-900/5 backdrop-blur-md'
+          : 'border-b border-slate-200/70 bg-white/85 backdrop-blur-md'
       }`}
     >
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
@@ -71,7 +71,7 @@ export default function Navbar() {
             <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-landing-cyan animate-pulse" />
             <span className="text-lg font-black text-white">A</span>
           </span>
-          <span className="font-heading text-lg font-extrabold tracking-tight text-white">
+          <span className="font-heading text-lg font-extrabold tracking-tight text-slate-900">
             AI-Receptions
           </span>
         </Link>
@@ -82,7 +82,7 @@ export default function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-slate-200 transition hover:text-white"
+              className="text-sm font-medium text-slate-700 transition hover:text-[#8B5CF6]"
             >
               {link.label}
             </a>
@@ -94,7 +94,7 @@ export default function Navbar() {
           {dashboardUrl ? (
             <Link
               href={dashboardUrl}
-              className="rounded-full bg-gradient-to-r from-landing-indigo to-landing-violet px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:opacity-90"
+              className="rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#22D3EE] px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
             >
               لوحة التحكم
             </Link>
@@ -102,13 +102,13 @@ export default function Navbar() {
             <>
               <Link
                 href="/login"
-                className="rounded-full border border-white/25 px-4 py-2 text-sm font-semibold text-white transition hover:border-emerald-400/70"
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#8B5CF6] hover:text-[#8B5CF6]"
               >
                 تسجيل الدخول
               </Link>
               <Link
                 href="/register"
-                className="rounded-full bg-gradient-to-r from-landing-cyan to-landing-emerald px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:opacity-90"
+                className="rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#22D3EE] px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
               >
                 ابدأ مجاناً
               </Link>
