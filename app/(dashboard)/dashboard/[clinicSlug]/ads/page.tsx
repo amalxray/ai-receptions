@@ -9,6 +9,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import Button from '@/components/ui/Button';
+import ClinicMediaLibrary from '@/components/dashboard/clinic/ClinicMediaLibrary';
 
 type Ad = {
   id: string;
@@ -268,6 +269,7 @@ function AdFormModal({
   const [dragging, setDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadWarning, setUploadWarning] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [ctaMode, setCtaMode] = useState<'url' | 'whatsapp' | 'phone' | 'booking' | 'none'>(() => {
     const link = form.cta_link ?? '';
     return !link ? 'none' : link.startsWith('https://wa.me/') ? 'whatsapp' : link.startsWith('tel:') ? 'phone' : link.includes('/book?slug=') ? 'booking' : 'url';
@@ -312,9 +314,28 @@ function AdFormModal({
               {form.image_url ? <button disabled={uploading} type="button" onClick={() => fileInput.current?.click()} className="ml-2 text-sm text-violet-700 disabled:opacity-50">🔄 استبدال</button> : <button disabled={uploading} type="button" onClick={() => fileInput.current?.click()} className="rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">📁 اختر صورة</button>}
               {form.image_url ? <button type="button" onClick={() => setForm({ ...form, image_url: null })} className="text-sm text-rose-700">🗑 إزالة من الإعلان</button> : null}
               <p className="mt-2 text-xs text-slate-500">أو اسحب الصورة وأفلتها هنا (حد 25MB).</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setIsLibraryOpen(true)} className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100">
+                  اختر من المكتبة
+                </button>
+                <button type="button" onClick={() => fileInput.current?.click()} disabled={uploading} className="rounded-full bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  رفع صورة جديدة
+                </button>
+              </div>
               {uploadWarning && <p className="text-xs text-amber-700">⚠️ الصورة كبيرة وقد يستغرق رفعها وقتاً.</p>}
               {uploadError && <p role="alert" className="mt-2 text-sm text-rose-700">{uploadError}</p>}
             </div>
+            {isLibraryOpen && (
+              <ClinicMediaLibrary
+                mode="select"
+                onClose={() => setIsLibraryOpen(false)}
+                onSelect={(item) => {
+                  setForm({ ...form, image_url: item.public_url });
+                  setIsLibraryOpen(false);
+                  setUploadError(null);
+                }}
+              />
+            )}
             {form.image_url && <details><summary className="cursor-pointer text-sm text-slate-600">خيارات متقدمة: رابط الصورة</summary><input type="url" value={form.image_url ?? ''} onChange={(e) => setForm({ ...form, image_url: e.target.value || null })} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800" /></details>}
             <fieldset className="space-y-2"><legend className="mb-2 text-sm font-semibold text-slate-700">وجهة زر الإعلان</legend>
               {([['url','🔗 صفحة/موقع'],['whatsapp','💬 واتساب'],['phone','📞 هاتف'],['booking','📅 صفحة الحجز'],['none','❌ بلا زر']] as const).map(([value,label]) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-2 text-sm text-slate-700 hover:border-violet-300"><input type="radio" name="cta-mode" checked={ctaMode === value} onChange={() => chooseCta(value)} className="accent-violet-600" />{label}</label>)}
