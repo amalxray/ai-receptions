@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import { getActivityPublicSpace, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
-import { getAppBaseUrl } from '@/lib/communications/links';
 import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import { requestCache } from '@/lib/server/requestCache';
+import { buildClinicSchema, sanitizePublicSocialLinks } from '@/lib/services/doctorJsonLd';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
@@ -88,39 +88,40 @@ export async function generateViewport({ params }: ActivitySpacePageProps): Prom
 /** AEO/GEO — per-tenant structured data: MedicalClinic (clinic / imaging
  *  center) or MedicalBusiness (dental lab), built ONLY from public fields. */
 function buildSpaceJsonLd(space: ActivityPublicSpace) {
-  const base = getAppBaseUrl();
-  const social = Object.values(space.socialLinks ?? {}).filter((v): v is string => Boolean(v));
-  const node: Record<string, unknown> = {
-    '@context': 'https://schema.org',
-    // activity_type is the single discriminator (Digital Healthcare Space):
-    '@type': space.activityType === 'dental_lab' ? 'MedicalBusiness' : 'MedicalClinic',
+  const shared = {
     name: space.name,
-    url: space.pageUrl,
-    ...(space.description ? { description: space.description } : {}),
-    ...(space.tagline ? { slogan: space.tagline } : {}),
-    ...(space.logo ? { image: space.logo } : {}),
-    ...(space.city || space.area || space.address
-      ? {
-          address: {
-            '@type': 'PostalAddress',
-            addressCountry: 'PS',
-            ...(space.city ? { addressLocality: space.city } : {}),
-            ...(space.area ? { addressRegion: space.area } : {}),
-            ...(space.address ? { streetAddress: space.address } : {}),
-          },
-        }
-      : {}),
-    ...(space.phone ? { telephone: space.phone } : {}),
-    areaServed: { '@type': 'AdministrativeArea', name: 'فلسطين' },
-    ...(space.activityType === 'imaging_center'
-      ? { medicalSpecialty: 'Radiology' }
-      : space.activityType === 'clinic'
-        ? { medicalSpecialty: 'Dentistry' }
-        : {}),
-    ...(social.length > 0 ? { sameAs: social } : {}),
-    knowsLanguage: ['ar', 'en'],
+    pageUrl: space.pageUrl,
+    description: space.description,
+    tagline: space.tagline,
+    logo: space.logo,
+    phone: space.phone,
+    city: space.city,
+    area: space.area,
+    address: space.address,
+    latitude: space.latitude,
+    longitude: space.longitude,
+    socialLinks: space.socialLinks,
+    services: space.services,
+    openingHours: space.workingHours,
   };
-  return JSON.stringify(node).replace(/</g, '\\u003c');
+
+  const sameAs = sanitizePublicSocialLinks(space.socialLinks);
+  const schema = buildClinicSchema({
+    ...shared,
+    socialLinks: space.socialLinks,
+    services: space.services,
+    openingHours: space.workingHours,
+  });
+
+  if (sameAs.length > 0) {
+    schema.sameAs = sameAs;
+  }
+
+  if (space.activityType === 'dental_lab') {
+    schema['@type'] = 'MedicalBusiness';
+  }
+
+  return JSON.stringify(schema).replace(/</g, '\u003c');
 }
 
 export default async function ActivitySpacePage({ params }: ActivitySpacePageProps) {
