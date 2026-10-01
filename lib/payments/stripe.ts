@@ -141,3 +141,24 @@ export function verifyStripeSignature(
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
+
+export async function cancelStripeSubscriptionAtPeriodEnd(subscriptionId: string): Promise<{ success: true; cancel_at?: number }> {
+  const subscription = await stripeRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: 'POST',
+    body: toForm({ cancel_at_period_end: true }),
+  });
+
+  return {
+    success: true,
+    cancel_at: typeof subscription?.cancel_at === 'number' ? subscription.cancel_at : undefined,
+  };
+}
+
+export async function resumeStripeSubscription(subscriptionId: string): Promise<{ success: true }> {
+  await stripeRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: 'POST',
+    body: toForm({ cancel_at_period_end: false }),
+  });
+
+  return { success: true };
+}

@@ -116,6 +116,11 @@ export default function SubscriptionPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState(readQuery);
+  const [notice, setNotice] = useState<{ type: 'success' | 'warning'; message: string } | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelAction, setCancelAction] = useState<'cancel' | 'resume'>('cancel');
+  const [cancelReason, setCancelReason] = useState('price');
+  const [cancelOtherText, setCancelOtherText] = useState('');
   // Billing period toggle — one control drives the whole pricing grid.
   const [period, setPeriod] = useState<'monthly' | 'yearly'>('monthly');
   // Payment gateway toggle — Lahza (Palestine/local cards) or Stripe (international).
@@ -224,6 +229,42 @@ export default function SubscriptionPage() {
     }
   }
 
+  async function updateSubscriptionStatus(action: 'cancel' | 'resume') {
+    if (!clinicId) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const headers = await authHeaders();
+      const endpoint = action === 'cancel' ? '/api/subscription/cancel' : '/api/subscription/resume';
+      const res = await fetch(`${endpoint}?clinic_id=${encodeURIComponent(clinicId)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify({
+          reason: cancelReason === 'other' ? cancelOtherText.trim() || 'other' : cancelReason,
+        }),
+      });
+
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        setErr((body as { message?: string; error?: string })?.message || (body as { message?: string; error?: string })?.error || 'تعذر تحديث الاشتراك');
+        return;
+      }
+
+      const successMessage = action === 'cancel'
+        ? 'تمت جدولة إلغاء اشتراكك حتى نهاية الدورة الحالية. ستبقى العيادة نشطة حتى انتهاء الفترة الحالية.'
+        : 'تمت استعادة اشتراكك بنجاح. تستطيع مواصلة استخدام ميزات الباقة مرة أخرى.';
+      setNotice({ type: 'success', message: successMessage });
+      setShowCancelModal(false);
+      setCancelOtherText('');
+      setCancelReason('price');
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'حدث خطأ');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function formatPrice(plan: { pricePerMonth: number; interval: string; currency: string }) {
     if (plan.pricePerMonth === 0) return 'مجاناً';
     // Centralized formatting (D-L4) — platform currency display stays single-currency.
@@ -231,6 +272,8 @@ export default function SubscriptionPage() {
     const per = plan.interval === 'year' ? '/سنة' : '/شهر';
     return `${major}${per}`;
   }
+
+  const cancelPending = Boolean(data?.subscription?.cancel_at_period_end);
 
   if (loading) return <Skeleton className="h-60" />;
   if (clinicError) return <EmptyState title="تعذر تحميل الاشتراك" description={clinicError} />;
@@ -319,6 +362,24 @@ export default function SubscriptionPage() {
         </div>
       ) : null}
 
+      {notice ? (
+        <div className={`mb-5 rounded-2xl border px-4 py-4 ${notice.type === 'success' ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-amber-500/40 bg-amber-500/10'}`}>
+          <p className={`text-sm font-semibold ${notice.type === 'success' ? 'text-emerald-200' : 'text-amber-200'}`}>
+            {notice.type === 'success' ? 'تحديث الاشتراك' : 'تنبيه'}
+          </p>
+          <p className={`mt-1 text-xs ${notice.type === 'success' ? 'text-emerald-200/75' : 'text-amber-200/75'}`}>{notice.message}</p>
+        </div>
+      ) : null}
+
+      {cancelPending ? (
+        <div className="mb-5 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-4">
+          <p className="text-sm font-semibold text-amber-200">سيُلغى الاشتراك في نهاية الدورة الحالية</p>
+          <p className="mt-1 text-xs text-amber-200/70">
+            سيُبقي الوصول مفتوحًا حتى انتهاء الفترة الحالية، ويمكنك استعادة الاشتراك في أي وقت قبل ذلك.
+          </p>
+        </div>
+      ) : null}
+
       {/* STEP 15G-C — selected plan awaiting payment: show the CHOSEN plan
           clearly instead of silently displaying the degraded Starter plan. */}
       {pendingPlanId && pendingPlanName ? (
@@ -355,6 +416,35 @@ export default function SubscriptionPage() {
             {periodEnd ? (
               <p className="mt-1 text-sm text-slate-400">تنتهي الدورة: {new Date(periodEnd).toLocaleDateString('ar')}</p>
             ) : null}
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              {!cancelPending && appliedStatus && ['active', 'trialing', 'past_due', 'unpaid'].includes(appliedStatus) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCancelAction('cancel');
+                    setShowCancelModal(true);
+                  }}
+                  disabled={busy}
+                  className="rounded-full border border-rose-500/60 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50"
+                >
+                  إلغاء الاشتراك
+                </button>
+              ) : null}
+
+              {cancelPending ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCancelAction('resume');
+                    setShowCancelModal(true);
+                  }}
+                  disabled={busy}
+                  className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+                >
+                  استعادة الاشتراك
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
         {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
@@ -496,6 +586,76 @@ export default function SubscriptionPage() {
           );
         })}
       </div>
+      {showCancelModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-[1.5rem] border border-slate-800 bg-slate-950 p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  {cancelAction === 'cancel' ? 'تأكيد إلغاء الاشتراك' : 'استعادة الاشتراك'}
+                </h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  {cancelAction === 'cancel'
+                    ? 'سيتوقف التجديد تلقائيًا بعد نهاية الدورة الحالية. ستبقى العيادة نشطة حتى ذلك الوقت.'
+                    : 'ستستأنف التجديد التلقائي فورًا وسيعود الوصول الكامل إلى الباقة.'}
+                </p>
+              </div>
+              <button type="button" onClick={() => setShowCancelModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div className="space-y-2">
+                {[
+                  { value: 'price', label: 'أسعار الباقة لا تناسبني' },
+                  { value: 'features', label: 'أحتاج ميزات مختلفة' },
+                  { value: 'usage', label: 'لا أحتاجها الآن' },
+                  { value: 'other', label: 'أخرى' },
+                ].map((option) => (
+                  <label key={option.value} className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2 text-sm text-slate-200">
+                    <input
+                      type="radio"
+                      name="cancel-reason"
+                      checked={cancelReason === option.value}
+                      onChange={() => setCancelReason(option.value)}
+                      className="h-4 w-4 accent-cyan-500"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              {cancelReason === 'other' ? (
+                <textarea
+                  value={cancelOtherText}
+                  onChange={(e) => setCancelOtherText(e.target.value)}
+                  rows={3}
+                  placeholder="أخبرنا ما الذي يسبب قرارك..."
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                />
+              ) : null}
+
+              <ul className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-sm text-slate-300">
+                <li>• الإلغاء سيؤخر التجديد فقط دون حذف البيانات أو السجلات.</li>
+                <li>• يمكن استعادة الاشتراك في أي وقت قبل انتهاء الدورة الحالية.</li>
+                <li>• لن يتأثر ملف العيادة أو الحجز الحالي.</li>
+              </ul>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowCancelModal(false)} className="rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800">إلغاء</button>
+              <button
+                type="button"
+                onClick={() => void updateSubscriptionStatus(cancelAction)}
+                disabled={busy}
+                className={`rounded-full px-4 py-2 text-sm font-semibold text-slate-950 ${cancelAction === 'cancel' ? 'bg-rose-500 hover:bg-rose-400' : 'bg-emerald-500 hover:bg-emerald-400'} disabled:opacity-50`}
+              >
+                {busy ? 'جارٍ المعالجة...' : cancelAction === 'cancel' ? 'تأكيد الإلغاء' : 'استعادة الاشتراك'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <p className="mt-6 text-xs text-slate-500">
         ملاحظة: لا يُفعَّل الاشتراك إلا بعد تأكيد مزوّد الدفع (Lahza للدفع المحلي، Stripe للدفع الدولي)
         — التحقق يتم على الخادم ولا تُقبل أي عملية لم تُدفع فعلاً.
