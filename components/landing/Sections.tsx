@@ -304,8 +304,10 @@ export function ClinicAds() {
   const items = copy.clinicAds.items;
 
   return (
-    <section id="clinic-ads" className="bg-landing-dark py-20 text-white lg:py-28">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-20 lg:py-28">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-16 top-0 -z-10 h-72 w-72 rounded-full bg-[#8B5CF6]/10 blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-16 bottom-0 -z-10 h-72 w-72 rounded-full bg-[#0EA5E9]/10 blur-3xl" />
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
           <h2 className="text-center font-heading text-3xl font-extrabold sm:text-4xl">
             {copy.clinicAds.title}
@@ -320,7 +322,7 @@ export function ClinicAds() {
             >
               {items.map((ad, i) => (
                 <div key={i} className="w-full shrink-0 px-2">
-                  <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-white p-8 text-center text-landing-text shadow-xl">
+                  <div className="flex flex-col items-center gap-4 rounded-3xl border border-[#E2E8F0] bg-white p-8 text-center text-landing-text shadow-sm transition hover:shadow-lg">
                     <span className="text-5xl">{ad.icon}</span>
                     <span className="rounded-full bg-landing-indigo/10 px-3 py-1 text-xs font-bold text-landing-indigo">
                       {ad.badge}
@@ -345,7 +347,7 @@ export function ClinicAds() {
                 aria-label={`ad ${i + 1}`}
                 onClick={() => setActive(i)}
                 className={`h-2.5 rounded-full transition-all ${
-                  active === i ? 'w-6 bg-landing-cyan' : 'w-2.5 bg-white/30'
+                  active === i ? 'w-6 bg-[#8B5CF6]' : 'w-2.5 bg-slate-200'
                 }`}
               />
             ))}

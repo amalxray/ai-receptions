@@ -43,9 +43,9 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-landing-dark-deep py-12 text-center text-white/70">
+      <footer className="border-t border-[#E2E8F0] bg-slate-50 py-12 text-center text-slate-600">
         <div className="mx-auto flex flex-col items-center gap-4 px-4 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 font-heading text-lg font-bold text-white">
+          <div className="flex items-center gap-2 font-heading text-lg font-bold text-slate-900">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-landing-indigo to-landing-violet text-sm font-black">
               A
             </span>
@@ -53,20 +53,20 @@ export default function LandingPage() {
           </div>
           {/* Quick links */}
           <nav className="flex flex-wrap items-center gap-4" aria-label="روابط سريعة">
-            <a href="/login" className="text-sm transition hover:text-white">
+            <a href="/login" className="text-sm text-slate-600 transition hover:text-slate-900">
               تسجيل الدخول
             </a>
-            <a href="/register" className="text-sm transition hover:text-white">
+            <a href="/register" className="text-sm text-slate-600 transition hover:text-slate-900">
               إنشاء حساب
             </a>
-            <a href="#faq" className="text-sm transition hover:text-white">
+            <a href="#faq" className="text-sm text-slate-600 transition hover:text-slate-900">
               الأسئلة الشائعة
             </a>
-            <a href="mailto:support@ai-receptions.com" className="text-sm transition hover:text-white">
+            <a href="mailto:support@ai-receptions.com" className="text-sm text-slate-600 transition hover:text-slate-900">
               تواصل معنا
             </a>
           </nav>
-          <p className="text-sm">{copy.footer.copyright}</p>
+          <p className="text-sm text-slate-500">{copy.footer.copyright}</p>
         </div>
       </footer>
 
@@ -79,7 +79,7 @@ export default function LandingPage() {
         className="group fixed bottom-6 left-6 z-50 flex items-center gap-2"
         aria-label={copy.footer.fabTooltip}
       >
-        <span className="pointer-events-none hidden translate-x-2 rounded-lg bg-landing-dark px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100 sm:block">
+        <span className="pointer-events-none hidden translate-x-2 rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 opacity-0 shadow-lg transition-all group-hover:translate-x-0 group-hover:opacity-100 sm:block">
           {copy.footer.fabTooltip}
         </span>
         <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-landing-indigo to-landing-violet text-white shadow-landing-btn">
