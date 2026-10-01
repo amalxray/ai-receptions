@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Skeleton from '@/components/ui/Skeleton';
 
 export default function AdminClinicDetailPage({ params }: { params: { id: string } }) {
   const [detail, setDetail] = useState<{
@@ -26,7 +27,11 @@ export default function AdminClinicDetailPage({ params }: { params: { id: string
       {error ? (
         <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>
       ) : !detail ? (
-        <p className="mt-4 text-sm text-slate-400">جارٍ التحميل...</p>
+        <div className="mt-4 space-y-3" aria-busy="true" aria-label="جارٍ تحميل بيانات المؤسسة">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-16 w-2/3" />
+        </div>
       ) : (
         <div className="mt-5 space-y-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">

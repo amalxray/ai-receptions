@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Skeleton from '@/components/ui/Skeleton';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Underline } from '@tiptap/extension-underline';
 import { Bold } from '@tiptap/extension-bold';
@@ -183,7 +184,9 @@ export default function AdminArticlesPage() {
       {notice && <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{notice}</div>}
 
       {loading ? (
-        <p className="mt-5 text-sm text-slate-400">جارٍ التحميل...</p>
+        <div className="mt-5 space-y-3" aria-busy="true" aria-label="جارٍ تحميل المقالات">
+          {[0, 1, 2].map((row) => <Skeleton key={row} className="h-12 w-full" />)}
+        </div>
       ) : filtered.length === 0 ? (
         <p className="mt-5 text-sm text-slate-500">لا توجد مقالات — أنشئ أول مقال.</p>
       ) : (

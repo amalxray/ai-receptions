@@ -592,7 +592,11 @@ export default function AppointmentsPage() {
                   disabled={!rescheduleDate || !rescheduleProviderId || rescheduleLoading}
                   className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 hover:shadow-[0_0_20px_-4px_rgba(6,182,212,0.7)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {rescheduleLoading ? 'جارٍ التحميل...' : 'عرض المواعيد المتاحة'}
+                  {rescheduleLoading ? (
+                    <span className="flex items-center gap-1.5" aria-label="جارٍ تحميل المواعيد المتاحة">
+                      {[0, 1, 2].map((bar) => <Skeleton key={bar} className="h-3 w-3 rounded-full" />)}
+                    </span>
+                  ) : 'عرض المواعيد المتاحة'}
                 </button>
               </div>
             </div>
