@@ -14,12 +14,14 @@ const TESTIMONIALS = [
 
 export default function TestimonialsSection() {
   return (
-    <section className="relative overflow-hidden bg-slate-950 py-24">
+    <section className="relative overflow-hidden bg-[#FAFBFC] py-24">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full bg-violet-200/40 blur-[100px]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-amber-100/60 blur-[100px]" />
       <div className="mx-auto max-w-6xl px-4">
         <BlurFade inView>
           <div className="mb-10 text-center">
-            <h2 className="text-3xl font-black text-white md:text-5xl">أطباء يثقون بنا</h2>
-            <p className="mt-3 text-lg text-slate-400">انضم إلى نخبة الأطباء في فلسطين</p>
+            <h2 className="text-3xl font-black text-slate-950 md:text-5xl">أطباء يثقون بنا</h2>
+            <p className="mt-3 text-lg text-slate-600">انضم إلى نخبة الأطباء في فلسطين</p>
           </div>
         </BlurFade>
         <BlurFade delay={0.2} inView>
@@ -29,21 +31,23 @@ export default function TestimonialsSection() {
         </BlurFade>
 
         <div className="relative">
-          <div className="absolute bottom-0 left-0 top-0 z-10 w-24 bg-gradient-to-l from-slate-950 to-transparent" />
-          <div className="absolute bottom-0 right-0 top-0 z-10 w-24 bg-gradient-to-r from-slate-950 to-transparent" />
+          <div className="absolute bottom-0 left-0 top-0 z-10 w-24 bg-gradient-to-l from-[#FAFBFC] to-transparent" />
+          <div className="absolute bottom-0 right-0 top-0 z-10 w-24 bg-gradient-to-r from-[#FAFBFC] to-transparent" />
           <Marquee pauseOnHover className="[--duration:45s]">
-            {TESTIMONIALS.map((t) => (
-              <div key={t.doctor_name} className="mx-4 w-96 shrink-0 rounded-2xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur transition hover:border-cyan-500/50">
-                <div className="mb-3 text-amber-400">{'⭐'.repeat(5)}</div>
-                <p className="mb-4 text-lg leading-7 text-slate-200">“{t.content}”</p>
-                <div className="flex items-center gap-3 border-t border-slate-800 pt-4">
-                  <div className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${t.color} font-bold text-white`}>{t.doctor_name.charAt(3)}</div>
-                  <div>
-                    <div className="font-bold text-white">{t.doctor_name}</div>
-                    <div className="text-xs text-slate-400">{t.specialty}</div>
+            {TESTIMONIALS.map((t, i) => (
+              <BlurFade key={t.doctor_name} delay={i * 0.08} inView>
+                <article className="group mx-4 w-96 shrink-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_16px_40px_-18px_rgba(245,158,11,0.28)]">
+                  <div aria-label="تقييم خمس نجوم" className="mb-3 text-amber-500">{'⭐'.repeat(5)}</div>
+                  <p className="mb-4 text-lg leading-7 text-slate-700">“{t.content}”</p>
+                  <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+                    <div aria-hidden="true" className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${t.color} font-bold text-white shadow-md ring-2 ring-white`}>{t.doctor_name.replace('د. ', '').charAt(0)}</div>
+                    <div>
+                      <div className="font-bold text-slate-900">{t.doctor_name}</div>
+                      <div className="text-xs text-slate-500">{t.specialty}</div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </article>
+              </BlurFade>
             ))}
           </Marquee>
         </div>
