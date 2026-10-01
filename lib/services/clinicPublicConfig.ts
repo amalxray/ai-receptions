@@ -287,6 +287,7 @@ export type PublicProfileSettings = {
 export type PublicPageConfig = PublicProfileSettings & {
   slug: string;
   public_id: string | null;
+  email?: string | null;
   /** Relative legacy path (`/{slug}`) — kept for callers that build their own origin. */
   pageUrl: string;
   /**
@@ -370,7 +371,7 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
 export async function getPublicPageConfig(clinicId: string): Promise<PublicPageConfig | null> {
   const { data, error } = await supabaseAdmin
     .from('clinics')
-    .select('id, slug, public_id, settings, activity_type')
+    .select('id, slug, public_id, email, settings, activity_type')
     .eq('id', clinicId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -438,6 +439,7 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
     ...config,
     slug: data.slug,
     public_id: data.public_id ?? null,
+    email: data.email ?? config.social_links?.email ?? null,
     pageUrl: `/${encodeURIComponent(data.slug)}`,
     canonicalUrl,
     subdomainReady,

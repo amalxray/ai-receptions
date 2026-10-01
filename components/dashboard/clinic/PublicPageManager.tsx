@@ -19,9 +19,44 @@ import ImageUpload from '@/components/ui/ImageUpload';
 type PublicServiceItem = { id: string; name: string };
 type PublicProviderItem = { id: string; name: string; title: string | null; specialty: string | null };
 
+type PublicContactField = 'whatsapp' | 'facebook' | 'instagram' | 'website' | 'email';
+
+const SOCIAL_FIELD_KEYS = ['whatsapp', 'facebook', 'instagram', 'website', 'email'] as const;
+
+export function validatePublicContactValue(field: PublicContactField, value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  switch (field) {
+    case 'email':
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+        ? null
+        : 'يرجى إدخال بريد إلكتروني صحيح';
+    case 'website':
+      return /^https?:\/\//i.test(trimmed)
+        ? null
+        : 'يرجى إدخال رابط صحيح يبدأ بـ http:// أو https://';
+    case 'whatsapp':
+      return /^\+?[0-9\s-]{7,}$/.test(trimmed)
+        ? null
+        : 'يرجى إدخال رقم واتساب صحيح';
+    case 'facebook':
+      return /^https?:\/\/(www\.)?facebook\.com\//i.test(trimmed)
+        ? null
+        : 'يرجى إدخال رابط فيسبوك صحيح';
+    case 'instagram':
+      return /^https?:\/\/(www\.)?instagram\.com\//i.test(trimmed)
+        ? null
+        : 'يرجى إدخال رابط إنستغرام صحيح';
+    default:
+      return null;
+  }
+}
+
 type PageConfig = {
   slug: string;
   public_id: string | null;
+  email?: string | null;
   pageUrl: string;
   /**
    * Public URL the owner must show, link and copy — READINESS-RESOLVED on the
@@ -92,11 +127,20 @@ const SECTION_LABELS: Record<string, string> = {
   news: 'شريط الأخبار',
 };
 
-const SOCIAL_LABELS: Record<string, string> = {
+const SOCIAL_LABELS: Record<PublicContactField, string> = {
   whatsapp: 'واتساب',
   facebook: 'فيسبوك',
   instagram: 'انستغرام',
-  website: 'البريد الإلكتروني',
+  website: 'الموقع الإلكتروني',
+  email: 'البريد الإلكتروني',
+};
+
+const SOCIAL_ICONS: Record<PublicContactField, string> = {
+  whatsapp: '💬',
+  facebook: 'f',
+  instagram: '◎',
+  website: '🌐',
+  email: '✉️',
 };
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -145,6 +189,7 @@ export default function PublicPageManager() {
     facebook: '',
     instagram: '',
     website: '',
+    email: '',
   });
 
   const load = useCallback(async () => {
@@ -168,7 +213,8 @@ export default function PublicPageManager() {
         whatsapp: data.social_links?.whatsapp ?? '',
         facebook: data.social_links?.facebook ?? '',
         instagram: data.social_links?.instagram ?? '',
-        website: data.social_links?.email ?? data.social_links?.website ?? '',
+        website: data.social_links?.website ?? '',
+        email: data.email ?? data.social_links?.email ?? '',
       });
       setError(null);
     } catch (e) {
@@ -219,6 +265,12 @@ export default function PublicPageManager() {
   );
 
   const saveInfo = () => {
+    const invalidField = SOCIAL_FIELD_KEYS.find((key) => validatePublicContactValue(key, form[key]) !== null);
+    if (invalidField) {
+      setError('يرجى تصحيح بيانات التواصل قبل الحفظ');
+      return;
+    }
+
     void update({
       description: form.description.trim() || null,
       tagline: form.tagline.trim() || null,
@@ -228,7 +280,8 @@ export default function PublicPageManager() {
         whatsapp: form.whatsapp.trim() || null,
         facebook: form.facebook.trim() || null,
         instagram: form.instagram.trim() || null,
-        email: form.website.trim() || null,
+        website: form.website.trim() || null,
+        email: form.email.trim() || null,
       },
     }).then(() => load());
   };
@@ -612,18 +665,37 @@ export default function PublicPageManager() {
       {/* Social links */}
       <Section title="روابط التواصل" subtitle="تظهر في قسم التواصل بالصفحة العامة.">
         <div className="grid gap-4 sm:grid-cols-2">
-          {(Object.keys(SOCIAL_LABELS) as (keyof typeof SOCIAL_LABELS)[]).map((key) => (
-            <label key={key} className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">{SOCIAL_LABELS[key]}</span>
-              <input
-                type="text"
-                value={form[key]}
-                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                placeholder={key === 'whatsapp' ? 'رقم واتساب' : 'https://…'}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-          ))}
+          {SOCIAL_FIELD_KEYS.map((key) => {
+            const error = validatePublicContactValue(key, form[key]);
+            const baseClass = `w-full rounded-lg border bg-white px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${error ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-300 text-slate-700 hover:border-slate-400'}`;
+            return (
+              <label key={key} className="block">
+                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <span aria-hidden="true">{SOCIAL_ICONS[key]}</span>
+                  {SOCIAL_LABELS[key]}
+                </span>
+                <input
+                  type={key === 'email' ? 'email' : key === 'website' ? 'url' : 'text'}
+                  value={form[key]}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  placeholder={
+                    key === 'email'
+                      ? 'example@clinic.com'
+                      : key === 'website'
+                        ? 'https://example.com'
+                        : key === 'whatsapp'
+                          ? '+9665...'
+                          : key === 'facebook'
+                            ? 'https://facebook.com/...'
+                            : 'https://instagram.com/...'
+                  }
+                  aria-invalid={Boolean(error)}
+                  className={baseClass}
+                />
+                {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
+              </label>
+            );
+          })}
         </div>
         <div className="flex items-center gap-6">
           <Toggle checked={config.show_phone} onChange={(v) => void update({ show_phone: v }).then(() => load())} label="إظهار رقم الهاتف" />

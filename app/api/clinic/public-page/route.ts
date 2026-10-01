@@ -38,6 +38,7 @@ const patchSchema = z.object({
       instagram: z.string().max(600).nullable().optional(),
       whatsapp: z.string().max(30).nullable().optional(),
       website: z.string().max(600).nullable().optional(),
+      email: z.string().max(255).nullable().optional(),
     })
     .optional(),
   sections: z.record(z.boolean()).optional(),

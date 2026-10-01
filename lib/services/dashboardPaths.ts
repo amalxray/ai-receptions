@@ -13,7 +13,7 @@ export const DASHBOARD_MODULES = [
   'conversations', 'leads', 'notifications', 'knowledge', 'knowledge-base',
   'ai-settings', 'communication-settings', 'clinic-setup', 'public-page',
   'ads', 'analytics', 'growth', 'financial-intelligence', 'imaging', 'lab',
-  'subscription', 'team', 'setup', 'medical-files', 'messages', 'imaging-centers',
+  'subscription', 'team', 'setup', 'medical-files', 'media-library', 'messages', 'imaging-centers',
   // imaging-center workflow modules (activity-specific capabilities)
   'imaging-requests', 'referring-clinics',
   // B20 — cross-tenant referrals (both directions: clinic ↔ imaging center)
