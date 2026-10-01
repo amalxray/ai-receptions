@@ -34,7 +34,7 @@ let nextLeadId = demoLeads.length + 1;
 // clinic_id is NOT accepted here — it is always forced to null server-side.
 const publicLeadSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(200, 'Name is too long'),
-  email: z.string().trim().email('A valid email is required').max(254, 'Email is too long'),
+  email: z.string().trim().email('A valid email is required').max(254, 'Email is too long').optional().default(''),
   phone: z.string().trim().min(6, 'Phone is required').max(30, 'Phone is too long'),
   source: z.literal('landing_page_founding_offer'),
 });

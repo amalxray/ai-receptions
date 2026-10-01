@@ -20,9 +20,10 @@ export default function LeadForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+          ...(email.trim() ? { email: email.trim() } : {}),
           source: 'landing_page_founding_offer',
-          status: 'new',
-          // clinic_id is NULL (lead before clinic registration) — handled by migration / nullable
         }),
       });
       if (res.ok) {
