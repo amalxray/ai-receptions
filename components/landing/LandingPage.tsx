@@ -28,7 +28,7 @@ export default function LandingPage() {
       <main className="bg-landing-bg text-landing-text">
         <Hero />
         <WhySection />
-        <RotatingMarquee />
+        <RotatingMarquee variant="light" />
         <ResultsSection />
         <ForDoctorsSection />
         <HowItWorksSection />

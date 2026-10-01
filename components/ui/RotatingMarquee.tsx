@@ -19,6 +19,7 @@ type RotatingMarqueeProps = {
   items?: RotatingMarqueeItem[];
   className?: string;
   title?: string;
+  variant?: 'dark' | 'light';
 };
 
 const defaultItems: RotatingMarqueeItem[] = [
@@ -73,7 +74,9 @@ export default function RotatingMarquee({
   items = defaultItems,
   className = '',
   title = 'قصص عياداتنا في حركة مستمرة',
+  variant = 'dark',
 }: RotatingMarqueeProps) {
+  const isLight = variant === 'light';
   const list = [...items, ...items];
   const viewportRef = useRef<HTMLDivElement>(null), trackRef = useRef<HTMLDivElement>(null);
 
@@ -95,11 +98,15 @@ export default function RotatingMarquee({
   }, []);
 
   return (
-    <section className={`relative overflow-hidden ${className}`}>
+    <section className={`relative overflow-hidden ${isLight ? 'bg-[#FAFBFC]' : ''} ${className}`}>
+      {isLight && <>
+        <div aria-hidden="true" className="pointer-events-none absolute -top-20 -right-20 -z-10 h-80 w-80 rounded-full bg-[#8B5CF6]/10 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -left-20 -z-10 h-80 w-80 rounded-full bg-[#0EA5E9]/10 blur-3xl" />
+      </>}
       <div className="mb-8 flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-medium tracking-[0.22em] text-slate-300 uppercase">Gallery</p>
-          <h3 className="mt-2 text-2xl font-black text-white sm:text-3xl">{title}</h3>
+          <p className={`text-sm font-medium tracking-[0.22em] uppercase ${isLight ? 'rounded-full border border-[#E2E8F0] bg-slate-100 px-3 py-1 text-slate-700' : 'text-slate-300'}`}>Gallery</p>
+          <h3 className={`mt-2 text-2xl font-black sm:text-3xl ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
         </div>
         <div className="hidden text-[11px] font-bold text-slate-500 sm:block">
           3D Motion
@@ -118,7 +125,7 @@ export default function RotatingMarquee({
               <motion.article
                 key={`${item.id}-${index}`}
                 data-marquee-card
-                className="relative w-[350px] shrink-0 overflow-hidden [--marquee-scale:0.8] sm:w-[390px] sm:[--marquee-scale:0.718]"
+                className={`relative w-[350px] shrink-0 overflow-hidden transition-shadow hover:shadow-xl [--marquee-scale:0.8] sm:w-[390px] sm:[--marquee-scale:0.718] ${isLight ? 'rounded-2xl border border-[#E2E8F0] bg-white p-3 shadow-sm' : ''}`}
                 style={{
                   transform: 'perspective(1200px) rotateY(var(--marquee-rotate, 25deg)) scale(var(--marquee-scale))',
                   opacity: 'var(--marquee-opacity, 0.5)',
@@ -137,24 +144,25 @@ export default function RotatingMarquee({
                     />
                   ) : null}
                   {!item.image && <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />}
-                  <div className="absolute inset-x-3 top-3 flex items-center justify-between text-[10px] font-bold text-white drop-shadow-md">
+                  {isLight && <div aria-hidden="true" className="absolute inset-0 bg-white/60" />}
+                  <div className={`absolute inset-x-3 top-3 flex items-center justify-between text-[10px] font-bold drop-shadow-md ${isLight ? 'text-slate-700' : 'text-white'}`}>
                     <span>{item.chip}</span>
                     <span className={`inline-flex h-2 w-2 rounded-full bg-gradient-to-r ${item.accent}`} />
                   </div>
 
                   <div className="relative flex h-[180px] items-end justify-between sm:h-[200px]">
-                    <div className="space-y-2 text-white drop-shadow-md">
-                      <div className="text-[11px] font-bold text-white/80">{item.Badge}</div>
+                    <div className={`space-y-2 drop-shadow-md ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      <div className={`text-[11px] font-bold ${isLight ? 'text-slate-700' : 'text-white/80'}`}>{item.Badge}</div>
                       <div className="text-xl font-black sm:text-2xl">{item.title}</div>
                     </div>
-                    <div className="flex h-12 w-12 items-center justify-center text-xl text-white drop-shadow-md">
+                    <div className={`flex h-12 w-12 items-center justify-center text-xl drop-shadow-md ${isLight ? 'text-slate-400' : 'text-white'}`}>
                       ✦
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-3 space-y-1">
-                  <p className="text-xs font-medium text-slate-200">{item.subtitle}</p>
+                  <p className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-slate-200'}`}>{item.subtitle}</p>
                 </div>
               </motion.article>
             ))}
