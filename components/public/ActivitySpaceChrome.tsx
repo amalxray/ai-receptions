@@ -9,6 +9,7 @@ import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
+import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 import RotatingMarquee, { type RotatingMarqueeItem } from '@/components/ui/RotatingMarquee';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
@@ -297,6 +298,7 @@ export function ActivitySpaceChrome({
   headline: string;
   children: React.ReactNode;
 }) {
+  const displayName = displayAskClinicName(space.name, space.activityType);
   const locationBits = [space.city, space.area].filter(Boolean) as string[];
   const hasAddress = Boolean(space.address);
   // Rebrand: «اطلب خدمة» → «احجز موعد» (revert: space.activityType === 'clinic' ? 'احجز موعدًا' : 'اطلب خدمة')
@@ -500,7 +502,7 @@ export function ActivitySpaceChrome({
               </p>
             </StaggerReveal>
             <StaggerReveal delay={140}>
-              <h1 className={headingCls}>{headline}</h1>
+              <h1 className={headingCls}>{displayName}</h1>
               {space.tagline && <p className="mt-3 text-lg font-medium text-brand-cyan/90">{space.tagline}</p>}
             </StaggerReveal>
             <StaggerReveal delay={200}>
@@ -536,7 +538,6 @@ export function ActivitySpaceChrome({
                 >
                   {ctaLabel}
                 </a>
-                {/* AI Chat hidden — re-enable by uncommenting
                 {showAi && (
                   <button
                     type="button"
@@ -546,18 +547,17 @@ export function ActivitySpaceChrome({
                     💬 تحدث مع الاستقبال الذكي
                   </button>
                 )}
-                */}
               </div>
             </StaggerReveal>
             <StaggerReveal delay={380}>
               <p className="mt-4 text-xs text-slate-500">
-                أتحدث مباشرة مع نظام {space.name} — بدون وسيط، على مدار الساعة.
+                أتحدث مباشرة مع نظام {displayName} — بدون وسيط، على مدار الساعة.
               </p>
             </StaggerReveal>
             <StaggerReveal delay={440}>
               <div className="mt-6 flex justify-center">
                 <div className="inline-flex rounded-2xl bg-slate-900/90 px-4 py-2 shadow-lg">
-                  <ShareButtons url={space.pageUrl} title={`${space.name} — ${headline}`} />
+                  <ShareButtons url={space.pageUrl} title={`${displayName} — ${headline}`} />
                 </div>
               </div>
             </StaggerReveal>
@@ -568,7 +568,7 @@ export function ActivitySpaceChrome({
         <div style={{ order: sectionPosition('gallery') }}>
           <RotatingMarquee
             items={marqueeItems.length > 0 ? marqueeItems : undefined}
-            title={`لقطات من ${space.name}`}
+            title={`لقطات من ${displayName}`}
           />
         </div>
 
@@ -699,7 +699,7 @@ export function ActivitySpaceChrome({
         {/* QR / share */}
         {on('qrShare') && space.publicId && (
           <div style={{ order: sectionPosition('qrShare') }}>
-            <ShareSection clinicName={space.name} publicId={space.publicId} pageUrl={space.pageUrl} />
+            <ShareSection clinicName={displayName} publicId={space.publicId} pageUrl={space.pageUrl} />
           </div>
         )}
 
@@ -711,10 +711,7 @@ export function ActivitySpaceChrome({
         </footer>
       </main>
 
-      {/* Public Chat UX (Phase 8): embedded in the SAME page, not a redirect. */}
-      {/* AI Chat hidden — re-enable by uncommenting
-      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={space.name} externalOpenSignal={chatSignal} activityType={space.activityType} />}
-      */}
+      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
 
     </div>
   );
