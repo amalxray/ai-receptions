@@ -74,8 +74,11 @@ export default function RotatingMarquee({
   variant = 'dark',
 }: RotatingMarqueeProps) {
   const isLight = variant === 'light';
-  // Duplicate the sequence once so the CSS track loops seamlessly after a full pass.
-  const list = [...items, ...items];
+  const uniqueItems = Array.from(
+    new Map(items.map((item) => [item.id || item.title || item.image || item.subtitle, item])).values(),
+  );
+  // Duplicate the unique sequence once so the CSS track loops seamlessly after a full pass.
+  const list = [...uniqueItems, ...uniqueItems];
 
   return (
     <section className={`relative overflow-hidden ${isLight ? 'bg-[#FAFBFC]' : ''} ${className}`}>
@@ -117,17 +120,22 @@ export default function RotatingMarquee({
                 onPointerLeave={handlePointerLeave}
                 className={`group relative w-56 shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl sm:w-64 ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
               >
-                <div className={`relative h-36 overflow-hidden rounded-xl sm:h-40 ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
+                <div className={`group relative h-36 overflow-hidden rounded-xl sm:h-40 ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
                   {item.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={item.image}
                       alt={item.imageAlt ?? item.title}
                       loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="h-full w-full rounded-lg object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : null}
                   {!item.image && <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />}
+                  {item.image && (
+                    <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                      {item.chip || 'معرض'}
+                    </span>
+                  )}
                 </div>
               </article>
             );

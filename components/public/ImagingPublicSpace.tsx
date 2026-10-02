@@ -59,34 +59,40 @@ export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
           <section className="mb-10">
             <h2 className="mb-3 text-xl font-semibold text-slate-800">خدمات التصوير والفحوصات</h2>
             {hasImaging ? (
-              <ul className="space-y-3">
-                {space.imagingServices.map((svc) => (
-                  <li key={svc.name} className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4">
-                    <div>
-                      <h3 className="font-semibold text-slate-800">{svc.name}</h3>
-                      {svc.description && <p className="mt-1 text-sm text-slate-500">{svc.description}</p>}
-                      {svc.modality && (
-                        <p className="mt-1 text-xs text-slate-500">الجهاز/الطريقة: {MODALITY_LABELS[svc.modality] ?? svc.modality}</p>
-                      )}
-                      {svc.duration_minutes != null && <p className="mt-1 text-xs text-slate-500">المدة: {svc.duration_minutes} دقيقة</p>}
-                      {svc.preparation_instructions && <p className="mt-1 text-xs text-slate-500">التحضير: {svc.preparation_instructions}</p>}
-                      {svc.report_policy && <p className="mt-1 text-xs text-slate-500">التقرير: {svc.report_policy}</p>}
-                      {svc.delivery_methods.length > 0 && <p className="mt-1 text-xs text-slate-500">التسليم: {svc.delivery_methods.join('، ')}</p>}
+              <ul className="grid gap-4 sm:grid-cols-2">
+                {space.imagingServices.map((svc, index) => (
+                  <li key={svc.name} className="public-card group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-white to-sky-50/80 p-5 shadow-[0_12px_35px_rgba(8,145,178,0.07)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-blue-400/20 text-3xl shadow-inner shadow-cyan-500/10 transition duration-300 group-hover:scale-110 group-hover:shadow-[0_0_24px_rgba(6,182,212,0.28)]" aria-hidden="true">
+                        {svc.modality === 'panoramic' ? '🦷' : svc.modality === 'cbct' ? '🩻' : ['📷', '✨', '🔬'][index % 3]}
+                      </span>
+                      {imagingServicePriceLabel(svc) && <span className="rounded-full border border-cyan-100 bg-white/85 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">{imagingServicePriceLabel(svc)}</span>}
                     </div>
-                    {imagingServicePriceLabel(svc) && <span className="shrink-0 font-semibold text-brand-cyan">{imagingServicePriceLabel(svc)}</span>}
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800 transition group-hover:text-brand-cyan">{svc.name}</h3>
+                      {svc.description && <p className="mt-1 text-sm text-slate-500">{svc.description}</p>}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {svc.modality && <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600">{MODALITY_LABELS[svc.modality] ?? svc.modality}</span>}
+                        {svc.duration_minutes != null && <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600">⏱ {svc.duration_minutes} دقيقة</span>}
+                      </div>
+                      {svc.preparation_instructions && <p className="mt-3 text-xs leading-relaxed text-slate-500">التحضير: {svc.preparation_instructions}</p>}
+                      {svc.report_policy && <p className="mt-1 text-xs leading-relaxed text-slate-500">التقرير: {svc.report_policy}</p>}
+                      {svc.delivery_methods.length > 0 && <p className="mt-1 text-xs leading-relaxed text-slate-500">التسليم: {svc.delivery_methods.join('، ')}</p>}
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : hasShared ? (
-              <ul className="space-y-3">
-                {space.services.map((service) => (
-                  <li key={`${service.name}-${service.duration_minutes ?? 0}`} className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4">
+              <ul className="grid gap-4 sm:grid-cols-2">
+                {space.services.map((service, index) => (
+                  <li key={`${service.name}-${service.duration_minutes ?? 0}`} className="public-card group rounded-3xl border border-cyan-100 bg-gradient-to-br from-white to-sky-50/80 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]">
                     <div>
-                      <h3 className="font-semibold text-slate-800">{service.name}</h3>
+                      <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-cyan-500/10 text-3xl transition group-hover:scale-110 group-hover:shadow-[0_0_24px_rgba(6,182,212,0.25)]" aria-hidden="true">{['🩺', '🦷', '✨'][index % 3]}</div>
+                      <h3 className="text-lg font-bold text-slate-800 group-hover:text-brand-cyan">{service.name}</h3>
                       {service.description && <p className="mt-1 text-sm text-slate-500">{service.description}</p>}
                     </div>
                     {service.price != null && (
-                      <span className="shrink-0 font-semibold text-brand-cyan">
+                      <span className="mt-3 inline-flex rounded-full bg-white/85 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">
                         {service.price > 0 ? `${service.price} ₪` : 'حسب حالة الفحص'}
                       </span>
                     )}
@@ -103,17 +109,21 @@ export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
           {/* 7) How the examination works — generic honest flow, no invented details */}
           <section className="mb-10">
             <h2 className="mb-3 text-xl font-semibold text-slate-800">كيف تتم الفحصية؟</h2>
-            <ol className="grid gap-3 sm:grid-cols-3">
-              <li className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-800">١. الطلب</p>
+            <ol className="relative grid gap-4 sm:grid-cols-3">
+              <div aria-hidden="true" className="absolute right-[16%] top-7 hidden h-0.5 w-[68%] bg-gradient-to-l from-cyan-300 via-teal-400 to-emerald-300 sm:block" />
+              <li className="relative rounded-3xl border border-cyan-100 bg-gradient-to-br from-white to-cyan-50/70 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(8,145,178,0.16)]">
+                <span className="relative z-10 mb-4 grid h-14 w-14 place-items-center rounded-full border-4 border-white bg-gradient-to-br from-cyan-500 to-teal-500 text-xl font-black text-white shadow-[0_0_24px_rgba(6,182,212,0.35)]">١</span>
+                <p className="text-base font-bold text-slate-800">📋 الطلب</p>
                 <p className="mt-1 text-sm text-slate-500">اختر الفحص المطلوب عبر الحجز أو الاستقبال الذكي، أو أحضر إحالة عيادتك.</p>
               </li>
-              <li className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-800">٢. الفحص</p>
+              <li className="relative rounded-3xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/70 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(13,148,136,0.16)]">
+                <span className="relative z-10 mb-4 grid h-14 w-14 place-items-center rounded-full border-4 border-white bg-gradient-to-br from-teal-500 to-emerald-500 text-xl font-black text-white shadow-[0_0_24px_rgba(20,184,166,0.35)]">٢</span>
+                <p className="text-base font-bold text-slate-800">🩻 الفحص</p>
                 <p className="mt-1 text-sm text-slate-500">يُلتقط التصوير في الموعد المحدد وفق تعليمات التحضير الخاصة بكل فحص.</p>
               </li>
-              <li className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-800">٣. التقرير والتسليم</p>
+              <li className="relative rounded-3xl border border-emerald-100 bg-gradient-to-br from-white to-emerald-50/70 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(16,185,129,0.16)]">
+                <span className="relative z-10 mb-4 grid h-14 w-14 place-items-center rounded-full border-4 border-white bg-gradient-to-br from-emerald-500 to-cyan-500 text-xl font-black text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]">٣</span>
+                <p className="text-base font-bold text-slate-800">📤 التقرير والتسليم</p>
                 <p className="mt-1 text-sm text-slate-500">يُسلّم التقرير والصور بالطريقة المتفق عليها (طباعة/واتساب/إيميل/DICOM حسب الفحص).</p>
               </li>
             </ol>
