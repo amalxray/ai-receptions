@@ -393,13 +393,40 @@ export default function PatientsPage() {
   );
 
   const smartAlerts = useMemo(
-    () => [
-      { icon: '⚠️', label: '3 مرضى بأدين متأخرة', tone: 'rose', description: 'إجراءات متابعة مطلوبة خلال 24 ساعة' },
-      { icon: '🩻', label: '2 بانتظار نتائج أشعة', tone: 'violet', description: 'نتائج قادمة من المعمل أو الأشعة' },
-      { icon: '📅', label: '5 مرضى جدد هذا الأسبوع', tone: 'cyan', description: 'تحديثات حديثة في قائمة المرضى' },
-      { icon: '💬', label: '1 رسالة غير مقروءة', tone: 'amber', description: 'رسالة جديدة من المريض أو من العيادة' },
-    ],
-    []
+    () => {
+      const base = `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}`;
+      return [
+        {
+          icon: '⚠️',
+          label: '3 مديونيات متأخرة',
+          tone: 'rose',
+          description: 'إجراءات متابعة مطلوبة خلال 24 ساعة',
+          href: `${base}/patients?filter=overdue`,
+        },
+        {
+          icon: '🩻',
+          label: '2 بانتظار نتائج أشعة',
+          tone: 'violet',
+          description: 'نتائج قادمة من المعمل أو الأشعة',
+          href: `${base}/imaging?filter=pending`,
+        },
+        {
+          icon: '📅',
+          label: '5 مرضى جدد هذا الأسبوع',
+          tone: 'cyan',
+          description: 'تحديثات حديثة في قائمة المرضى',
+          href: `${base}/patients?filter=recent`,
+        },
+        {
+          icon: '💬',
+          label: '1 رسالة غير مقروءة',
+          tone: 'amber',
+          description: 'رسالة جديدة من المريض أو من العيادة',
+          href: `${base}/messages`,
+        },
+      ];
+    },
+    [clinicSlug]
   );
 
   const recentActivities = useMemo(
@@ -562,32 +589,33 @@ export default function PatientsPage() {
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {smartAlerts.map((alert) => (
-                    <motion.div
-                      key={alert.label}
-                      whileHover={{ y: -4, scale: 1.01 }}
-                      whileTap={{ scale: 0.98 }}
-                      transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                      className={`group relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 ${
-                        alert.tone === 'rose'
-                          ? 'from-rose-500/10 to-red-500/5'
-                          : alert.tone === 'violet'
-                            ? 'from-violet-500/10 to-indigo-500/5'
-                            : alert.tone === 'cyan'
-                              ? 'from-cyan-500/10 to-sky-500/5'
-                              : 'from-amber-500/10 to-orange-500/5'
-                      }`}
-                    >
-                      <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                      <div className="relative z-10 flex items-start gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
-                          {alert.icon}
-                        </span>
-                        <div>
-                          <p className="text-sm font-bold text-white">{alert.label}</p>
-                          <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
+                    <Link key={alert.label} href={alert.href} className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+                      <motion.div
+                        whileHover={{ y: -4, scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+                        className={`relative cursor-pointer overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 transition-colors duration-200 hover:border-slate-700 hover:bg-slate-900/80 ${
+                          alert.tone === 'rose'
+                            ? 'from-rose-500/10 to-red-500/5'
+                            : alert.tone === 'violet'
+                              ? 'from-violet-500/10 to-indigo-500/5'
+                              : alert.tone === 'cyan'
+                                ? 'from-cyan-500/10 to-sky-500/5'
+                                : 'from-amber-500/10 to-orange-500/5'
+                        }`}
+                      >
+                        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                        <div className="relative z-10 flex items-start gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
+                            {alert.icon}
+                          </span>
+                          <div>
+                            <p className="text-sm font-bold text-white">{alert.label}</p>
+                            <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
+                          </div>
                         </div>
-                      </div>
-                    </motion.div>
+                      </motion.div>
+                    </Link>
                   ))}
                 </div>
               </div>
