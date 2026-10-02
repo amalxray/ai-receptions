@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { rateLimit, clientIp } from '@/lib/rateLimit';
 import { answerAsk } from '@/lib/services/askAssistant';
+import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
 
 // The reply waits on the AI provider (bounded retry + failover with backoff:
 // up to 2 attempts per candidate and 1s→3s pauses). The platform default
@@ -10,6 +11,10 @@ export const maxDuration = 30;
 
 const bodySchema = z.object({
   message: z.string().min(1).max(1000),
+  history: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1).max(700),
+  })).max(12).optional().default([]),
   location: z
     .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), city: z.string().max(120).optional().nullable() })
     .nullable()
@@ -29,11 +34,12 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = bodySchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: 'بيانات غير صحيحة', details: parsed.error.errors }, { status: 400 });
-    const { message, location, conversation_id } = parsed.data;
+    const { message, location, history } = parsed.data;
 
     const reply = await answerAsk({
       message,
       location: location ? { lat: location.lat, lng: location.lng, city: location.city ?? null } : null,
+      history: history as AskConversationMessage[],
     });
 
     // NOTE: the /ask chat keeps history client-side (conversation_id is

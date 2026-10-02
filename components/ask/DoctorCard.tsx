@@ -1,6 +1,8 @@
 'use client';
 
+import React from 'react';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
+import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 
 export type PartnerClinic = {
   id: string;
@@ -26,6 +28,7 @@ const TYPE_EMOJI: Record<string, string> = { clinic: '🏥', imaging_center: '�
 const TYPE_LABEL: Record<string, string> = { clinic: 'عيادة أسنان', imaging_center: 'مركز أشعة', dental_lab: 'مختبر' };
 
 export function DoctorCard({ clinic }: { clinic: PartnerClinic }) {
+  const displayName = displayAskClinicName(clinic.name, clinic.activity_type);
   const city = clinic.city?.trim();
   const address = clinic.address_detail?.trim();
   const mapsUrl = clinicMapsUrl({
@@ -42,7 +45,7 @@ export function DoctorCard({ clinic }: { clinic: PartnerClinic }) {
       {clinic.distance_km != null && <span className="doctor-distance">📍 {clinic.distance_km} كم</span>}
       <div className="doctor-image">{TYPE_EMOJI[clinic.activity_type ?? 'clinic'] ?? '🏥'}</div>
       <div className="doctor-info">
-        <span>{clinic.name}</span>
+        <span>{displayName}</span>
         <p>{TYPE_LABEL[clinic.activity_type ?? 'clinic'] ?? ''}{city ? ` — ${city}` : ''}</p>
         {address && <p>{address}</p>}
         {!city && !address && <p className="text-slate-500">الموقع قيد التحديد</p>}

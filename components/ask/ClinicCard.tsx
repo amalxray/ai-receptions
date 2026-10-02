@@ -1,6 +1,8 @@
 'use client';
 
+import React from 'react';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
+import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 
 export type SuggestedClinic = {
   id: string;
@@ -26,6 +28,7 @@ const TYPE_LABEL: Record<string, string> = {
 /** Clinic suggestion card for /ask — details + distance + maps + booking. */
 export default function ClinicCard({ clinic }: { clinic: SuggestedClinic }) {
   const mapsUrl = clinicMapsUrl(clinic);
+  const displayName = displayAskClinicName(clinic.name, clinic.type);
   const city = clinic.city?.trim();
   const address = clinic.address?.trim();
 
@@ -33,7 +36,7 @@ export default function ClinicCard({ clinic }: { clinic: SuggestedClinic }) {
     <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="font-bold text-slate-800">{clinic.name}</p>
+          <p className="font-bold text-slate-800">{displayName}</p>
           <p className="text-xs text-slate-600">{TYPE_LABEL[clinic.type] ?? clinic.type}{city ? ` · ${city}` : ''}</p>
         </div>
         {clinic.distance_km != null && (

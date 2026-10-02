@@ -79,6 +79,20 @@ describe('B1 — /ask provider registration + failover', () => {
     expect(mockState.lastParams.maxTokens).toBe(220);
   });
 
+  it('keeps the requested imaging service in the prompt across follow-up turns', async () => {
+    await answerAsk({
+      message: 'كم سعرها؟',
+      location: null,
+      history: [
+        { role: 'user', content: 'بدي تصوير أشعة بانوراما' },
+        { role: 'assistant', content: 'أكيد، هل تبحث عن أقرب مركز؟' },
+      ],
+    });
+
+    expect(mockState.lastParams.prompt).toContain('تصوير أشعة بانوراما');
+    expect(mockState.lastParams.prompt).toContain('لا تقفز إلى ترميم الأسنان أو جراحة اللثة');
+  });
+
   it('falls back to the rule-based reply when no provider is registered', async () => {
     mockState.provider = null;
 

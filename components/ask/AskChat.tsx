@@ -1,11 +1,13 @@
 'use client';
 
+import React from 'react';
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import ClinicCard, { type SuggestedClinic } from './ClinicCard';
 import { sendGAEvent } from '@next/third-parties/google';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import type { PatientLocation } from './LocationPicker';
+import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
@@ -59,12 +61,16 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       }
       return [...m, { role: 'user', content: message }];
     });
+    const history: AskConversationMessage[] = messages
+      .slice(-12)
+      .filter((item) => item.content.trim())
+      .map((item) => ({ role: item.role, content: item.content.slice(0, 700) }));
     setSending(true);
     try {
       const res = await fetch('/api/public/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, location: locOverride ?? location }),
+        body: JSON.stringify({ message, location: locOverride ?? location, history }),
       });
       const json = await res.json();
       const clinics = (json.suggested_clinics ?? []) as SuggestedClinic[];
