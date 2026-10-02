@@ -2,6 +2,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrls } from '@/lib/vercel/tenantLinks';
+import { prioritizeAskClinics } from '@/lib/services/askClinicDirectory';
 
 export async function getAskPageData() {
   const [settingsRes, tipsRes, articlesRes, storiesRes, faqRes, clinicsRes, galleryRes, clinicsCount, patientsCount, citiesCount] = await Promise.all([
@@ -10,7 +11,7 @@ export async function getAskPageData() {
     supabaseAdmin.from('platform_articles').select('id, title, slug, excerpt, category, published_at, featured_image:featured_image_id(image_url)').eq('status', 'published').order('published_at', { ascending: false }).limit(6),
     supabaseAdmin.from('platform_stories').select('id, patient_name, patient_age, patient_city, content, image_url, rating').eq('is_active', true).order('sort_order').limit(12),
     supabaseAdmin.from('platform_faq').select('id, question, answer').eq('is_active', true).order('sort_order').limit(20),
-    supabaseAdmin.from('clinics').select('id, name, slug, city, activity_type, latitude, longitude').is('deleted_at', null).not('latitude', 'is', null).limit(6),
+    supabaseAdmin.from('clinics').select('id, name, slug, city, address_detail, activity_type, latitude, longitude, google_maps_url').is('deleted_at', null).order('slug', { ascending: true }).limit(100),
     supabaseAdmin.from('platform_gallery').select('id, title, image_url').eq('is_active', true).order('sort_order').limit(12),
     supabaseAdmin.from('clinics').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('patients').select('*', { count: 'exact', head: true }).is('deleted_at', null),
@@ -20,7 +21,9 @@ export async function getAskPageData() {
   for (const row of settingsRes.data ?? []) settings[row.key] = row.value;
   // Every partner card links to its canonical tenant subdomain (Phase E): built
   // here, on the server, so the client never has to know the domain shape.
-  const clinics = clinicsRes.data ?? [];
+  // Pin the real imaging center ahead of demo/other tenants; the database query
+  // is bounded and deterministic, and the client still receives the same row id.
+  const clinics = prioritizeAskClinics(clinicsRes.data ?? []);
   // Every partner card links to a URL that is reachable RIGHT NOW (P1): the
   // canonical tenant subdomain when its host is registered on the Vercel
   // project, otherwise the compatibility page `/c/{slug}`. ONE Vercel listing

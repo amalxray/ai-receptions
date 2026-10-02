@@ -105,15 +105,32 @@ export async function runNearbyClinics(lat: number, lng: number, radiusKm = 50, 
     p_limit: Math.min(Math.max(Number(limit), 1), 10),
   });
   if (error) throw new Error(error.message);
-  return (data ?? []) as {
+  const rows = (data ?? []) as {
     id: string;
     name: string;
     slug: string;
     activity_type: string;
     address_line: string | null;
     city: string | null;
+    latitude: number | null;
+    longitude: number | null;
     phone: string | null;
     google_maps_url: string | null;
     distance_km: number;
   }[];
+  if (rows.length === 0) return rows;
+
+  // The legacy RPC does not return coordinates. Re-read them by the exact
+  // returned ids so the map pin can never drift to another same-name clinic.
+  const { data: locations } = await supabaseAdmin
+    .from('clinics')
+    .select('id, latitude, longitude')
+    .in('id', rows.map((row) => row.id))
+    .is('deleted_at', null);
+  const coordinatesById = new Map((locations ?? []).map((row) => [row.id, row]));
+  return rows.map((row) => ({
+    ...row,
+    latitude: coordinatesById.get(row.id)?.latitude ?? null,
+    longitude: coordinatesById.get(row.id)?.longitude ?? null,
+  }));
 }

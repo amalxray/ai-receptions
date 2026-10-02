@@ -34,6 +34,8 @@ export type SuggestedClinic = {
   type: string;
   address: string | null;
   city: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   phone: string | null;
   google_maps_url: string | null;
   distance_km: number | null;
@@ -64,6 +66,8 @@ async function nearbySuggestions(location: AskLocation, limit = 3) {
       type: r.activity_type,
       address: r.address_line ?? null,
       city: r.city ?? null,
+      latitude: r.latitude ?? null,
+      longitude: r.longitude ?? null,
       phone: r.phone ?? null,
       google_maps_url: r.google_maps_url ?? null,
       distance_km: r.distance_km != null ? Number(r.distance_km) : null,
