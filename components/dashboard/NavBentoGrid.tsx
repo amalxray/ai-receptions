@@ -125,9 +125,7 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
   const columns =
     variant === 'drawer'
       ? 'grid-cols-1'
-      : group.items.length === 9
-        ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
-        : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
+      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
   return (
     <motion.section
@@ -163,7 +161,7 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
           initial="hidden"
           animate="visible"
           variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-          className={`relative grid gap-3 ${columns}`}
+          className={`relative grid gap-4 ${columns}`}
         >
           {group.items.map((item, index) => (
             <BentoCard
@@ -212,8 +210,8 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex h-full min-h-[120px] flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-gradient-to-br p-4 text-left shadow-[0_20px_40px_-28px_rgba(15,23,42,0.9)] transition-all duration-300 ease-out ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
-          item.active ? 'ring-2 ring-white/20 shadow-[0_0_30px_-18px_rgba(255,255,255,0.9)]' : 'ring-1 ring-white/5'
+        className={`group relative flex h-full min-h-[116px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
+          item.active ? 'ring-2 ring-teal-500/30 shadow-[0_0_30px_-18px_rgba(45,212,191,0.8)]' : 'ring-1 ring-slate-200/80 dark:ring-white/5'
         }`}
       >
         {layer}
@@ -249,26 +247,17 @@ function BentoCard({
         </span>
 
         <span className="relative z-10 mt-3 flex flex-col gap-1">
-          <span className="block text-lg font-bold leading-6 text-white">{item.label}</span>
-          <span className="block text-sm leading-5 text-slate-300/85">{presentation.description}</span>
+          <span className="block text-lg font-bold leading-6 text-slate-900 dark:text-white">{item.label}</span>
+          <span className="block text-sm leading-5 text-slate-500 dark:text-slate-300/85">{presentation.description}</span>
         </span>
 
-        <span className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">
+        <span className="relative z-10 mt-auto pt-3">
           {item.active ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-100">
               <span className={`h-2 w-2 rounded-full ${tone.bar}`} aria-hidden />
               الوحدة الحالية
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-200">
-              افتح
-              <span aria-hidden>→</span>
-            </span>
-          )}
-
-          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-900/50 text-base text-white/80 transition-transform duration-200 group-hover:translate-x-1">
-            →
-          </span>
+          ) : null}
         </span>
       </Link>
     </motion.div>
