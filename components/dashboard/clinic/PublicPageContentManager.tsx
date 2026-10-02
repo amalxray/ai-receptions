@@ -27,6 +27,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import Link from 'next/link';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import Skeleton from '@/components/ui/Skeleton';
@@ -742,9 +743,10 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
 
 export default function PublicPageContentManager() {
   const { isConfigured, checkFailed } = useSupabaseConfig();
-  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [tab, setTab] = useState<TabId>('theme');
   const [theme, setTheme] = useState<ThemeForm>(DEFAULT_THEME);
+  const [canonicalUrl, setCanonicalUrl] = useState<string | null>(null);
   const [themeSaving, setThemeSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -757,8 +759,9 @@ export default function PublicPageContentManager() {
       const headers = await authHeaders();
       const res = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
       if (!res.ok) return;
-      const { data } = (await res.json()) as { data?: { theme?: Partial<ThemeForm> } };
+      const { data } = (await res.json()) as { data?: { theme?: Partial<ThemeForm>; canonicalUrl?: string } };
       if (data?.theme) setTheme({ ...DEFAULT_THEME, ...data.theme });
+      if (data?.canonicalUrl) setCanonicalUrl(data.canonicalUrl);
     } catch {
       /* keep safe defaults on network failure */
     }
@@ -789,6 +792,8 @@ export default function PublicPageContentManager() {
       setThemeSaving(false);
     }
   };
+
+  const previewUrl = canonicalUrl ?? (clinicSlug ? `/c/${encodeURIComponent(clinicSlug)}` : null);
 
   if (!isConfigured && !checkFailed) return null;
   if (clinicLoading) return <Skeleton className="h-40 w-full" />;
@@ -860,12 +865,24 @@ export default function PublicPageContentManager() {
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-slate-500">تغييرات معلقة</div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-300 hover:scale-[1.02] hover:border-slate-400"
-            >
-              معاينة الصفحة
-            </button>
+            {previewUrl ? (
+              <Link
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-300 hover:scale-[1.02] hover:border-slate-400"
+              >
+                معاينة الصفحة
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400"
+              >
+                معاينة الصفحة
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void saveTheme()}

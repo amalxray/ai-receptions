@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
@@ -9,6 +10,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { Magnetic } from '@/components/ui/magnetic';
+import { toast } from '@/components/ui/Toast';
 import PatientPanel, { type PatientPanelAppointment } from '@/components/dashboard/patients/PatientPanel';
 import PatientSearchBar from '@/components/dashboard/patients/PatientSearchBar';
 import PatientSearchResult from '@/components/dashboard/patients/PatientSearchResult';
@@ -75,6 +77,7 @@ type DailySummary = {
 const EMPTY_SUMMARY: DailySummary = { appointmentsToday: null, newFiles: null, outstanding: null };
 
 export default function PatientsPage() {
+  const router = useRouter();
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
 
   /** Rows the API returned for the CURRENT debounced query (bounded by `limit`). */
@@ -429,6 +432,19 @@ export default function PatientsPage() {
     [clinicSlug]
   );
 
+  const handleAlertClick = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>, href: string, label: string) => {
+      toast.info(`جاري فتح ${label}...`, {
+        title: 'تنبيه ذكي',
+        duration: 2500,
+      });
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      router.push(href);
+    },
+    [router]
+  );
+
   const recentActivities = useMemo(
     () => [
       { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
@@ -564,6 +580,10 @@ export default function PatientsPage() {
                         setFormState({ ...EMPTY_PATIENT_FORM });
                         setFormError(null);
                         setIsFormOpen(true);
+                        toast.info('جاري فتح نموذج إضافة مريض...', {
+                          title: 'إجراء سريع',
+                          duration: 2500,
+                        });
                       }}
                     >
                       {action.label}
@@ -572,7 +592,18 @@ export default function PatientsPage() {
                 }
 
                 return (
-                  <QuickActionPill key={action.label} href={action.href} className={classes}>
+                  <QuickActionPill
+                    key={action.label}
+                    href={action.href}
+                    className={classes}
+                    onClick={() => {
+                      toast.info(`جاري فتح ${action.label}...`, {
+                        title: 'إجراء سريع',
+                        duration: 2500,
+                      });
+                      router.push(action.href);
+                    }}
+                  >
                     {action.label}
                   </QuickActionPill>
                 );
@@ -589,7 +620,12 @@ export default function PatientsPage() {
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {smartAlerts.map((alert) => (
-                    <Link key={alert.label} href={alert.href} className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+                    <Link
+                      key={alert.label}
+                      href={alert.href}
+                      onClick={(event) => handleAlertClick(event, alert.href, alert.label)}
+                      className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    >
                       <motion.div
                         whileHover={{ y: -4, scale: 1.01 }}
                         whileTap={{ scale: 0.98 }}
@@ -947,7 +983,16 @@ function QuickActionPill({
 
   if (href) {
     return (
-      <Link href={href} onPointerDown={spawn} className={sharedClassName}>
+      <Link
+        href={href}
+        onPointerDown={spawn}
+        onClick={(event) => {
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          onClick?.();
+        }}
+        className={sharedClassName}
+      >
         {content}
       </Link>
     );
