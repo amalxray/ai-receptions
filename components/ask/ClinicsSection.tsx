@@ -10,8 +10,8 @@ export default function ClinicsSection({ clinics }: { clinics: PartnerClinic[] }
     <section className="py-20">
       <div className="mx-auto max-w-5xl px-4">
         <BlurFade inView>
-          <h2 className="text-center text-3xl md:text-4xl font-black text-white mb-3">🏥 العيادات والمراكز الشريكة</h2>
-          <p className="mb-12 text-center text-slate-400">أكثر من {clinics.length} عيادة ومركز جاهزة لاستقبالك</p>
+          <h2 className="mb-3 text-center text-3xl font-black text-slate-900 md:text-4xl">🏥 عيادات ومراكز موثوقة بالقرب منك</h2>
+          <p className="mb-12 text-center text-slate-600">اختر العيادة المناسبة وابدأ بخطوة حجز سهلة</p>
         </BlurFade>
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
           {clinics.slice(0, 6).map((c, i) => (
@@ -21,7 +21,7 @@ export default function ClinicsSection({ clinics }: { clinics: PartnerClinic[] }
           ))}
         </div>
         <p className="mt-10 text-center text-sm">
-          <Link href="/discover" className="text-cyan-400 hover:text-cyan-300">تصفح كل العيادات ←</Link>
+          <Link href="/discover" className="font-semibold text-blue-700 hover:text-blue-800">اعثر على العيادة المناسبة ←</Link>
         </p>
       </div>
     </section>

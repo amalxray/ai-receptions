@@ -6,15 +6,10 @@ import AskChat from '@/components/ask/AskChat';
 import WhatsAppFloat from '@/components/ask/WhatsAppFloat';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import ShareButtons from '@/components/ask/ShareButtons';
-import { Spotlight } from '@/components/ui/spotlight';
-import { Meteors } from '@/components/ui/meteors';
-import { TextShimmer } from '@/components/ui/text-shimmer';
 import { TextLoop } from '@/components/ui/text-loop';
 import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
-import { NumberTicker } from '@/components/ui/number-ticker';
 import { BlurFade } from '@/components/ui/blur-fade';
-import { ShineBorder } from '@/components/ui/shine-border';
 import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
 import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
@@ -41,17 +36,16 @@ export type AskClientData = {
 };
 
 const QUICK_CARDS = [
-  { text: 'ألم أسنان', emoji: '😖', gradient: 'linear-gradient(180deg,#cecb00 0%,#ef4949 100%)' },
-  { text: 'تنظيف أسنان', emoji: '✨', gradient: 'linear-gradient(180deg,#31c300 0%,#ab7811 100%)' },
-  { text: 'تقويم أسنان', emoji: '😁', gradient: 'linear-gradient(180deg,#ff1024 0%,#ffb34a 100%)' },
-  { text: 'زراعة أسنان', emoji: '🦷', gradient: 'linear-gradient(180deg,#0095b7 0%,#5012ba 100%)' },
-  { text: 'بانوراما', emoji: '🩻', gradient: 'linear-gradient(180deg,#c329c9 0%,#2b5dff 100%)' },
-  { text: 'حالة طارئة', emoji: '🚨', gradient: 'linear-gradient(180deg,#c800ff 0%,#ff076a 51%,#ff6c6c 100%)' },
+  { text: 'ألم أسنان', emoji: '😖' },
+  { text: 'تنظيف أسنان', emoji: '✨' },
+  { text: 'تقويم أسنان', emoji: '😁' },
+  { text: 'زراعة أسنان', emoji: '🦷' },
+  { text: 'بانوراما', emoji: '🩻' },
+  { text: 'حالة طارئة', emoji: '🚨' },
 ];
 
 export default function AskClient({ settings, tips, articles, stories, faq, clinics, gallery, stats }: AskClientData) {
   const hero = (settings.hero ?? {}) as { title: string; subtitle: string; logo: string; assistant_name: string };
-  const colors = (settings.colors ?? {}) as { primary?: string; secondary?: string; heading?: string; warning?: string };
   const sections = (settings.sections ?? {}) as Record<string, boolean>;
   const questions = (settings.questions ?? []) as string[];
   const on = (k: string) => sections[k] !== false;
@@ -64,29 +58,27 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
   const featuredTip = tips[0];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100" dir="rtl">
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/30 text-slate-800" dir="rtl" style={{ colorScheme: 'light' }}>
       {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
       <link rel="alternate" type="application/rss+xml" title="سنّي" href="/ask/rss.xml" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
       <WhatsAppFloat />
 
-      {/* ═══ HERO (Spotlight + Meteors + ShimmerWave + TextLoop + Magnetic) ═══ */}
+      {/* ═══ HERO ═══ */}
       <section className="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-4 pt-10">
-        <Spotlight className="-top-40 left-0 blur-2xl md:-top-24 md:left-60" fill="#10B981" />
-        <Meteors number={14} />
         <div className="relative z-10 mx-auto w-full max-w-4xl text-center">
           <BlurFade>
-            <div className="animate-float flex justify-center text-7xl">{hero.logo ?? '🦷'}</div>
+            <div className="animate-float flex justify-center text-5xl sm:text-6xl">{hero.logo ?? '🦷'}</div>
           </BlurFade>
           <BlurFade delay={0.15}>
-            <h1 className="mt-4 text-5xl font-black md:text-6xl">
-              <TextShimmer duration={2.2} className='font-black'>{hero.title ?? 'كيف يمكنني مساعدتك؟'}</TextShimmer>
+            <h1 className="mt-4 text-3xl font-black leading-tight text-slate-900 sm:text-4xl md:text-5xl">
+              لا تنتظر على الهاتف.. احجز موعدك الذكي في 30 ثانية
             </h1>
           </BlurFade>
           <BlurFade delay={0.3}>
-            <p className="mt-3 text-lg text-slate-400 md:text-xl">
-              اكتب لي:{' '}
-              <TextLoop className="font-bold text-emerald-400">
+            <p className="mx-auto mt-4 max-w-3xl text-base leading-8 text-slate-600 md:text-xl">
+              مساعدك الذكي «سنّي» متاح الآن 24/7 للإجابة عن أسئلتك، وتوجيهك لأقرب عيادة، وتأكيد حجزك فورًا بكل سهولة.
+              {' '}ابدأ بسؤالك: <TextLoop className="font-bold text-blue-700">
                 {loopTexts.map((q) => <span key={q}>{q}</span>)}
               </TextLoop>
             </p>
@@ -94,20 +86,15 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <BlurFade delay={0.45}>
             <div className="mt-7 flex justify-center">
               <Magnetic>
-                <ShimmerButton onClick={scrollToChat} className="px-9 py-4 text-lg">🚀 ابدأ المحادثة</ShimmerButton>
+                <ShimmerButton onClick={scrollToChat} className="bg-blue-600 px-9 py-4 text-lg hover:bg-blue-700" style={{ background: '#2563eb' }}>ابدأ الدردشة واحجز الآن 🚀</ShimmerButton>
               </Magnetic>
             </div>
           </BlurFade>
-          <div className="mt-10 flex flex-wrap justify-center gap-8">
-            {[
-              { n: 12, label: 'مركز مشترك', s: '+' },
-              { n: 24, label: 'ساعة خدمة', s: '/7' },
-              { n: 10, label: 'مدن مغطاة', s: '+' },
-            ].map((st) => (
-              <div key={st.label} className="text-center">
-                <div className="text-4xl font-black text-emerald-400"><NumberTicker value={st.n} />{st.s}</div>
-                <div className="mt-1 text-sm text-slate-400">{st.label}</div>
-              </div>
+          <div className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-medium text-slate-600">
+            {['بدون تسجيل', 'رد فوري', 'بياناتك مشفرة'].map((item) => (
+              <span key={item} className="inline-flex items-center gap-1.5">
+                <span className="font-bold text-emerald-600" aria-hidden>✓</span>{item}
+              </span>
             ))}
           </div>
         </div>
@@ -122,7 +109,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             {QUICK_CARDS.map((q, i) => (
               <BlurFade key={q.text} delay={i * 0.08} inView>
-                <button type="button" onClick={scrollToChat} className="post-card-btn" style={{ background: q.gradient }}>
+                <button type="button" onClick={scrollToChat} className="post-card-btn">
                   <span className="text-3xl">{q.emoji}</span>
                   <span className="text-xs font-bold">{q.text}</span>
                 </button>
@@ -147,14 +134,14 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       {/* ═══ TIPS ═══ */}
       {on('tips') && tips.length > 0 && (
         <section className="relative z-10 mx-auto max-w-4xl px-4 py-10">
-          <h2 className="text-center text-2xl font-black" style={{ color: colors.heading || '#7C3AED' }}>💡 نصائح مهمة</h2>
+          <h2 className="text-center text-2xl font-black text-blue-800">💡 إرشادات تساعدك على العناية بابتسامتك</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             {tips.slice(0, 3).map((t, i) => (
               <BlurFade key={String(t.id)} delay={i * 0.12} inView>
-                <div className="h-full rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="h-full rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-md">
                   <p className="text-2xl">{String(t.icon ?? '💡')}</p>
-                  <p className="mt-2 font-bold text-slate-100">{String(t.title)}</p>
-                  <p className="mt-1 line-clamp-3 text-sm text-slate-400">{String(t.content)}</p>
+                  <p className="mt-2 font-bold text-slate-800">{String(t.title)}</p>
+                  <p className="mt-1 line-clamp-3 text-sm text-slate-600">{String(t.content)}</p>
                 </div>
               </BlurFade>
             ))}
@@ -165,34 +152,34 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       {/* ═══ ARTICLES (ShineBorder) ═══ */}
       {on('articles') && published.length > 0 && (
         <section className="relative z-10 mx-auto max-w-4xl px-4 py-10">
-          <h2 className="text-center text-2xl font-black" style={{ color: colors.heading || '#7C3AED' }}>📝 مقالات مفيدة</h2>
+          <h2 className="text-center text-2xl font-black text-blue-800">📝 معلومات موثوقة لصحة فمك</h2>
           <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {published.slice(0, 6).map((a, i) => (
               <BlurFade key={String(a.id)} delay={i * 0.12} inView>
-                <ShineBorder borderWidth={2} duration={14} shineColor={['#10B981', '#0EA5E9', '#7C3AED']} className="h-full overflow-hidden rounded-2xl bg-slate-900">
+                <div className="h-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-md hover:shadow-blue-900/5">
                   <Link href={'/ask/article/' + a.slug} className="block h-full">
                     {(a.featured_image as { image_url?: string } | null)?.image_url && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={(a.featured_image as { image_url?: string }).image_url!} alt={String(a.title)} loading="lazy" className="h-36 w-full object-cover transition-transform duration-500 hover:scale-105" />
+                      <img src={(a.featured_image as { image_url?: string }).image_url!} alt={String(a.title)} loading="lazy" className="h-36 w-full object-cover transition-transform duration-300 ease-out hover:scale-[1.03]" />
                     )}
                     <div className="p-4">
-                      <p className="font-bold text-slate-100">{String(a.title)}</p>
-                      {a.excerpt ? <p className="mt-1 line-clamp-2 text-sm text-slate-400">{String(a.excerpt)}</p> : null}
-                      <p className="mt-2 text-sm font-semibold text-emerald-400">اقرأ المزيد ←</p>
+                      <p className="font-bold text-slate-800">{String(a.title)}</p>
+                      {a.excerpt ? <p className="mt-1 line-clamp-2 text-sm text-slate-600">{String(a.excerpt)}</p> : null}
+                      <p className="mt-2 text-sm font-semibold text-blue-700">اكتشف النصائح ←</p>
                     </div>
                   </Link>
-                </ShineBorder>
+                </div>
               </BlurFade>
             ))}
           </div>
-          <p className="mt-4 text-center text-sm"><Link href="/ask/articles" className="text-cyan-400">كل المقالات ←</Link></p>
+          <p className="mt-4 text-center text-sm"><Link href="/ask/articles" className="font-semibold text-blue-700 hover:text-blue-800">اكتشف كل المقالات ←</Link></p>
         </section>
       )}
 
       {/* ═══ FUN FACTS Marquee ═══ */}
       {on('fun_facts') && (
-        <div className="relative z-10 border-y border-white/10 bg-white/5 py-2">
-          <Marquee pauseOnHover className="text-sm text-cyan-200" repeat={2}>
+        <div className="relative z-10 border-y border-blue-100 bg-blue-50/70 py-2">
+          <Marquee pauseOnHover className="text-sm text-blue-800" repeat={2}>
             {(funFacts.length > 0
               ? funFacts.map((t) => ({ id: String(t.id), icon: String(t.icon ?? '✨'), text: String(t.title) }))
               : [
@@ -213,12 +200,12 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       {/* ═══ FAQ ═══ */}
       {on('faq') && faq.length > 0 && (
         <section className="relative z-10 mx-auto max-w-3xl px-4 py-10">
-          <h2 className="text-center text-2xl font-black" style={{ color: colors.heading || '#7C3AED' }}>❓ أسئلة شائعة</h2>
+          <h2 className="text-center text-2xl font-black text-blue-800">❓ إجابات على أسئلتك</h2>
           <div className="mt-6 space-y-2">
             {faq.map((f) => (
-              <details key={String(f.id)} className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <summary className="cursor-pointer text-sm font-bold text-slate-100">{String(f.question)}</summary>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{String(f.answer)}</p>
+              <details key={String(f.id)} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                <summary className="cursor-pointer text-sm font-bold text-slate-800">{String(f.question)}</summary>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{String(f.answer)}</p>
               </details>
             ))}
           </div>
@@ -228,13 +215,13 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       {/* ═══ CTA ═══ */}
       {on('cta') && (
         <section className="relative z-10 mx-auto max-w-3xl px-4 py-14 text-center">
-          <h2 className="text-2xl font-black text-white">جاهز تحجز موعدك؟</h2>
-          <p className="mt-2 text-slate-400">اكتب مشكلتك في المحادثة، وسنوجّهك لأقرب طبيب.</p>
+          <h2 className="text-2xl font-black text-slate-900">دع سنّي يساعدك الآن.. ابدأ المحادثة</h2>
+          <p className="mt-2 text-slate-600">شاركنا ما تحتاجه، وسنرشدك إلى العيادة المناسبة وخطوة الحجز التالية.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-3">
             <Magnetic>
-              <ShimmerButton onClick={scrollToChat}>💬 اسأل سنّي الآن</ShimmerButton>
+              <ShimmerButton onClick={scrollToChat} className="bg-blue-600 hover:bg-blue-700" style={{ background: '#2563eb' }}>ابدأ الدردشة واحجز الآن 🚀</ShimmerButton>
             </Magnetic>
-            <Link href="/discover" className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-slate-200 hover:border-emerald-400/50">🏥 تصفح العيادات</Link>
+            <Link href="/discover" className="rounded-full border border-blue-200 bg-white px-6 py-3 text-sm font-semibold text-blue-800 shadow-sm transition hover:border-blue-300 hover:bg-blue-50">🏥 اعثر على عيادة قريبة</Link>
           </div>
         </section>
       )}

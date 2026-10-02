@@ -11,16 +11,16 @@ export default function StatsSection({ stats }: { stats: { clinics_count: number
     { value: 24, suffix: '/7', label: 'دعم متواصل' },
   ];
   return (
-    <section className="py-14" style={{ background: 'rgba(15,23,42,0.6)' }}>
+    <section className="border-y border-blue-100 bg-white/80 py-14">
       <div className="mx-auto grid max-w-4xl grid-cols-2 gap-8 px-4 md:grid-cols-4">
         {items.map((item, i) => (
           <BlurFade key={item.label} delay={i * 0.1} inView>
             <div className="text-center">
-              <div className="flex items-center justify-center text-4xl font-black text-cyan-300">
+              <div className="flex items-center justify-center text-4xl font-black text-blue-700">
                 <NumberTicker value={item.value} />
                 <span>{item.suffix}</span>
               </div>
-              <div className="mt-2 text-sm text-slate-400">{item.label}</div>
+              <div className="mt-2 text-sm text-slate-600">{item.label}</div>
             </div>
           </BlurFade>
         ))}
