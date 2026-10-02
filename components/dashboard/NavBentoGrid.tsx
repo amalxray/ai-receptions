@@ -1,8 +1,11 @@
 'use client';
 
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
-import { useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import type { NavGroupId } from '@/lib/services/dashboardNavModel';
 import {
   STAT_TONE_CLASS,
@@ -120,12 +123,64 @@ const ITEM_TONES: Record<string, ReturnType<typeof navTone>> = {
   },
 };
 
+function readStoredOrder(groupId: NavGroupId, fallback: string[]) {
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const key = `nav-grid-order-${groupId}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return fallback;
+
+    const valid = parsed.filter((module) => fallback.includes(module));
+    const missing = fallback.filter((module) => !valid.includes(module));
+    return [...valid, ...missing];
+  } catch {
+    return fallback;
+  }
+}
+
 export default function NavBentoGrid({ group, stats, variant = 'panel', onNavigate }: NavBentoGridProps) {
   const tone = navTone(group.id);
   const columns =
     variant === 'drawer'
       ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
       : 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
+  const defaultOrder = useMemo(() => group.items.map((item) => item.module), [group.items]);
+  const [orderedModules, setOrderedModules] = useState<string[]>(() => readStoredOrder(group.id, defaultOrder));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  useEffect(() => {
+    setOrderedModules((current) => {
+      const valid = current.filter((module) => defaultOrder.includes(module));
+      const missing = defaultOrder.filter((module) => !valid.includes(module));
+      return [...valid, ...missing];
+    });
+  }, [defaultOrder]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`nav-grid-order-${group.id}`, JSON.stringify(orderedModules));
+    }
+  }, [group.id, orderedModules]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setOrderedModules((current) => {
+      const oldIndex = current.indexOf(String(active.id));
+      const newIndex = current.indexOf(String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return current;
+      return arrayMove(current, oldIndex, newIndex);
+    });
+  };
+
+  const orderedItems = orderedModules
+    .map((moduleId) => group.items.find((item) => item.module === moduleId))
+    .filter((item): item is BentoItem => Boolean(item));
 
   return (
     <motion.section
@@ -157,25 +212,72 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
           لا وحدات متاحة لصلاحيتك في هذا القسم.
         </p>
       ) : (
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-          className={`relative grid gap-3 ${columns}`}
-        >
-          {group.items.map((item, index) => (
-            <BentoCard
-              key={item.module}
-              item={item}
-              tone={tone}
-              chip={stats ? statForModule(item.module, stats) : null}
-              index={index}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </motion.div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={orderedModules} strategy={rectSortingStrategy}>
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
+              className={`relative grid gap-3 ${columns}`}
+            >
+              {orderedItems.map((item, index) => (
+                <SortableBentoCard
+                  key={item.module}
+                  item={item}
+                  tone={tone}
+                  chip={stats ? statForModule(item.module, stats) : null}
+                  index={index}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </motion.div>
+          </SortableContext>
+        </DndContext>
       )}
     </motion.section>
+  );
+}
+
+function SortableBentoCard({
+  item,
+  tone,
+  chip,
+  index,
+  onNavigate,
+}: {
+  item: BentoItem;
+  tone: ReturnType<typeof navTone>;
+  chip: ReturnType<typeof statForModule>;
+  index: number;
+  onNavigate?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.module });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      style={style}
+      variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
+      whileHover={{ y: -4, scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+      className={`${isDragging ? 'z-20 opacity-70' : ''}`}
+    >
+      <button
+        type="button"
+        aria-label={`إعادة ترتيب ${item.label}`}
+        className="absolute right-1.5 top-1.5 z-20 flex h-5 w-5 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white/90 text-[10px] text-slate-500 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        {...attributes}
+        {...listeners}
+      >
+        ⋮⋮
+      </button>
+      <BentoCard item={item} tone={tone} chip={chip} index={index} onNavigate={onNavigate} />
+    </motion.div>
   );
 }
 
