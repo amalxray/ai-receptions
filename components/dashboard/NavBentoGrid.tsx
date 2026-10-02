@@ -319,11 +319,11 @@ function BentoCard({
         {layer}
         <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/6 to-transparent" />
         <span aria-hidden className={`absolute inset-y-0 right-0 w-1 rounded-l-full ${ITEM_TONES[item.module]?.bar ?? tone.bar}`} />
-        <span className="absolute left-4 top-4 z-10 text-[10px] font-black tracking-[0.2em] text-slate-400/80">
+        <span aria-hidden className="absolute left-2 top-2 z-10 text-[10px] font-medium leading-none text-slate-500/70">
           {String(index + 1).padStart(2, '0')}
         </span>
 
-        <span className="relative z-10 flex items-start justify-between gap-3">
+        <span className="relative z-10 flex items-start justify-between gap-3 pl-7">
           <motion.span
             aria-hidden
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-lg shadow-inner shadow-white/5"
