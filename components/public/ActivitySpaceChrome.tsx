@@ -10,7 +10,7 @@ import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
-import RotatingMarquee, { type RotatingMarqueeItem } from '@/components/ui/RotatingMarquee';
+import Stack from '@/components/ui/Stack';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
@@ -45,14 +45,6 @@ const GALLERY_CATEGORIES = [
   { value: 'cases', label: 'حالات', icon: '📋' },
   { value: 'other', label: 'أخرى', icon: '📁' },
 ] as const;
-
-const MARQUEE_PALETTE = [
-  { color: 'from-slate-800 via-slate-700 to-slate-900', accent: 'from-cyan-400 to-blue-500' },
-  { color: 'from-rose-700 via-orange-600 to-amber-500', accent: 'from-pink-500 to-orange-400' },
-  { color: 'from-indigo-700 via-violet-600 to-fuchsia-500', accent: 'from-violet-500 to-cyan-400' },
-  { color: 'from-emerald-800 via-teal-700 to-cyan-600', accent: 'from-emerald-400 to-cyan-400' },
-  { color: 'from-slate-800 via-neutral-700 to-zinc-900', accent: 'from-amber-400 to-orange-500' },
-];
 
 function flattenPageChildren(children: ReactNode): ReactNode[] {
   return Children.toArray(children).flatMap((child) =>
@@ -325,50 +317,6 @@ export function ActivitySpaceChrome({
     .split(/\r?\n|(?=✔️?)/)
     .map((feature) => feature.replace(/^✔️?\s*/, '').trim())
     .filter(Boolean);
-  const genericGalleryLabels = new Set([
-    'غلاف الصفحة العامة',
-    'صورة Amal X-Ray Center',
-    'صورة ',
-    'Amal X-Ray Center',
-    'image',
-    'cover',
-    'gallery',
-  ]);
-  const galleryImages = uniqueMedia.filter((item) => {
-    if (!(item.media_type === 'image') || !/^(https?:\/\/|\/)/i.test(item.public_url)) return false;
-    const title = (item.title ?? '').trim();
-    const alt = (item.alt_text ?? '').trim();
-    if (genericGalleryLabels.has(title) || genericGalleryLabels.has(alt)) return false;
-    return true;
-  });
-  const fallbackImage = space.coverUrl || space.logo;
-  const marqueeSources = galleryImages.length > 0
-    ? galleryImages
-    : fallbackImage
-      ? [{
-          id: `${space.clinicId}-cover`,
-          media_type: 'image' as const,
-          public_url: fallbackImage,
-          title: space.name,
-          caption: space.tagline,
-          alt_text: `صورة ${space.name}`,
-          category: 'clinic' as const,
-        }]
-      : [];
-  const marqueeItems: RotatingMarqueeItem[] = marqueeSources.map((item, index) => {
-    const palette = MARQUEE_PALETTE[index % MARQUEE_PALETTE.length];
-    return {
-      id: item.id,
-      title: item.title || space.name,
-      subtitle: item.caption || item.alt_text || `لقطات من ${space.name}`,
-      Badge: ACTIVITY_TYPE_LABELS_AR[space.activityType],
-      color: palette.color,
-      accent: palette.accent,
-      chip: GALLERY_CATEGORIES.find((category) => category.value === item.category)?.label ?? 'المنشأة',
-      image: item.public_url,
-      imageAlt: item.alt_text || item.title || `صورة ${space.name}`,
-    };
-  });
   const sectionPosition = (key: string) => {
     const index = space.sectionOrder.indexOf(key);
     return index < 0 ? space.sectionOrder.length : index;
@@ -565,12 +513,35 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
-        <div style={{ order: sectionPosition('gallery') }}>
-          <RotatingMarquee
-            items={marqueeItems.length > 0 ? marqueeItems : undefined}
-            title={`لقطات من ${displayName}`}
-          />
-        </div>
+        {on('gallery') && (
+          <div style={{ order: sectionPosition('gallery') }} className="w-full max-w-sm mx-auto my-8">
+            {space.media?.filter(m => m.media_type === 'image' && m.public_url).length > 0 ? (
+              <Stack
+                cards={space.media.filter(m => m.media_type === 'image' && m.public_url).map((img, i) => (
+                  <img 
+                    key={img.id || i} 
+                    src={img.public_url} 
+                    alt={img.alt_text || img.title || `صورة ${i + 1}`} 
+                    className="w-full h-full object-cover rounded-2xl pointer-events-none select-none border-4 border-white shadow-xl" 
+                    loading="lazy"
+                  />
+                ))}
+                randomRotation={false}
+                sensitivity={250}
+                sendToBackOnClick={true}
+                autoplay={true}
+                autoplayDelay={4000}
+                pauseOnHover={true}
+                animationConfig={{ stiffness: 150, damping: 18 }}
+                mobileClickOnly={true}
+              />
+            ) : (
+              <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-300">
+                📸 معرض الصور قيد التحديث
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
         {on('beforeAfter') && space.beforeAfter.length > 0 && (

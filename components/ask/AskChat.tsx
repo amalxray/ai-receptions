@@ -3,7 +3,8 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
-import ClinicCard, { type SuggestedClinic } from './ClinicCard';
+import { type SuggestedClinic } from './ClinicCard';
+import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 import { sendGAEvent } from '@next/third-parties/google';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import type { PatientLocation } from './LocationPicker';
@@ -51,9 +52,35 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     setShowLocPicker(false);
   };
 
+  const lastSuggestions = [...messages].reverse().find((m) => (m.clinics ?? []).length)?.clinics ?? [];
+
+  const handleClinicSelect = (num: number) => {
+    const clinic = lastSuggestions[num - 1];
+    if (!clinic) return;
+
+    const displayName = displayAskClinicName(clinic.name, clinic.type);
+    const details = [
+      `🎯 العيادة المختارة: ${displayName}`,
+      clinic.city ? `📍 ${clinic.city}` : '📍 الموقع: غير محدد',
+      clinic.address ? `🏠 ${clinic.address}` : '',
+      clinic.distance_km != null ? `📏 المسافة: ${clinic.distance_km} كم` : '',
+      clinic.phone ? `📞 ${clinic.phone}` : '',
+      `🔗 الحجز: ${clinic.booking_url}`,
+    ].filter(Boolean).join('\n');
+
+    setMessages((m) => [...m, { role: 'user', content: `${num}` }, { role: 'assistant', content: details }]);
+  };
+
   const send = async (text: string, locOverride?: PatientLocation | null) => {
     const message = text.trim();
     if (!message || sending) return;
+
+    const numericSelection = /^\d+$/.test(message) ? Number(message) : null;
+    if (numericSelection && numericSelection >= 1 && lastSuggestions[numericSelection - 1]) {
+      handleClinicSelect(numericSelection);
+      return;
+    }
+
     setInput('');
     setMessages((m) => {
       if (!m.some((x) => x.role === 'user')) {
@@ -106,17 +133,41 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
             <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
               {m.content}
-              {m.clinics && m.clinics.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {m.clinics.map((c) => <ClinicCard key={c.id} clinic={c} />)}
-                </div>
-              )}
-            </div>
-          </div>
+           </div>
+         </div>
         ))}
         {sending && <div className="flex justify-start"><div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-700 shadow-sm"><TextShimmer duration={1}>سنّي يفكر…</TextShimmer></div></div>}
         <div ref={endRef} />
       </div>
+
+      {lastSuggestions.length > 0 && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+         {lastSuggestions.map((c, idx) => (
+           <button
+             key={c.id || idx}
+             type="button"
+             onClick={() => handleClinicSelect(idx + 1)}
+             className="group flex flex-col items-start rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-md hover:shadow-blue-900/5 hover:border-blue-200"
+           >
+             <div className="mb-2 flex w-full items-center justify-between">
+               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">
+                 {idx + 1}
+               </span>
+               {c.distance_km != null && (
+                 <span className="text-[10px] font-medium text-slate-500">{c.distance_km} كم</span>
+               )}
+             </div>
+             <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">
+               {displayAskClinicName(c.name, c.type)}
+             </p>
+             {c.city && <p className="mt-1 text-xs text-slate-500">📍 {c.city}</p>}
+             <p className="mt-2 text-[11px] font-medium text-blue-600 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+               اضغط لعرض التفاصيل ←
+             </p>
+           </button>
+         ))}
+        </div>
+      )}
 
       {/* Location picker (slides in when needed) */}
       {showLocPicker && (

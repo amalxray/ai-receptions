@@ -262,13 +262,14 @@ describe('B52-B — agenda wiring guards', () => {
     expect(page).toContain('border-amber-500/40 bg-amber-500/10 text-amber-300');
   });
 
-  it('shares the image-backed marquee across public activity spaces', async () => {
+  it('uses the stacked gallery for public activity spaces', async () => {
     const chrome = await read('components/public/ActivitySpaceChrome.tsx');
-    const marquee = await read('components/ui/RotatingMarquee.tsx');
-    expect(chrome).toContain('<RotatingMarquee');
-    expect(chrome).toContain("item.media_type === 'image'");
-    expect(chrome).toContain('space.coverUrl || space.logo');
-    expect(marquee).toContain('const distance = Math.min(1, Math.abs(delta) / (bounds.width / 2));');
+    const stack = await read('components/ui/Stack.tsx');
+    expect(chrome).toContain('<Stack');
+    expect(chrome).toContain("m.media_type === 'image' && m.public_url");
+    expect(chrome).toContain('mobileClickOnly={true}');
+    expect(stack).toContain('export default function Stack');
+    expect(stack).toContain('onTouchEnd');
   });
 });
 
