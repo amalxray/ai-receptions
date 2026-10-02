@@ -109,6 +109,10 @@ vi.mock('next/link', () => ({
     createElement('a', { href: typeof href === 'string' ? href : '#', ...rest }, children as never),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 /** The four SSR scenarios run with a resolved clinic, no network at all. */
 vi.mock('@/lib/useClinicContext', () => ({
   useClinicContext: () => ({
