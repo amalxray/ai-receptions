@@ -124,8 +124,8 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
   const tone = navTone(group.id);
   const columns =
     variant === 'drawer'
-      ? 'grid-cols-1'
-      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+      ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+      : 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
 
   return (
     <motion.section
@@ -161,7 +161,7 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
           initial="hidden"
           animate="visible"
           variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-          className={`relative grid gap-4 ${columns}`}
+          className={`relative grid gap-3 ${columns}`}
         >
           {group.items.map((item, index) => (
             <BentoCard
@@ -210,7 +210,7 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex h-full min-h-[116px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
+        className={`group relative flex h-[80px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
           item.active ? 'ring-2 ring-teal-500/30 shadow-[0_0_30px_-18px_rgba(45,212,191,0.8)]' : 'ring-1 ring-slate-200/80 dark:ring-white/5'
         }`}
       >
@@ -224,7 +224,7 @@ function BentoCard({
         <span className="relative z-10 flex items-start justify-between gap-3">
           <motion.span
             aria-hidden
-            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/8 text-2xl shadow-inner shadow-white/5"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-lg shadow-inner shadow-white/5"
             whileHover={{ scale: 1.1, rotate: -7 }}
             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
           >
@@ -246,12 +246,11 @@ function BentoCard({
           </div>
         </span>
 
-        <span className="relative z-10 mt-3 flex flex-col gap-1">
-          <span className="block text-lg font-bold leading-6 text-slate-900 dark:text-white">{item.label}</span>
-          <span className="block text-sm leading-5 text-slate-500 dark:text-slate-300/85">{presentation.description}</span>
+        <span className="relative z-10 mt-1 flex flex-col gap-0.5">
+          <span className="block text-[11px] font-bold leading-4 text-slate-900 dark:text-white">{item.label}</span>
         </span>
 
-        <span className="relative z-10 mt-auto pt-3">
+        <span className="relative z-10 mt-auto pt-1">
           {item.active ? (
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-100">
               <span className={`h-2 w-2 rounded-full ${tone.bar}`} aria-hidden />
