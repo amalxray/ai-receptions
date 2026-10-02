@@ -9,7 +9,7 @@ import type { PatientLocation } from './LocationPicker';
 
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
-  loading: () => <div className="h-64 animate-pulse rounded-2xl bg-white/5" />,
+  loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />,
 });
 
 type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean };
@@ -18,7 +18,7 @@ const STORE_KEY = 'patient_location';
 
 export default function AskChat({ assistantName = 'سنّي', logo = '🦷', quickQuestions = [] }: { assistantName?: string; logo?: string; quickQuestions?: string[] }) {
   const [messages, setMessages] = useState<Msg[]>([
-    { role: 'assistant', content: `أهلاً! أنا ${assistantName} 🦷 اكتب شو عم يصير معك وسأساعدك في العثور على أقرب طبيب.` },
+    { role: 'assistant', content: "أهلاً! أنا سنّي 🦷. أخبرني بما تشعر به (مثال: 'ألم في الضرس' أو 'أريد تنظيف') وسأجد لك أفضل موعد فوراً." },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -84,13 +84,13 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   };
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-4 shadow-xl" dir="rtl">
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-slate-200/70" dir="rtl">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-white/10 pb-3">
-        <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 text-lg">{logo}</span>
+      <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-lg text-white">{logo}</span>
         <div>
-          <p className="text-sm font-bold text-slate-100">{assistantName}</p>
-          <p className="text-xs text-emerald-400">● متاح الآن — يرد فوراً</p>
+          <p className="text-sm font-bold text-slate-800">{assistantName}</p>
+          <p className="text-xs font-medium text-emerald-700">● متاح الآن — يرد فوراً</p>
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       <div className="mt-3 max-h-96 min-h-40 space-y-3 overflow-y-auto p-1">
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-            <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800/80 text-slate-100'}`}>
+            <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
               {m.content}
               {m.clinics && m.clinics.length > 0 && (
                 <div className="mt-3 space-y-2">
@@ -108,7 +108,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
             </div>
           </div>
         ))}
-        {sending && <div className="flex justify-start"><div className="rounded-2xl bg-slate-800/80 px-4 py-2"><TextShimmer duration={1}>سنّي يفكر…</TextShimmer></div></div>}
+        {sending && <div className="flex justify-start"><div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-700 shadow-sm"><TextShimmer duration={1}>سنّي يفكر…</TextShimmer></div></div>}
         <div ref={endRef} />
       </div>
 
@@ -123,19 +123,19 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       {quickQuestions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {quickQuestions.map((q) => (
-            <button key={q} type="button" onClick={() => void send(q)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:border-emerald-400/40 hover:text-emerald-300">{q}</button>
+            <button key={q} type="button" onClick={() => void send(q)} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 transition hover:border-blue-300 hover:bg-blue-100">{q}</button>
           ))}
         </div>
       )}
 
       {/* Input */}
       <div className="chat-input-container mt-3">
-        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="chat-button" style={{ background: 'rgba(255,255,255,0.12)' }}>📍</button>
+        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="chat-button" style={{ background: '#2563eb' }}>📍</button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void send(input); }}
-          placeholder="اكتب مشكلتك هنا..."
+          placeholder="أخبرنا بما تشعر به لنساعدك في العثور على موعد مناسب..."
           className="chat-input"
         />
         <button type="button" onClick={() => void send(input)} disabled={sending || !input.trim()} className="chat-button" aria-label="إرسال">🚀</button>

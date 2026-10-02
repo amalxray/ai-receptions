@@ -130,23 +130,23 @@ export default function LocationPicker({
   const hasValue = Boolean(value?.lat && value?.lng);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={gps} className="rounded-full bg-emerald-500 px-4 py-1.5 text-sm font-bold text-slate-950 hover:bg-emerald-400">📍 حدد موقعي (GPS)</button>
+        <button type="button" onClick={gps} className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700">📍 حدد موقعي (GPS)</button>
         <div className="flex flex-1 items-center gap-2">
           <input
             value={manualCity}
             onChange={(e) => setManualCity(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void searchAddress(); }}
             placeholder="أو ابحث بالعنوان..."
-            className="w-full rounded-full border border-white/10 bg-slate-900/70 px-4 py-1.5 text-sm text-slate-100 placeholder:text-slate-500"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm text-slate-800 placeholder:text-slate-500"
           />
-          <button type="button" onClick={() => void searchAddress()} className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/20">🔍</button>
+          <button type="button" onClick={() => void searchAddress()} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-200">🔍</button>
         </div>
         <select
           value=""
           onChange={(e) => chooseCity(e.target.value)}
-          className="rounded-full border border-white/10 bg-slate-900/70 px-3 py-1.5 text-sm text-slate-200"
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800"
         >
           <option value="">اختر مدينتك</option>
           {cities.map((c) => <option key={c.id} value={c.name_ar}>{c.name_ar}</option>)}
@@ -167,14 +167,14 @@ export default function LocationPicker({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600">
           {loadingGeo ? '⏳ جارٍ تحديد الموقع...' : hasValue ? `✅ ${address ?? 'الموقع محدد'} (${value!.lat}, ${value!.lng})` : 'انقر على الخريطة أو استخدم GPS'}
         </p>
         <button
           type="button"
           onClick={confirm}
           disabled={!hasValue}
-          className="rounded-full bg-cyan-500 px-5 py-1.5 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-40"
+          className="rounded-full bg-blue-600 px-5 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-40"
         >
           تأكيد الموقع ✓
         </button>

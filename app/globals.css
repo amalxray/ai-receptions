@@ -254,13 +254,14 @@ body {
   width: 100%;
   min-height: 104px;
   border-radius: 18px;
-  border: none;
-  color: white;
+  border: 1px solid #dbeafe;
+  color: #1e3a8a;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+  background: white;
+  box-shadow: 0 4px 12px rgba(15,23,42,0.06);
 }
-.post-card-btn:hover { transform: translateY(-6px); box-shadow: 0 14px 28px rgba(0,0,0,0.35); }
+.post-card-btn:hover { transform: translateY(-4px); border-color: #93c5fd; box-shadow: 0 14px 28px rgba(37,99,235,0.12); }
 .post-card-btn:active { transform: translateY(0) scale(0.97); }
 /* Chat input with glow shadow */
 .chat-input-container {
@@ -269,16 +270,16 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: rgba(255,255,255,0.07);
+  background: #fff;
   backdrop-filter: blur(10px);
   border-radius: 9999px;
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid #cbd5e1;
 }
-.chat-input { flex: 1; background: transparent; border: none; outline: none; color: white; font-size: 15px; padding: 8px; }
+.chat-input { flex: 1; background: transparent; border: none; outline: none; color: #1e293b; font-size: 15px; padding: 8px; }
 .chat-input::placeholder { color: #64748b; }
 .chat-button {
   width: 42px; height: 42px; border-radius: 9999px;
-  background: linear-gradient(135deg,#10B981,#0EA5E9);
+  background: #2563eb;
   border: none; color: white; cursor: pointer;
   display: flex; align-items: center; justify-content: center; font-size: 18px;
   transition: all .3s ease;
@@ -294,7 +295,9 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #fffffe;
+  background: #fff;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 8px 24px rgba(15,23,42,0.06);
   border-radius: 16px;
   position: relative;
   overflow: hidden;
@@ -306,7 +309,7 @@ body {
   height: 100px;
   position: absolute;
   top: 0;
-  background: linear-gradient(40deg, #10B981 0%, #0EA5E9 50%, #7C3AED 100%);
+  background: linear-gradient(40deg, #1d4ed8 0%, #2563eb 55%, #0891b2 100%);
   transition: all 0.5s ease;
 }
 .doctor-card:hover::before { height: 100%; }
@@ -326,13 +329,13 @@ body {
 .doctor-card:hover .doctor-info p { color: rgba(255,255,255,0.9); }
 .doctor-button {
   margin-top: 15px; padding: 8px 24px;
-  background: #10B981; color: white; border-radius: 8px;
+  background: #2563eb; color: white; border-radius: 8px;
   font-weight: 600; z-index: 1; transition: all 0.3s ease;
 }
-.doctor-button:hover { background: #0EA5E9; transform: scale(1.1); }
+.doctor-button:hover { background: #1d4ed8; transform: scale(1.05); }
 .doctor-distance {
   position: absolute; top: 74px; right: 12px; z-index: 1;
-  background: rgba(15,23,42,0.75); color: #a5f3fc;
+  background: #eff6ff; color: #1e40af;
   font-size: 11px; padding: 2px 10px; border-radius: 9999px;
 }
 
