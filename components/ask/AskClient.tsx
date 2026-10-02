@@ -10,7 +10,6 @@ import { TextLoop } from '@/components/ui/text-loop';
 import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { BlurFade } from '@/components/ui/blur-fade';
-import { ShineBorder } from '@/components/ui/shine-border';
 import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
 import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
@@ -59,7 +58,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
   const featuredTip = tips[0];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/30 text-slate-800" dir="rtl">
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/30 text-slate-800" dir="rtl" style={{ colorScheme: 'light' }}>
       {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
       <link rel="alternate" type="application/rss+xml" title="سنّي" href="/ask/rss.xml" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
@@ -69,10 +68,10 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       <section className="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-4 pt-10">
         <div className="relative z-10 mx-auto w-full max-w-4xl text-center">
           <BlurFade>
-            <div className="animate-float flex justify-center text-7xl">{hero.logo ?? '🦷'}</div>
+            <div className="animate-float flex justify-center text-5xl sm:text-6xl">{hero.logo ?? '🦷'}</div>
           </BlurFade>
           <BlurFade delay={0.15}>
-            <h1 className="mt-4 text-4xl font-black leading-tight text-slate-900 md:text-6xl">
+            <h1 className="mt-4 text-3xl font-black leading-tight text-slate-900 sm:text-4xl md:text-5xl">
               لا تنتظر على الهاتف.. احجز موعدك الذكي في 30 ثانية
             </h1>
           </BlurFade>
@@ -157,11 +156,11 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {published.slice(0, 6).map((a, i) => (
               <BlurFade key={String(a.id)} delay={i * 0.12} inView>
-                <ShineBorder borderWidth={1} duration={18} shineColor={['#2563EB', '#10B981', '#38BDF8']} className="h-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                <div className="h-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-md hover:shadow-blue-900/5">
                   <Link href={'/ask/article/' + a.slug} className="block h-full">
                     {(a.featured_image as { image_url?: string } | null)?.image_url && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={(a.featured_image as { image_url?: string }).image_url!} alt={String(a.title)} loading="lazy" className="h-36 w-full object-cover transition-transform duration-500 hover:scale-105" />
+                      <img src={(a.featured_image as { image_url?: string }).image_url!} alt={String(a.title)} loading="lazy" className="h-36 w-full object-cover transition-transform duration-300 ease-out hover:scale-[1.03]" />
                     )}
                     <div className="p-4">
                       <p className="font-bold text-slate-800">{String(a.title)}</p>
@@ -169,7 +168,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
                       <p className="mt-2 text-sm font-semibold text-blue-700">اكتشف النصائح ←</p>
                     </div>
                   </Link>
-                </ShineBorder>
+                </div>
               </BlurFade>
             ))}
           </div>

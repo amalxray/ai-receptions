@@ -29,7 +29,7 @@ export default function QRCodeCard({ url, label }: { url: string; label: string 
   };
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white p-6 text-center shadow-xl">
+    <div className="w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-sm">
       <div id="qr-target" className="rounded-xl bg-white p-3">
         <QRCodeSVG value={full} size={200} fgColor="#0F172A" bgColor="#FFFFFF" level="M" />
       </div>
@@ -39,14 +39,14 @@ export default function QRCodeCard({ url, label }: { url: string; label: string 
         <button
           type="button"
           onClick={download}
-          className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-500"
+          className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white transition-all duration-300 ease-out hover:bg-emerald-700"
         >
           📥 تنزيل QR
         </button>
         <button
           type="button"
           onClick={() => void navigator.clipboard.writeText(full).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
-          className="rounded-full bg-white/80 px-4 py-1.5 text-xs font-semibold text-gray-800 hover:bg-white/90"
+          className="rounded-full bg-slate-100 px-4 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-300 ease-out hover:bg-slate-200"
         >
           {copied ? '✓ نُسخ' : '📋 نسخ الرابط'}
         </button>

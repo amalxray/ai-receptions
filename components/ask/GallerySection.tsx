@@ -13,9 +13,9 @@ export default function GallerySection({ images }: { images: Array<Record<string
         <div className="flex snap-x gap-4 overflow-x-auto pb-4">
           {images.map((img, i) => (
             <BlurFade key={String(img.id)} delay={i * 0.08} inView>
-              <figure className="w-64 shrink-0 snap-center">
+              <figure className="w-56 shrink-0 snap-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={String(img.image_url)} alt={String(img.title ?? '')} loading="lazy" className="h-48 w-full rounded-2xl object-cover transition-transform duration-500 hover:scale-105" />
+                <img src={String(img.image_url)} alt={String(img.title ?? '')} loading="lazy" className="h-40 w-full rounded-2xl object-cover transition-transform duration-300 ease-out hover:scale-[1.03]" />
                 <figcaption className="mt-2 text-center text-xs text-slate-600">{String(img.title ?? '')}</figcaption>
               </figure>
             </BlurFade>
