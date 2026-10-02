@@ -50,6 +50,11 @@ vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: { from: (table: string) 
 import { POST } from '@/app/api/clinic/services/route';
 import { DELETE, PUT } from '@/app/api/clinic/services/[serviceId]/route';
 import { imagingServicePriceLabel } from '@/components/public/ImagingPublicSpace';
+import {
+  cleanPublicTestimonials,
+  uniquePublicMediaItems,
+  uniquePublicNewsItems,
+} from '@/components/public/ActivitySpaceChrome';
 
 const CLINIC = '11111111-1111-1111-1111-111111111111';
 const SERVICE = '44444444-4444-4444-4444-444444444444';
@@ -157,14 +162,39 @@ describe('public price label — legacy rows keep their price visible', () => {
     expect(imagingServicePriceLabel({ ...base, pricing_mode: 'unspecified', price: 80 })).toBe('80 ₪');
   });
 
-  it('keeps 0/null prices invisible (0 means "not priced")', () => {
-    expect(imagingServicePriceLabel({ ...base, pricing_mode: 'unspecified', price: 0 })).toBeNull();
-    expect(imagingServicePriceLabel({ ...base, pricing_mode: 'fixed', price: null })).toBeNull();
+  it('replaces zero or unavailable prices with an honest label', () => {
+    expect(imagingServicePriceLabel({ ...base, pricing_mode: 'unspecified', price: 0 })).toBe('حسب حالة الفحص');
+    expect(imagingServicePriceLabel({ ...base, pricing_mode: 'fixed', price: null })).toBe('حسب حالة الفحص');
   });
 
   it('still prefers the priced modes and falls back to the note', () => {
     expect(imagingServicePriceLabel({ ...base, pricing_mode: 'fixed', price: 150 })).toBe('150 ₪');
     expect(imagingServicePriceLabel({ ...base, pricing_mode: 'range', price_min: 70, price_max: 300 })).toBe('70–300 ₪');
     expect(imagingServicePriceLabel({ ...base, pricing_mode: 'case_by_case', price_note: 'حسب الحالة' })).toBe('حسب الحالة');
+  });
+});
+
+describe('public page presentation cleanup', () => {
+  it('deduplicates gallery items by media type and URL', () => {
+    const first = { id: 'one', media_type: 'image', public_url: 'https://example.test/a.jpg' };
+    const duplicate = { id: 'two', media_type: 'image', public_url: 'https://example.test/a.jpg' };
+    const distinct = { id: 'three', media_type: 'image', public_url: 'https://example.test/b.jpg' };
+    expect(uniquePublicMediaItems([first, duplicate, distinct])).toEqual([first, distinct]);
+  });
+
+  it('deduplicates news messages after whitespace normalization', () => {
+    const first = { id: 'one', text: '  عرض   جديد ' };
+    const duplicate = { id: 'two', text: 'عرض جديد' };
+    expect(uniquePublicNewsItems([first, duplicate])).toEqual([first]);
+  });
+
+  it('removes empty/duplicate testimonials, star glyphs, and generic names', () => {
+    const clean = cleanPublicTestimonials([
+      { id: 'one', patient_name: 'إحدى مراجعات المركز', content: '★★★★★ تجربة ممتازة ⭐⭐⭐⭐⭐', rating: 5, image_url: null },
+      { id: 'two', patient_name: 'مراجع', content: 'تجربة ممتازة', rating: 5, image_url: null },
+      { id: 'three', patient_name: 'مراجع', content: ' ★⭐⭐★ ', rating: 5, image_url: null },
+    ]);
+    expect(clean).toHaveLength(1);
+    expect(clean[0]).toMatchObject({ patient_name: 'مراجع موثق', content: 'تجربة ممتازة' });
   });
 });

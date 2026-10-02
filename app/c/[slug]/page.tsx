@@ -1,230 +1,119 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
-import {
-  getPublicClinicProfile,
-} from '@/lib/services/clinicPublicProfile';
-import { brandMetadataIcons } from '@/lib/services/pwaManifest';
+import { buildClinicSchema, sanitizePublicSocialLinks } from '@/lib/services/doctorJsonLd';
+import { getActivityPublicSpace, type ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
+import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import { requestCache } from '@/lib/server/requestCache';
-import RotatingMarquee from '@/components/ui/RotatingMarquee';
+import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
+import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
+import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
+import InstallPWA from '@/components/pwa/InstallPWA';
 
 /**
- * STEP 15D / Digital Healthcare Space — LEGACY COMPATIBILITY page (`/c/{slug}`).
+ * LEGACY compatibility page: /c/{slug}
  *
- * Phase E canonical migration: the canonical public space is now `/{slug}`
- * (activity-aware). `/c/{slug}` is preserved as a compatibility surface —
- * it still renders the deny-by-default clinic projection (existing direct
- * links, QR targets and bookmarked URLs keep working) but its metadata
- * canonicals to `/{slug}` and robots noindexes it, so search engines
- * consolidate the canonical identity without breaking any existing link.
- *
- * No tenant logic changed; booking/chat CTAs remain the existing public paths.
+ * This surface must render the same dynamic activity-space content as the
+ * canonical public route so the saved theme and media values are reflected in
+ * the served HTML instead of hardcoded legacy styling.
  */
 export const dynamic = 'force-dynamic';
-
-const WEEKDAY_NAMES_AR = [
-  'الأحد',
-  'الاثنين',
-  'الثلاثاء',
-  'الأربعاء',
-  'الخميس',
-  'الجمعة',
-  'السبت',
-];
-
-function formatTime(time: string): string {
-  const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
-  if (!match) return time;
-  const h = Number(match[1]);
-  const m = match[2];
-  const suffix = h >= 12 ? 'م' : 'ص';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${m} ${suffix}`;
-}
+export const fetchCache = 'force-no-store';
 
 export type ClinicPublicPageProps = { params: { slug: string } };
 
-/** Request-scoped memoization — metadata + render resolve the profile once. */
-const loadProfile = requestCache(getPublicClinicProfile);
+const loadSpace = requestCache(getActivityPublicSpace);
 
-export async function generateMetadata({
-  params,
-}: ClinicPublicPageProps): Promise<Metadata> {
-  const resolved = await loadProfile({ slug: params.slug });
-  if (!resolved) {
+export async function generateMetadata({ params }: ClinicPublicPageProps): Promise<Metadata> {
+  const space = await loadSpace(params.slug);
+  if (!space) {
     return { title: 'العيادة غير موجودة', robots: { index: false, follow: false } };
   }
-  // تم إخفاء الاستقبال الذكي من العرض (revert: أضِف «أو تحدث مع الاستقبال.» بعد «احجز موعدك»)
-  const description =
-    resolved.description ??
-    `صفحة عيادة ${resolved.name} — احجز موعدك.`;
-  // Readiness-resolved by the service (P1): the tenant subdomain once its host
-  // is registered on the Vercel project — otherwise this very page, which is
-  // then self-canonical instead of canonicalising to an unreachable host.
-  const canonical = resolved.pageUrl;
+
+  const description = space.description ?? `${space.name} — ${space.city ?? ''} ${space.area ?? ''}`.trim();
   return {
-    title: resolved.name,
+    title: space.name,
     description,
-    // PWA — this page renders a TENANT on the platform apex origin, so its
-    // install identity is the clinic's too: the manifest is asked for by slug
-    // (the host is the platform here) and iOS gets the clinic's app title/icon.
-    applicationName: resolved.name,
-    appleWebApp: { capable: true, title: resolved.name, statusBarStyle: 'default' },
-    icons: brandMetadataIcons(resolved.logo),
+    applicationName: space.name,
+    appleWebApp: { capable: true, title: space.name, statusBarStyle: 'default' },
+    icons: brandMetadataIcons(space.logo),
     manifest: `/manifest.json?slug=${encodeURIComponent(params.slug)}`,
     robots: { index: false, follow: false },
     openGraph: {
-      title: resolved.name,
+      title: space.name,
       description,
       type: 'website',
-      siteName: resolved.name,
-      url: resolved.pageUrl,
+      siteName: space.name,
+      url: space.pageUrl,
     },
-    alternates: { canonical },
+    alternates: { canonical: space.pageUrl },
   };
 }
 
-export default async function ClinicPublicPage({ params }: ClinicPublicPageProps) {
-  const profile = await loadProfile({ slug: params.slug });
-  if (!profile) {
+export async function generateViewport({ params }: ClinicPublicPageProps): Promise<Viewport> {
+  const space = await loadSpace(params.slug);
+  if (!space) return PLATFORM_VIEWPORT;
+  return { ...PLATFORM_VIEWPORT, themeColor: space.theme.primary_color };
+}
+
+function buildSpaceJsonLd(space: ActivityPublicSpace) {
+  const sameAs = sanitizePublicSocialLinks(space.socialLinks);
+  const schema = buildClinicSchema({
+    name: space.name,
+    pageUrl: space.pageUrl,
+    description: space.description,
+    logo: space.logo,
+    phone: space.phone ?? undefined,
+    city: space.city,
+    area: space.area,
+    address: space.address,
+    socialLinks: space.socialLinks,
+    services: space.services,
+    openingHours: space.workingHours,
+  });
+
+  if (sameAs.length > 0) schema.sameAs = sameAs;
+  if (space.activityType === 'dental_lab') schema['@type'] = 'MedicalBusiness';
+  return JSON.stringify(schema).replace(/</g, '\u003c');
+}
+
+export default async function LegacyClinicPublicPage({ params }: ClinicPublicPageProps) {
+  const space = await loadSpace(params.slug);
+  if (!space) {
     notFound();
   }
 
-  const hasLocation = Boolean(profile.city || profile.area || profile.address);
-  const hasServices = profile.services.length > 0;
-  const hasHours = profile.workingHours.length > 0;
-
-  return (
-    <main dir="rtl" className="min-h-screen bg-stone-950 text-stone-100">
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        {/* Header */}
-        <header className="mb-8 flex flex-col items-center text-center">
-          {profile.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={profile.logo}
-              alt={`شعار ${profile.name}`}
-              className="mb-4 h-20 w-20 rounded-full border border-stone-700 object-cover"
-            />
-          ) : (
-            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-stone-700 bg-stone-800 text-2xl font-bold text-teal-300">
-              {profile.name.charAt(0)}
-            </div>
-          )}
-          <h1 className="text-3xl font-bold text-white">{profile.name}</h1>
-          {profile.description && (
-            <p className="mt-3 max-w-xl text-stone-300">{profile.description}</p>
-          )}
-          {hasLocation && (
-            <p className="mt-3 text-sm text-stone-400">
-              {[profile.city, profile.area, profile.address]
-                .filter(Boolean)
-                .join(' — ')}
-            </p>
-          )}
-          {profile.phone && (
-            <p className="mt-1 text-sm text-teal-300" dir="ltr">
-              {profile.phone}
-            </p>
-          )}
-        </header>
-
-        {/* CTAs */}
-        <div className="mb-10 flex flex-wrap justify-center gap-3">
-          <a
-            href={profile.bookingUrl}
-            className="rounded-lg bg-teal-500 px-6 py-3 font-semibold text-stone-900 transition hover:bg-teal-600"
-          >
-            احجز موعدًا
-          </a>
-          {/* AI Chat hidden — re-enable by uncommenting
-          <a
-            href={profile.chatUrl}
-            className="rounded-lg border border-stone-600 px-6 py-3 font-semibold text-stone-200 transition hover:border-stone-400"
-          >
-            تحدث مع الاستقبال
-          </a>
-          */}
-        </div>
-        {(profile.cover_url || profile.logo) && (
-          <RotatingMarquee
-            title={`لقطات من ${profile.name}`}
-            className="mb-10 rounded-3xl"
-            items={[{
-              id: `${profile.slug}-public-cover`,
-              title: profile.name,
-              subtitle: profile.tagline || profile.description || `الصفحة العامة لـ${profile.name}`,
-              Badge: 'العيادة',
-              color: 'from-slate-800 via-slate-700 to-slate-900',
-              accent: 'from-cyan-400 to-blue-500',
-              chip: 'معرض العيادة',
-              image: profile.cover_url || profile.logo || undefined,
-              imageAlt: `صورة ${profile.name}`,
-            }]}
-          />
-        )}
-{/* Services */}
-        <section className="mb-10">
-          <h2 className="mb-4 text-xl font-semibold text-white">الخدمات</h2>
-          {hasServices ? (
-            <ul className="space-y-3">
-              {profile.services.map((service) => (
-                <li
-                  key={`${service.name}-${service.duration_minutes ?? 0}`}
-                  className="flex items-start justify-between gap-4 rounded-lg border border-stone-800 bg-stone-900 p-4"
-                >
-                  <div>
-                    <h3 className="font-semibold text-stone-100">{service.name}</h3>
-                    {service.description && (
-                      <p className="mt-1 text-sm text-stone-400">{service.description}</p>
-                    )}
-                    {service.duration_minutes != null && (
-                      <p className="mt-1 text-xs text-stone-500">
-                        المدة: {service.duration_minutes} دقيقة
-                      </p>
-                    )}
-                  </div>
-                  {service.price != null && (
-                    <span className="shrink-0 font-semibold text-teal-300">
-                      {service.price} ₪
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="rounded-lg border border-dashed border-stone-700 p-4 text-sm text-stone-500">
-              لا توجد خدمات منشورة بعد.
-            </p>
-          )}
-        </section>
-
-        {/* Working hours */}
-        <section>
-          <h2 className="mb-4 text-xl font-semibold text-white">ساعات العمل</h2>
-          {hasHours ? (
-            <ul className="space-y-2 rounded-lg border border-stone-800 bg-stone-900 p-4">
-              {profile.workingHours.map((hour) => (
-                <li key={hour.weekday} className="flex justify-between text-sm">
-                  <span className="text-stone-300">
-                    {WEEKDAY_NAMES_AR[hour.weekday] ?? '—'}
-                  </span>
-                  <span className="text-stone-400" dir="ltr">
-                    {formatTime(hour.start_time)} — {formatTime(hour.end_time)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="rounded-lg border border-dashed border-stone-700 p-4 text-sm text-stone-500">
-              لم تُحدّث ساعات العمل بعد.
-            </p>
-          )}
-        </section>
-
-        <footer className="mt-12 text-center text-xs text-stone-600">
-          © AI-Receptions · الصفحة العامة للعيادة
-        </footer>
-      </div>
-    </main>
+  const jsonLd = buildSpaceJsonLd(space);
+  const schemaScript = (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: jsonLd }}
+    />
   );
+
+  switch (space.activityType) {
+    case 'imaging_center':
+      return (
+        <>
+          {schemaScript}
+          <ImagingPublicSpace space={space} />
+          <InstallPWA variant="floating" appName={space.name} />
+        </>
+      );
+    case 'dental_lab':
+      return (
+        <>
+          {schemaScript}
+          <DentalLabPublicSpace space={space} />
+          <InstallPWA variant="floating" appName={space.name} />
+        </>
+      );
+    default:
+      return (
+        <>
+          {schemaScript}
+          <ClinicPublicSpace space={space} />
+          <InstallPWA variant="floating" appName={space.name} />
+        </>
+      );
+  }
 }

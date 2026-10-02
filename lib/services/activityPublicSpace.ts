@@ -1,7 +1,11 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
 import { getPublicClinicProfile, legacyClinicUrl } from '@/lib/services/clinicPublicProfile';
-import type { PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
+import {
+  DEFAULT_PUBLIC_SECTION_ORDER,
+  PUBLIC_SECTION_ORDER_KEYS,
+  type PublicThemeSettings,
+} from '@/lib/services/clinicPublicConfig';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrl } from '@/lib/vercel/tenantLinks';
@@ -55,6 +59,8 @@ export type ActivityPublicSpace = {
   socialLinks: { facebook?: string; instagram?: string; whatsapp?: string; website?: string; email?: string };
   /** Owner section visibility toggles (public_profile.sections). */
   sections: Record<string, boolean | undefined>;
+  /** Owner-defined sequence from clinics.settings.public_profile.sections_order. */
+  sectionOrder: string[];
   /** Bounded display controls (public_profile.display) — activity-agnostic,
    *  renderer maps enums to approved Tailwind classes (no raw CSS passthrough).
    *  Kept in lockstep with PublicDisplaySettings (clinicPublicConfig.ts). */
@@ -198,7 +204,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     getPublicClinicProfile({ slug }),
     supabaseAdmin
       .from('clinics')
-      .select('activity_type')
+      .select('activity_type, settings')
       .eq('id', clinic.id)
       .is('deleted_at', null)
       .maybeSingle(),
@@ -206,6 +212,20 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   if (!profile) return null;
 
   const activityType = normalizeActivityType(activityRow.data?.activity_type ?? 'clinic');
+  const settings = activityRow.data?.settings as { public_profile?: { sections_order?: unknown } | null } | null;
+  const savedOrder = settings?.public_profile?.sections_order;
+  const storedOrder = Array.isArray(savedOrder)
+    ? savedOrder.filter((key): key is (typeof PUBLIC_SECTION_ORDER_KEYS)[number] =>
+        typeof key === 'string' && PUBLIC_SECTION_ORDER_KEYS.includes(key as (typeof PUBLIC_SECTION_ORDER_KEYS)[number])
+      )
+    : [];
+  const sectionOrder: (typeof PUBLIC_SECTION_ORDER_KEYS)[number][] = [];
+  for (const key of storedOrder) {
+    if (!sectionOrder.includes(key)) sectionOrder.push(key);
+  }
+  for (const key of DEFAULT_PUBLIC_SECTION_ORDER) {
+    if (!sectionOrder.includes(key)) sectionOrder.push(key);
+  }
 
   const [imagingServices, labServices] =
     activityType === 'imaging_center'
@@ -320,6 +340,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     coverUrl: profile.cover_url ?? null,
     socialLinks: profile.social_links ?? {},
     sections: profile.sections ?? {},
+    sectionOrder,
     city: profile.city,
     area: profile.area,
     address: profile.address,

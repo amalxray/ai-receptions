@@ -39,6 +39,7 @@ export type DoctorPublicProfile = {
   specialty: string | null;
   bio: string | null;
   photo_url: string | null;
+  updated_at?: string | null;
   visibility: 'noindex' | 'indexable';
   clinic: {
     name: string;
@@ -93,7 +94,7 @@ export async function getDoctorPublicProfile(
   const { data: providerRow, error: providerError } = await supabaseAdmin
     .from('providers')
     .select(
-      'id, name, title, specialty, bio, photo_url, public_slug, public_visibility, provider_type, clinic_id'
+      'id, name, title, specialty, bio, photo_url, public_slug, public_visibility, provider_type, clinic_id, updated_at'
     )
     .eq('public_slug', params.slug)
     .neq('public_visibility', 'private')
@@ -179,6 +180,7 @@ export async function getDoctorPublicProfile(
     specialty: providerRow.specialty ?? null,
     bio: providerRow.bio ?? null,
     photo_url: providerRow.photo_url ?? null,
+    updated_at: providerRow.updated_at ?? null,
     visibility: providerRow.public_visibility as 'noindex' | 'indexable',
     clinic: {
       name: clinicRow.name,

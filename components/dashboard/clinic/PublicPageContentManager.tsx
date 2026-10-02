@@ -10,12 +10,29 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import Skeleton from '@/components/ui/Skeleton';
 
 type ContentType = 'achievements' | 'testimonials' | 'articles' | 'news';
-type TabId = 'theme' | ContentType;
+type TabId = 'theme' | 'sections' | ContentType;
 
 const TYPE_LABELS: Record<ContentType, string> = {
   achievements: 'الإنجازات',
@@ -24,19 +41,153 @@ const TYPE_LABELS: Record<ContentType, string> = {
   news: 'شريط الأخبار',
 };
 
-const TAB_ORDER: TabId[] = ['theme', 'achievements', 'testimonials', 'articles', 'news'];
+const TAB_ORDER: TabId[] = ['theme', 'sections', 'achievements', 'testimonials', 'articles', 'news'];
 
-type ThemeForm = {
+const SECTION_ORDER_ITEMS = [
+  { id: 'hero', label: 'الغلاف والواجهة الرئيسية', icon: '🏠' },
+  { id: 'about', label: 'نبذة عن المنشأة', icon: 'ℹ️' },
+  { id: 'services', label: 'الخدمات', icon: '🩺' },
+  { id: 'providers', label: 'مقدمو الخدمة', icon: '👩‍⚕️' },
+  { id: 'hours', label: 'ساعات العمل', icon: '🕒' },
+  { id: 'offers', label: 'العروض', icon: '🎁' },
+  { id: 'gallery', label: 'معرض الصور', icon: '🖼️' },
+  { id: 'beforeAfter', label: 'قبل / بعد', icon: '↔️' },
+  { id: 'badges', label: 'شارات الإنجازات', icon: '🏅' },
+  { id: 'contact', label: 'التواصل والموقع', icon: '📍' },
+  { id: 'bookingCta', label: 'دعوة الحجز', icon: '📅' },
+  { id: 'aiCta', label: 'المساعد الذكي', icon: '💬' },
+  { id: 'qrShare', label: 'QR والمشاركة', icon: '🔳' },
+  { id: 'achievements', label: 'الإنجازات', icon: '📊' },
+  { id: 'testimonials', label: 'شهادات المرضى', icon: '⭐' },
+  { id: 'articles', label: 'المقالات', icon: '📰' },
+  { id: 'news', label: 'شريط الأخبار', icon: '📢' },
+] as const;
+type SectionOrderId = (typeof SECTION_ORDER_ITEMS)[number]['id'];
+const DEFAULT_SECTION_ORDER = SECTION_ORDER_ITEMS.map((item) => item.id);
+
+function SortableSectionOrderRow({ id, index }: { id: SectionOrderId; index: number }) {
+  const item = SECTION_ORDER_ITEMS.find((entry) => entry.id === id)!;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-3 rounded-xl border bg-white px-3 py-3 shadow-sm transition-shadow ${isDragging ? 'z-10 border-teal-400 shadow-lg' : 'border-slate-200'}`}
+    >
+      <button
+        type="button"
+        aria-label={`اسحب لترتيب ${item.label}`}
+        className="cursor-grab touch-none rounded-lg px-2 py-1 text-lg text-slate-400 hover:bg-slate-100 active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        ⠿
+      </button>
+      <span className="text-lg" aria-hidden="true">{item.icon}</span>
+      <span className="flex-1 text-sm font-semibold text-slate-700">{item.label}</span>
+      <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">{index + 1}</span>
+    </li>
+  );
+}
+
+function SectionsOrderEditor({ api }: { api: ManagerApi }) {
+  const [order, setOrder] = useState<SectionOrderId[]>(DEFAULT_SECTION_ORDER);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrder() {
+      try {
+        const headers = await api.authHeaders();
+        const res = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(api.clinicId)}`, { headers });
+        const body = await res.json().catch(() => null) as { data?: { sections_order?: string[] }; error?: string } | null;
+        if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل ترتيب الأقسام');
+        if (cancelled) return;
+        const stored = (body?.data?.sections_order ?? []).filter(
+          (key): key is SectionOrderId => SECTION_ORDER_ITEMS.some((item) => item.id === key),
+        );
+        const uniqueOrder: SectionOrderId[] = [];
+        [...stored, ...DEFAULT_SECTION_ORDER].forEach((key) => {
+          if (!uniqueOrder.includes(key)) uniqueOrder.push(key);
+        });
+        setOrder(uniqueOrder);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'تعذر تحميل ترتيب الأقسام');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadOrder();
+    return () => { cancelled = true; };
+  }, [api]);
+
+  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const oldIndex = order.indexOf(active.id as SectionOrderId);
+    const newIndex = order.indexOf(over.id as SectionOrderId);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const previous = order;
+    const next = arrayMove(order, oldIndex, newIndex);
+    setOrder(next);
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const headers = await api.authHeaders();
+      const res = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(api.clinicId)}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sections_order: next }),
+      });
+      const body = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? 'تعذر حفظ ترتيب الأقسام');
+      setMessage('تم حفظ الترتيب — حدّث الصفحة العامة لمشاهدة التغيير');
+    } catch (e) {
+      setOrder(previous);
+      setError(e instanceof Error ? e.message : 'تعذر حفظ الترتيب');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <Skeleton className="h-64 w-full rounded-2xl" />;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm leading-6 text-slate-500">اسحب الأقسام لتغيير ترتيب ظهورها في صفحتك العامة. يُحفظ الترتيب تلقائياً، ويمكنك استخدام لوحة المفاتيح لتحريك العنصر المحدد.</p>
+      {message && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => void handleDragEnd(event)}>
+        <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <ol className="space-y-2" aria-label="ترتيب أقسام الصفحة العامة">
+            {order.map((id, index) => <SortableSectionOrderRow key={id} id={id} index={index} />)}
+          </ol>
+        </SortableContext>
+      </DndContext>
+      {saving && <p className="text-xs text-teal-700">جارٍ حفظ الترتيب…</p>}
+    </div>
+  );
+}
+
+export type ThemeForm = {
   primary_color: string;
   background_color: string;
   text_color: string;
+  button_hover_color?: string;
+  link_color?: string;
   button_shape: 'pill' | 'rounded' | 'squared';
   button_size: 'small' | 'medium' | 'large';
   button_shadow: boolean;
   button_zoom: boolean;
 };
 
-const DEFAULT_THEME: ThemeForm = {
+export const DEFAULT_THEME: ThemeForm = {
   primary_color: '#0e7490',
   background_color: '#f6f8ff',
   text_color: '#0f172a',
@@ -56,7 +207,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /** PHASE L — bounded theme editor. Hex colors only; enums mapped to approved values. */
-function ThemeEditor({
+export function ThemeEditor({
   value,
   onChange,
   saving,
@@ -65,52 +216,77 @@ function ThemeEditor({
   onChange: (next: ThemeForm) => void;
   saving: boolean;
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const set = (k: keyof ThemeForm, v: unknown) => onChange({ ...value, [k]: v });
-  const inputCls = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
+  const inputCls = 'w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-700 transition duration-200 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100';
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="اللون الأساسي (الأزرار والعناصر الرئيسية)">
-        <div className="flex items-center gap-2">
-          <input type="color" value={value.primary_color} onChange={(e) => set('primary_color', e.target.value)} className="h-9 w-14 rounded border border-slate-200" />
-          <input type="text" value={value.primary_color} onChange={(e) => set('primary_color', e.target.value)} className={inputCls} dir="ltr" />
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="اللون الأساسي (الأزرار والعناصر الرئيسية)">
+          <div className="flex items-center gap-2">
+            <input type="color" value={value.primary_color} onChange={(e) => set('primary_color', e.target.value)} className="h-10 w-14 cursor-pointer rounded-xl border border-slate-200 bg-white p-1" />
+            <input type="text" value={value.primary_color} onChange={(e) => set('primary_color', e.target.value)} className={inputCls} dir="ltr" />
+          </div>
+        </Field>
+        <Field label="لون الخلفية">
+          <div className="flex items-center gap-2">
+            <input type="color" value={value.background_color} onChange={(e) => set('background_color', e.target.value)} className="h-10 w-14 cursor-pointer rounded-xl border border-slate-200 bg-white p-1" />
+            <input type="text" value={value.background_color} onChange={(e) => set('background_color', e.target.value)} className={inputCls} dir="ltr" />
+          </div>
+        </Field>
+        <Field label="لون النصوص">
+          <div className="flex items-center gap-2">
+            <input type="color" value={value.text_color} onChange={(e) => set('text_color', e.target.value)} className="h-10 w-14 cursor-pointer rounded-xl border border-slate-200 bg-white p-1" />
+            <input type="text" value={value.text_color} onChange={(e) => set('text_color', e.target.value)} className={inputCls} dir="ltr" />
+          </div>
+        </Field>
+        <div className="flex items-end pb-1">
+          <div className="w-full rounded-xl border border-dashed border-teal-200 bg-teal-50/70 p-3 text-sm text-teal-700">
+            <div className="flex items-center justify-between gap-3">
+              <span>النمط العام</span>
+              {saving && <span className="text-xs text-slate-500">جارٍ الحفظ…</span>}
+            </div>
+          </div>
         </div>
-      </Field>
-      <Field label="لون الخلفية">
-        <div className="flex items-center gap-2">
-          <input type="color" value={value.background_color} onChange={(e) => set('background_color', e.target.value)} className="h-9 w-14 rounded border border-slate-200" />
-          <input type="text" value={value.background_color} onChange={(e) => set('background_color', e.target.value)} className={inputCls} dir="ltr" />
-        </div>
-      </Field>
-      <Field label="لون النصوص">
-        <div className="flex items-center gap-2">
-          <input type="color" value={value.text_color} onChange={(e) => set('text_color', e.target.value)} className="h-9 w-14 rounded border border-slate-200" />
-          <input type="text" value={value.text_color} onChange={(e) => set('text_color', e.target.value)} className={inputCls} dir="ltr" />
-        </div>
-      </Field>
-      <Field label="شكل الأزرار">
-        <select value={value.button_shape} onChange={(e) => set('button_shape', e.target.value)} className={inputCls}>
-          <option value="pill">فقاعي (دائري بالكامل)</option>
-          <option value="rounded">بيضاوي (زوايا ناعمة)</option>
-          <option value="squared">مربع (زوايا خفيفة)</option>
-        </select>
-      </Field>
-      <Field label="حجم الأزرار">
-        <select value={value.button_size} onChange={(e) => set('button_size', e.target.value)} className={inputCls}>
-          <option value="small">صغير</option>
-          <option value="medium">متوسط</option>
-          <option value="large">كبير</option>
-        </select>
-      </Field>
-      <div className="flex items-end gap-6 pb-1">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={value.button_shadow} onChange={(e) => set('button_shadow', e.target.checked)} className="h-4 w-4" />
-          ظل للأزرار
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={value.button_zoom} onChange={(e) => set('button_zoom', e.target.checked)} className="h-4 w-4" />
-          حركة تكبير عند التمرير
-        </label>
-        {saving && <span className="text-xs text-slate-400">جارٍ الحفظ…</span>}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((prev) => !prev)}
+          className="flex w-full items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-right text-sm font-semibold text-slate-700 shadow-sm transition hover:shadow-md"
+        >
+          <span>⚙️ إعدادات المظهر المتقدمة</span>
+          <span className={`text-xs text-slate-500 transition ${showAdvanced ? 'rotate-180' : ''}`}>⌃</span>
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 animate-[fadeIn_0.25s_ease-out]">
+            <Field label="شكل الأزرار">
+              <select value={value.button_shape} onChange={(e) => set('button_shape', e.target.value)} className={inputCls}>
+                <option value="pill">فقاعي (دائري بالكامل)</option>
+                <option value="rounded">بيضاوي (زوايا ناعمة)</option>
+                <option value="squared">مربع (زوايا خفيفة)</option>
+              </select>
+            </Field>
+            <Field label="حجم الأزرار">
+              <select value={value.button_size} onChange={(e) => set('button_size', e.target.value)} className={inputCls}>
+                <option value="small">صغير</option>
+                <option value="medium">متوسط</option>
+                <option value="large">كبير</option>
+              </select>
+            </Field>
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-teal-200 hover:shadow-sm">
+              <input type="checkbox" checked={value.button_shadow} onChange={(e) => set('button_shadow', e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-500 focus:ring-teal-500" />
+              ظل للأزرار
+            </label>
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-teal-200 hover:shadow-sm">
+              <input type="checkbox" checked={value.button_zoom} onChange={(e) => set('button_zoom', e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-500 focus:ring-teal-500" />
+              حركة تكبير عند التمرير
+            </label>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -458,23 +634,23 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
 
   return (
     <div className="space-y-4">
-      {error && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {success && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
+      {error && <p className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow-sm">{error}</p>}
+      {success && <p className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 shadow-sm">{success}</p>}
 
       {adding ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md">
           <h4 className="mb-3 text-sm font-semibold text-slate-800">إضافة {TYPE_LABELS[type]}</h4>
           {fieldGrid(form, setForm)}
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-4 flex items-center gap-2">
             <button
               type="button"
               onClick={() => void createSave()}
               disabled={saving || uploading}
-              className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-brand-cyan/90 disabled:opacity-50"
+              className="rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-teal-500/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-teal-500/25 disabled:opacity-50"
             >
               {saving ? 'جارٍ الحفظ…' : 'حفظ'}
             </button>
-            <button type="button" onClick={() => setAdding(false)} className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600">
+            <button type="button" onClick={() => setAdding(false)} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 hover:bg-slate-50">
               إلغاء
             </button>
           </div>
@@ -486,30 +662,31 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
             setForm(emptyForm());
             setAdding(true);
           }}
-          className="rounded-full border border-brand-cyan/40 bg-brand-cyan/5 px-4 py-2 text-sm font-semibold text-brand-cyan transition hover:bg-brand-cyan/10"
+          className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 transition-all duration-300 hover:scale-[1.02] hover:bg-teal-100 hover:shadow-lg hover:shadow-teal-500/15"
         >
-          + إضافة {TYPE_LABELS[type]}
+          <span className="text-base">＋</span>
+          إضافة {TYPE_LABELS[type]}
         </button>
       )}
 
       {loading ? (
-        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
       ) : items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+        <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-5 text-sm text-slate-500">
           لا يوجد أي {TYPE_LABELS[type]} بعد — أضف أول عنصر من الزر أعلاه، ثم فعّل قسمه في الصفحة من «أقسام الصفحة».
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {items.map((item) => (
-            <li key={item.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <li key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/80">
               {editingId === item.id ? (
                 <div>
                   {fieldGrid(editForm, setEditForm)}
-                  <div className="mt-3 flex items-center gap-2">
-                    <button type="button" onClick={() => void updateSave(item.id)} disabled={saving} className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  <div className="mt-4 flex items-center gap-2">
+                    <button type="button" onClick={() => void updateSave(item.id)} disabled={saving} className="rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-teal-500/20 transition hover:scale-[1.02] disabled:opacity-50">
                       {saving ? 'جارٍ الحفظ…' : 'حفظ التعديل'}
                     </button>
-                    <button type="button" onClick={() => setEditingId(null)} className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600">
+                    <button type="button" onClick={() => setEditingId(null)} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400 hover:bg-slate-50">
                       إلغاء
                     </button>
                   </div>
@@ -519,7 +696,7 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
                   <div className="min-w-0 text-sm text-slate-700">
                     {type === 'achievements' && (
                       <span className="flex items-center gap-2 font-semibold">
-                        <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: String(item.background_color ?? '#0e7490') }} />
+                        <span className="inline-block h-3 w-3 rounded-full ring-2 ring-white shadow-sm" style={{ backgroundColor: String(item.background_color ?? '#0e7490') }} />
                         {String(item.icon ?? '')} {String(item.title ?? '')} — {String(item.value ?? '')}
                       </span>
                     )}
@@ -535,21 +712,21 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
                     )}
                     {type === 'news' && (
                       <span className="flex items-center gap-2">
-                        <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: String(item.background_color ?? '#0e7490') }} />
+                        <span className="inline-block h-3 w-3 rounded-full ring-2 ring-white shadow-sm" style={{ backgroundColor: String(item.background_color ?? '#0e7490') }} />
                         <span className="truncate">{String(item.text ?? '')}</span>
                         {item.link != null && <span className="text-xs text-slate-400">🔗</span>}
                       </span>
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
-                      <input type="checkbox" checked={item.enabled !== false} onChange={() => void toggleEnabled(item)} className="h-4 w-4" />
+                    <label className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-600">
+                      <input type="checkbox" checked={item.enabled !== false} onChange={() => void toggleEnabled(item)} className="h-3.5 w-3.5 rounded border-slate-300 text-teal-500 focus:ring-teal-500" />
                       ظاهر
                     </label>
-                    <button type="button" onClick={() => startEdit(item)} className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-brand-cyan/50">
+                    <button type="button" onClick={() => startEdit(item)} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 transition hover:border-teal-200 hover:text-teal-700">
                       تعديل
                     </button>
-                    <button type="button" onClick={() => void deleteItem(item.id)} className="rounded-full border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50">
+                    <button type="button" onClick={() => void deleteItem(item.id)} className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-medium text-red-600 transition hover:bg-red-100">
                       حذف
                     </button>
                   </div>
@@ -625,46 +802,52 @@ export default function PublicPageContentManager() {
 
   return (
     <div className="space-y-5">
-      {error && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {success && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
+      {error && <p className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow-sm">{error}</p>}
+      {success && <p className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 shadow-sm">{success}</p>}
 
-      <div className="flex flex-wrap gap-2">
-        {TAB_ORDER.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              tab === t ? 'bg-brand-cyan text-white shadow' : 'border border-slate-300 bg-white text-slate-600 hover:border-brand-cyan/50'
-            }`}
-          >
-            {t === 'theme' ? '🎨 المظهر العام' : TYPE_LABELS[t]}
-          </button>
-        ))}
+      <div className="rounded-3xl border border-slate-200 bg-white/80 p-3 shadow-sm backdrop-blur-sm">
+        <div className="flex flex-wrap gap-2">
+          {TAB_ORDER.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-300 ease-in-out ${
+                tab === t
+                  ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-lg shadow-teal-500/20 ring-2 ring-teal-100'
+                  : 'border border-slate-200 bg-slate-50 text-slate-600 hover:border-teal-200 hover:bg-white hover:shadow-md hover:shadow-slate-200/80'
+              }`}
+            >
+              {t === 'theme' ? '🎨 المظهر العام' : t === 'sections' ? '↕️ ترتيب الأقسام' : TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'theme' ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h3 className="text-base font-semibold text-slate-800">المظهر العام</h3>
-          <p className="mt-0.5 text-sm text-slate-500">
-            ألوان هادئة، شكل وحجم الأزرار، الظل وحركة التكبير. تُحفظ ضمن إعدادات صفحتك العامة ولا تسمح بإدخال CSS حر.
-          </p>
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-lg hover:shadow-slate-200/80">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-800">المظهر العام</h3>
+              <p className="mt-0.5 text-sm text-slate-500">
+                ألوان هادئة، شكل وحجم الأزرار، الظل وحركة التكبير. تُحفظ ضمن إعدادات صفحتك العامة ولا تسمح بإدخال CSS حر.
+              </p>
+            </div>
+            <div className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700">Live Preview</div>
+          </div>
           <div className="mt-4">
             <ThemeEditor value={theme} onChange={setTheme} saving={themeSaving} />
           </div>
+        </section>
+      ) : tab === 'sections' ? (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-lg hover:shadow-slate-200/80">
+          <h3 className="text-base font-semibold text-slate-800">ترتيب أقسام الصفحة العامة</h3>
           <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => void saveTheme()}
-              disabled={themeSaving}
-              className="rounded-full bg-brand-cyan px-5 py-2 text-sm font-semibold text-white shadow transition hover:bg-brand-cyan/90 disabled:opacity-50"
-            >
-              {themeSaving ? 'جارٍ الحفظ…' : 'حفظ المظهر'}
-            </button>
+            <SectionsOrderEditor api={api} />
           </div>
         </section>
       ) : (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-lg hover:shadow-slate-200/80">
           <h3 className="text-base font-semibold text-slate-800">{TYPE_LABELS[tab]}</h3>
           <p className="mt-0.5 text-sm text-slate-500">أدر المحتوى من هنا، ثم فعّل القسم من «أقسام الصفحة» في إدارة الصفحة العامة.</p>
           <div className="mt-4">
@@ -672,6 +855,28 @@ export default function PublicPageContentManager() {
           </div>
         </section>
       )}
+
+      {tab === 'theme' && <div className="sticky bottom-4 z-20 mt-6 rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-lg shadow-slate-200/60 backdrop-blur-md">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs text-slate-500">تغييرات معلقة</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-300 hover:scale-[1.02] hover:border-slate-400"
+            >
+              معاينة الصفحة
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveTheme()}
+              disabled={themeSaving}
+              className="rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-teal-500/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-teal-500/25 disabled:opacity-50"
+            >
+              {themeSaving ? 'جارٍ الحفظ…' : 'حفظ التغييرات'}
+            </button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }

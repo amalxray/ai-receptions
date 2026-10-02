@@ -1,8 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { useEffect, useRef } from 'react';
-
 export type RotatingMarqueeItem = {
   id: string;
   title: string;
@@ -77,25 +74,11 @@ export default function RotatingMarquee({
   variant = 'dark',
 }: RotatingMarqueeProps) {
   const isLight = variant === 'light';
-  const list = [...items, ...items];
-  const viewportRef = useRef<HTMLDivElement>(null), trackRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const viewport = viewportRef.current, track = trackRef.current;
-    if (!viewport || !track) return;
-    const update = () => {
-      const bounds = viewport.getBoundingClientRect(), center = bounds.left + bounds.width / 2;
-      track.querySelectorAll<HTMLElement>('[data-marquee-card]').forEach((card) => {
-        const rect = card.getBoundingClientRect(), delta = rect.left + rect.width / 2 - center;
-        const distance = Math.min(1, Math.abs(delta) / (bounds.width / 2));
-        const centerWidth = window.matchMedia('(min-width: 640px)').matches ? 390 : 350;
-        Object.entries({ scale: 1 - distance * (1 - 280 / centerWidth), rotate: `${Math.sign(delta) * distance * 25}deg`, opacity: 1 - distance * 0.5, blur: `${distance * 8}px`, gray: distance }).forEach(([key, value]) => card.style.setProperty(`--marquee-${key}`, String(value)));
-      });
-    };
-    const timer = window.setInterval(update, 50);
-    update();
-    return () => window.clearInterval(timer);
-  }, []);
+  const uniqueItems = Array.from(
+    new Map(items.map((item) => [item.id || item.title || item.image || item.subtitle, item])).values(),
+  );
+  // Duplicate the unique sequence once so the CSS track loops seamlessly after a full pass.
+  const list = [...uniqueItems, ...uniqueItems];
 
   return (
     <section className={`relative overflow-hidden ${isLight ? 'bg-[#FAFBFC]' : ''} ${className}`}>
@@ -103,70 +86,61 @@ export default function RotatingMarquee({
         <div aria-hidden="true" className="pointer-events-none absolute -top-20 -right-20 -z-10 h-80 w-80 rounded-full bg-[#8B5CF6]/10 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -left-20 -z-10 h-80 w-80 rounded-full bg-[#0EA5E9]/10 blur-3xl" />
       </>}
-      <div className="mb-8 flex items-center justify-between gap-4">
+      <div className="mx-auto mb-6 max-w-6xl px-4 sm:mb-8">
         <div>
-          <p className={`text-sm font-medium tracking-[0.22em] uppercase ${isLight ? 'rounded-full border border-[#E2E8F0] bg-slate-100 px-3 py-1 text-slate-700' : 'text-slate-300'}`}>Gallery</p>
-          <h3 className={`mt-2 text-2xl font-black sm:text-3xl ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
+          <p className="hidden">Gallery</p>
+          <h3 className={`text-xl font-black sm:text-2xl ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
         </div>
-        <div className="hidden text-[11px] font-bold text-slate-500 sm:block">
+        <div className="hidden text-[11px] font-bold text-slate-500">
           3D Motion
         </div>
       </div>
 
-      <div ref={viewportRef} className="relative [perspective:1800px]">
-        <motion.div
-          animate={{ x: ['0%', '-50%'] }}
-          transition={{ duration: 52, ease: 'linear', repeat: Infinity }}
-          className="flex w-max gap-10"
-          style={{ transformStyle: 'preserve-3d' }}
-          ref={trackRef}
-        >
-          {list.map((item, index) => (
-              <motion.article
+      <div dir="ltr" className="group relative mx-auto w-full max-w-6xl overflow-hidden px-4">
+        <div className="flex w-max items-center gap-4 py-3 animate-ticker [animation-duration:90s] motion-reduce:animate-none group-hover:[animation-play-state:paused]">
+          {list.map((item, index) => {
+            const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+              const bounds = event.currentTarget.getBoundingClientRect();
+              const delta = event.clientX - (bounds.left + bounds.width / 2);
+              const distance = Math.min(1, Math.abs(delta) / (bounds.width / 2));
+              const rotateY = delta > 0 ? 8 * distance : -8 * distance;
+              const translateX = delta * 0.12;
+              event.currentTarget.style.transform = `perspective(1000px) rotateY(${rotateY}deg) translateX(${translateX}px)`;
+            };
+
+            const handlePointerLeave = (event: React.PointerEvent<HTMLElement>) => {
+              event.currentTarget.style.transform = '';
+            };
+
+            return (
+              <article
                 key={`${item.id}-${index}`}
                 data-marquee-card
-                className={`relative w-[350px] shrink-0 overflow-hidden transition-shadow hover:shadow-xl [--marquee-scale:0.8] sm:w-[390px] sm:[--marquee-scale:0.718] ${isLight ? 'rounded-2xl border border-[#E2E8F0] bg-white p-3 shadow-sm' : ''}`}
-                style={{
-                  transform: 'perspective(1200px) rotateY(var(--marquee-rotate, 25deg)) scale(var(--marquee-scale))',
-                  opacity: 'var(--marquee-opacity, 0.5)',
-                  transition: 'transform 500ms ease-out, opacity 500ms ease-out',
-                  transformStyle: 'preserve-3d',
-                }}
+                onPointerMove={handlePointerMove}
+                onPointerLeave={handlePointerLeave}
+                className={`group relative w-56 shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl sm:w-64 ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
               >
-                <div className={`relative overflow-hidden ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
+                <div className={`group relative h-36 overflow-hidden rounded-xl sm:h-40 ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
                   {item.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={item.image}
                       alt={item.imageAlt ?? item.title}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      style={{ filter: 'blur(var(--marquee-blur, 8px)) grayscale(var(--marquee-gray, 1))', transition: 'filter 500ms ease-out' }}
+                      loading="lazy"
+                      className="h-full w-full rounded-lg object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : null}
                   {!item.image && <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />}
-                  {isLight && <div aria-hidden="true" className="absolute inset-0 bg-white/60" />}
-                  <div className={`absolute inset-x-3 top-3 flex items-center justify-between text-[10px] font-bold drop-shadow-md ${isLight ? 'text-slate-700' : 'text-white'}`}>
-                    <span>{item.chip}</span>
-                    <span className={`inline-flex h-2 w-2 rounded-full bg-gradient-to-r ${item.accent}`} />
-                  </div>
-
-                  <div className="relative flex h-[180px] items-end justify-between sm:h-[200px]">
-                    <div className={`space-y-2 drop-shadow-md ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      <div className={`text-[11px] font-bold ${isLight ? 'text-slate-700' : 'text-white/80'}`}>{item.Badge}</div>
-                      <div className="text-xl font-black sm:text-2xl">{item.title}</div>
-                    </div>
-                    <div className={`flex h-12 w-12 items-center justify-center text-xl drop-shadow-md ${isLight ? 'text-slate-400' : 'text-white'}`}>
-                      ✦
-                    </div>
-                  </div>
+                  {item.image && (
+                    <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                      {item.chip || 'معرض'}
+                    </span>
+                  )}
                 </div>
-
-                <div className="mt-3 space-y-1">
-                  <p className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-slate-200'}`}>{item.subtitle}</p>
-                </div>
-              </motion.article>
-            ))}
-        </motion.div>
+              </article>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

@@ -57,25 +57,30 @@ export function ClinicPublicSpace({ space }: { space: ActivityPublicSpace }) {
             <h2 className="mb-4 text-xl font-bold text-slate-800">الخدمات ومجالات الممارسة</h2>
             {hasServices ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                {space.services.map((service) => (
+                {space.services.map((service, index) => (
                   <article
                     key={`${service.name}-${service.duration_minutes ?? 0}`}
-                    className="public-card group rounded-2xl border border-slate-200 bg-white p-5 hover:border-brand-cyan/50"
+                    className="public-card group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50/80 p-5 shadow-[0_12px_35px_rgba(8,145,178,0.07)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]"
                   >
-                    <h3 className="font-bold text-slate-800 transition group-hover:text-brand-cyan">{service.name}</h3>
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-emerald-400/20 text-3xl shadow-inner shadow-cyan-500/10 transition duration-300 group-hover:scale-110 group-hover:shadow-[0_0_24px_rgba(6,182,212,0.28)]" aria-hidden="true">
+                        {['🩺', '✨', '🦷', '💙'][index % 4]}
+                      </span>
+                      {service.price != null && (
+                        <span className="rounded-full border border-cyan-100 bg-white/80 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">{service.price} ₪</span>
+                      )}
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 transition group-hover:text-brand-cyan">{service.name}</h3>
                     {service.description && (
                       <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{service.description}</p>
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                       {service.duration_minutes != null && (
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">⏱ {service.duration_minutes} دقيقة</span>
-                      )}
-                      {service.price != null && (
-                        <span className="rounded-full bg-brand-cyan/10 px-2.5 py-1 font-semibold text-brand-cyan">{service.price} ₪</span>
+                        <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-600">⏱ {service.duration_minutes} دقيقة</span>
                       )}
                       <a
                         href={space.bookingUrl}
-                        className="mr-auto rounded-full bg-brand-cyan/10 px-3 py-1.5 font-semibold text-brand-cyan transition hover:bg-brand-cyan hover:text-white"
+                        className="mr-auto rounded-full bg-brand-cyan/10 px-4 py-2 font-semibold text-brand-cyan transition duration-300 hover:scale-105 hover:bg-brand-cyan hover:text-white hover:shadow-lg hover:shadow-cyan-500/25"
                       >
                         احجز
                       </a>

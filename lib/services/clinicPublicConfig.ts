@@ -39,6 +39,19 @@ export type PublicSectionKey =
   | 'articles'
   | 'news';
 
+export const PUBLIC_SECTION_ORDER_KEYS = [
+  'hero', 'about', 'services', 'providers', 'hours', 'offers', 'gallery',
+  'beforeAfter', 'badges', 'contact', 'bookingCta', 'aiCta', 'qrShare',
+  'achievements', 'testimonials', 'articles', 'news',
+] as const;
+export type PublicSectionOrderKey = (typeof PUBLIC_SECTION_ORDER_KEYS)[number];
+
+export const DEFAULT_PUBLIC_SECTION_ORDER: PublicSectionOrderKey[] = [
+  'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
+  'offers', 'services', 'providers', 'hours', 'contact', 'bookingCta',
+  'testimonials', 'articles', 'qrShare', 'news', 'aiCta',
+];
+
 export type SocialLinks = {
   facebook?: string;
   instagram?: string;
@@ -179,6 +192,8 @@ export type PublicThemeSettings = {
   primary_color: string;
   background_color: string;
   text_color: string;
+  button_hover_color?: string;
+  link_color?: string;
   button_shape: ButtonShape;
   button_size: 'small' | 'medium' | 'large';
   button_shadow: boolean;
@@ -189,6 +204,8 @@ export const DEFAULT_THEME: PublicThemeSettings = {
   primary_color: '#0e7490',
   background_color: '#f6f8ff',
   text_color: '#0f172a',
+  button_hover_color: '#0c8197',
+  link_color: '#0f766e',
   button_shape: 'pill',
   button_size: 'medium',
   button_shadow: true,
@@ -217,6 +234,8 @@ export function validateThemePatch(
       case 'primary_color':
       case 'background_color':
       case 'text_color':
+      case 'button_hover_color':
+      case 'link_color':
         if (!isHexColor(v)) return { ok: false, message: `theme.${k} must be a #rrggbb hex color` };
         out[k] = v;
         break;
@@ -250,6 +269,8 @@ export function readTheme(settings: unknown): PublicThemeSettings {
       case 'primary_color':
       case 'background_color':
       case 'text_color':
+      case 'button_hover_color':
+      case 'link_color':
         if (isHexColor(v)) out[k] = v;
         break;
       case 'button_shape':
@@ -277,6 +298,7 @@ export type PublicProfileSettings = {
   social_links?: SocialLinks;
   show_providers?: boolean;
   sections?: Partial<Record<PublicSectionKey, boolean>>;
+  sections_order?: PublicSectionOrderKey[];
   hidden_services?: string[];
   hidden_providers?: string[];
   display?: Partial<PublicDisplaySettings>;
@@ -349,6 +371,18 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
   const p = (raw.public_profile ?? {}) as Record<string, unknown>;
   const defaults = defaultPublicPageSections(activityType);
   const stored = (p.sections ?? {}) as Record<string, unknown>;
+  const storedOrder = Array.isArray(p.sections_order)
+    ? p.sections_order.filter((key): key is PublicSectionOrderKey =>
+        typeof key === 'string' && PUBLIC_SECTION_ORDER_KEYS.includes(key as PublicSectionOrderKey)
+      )
+    : [];
+  const sectionsOrder: PublicSectionOrderKey[] = [];
+  for (const key of storedOrder) {
+    if (!sectionsOrder.includes(key)) sectionsOrder.push(key);
+  }
+  for (const key of DEFAULT_PUBLIC_SECTION_ORDER) {
+    if (!sectionsOrder.includes(key)) sectionsOrder.push(key);
+  }
   return {
     description: typeof p.description === 'string' ? p.description : undefined,
     tagline: typeof p.tagline === 'string' ? p.tagline : undefined,
@@ -360,6 +394,7 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
     discovery_enabled: p.discovery_enabled === true,
     social_links: (p.social_links ?? {}) as SocialLinks,
     sections: { ...defaults, ...((p.sections ?? {}) as Record<string, unknown>) },
+    sections_order: sectionsOrder,
     hidden_services: Array.isArray(p.hidden_services) ? p.hidden_services.map(String) : [],
     hidden_providers: Array.isArray(p.hidden_providers) ? p.hidden_providers.map(String) : [],
     display: readDisplaySettings(settings),
@@ -514,6 +549,21 @@ export async function updatePublicPageConfig(
       if (typeof v === 'boolean') merged[k] = v;
     }
     updated.sections = merged;
+  }
+
+  if (patch.sections_order !== undefined) {
+    const input = patch.sections_order;
+    if (!Array.isArray(input) || input.some((key) => !PUBLIC_SECTION_ORDER_KEYS.includes(key))) {
+      return { ok: false, message: 'sections_order contains an unknown section' };
+    }
+    const ordered: PublicSectionOrderKey[] = [];
+    for (const key of input) {
+      if (!ordered.includes(key)) ordered.push(key);
+    }
+    for (const key of DEFAULT_PUBLIC_SECTION_ORDER) {
+      if (!ordered.includes(key)) ordered.push(key);
+    }
+    updated.sections_order = ordered;
   }
 
   // hidden services/providers — replace whole arrays whenever provided.

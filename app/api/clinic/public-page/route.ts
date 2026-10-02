@@ -23,6 +23,12 @@ import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import { getPublicPageConfig, updatePublicPageConfig } from '@/lib/services/clinicPublicConfig';
 
+const SECTION_ORDER_KEYS = [
+  'hero', 'about', 'services', 'providers', 'hours', 'offers', 'gallery',
+  'beforeAfter', 'badges', 'contact', 'bookingCta', 'aiCta', 'qrShare',
+  'achievements', 'testimonials', 'articles', 'news',
+] as const;
+
 const patchSchema = z.object({
   description: z.string().max(3000).nullable().optional(),
   tagline: z.string().max(300).nullable().optional(),
@@ -42,6 +48,7 @@ const patchSchema = z.object({
     })
     .optional(),
   sections: z.record(z.boolean()).optional(),
+  sections_order: z.array(z.enum(SECTION_ORDER_KEYS)).max(SECTION_ORDER_KEYS.length).optional(),
   hidden_services: z.array(z.string().uuid()).optional(),
   hidden_providers: z.array(z.string().uuid()).optional(),
   // Bounded display controls — enums only; the service re-validates before saving.

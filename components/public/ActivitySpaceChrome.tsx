@@ -1,17 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ShareSection } from '@/components/public/ShareSection';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
-import BeforeAfterSlider from '@/components/public/BeforeAfterSlider';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import RotatingMarquee, { type RotatingMarqueeItem } from '@/components/ui/RotatingMarquee';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
+import BeforeAfterSection from '@/components/public/BeforeAfterSection';
+import AchievementsSection from '@/components/public/AchievementsSection';
+import TestimonialsCarousel from '@/components/public/TestimonialsCarousel';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
 const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
@@ -50,6 +52,90 @@ const MARQUEE_PALETTE = [
   { color: 'from-emerald-800 via-teal-700 to-cyan-600', accent: 'from-emerald-400 to-cyan-400' },
   { color: 'from-slate-800 via-neutral-700 to-zinc-900', accent: 'from-amber-400 to-orange-500' },
 ];
+
+function flattenPageChildren(children: ReactNode): ReactNode[] {
+  return Children.toArray(children).flatMap((child) =>
+    isValidElement(child) && child.type === Fragment
+      ? flattenPageChildren((child.props as { children?: ReactNode }).children)
+      : [child],
+  );
+}
+
+function getElementText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(getElementText).join(' ');
+  if (isValidElement(node)) return getElementText((node.props as { children?: ReactNode }).children);
+  return '';
+}
+
+function publicChildSectionKey(node: ReactNode): string {
+  const text = getElementText(node);
+  if (/عروض وإعلانات/.test(text)) return 'offers';
+  if (/الأطباء|مقدمو الخدمة/.test(text)) return 'providers';
+  if (/ساعات العمل/.test(text)) return 'hours';
+  if (/مكان العمل والتواصل|معلومات المركز|معلومات المختبر/.test(text)) return 'contact';
+  if (/جاهز للخطوة التالية/.test(text)) return 'bookingCta';
+  if (/الخدمات|خدمات التصوير|خدمات المختبر/.test(text)) return 'services';
+  if (/قبل وبعد/.test(text)) return 'beforeAfter';
+  if (/التعاون|مشغول في العمل/.test(text)) return 'about';
+  return 'services';
+}
+
+function normalizedPublicText(value: string): string {
+  return value
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+/** Remove repeated public media by URL at the presentation layer. */
+export function uniquePublicMediaItems<T extends { media_type: string; public_url: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const url = item.public_url?.trim();
+    if (!url) return false;
+    const key = `${item.media_type}:${url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Keep one instance of each non-empty news message for the ticker loop. */
+export function uniquePublicNewsItems<T extends { text: string }>(items: T[]): T[] {
+  const uniqueMessages = Array.from(new Set(items.map((item) => (item.text ?? '').trim()))).filter(Boolean);
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const rawText = (item.text ?? '').trim();
+    const key = normalizedPublicText(rawText);
+    if (!key || seen.has(key)) return false;
+    if (!uniqueMessages.includes(rawText)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Sanitize testimonials for display without inventing patient identities. */
+export function cleanPublicTestimonials(items: ActivityPublicSpace['testimonials']) {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    const content = (item.content ?? '').replace(/[★☆⭐🌟]/g, '').replace(/\s+/g, ' ').trim();
+    const contentKey = normalizedPublicText(content);
+    if (!contentKey || seen.has(contentKey)) return [];
+    seen.add(contentKey);
+
+    const patientName = (item.patient_name ?? '').trim();
+    const genericName = /^(?:مراجع(?:ة)?(?: موثق(?:ة)?)?|إحدى مراجعات المركز|أحد مراجعي المركز|مراجع(?:ة)? المركز)$/i.test(patientName);
+    const rating = Number(item.rating);
+    return [{
+      ...item,
+      content,
+      patient_name: !patientName || genericName ? 'مراجع موثق' : patientName,
+      rating: Number.isFinite(rating) ? Math.max(1, Math.min(5, Math.round(rating))) : 5,
+    }];
+  });
+}
 
 export function formatTime(time: string): string {
   const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
@@ -161,6 +247,47 @@ function StaggerReveal({
   );
 }
 
+function RevealSection({
+  children,
+  className = '',
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.16 },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`section-reveal ${visible ? 'is-visible' : ''} ${className}`.trim()}
+      style={delay ? { transitionDelay: `${delay}ms` } : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function ActivitySpaceChrome({
   space,
   headline,
@@ -187,9 +314,31 @@ export function ActivitySpaceChrome({
       : d?.heading === 'large'
         ? 'text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl'
         : 'text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl';
-  const galleryImages = (space.media ?? []).filter(
-    (item) => item.media_type === 'image' && /^(https?:\/\/|\/)/i.test(item.public_url),
-  );
+  const themeTextColor = space.theme?.text_color ?? '#0f172a';
+  const linkColor = space.theme?.link_color ?? '#0f766e';
+  const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
+  const tickerNews = uniquePublicNewsItems(space.news ?? []);
+  const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
+  const aboutFeatures = (space.about ?? '')
+    .split(/\r?\n|(?=✔️?)/)
+    .map((feature) => feature.replace(/^✔️?\s*/, '').trim())
+    .filter(Boolean);
+  const genericGalleryLabels = new Set([
+    'غلاف الصفحة العامة',
+    'صورة Amal X-Ray Center',
+    'صورة ',
+    'Amal X-Ray Center',
+    'image',
+    'cover',
+    'gallery',
+  ]);
+  const galleryImages = uniqueMedia.filter((item) => {
+    if (!(item.media_type === 'image') || !/^(https?:\/\/|\/)/i.test(item.public_url)) return false;
+    const title = (item.title ?? '').trim();
+    const alt = (item.alt_text ?? '').trim();
+    if (genericGalleryLabels.has(title) || genericGalleryLabels.has(alt)) return false;
+    return true;
+  });
   const fallbackImage = space.coverUrl || space.logo;
   const marqueeSources = galleryImages.length > 0
     ? galleryImages
@@ -218,6 +367,22 @@ export function ActivitySpaceChrome({
       imageAlt: item.alt_text || item.title || `صورة ${space.name}`,
     };
   });
+  const sectionPosition = (key: string) => {
+    const index = space.sectionOrder.indexOf(key);
+    return index < 0 ? space.sectionOrder.length : index;
+  };
+  const orderedActivitySections = flattenPageChildren(children).map((child, index) => {
+    const key = publicChildSectionKey(child);
+    if (!isValidElement(child)) {
+      return <div key={`public-activity-section-${index}`} style={{ order: sectionPosition(key) }}>{child}</div>;
+    }
+    const element = child as ReactElement<{ className?: string; style?: CSSProperties }>;
+    return cloneElement(element, {
+      key: element.key ?? `public-activity-section-${index}`,
+      className: [element.props.className, 'mx-auto w-full max-w-5xl px-4'].filter(Boolean).join(' '),
+      style: { ...element.props.style, order: sectionPosition(key) },
+    });
+  });
 
   // Public Chat UX (Phase 8): the conversation opens INSIDE this public page
   // via the FloatingChatWidget (embedded ChatInterface) — never a redirect to
@@ -231,7 +396,7 @@ export function ActivitySpaceChrome({
   }, []);
 
   return (
-    <div dir="rtl" className={`min-h-screen text-slate-800${bodyScale}`} style={{ backgroundColor: space.theme?.background_color ?? '#f6f8ff' }} >
+    <div dir="rtl" className={`min-h-screen${bodyScale}`} style={{ backgroundColor: space.theme?.background_color ?? '#f6f8ff', color: themeTextColor }} >
       {/* Floating wellness blobs + bubbles (calm, reduced-motion safe) */}
       <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-32 right-[-5%] h-[28rem] w-[28rem] rounded-full bg-brand-cyan/15 blur-3xl animate-float-slow" />
@@ -241,33 +406,6 @@ export function ActivitySpaceChrome({
         <span className="absolute top-[30%] left-[18%] h-2 w-2 rounded-full bg-brand-emerald/30 animate-drift" style={{ animationDelay: '2s' }} />
         <span className="absolute top-[12%] left-[38%] h-2.5 w-2.5 rounded-full bg-cyan-400/30 animate-drift" style={{ animationDelay: '4s' }} />
       </div>
-
-      {/* PHASE L — news ticker (owner-managed; bounded colors/speed/height/font) */}
-      {on('news') && space.news.length > 0 && (
-        <div
-          dir="ltr"
-          className={`flex items-center overflow-hidden border-b border-white/10 ${newsHeightClass(d?.news_height)}`}
-          style={{ backgroundColor: space.theme?.primary_color ?? '#0e7490' }}
-        >
-          <div
-            className={`flex w-max animate-ticker items-center gap-10 px-4 ${newsFontClass(d?.news_font)}`}
-            style={{ animationDuration: `${tickerDuration((space.news[0] ?? {}).speed as string | undefined)}s` }}
-          >
-            {[...space.news, ...space.news].map((n, i) => (
-              <a
-                key={`${n.id}-${i}`}
-                href={n.link ?? undefined}
-                target={n.link ? '_blank' : undefined}
-                rel="noopener noreferrer"
-                className="whitespace-nowrap text-xs font-medium"
-                style={{ color: n.text_color ?? '#ffffff' }}
-              >
-                {n.text}{n.link ? ' ↗' : ''}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Sticky CTA row: booking + owner dashboard entry */}
       <div className="sticky top-3 z-20 mx-auto flex w-fit flex-wrap items-center justify-center gap-3 px-4">
@@ -289,17 +427,45 @@ export function ActivitySpaceChrome({
         <a
           href={ownerLoginUrl(space.slug)}
           className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan/60 hover:text-brand-cyan"
+          style={{ color: linkColor }}
         >
           لوحة التحكم / دخول المالك
         </a>
       </div>
 
-      <main>
+      <main className="flex flex-col">
+        {/* PHASE L — ticker follows the owner-saved page order. */}
+        {on('news') && tickerNews.length > 0 && (
+          <div
+            dir="ltr"
+            className={`flex items-center overflow-hidden border-b border-white/10 ${newsHeightClass(d?.news_height)}`}
+            style={{ order: sectionPosition('news'), backgroundColor: space.theme?.primary_color ?? '#0e7490' }}
+          >
+            <div
+              className={`flex w-max animate-ticker [animation-direction:reverse] items-center gap-10 px-4 ${newsFontClass(d?.news_font)}`}
+              style={{ animationDuration: `${tickerDuration((tickerNews[0] ?? {}).speed as string | undefined)}s` }}
+            >
+              {[...tickerNews, ...tickerNews].map((n, i) => (
+                <a
+                  key={`${n.id}-loop-${i}`}
+                  href={n.link ?? undefined}
+                  target={n.link ? '_blank' : undefined}
+                  rel="noopener noreferrer"
+                  dir="rtl"
+                  className="whitespace-nowrap text-xs font-medium"
+                  style={{ color: n.text_color ?? '#ffffff' }}
+                >
+                  {n.text}{n.link ? ' ↗' : ''}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Hero — cover image is its own clean band (no text on top); copy sits
             in a separate section below, so the owner's cover stays readable
             with owner-controlled blur / focus point / vertical offset. */}
-        <section>
-          <div className="relative overflow-hidden" style={{ height: `${d?.cover_height ?? 384}px` }}>
+        <section style={{ order: sectionPosition('hero') }}>
+          <div className="relative max-h-[280px] overflow-hidden sm:max-h-[340px]" style={{ height: `${d?.cover_height ?? 384}px` }}>
             {space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -321,7 +487,7 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* Hero copy — dedicated section below the cover */}
-        <section className="border-b border-slate-200/70 bg-white">
+        <section className="border-b border-slate-200/70 bg-white" style={{ order: sectionPosition('hero') }}>
           <div className="mx-auto max-w-5xl px-4 py-12 text-center sm:py-16">
             <StaggerReveal>
               <div className="mb-6 flex justify-center">
@@ -399,51 +565,34 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
-        <RotatingMarquee
-          items={marqueeItems.length > 0 ? marqueeItems : undefined}
-          title={`لقطات من ${space.name}`}
-        />
+        <div style={{ order: sectionPosition('gallery') }}>
+          <RotatingMarquee
+            items={marqueeItems.length > 0 ? marqueeItems : undefined}
+            title={`لقطات من ${space.name}`}
+          />
+        </div>
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
         {on('beforeAfter') && space.beforeAfter.length > 0 && (
-          <section id="before-after" className="mx-auto w-full max-w-7xl px-4 pt-12">
-            <div className="mb-6 text-center">
-              <h2 className="text-xl font-bold text-slate-800">قبل وبعد</h2>
-              <p className="mt-1 text-sm text-slate-500">نتائج حقيقية — اسحب المقارنة لترى الفرق</p>
-            </div>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              {space.beforeAfter.map((c) => (
-                <BeforeAfterSlider key={c.id} before={c.before_url} after={c.after_url} title={c.title} />
-              ))}
-            </div>
-          </section>
+          <div style={{ order: sectionPosition('beforeAfter') }}>
+            <RevealSection>
+              <BeforeAfterSection items={space.beforeAfter} />
+            </RevealSection>
+          </div>
         )}
 
         {/* PHASE L — achievements trust cards (right after the gallery) */}
         {on('achievements') && space.achievements.length > 0 && (
-          <section id="achievements" className="mx-auto w-full max-w-7xl px-4 pt-12">
-            <div className="mb-6 text-center">
-              <h2 className="text-xl font-bold text-slate-800">إنجازاتنا</h2>
-              <p className="mt-1 text-sm text-slate-500">أرقام تعكس العمل والثقة</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {space.achievements.map((a) => (
-                <div
-                  key={a.id}
-                  className="rounded-2xl p-5 text-center text-white shadow-lg"
-                  style={{ backgroundColor: a.background_color ?? '#0e7490' }}
-                >
-                  <div className={`font-extrabold ${a.font_size === 'small' ? 'text-2xl' : a.font_size === 'large' ? 'text-5xl' : 'text-4xl'}`}>{a.value}</div>
-                  <p className="mt-1 text-sm font-semibold text-white/90">{a.icon ? `${a.icon} ` : ''}{a.title}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+          <div style={{ order: sectionPosition('achievements') }}>
+            <RevealSection>
+              <AchievementsSection items={space.achievements} />
+            </RevealSection>
+          </div>
         )}
 
         {/* Phase 5 — verifiable achievement badges */}
         {on('badges') && space.badges.length > 0 && (
-          <section id="badges" className="mx-auto w-full max-w-7xl px-4 pt-12">
+          <section id="badges" className="mx-auto w-full max-w-7xl px-4 pt-12" style={{ order: sectionPosition('badges') }}>
             <div className="mb-6 text-center">
               <h2 className="text-xl font-bold text-slate-800">شهادات وإنجازات</h2>
               <p className="mt-1 text-sm text-slate-500">اعتمادات موثّقة يمكن التحقق منها</p>
@@ -490,42 +639,44 @@ export function ActivitySpaceChrome({
 
         {/* Owner-managed about (shared across activities) */}
         {on('about') && space.about && (
-          <div className="mx-auto max-w-3xl px-4 pt-10">
-            <div className="public-card rounded-3xl border border-slate-200 bg-white/80 p-6">
-              <h2 className="mb-2 text-lg font-bold text-slate-800">عن المنشأة</h2>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">{space.about}</p>
+          <div className="mx-auto max-w-3xl px-4 pt-10" style={{ order: sectionPosition('about') }}>
+            <div className="public-card overflow-hidden rounded-[28px] border border-white/70 bg-white/65 p-6 shadow-[0_20px_55px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:p-8">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-emerald-400/20 text-2xl">✦</span>
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-800">عن المنشأة</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">رعاية موثوقة، بخطوات واضحة</p>
+                </div>
+              </div>
+              {aboutFeatures.length > 1 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {aboutFeatures.map((feature, index) => (
+                    <div key={`${index}-${feature}`} className="animate-reveal flex items-start gap-3 rounded-2xl border border-emerald-100 bg-gradient-to-l from-emerald-50/90 to-white p-3.5 text-sm leading-relaxed text-slate-700 transition duration-300 hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-[0_10px_25px_rgba(16,185,129,0.12)]" style={{ animationDelay: `${index * 90}ms` }}>
+                      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-xs font-black text-white shadow-[0_0_15px_rgba(16,185,129,0.28)]" aria-hidden="true">✓</span>
+                      <span>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">{space.about}</p>
+              )}
             </div>
           </div>
         )}
 
         {/* Content */}
-        <div className="mx-auto max-w-5xl px-4 py-12">{children}</div>
+        <div className="contents">{orderedActivitySections}</div>
 
         {/* PHASE L — testimonials + articles (social proof + education, after content) */}
-        {on('testimonials') && space.testimonials.length > 0 && (
-          <section className="mx-auto w-full max-w-7xl px-4 pb-12">
-            <h2 className="mb-6 text-center text-xl font-bold text-slate-800">ماذا يقول مرضانا</h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {space.testimonials.map((t) => (
-                <figure key={t.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-amber-400" dir="ltr">{'★'.repeat(Math.max(1, Math.min(5, t.rating)))}</div>
-                  <blockquote className="mt-2 text-sm leading-relaxed text-slate-600">"{t.content}"</blockquote>
-                  <figcaption className="mt-3 flex items-center gap-2">
-                    {t.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={t.image_url} alt={t.patient_name} loading="lazy" className="h-9 w-9 rounded-full object-cover" />
-                    ) : (
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-cyan/10 font-bold text-brand-cyan">{t.patient_name.charAt(0)}</span>
-                    )}
-                    <span className="text-sm font-semibold text-slate-700">{t.patient_name}</span>
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
-          </section>
+        {on('testimonials') && testimonials.length > 0 && (
+          <div style={{ order: sectionPosition('testimonials') }}>
+            <RevealSection>
+              <TestimonialsCarousel items={testimonials} />
+            </RevealSection>
+          </div>
         )}
         {on('articles') && space.articles.length > 0 && (
-          <section className="mx-auto w-full max-w-7xl px-4 pb-14">
+          <section className="mx-auto w-full max-w-7xl px-4 pb-14" style={{ order: sectionPosition('articles') }}>
             <h2 className="mb-6 text-center text-xl font-bold text-slate-800">مقالات ومنشورات</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {space.articles.map((art) => (
@@ -546,11 +697,13 @@ export function ActivitySpaceChrome({
         )}
 
         {/* QR / share */}
-        {space.publicId && (
-          <ShareSection clinicName={space.name} publicId={space.publicId} pageUrl={space.pageUrl} />
+        {on('qrShare') && space.publicId && (
+          <div style={{ order: sectionPosition('qrShare') }}>
+            <ShareSection clinicName={space.name} publicId={space.publicId} pageUrl={space.pageUrl} />
+          </div>
         )}
 
-        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500">
+        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500" style={{ order: space.sectionOrder.length + 1 }}>
           © AI-Receptions · مساحة {ACTIVITY_TYPE_LABELS_AR[space.activityType]} ·{' '}
           <a href="/" className="text-brand-cyan/80 hover:text-brand-cyan hover:underline">
             منصة الاستقبال الذكي
@@ -576,15 +729,15 @@ export function WorkingHoursBlock({ space }: { space: ActivityPublicSpace }) {
     );
   }
   return (
-    <div className="space-y-4">
+    <div className="rounded-[28px] border border-white/70 bg-white/65 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)] backdrop-blur-xl sm:p-6">
       <div className="flex justify-center">
         <HoursStatusBadge slug={space.slug} />
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="mt-5 grid gap-2 sm:grid-cols-2">
         {space.workingHours.map((hour) => (
           <li
             key={hour.weekday}
-            className="public-card flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm hover:border-brand-cyan/40"
+            className="public-card flex items-center justify-between rounded-2xl border border-white/80 bg-white/75 px-4 py-3 text-sm shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_10px_25px_rgba(6,182,212,0.12)]"
           >
             <span className="font-semibold text-slate-700">{WEEKDAY_NAMES_AR[hour.weekday] ?? WEEKDAY_NAMES_EN[hour.weekday] ?? '—'}</span>
             <span className="text-slate-500" dir="ltr">
@@ -599,15 +752,20 @@ export function WorkingHoursBlock({ space }: { space: ActivityPublicSpace }) {
 
 export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
   return (
-    <div className="public-card rounded-2xl border border-slate-200 bg-white p-5">
-      <p className="font-bold text-slate-800">{space.name}</p>
+    <div className="public-card rounded-[28px] border border-white/70 bg-white/65 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)] backdrop-blur-xl sm:p-6">
+      <div className="flex items-center gap-3">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-emerald-400/20 text-2xl">📍</span>
+        <div>
+          <p className="font-bold text-slate-800">{space.name}</p>
       {[space.city, space.area, space.address].filter(Boolean).length > 0 && (
         <p className="mt-1 text-sm text-slate-500">
           {[space.city, space.area, space.address].filter(Boolean).join(' — ')}
         </p>
       )}
+        </div>
+      </div>
       {space.phone && (
-        <a href={`tel:${space.phone}`} className="mt-2 inline-block text-sm font-semibold text-brand-cyan hover:text-brand-cyan/80" dir="ltr">
+        <a href={`tel:${space.phone}`} className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-white/80 px-4 py-2 text-sm font-bold text-brand-cyan transition hover:-translate-y-0.5 hover:shadow-[0_0_20px_rgba(6,182,212,0.2)]" dir="ltr">
           📞 {space.phone}
         </a>
       )}
@@ -627,30 +785,30 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
         </div>
       )}
       {Object.entries(space.socialLinks ?? {}).filter(([, v]) => Boolean(v)).length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        <div className="mt-5 flex flex-wrap gap-3">
           {space.socialLinks?.email && (
-            <a href={`mailto:${space.socialLinks.email}`} className="text-slate-500 hover:text-brand-cyan" dir="ltr">
-              ✉️ {space.socialLinks.email}
+            <a href={`mailto:${space.socialLinks.email}`} aria-label="البريد الإلكتروني" title={space.socialLinks.email} className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-rose-200 hover:text-rose-600 hover:shadow-[0_0_22px_rgba(244,63,94,0.2)]" dir="ltr">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-50 text-xl transition group-hover:bg-rose-500 group-hover:text-white">✉</span><span className="max-w-40 truncate">البريد الإلكتروني</span>
             </a>
           )}
           {space.socialLinks?.website && (
-            <a href={space.socialLinks.website} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-brand-cyan" dir="ltr">
-              🌐 الموقع
+            <a href={space.socialLinks.website} target="_blank" rel="noopener noreferrer" aria-label="الموقع الإلكتروني" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:text-cyan-700 hover:shadow-[0_0_22px_rgba(6,182,212,0.2)]" dir="ltr">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-cyan-50 text-xl transition group-hover:bg-cyan-600 group-hover:text-white">🌐</span><span>الموقع الإلكتروني</span>
             </a>
           )}
           {space.socialLinks?.facebook && (
-            <a href={space.socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-brand-cyan" dir="ltr">
-              Facebook
+            <a href={space.socialLinks.facebook} target="_blank" rel="noopener noreferrer" aria-label="فيسبوك" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:text-blue-700 hover:shadow-[0_0_22px_rgba(37,99,235,0.25)]" dir="ltr">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-xl font-black text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">f</span><span>Facebook</span>
             </a>
           )}
           {space.socialLinks?.instagram && (
-            <a href={space.socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-brand-cyan" dir="ltr">
-              Instagram
+            <a href={space.socialLinks.instagram} target="_blank" rel="noopener noreferrer" aria-label="إنستغرام" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-fuchsia-200 hover:text-fuchsia-700 hover:shadow-[0_0_22px_rgba(217,70,239,0.23)]" dir="ltr">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-50 text-xl text-fuchsia-600 transition group-hover:bg-gradient-to-br group-hover:from-amber-400 group-hover:via-pink-500 group-hover:to-violet-600 group-hover:text-white">◎</span><span>Instagram</span>
             </a>
           )}
           {space.socialLinks?.whatsapp && (
-            <a href={space.socialLinks.whatsapp} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-brand-cyan" dir="ltr">
-              WhatsApp
+            <a href={space.socialLinks.whatsapp} target="_blank" rel="noopener noreferrer" aria-label="واتساب" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-green-200 hover:text-green-700 hover:shadow-[0_0_22px_rgba(34,197,94,0.25)]" dir="ltr">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-green-50 text-xl transition group-hover:bg-green-500 group-hover:text-white">☏</span><span>WhatsApp</span>
             </a>
           )}
         </div>
@@ -676,7 +834,7 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
 
 
 export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
-  const media = space.media ?? [];
+  const media = uniquePublicMediaItems(space.media ?? []);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   if (space.sections?.gallery === false || media.length === 0) return null;
   const d = space.display ?? undefined;

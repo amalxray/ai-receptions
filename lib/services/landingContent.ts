@@ -33,6 +33,23 @@ export const LANDING_SECTION_KEYS = [
 ] as const;
 export type LandingSectionKey = (typeof LANDING_SECTION_KEYS)[number];
 
+/**
+ * The public marketing copy has an approved canonical version. Some legacy CMS
+ * rows still contain old copy and can reintroduce stale wording on the live site.
+ * Keep the brand/marketing sections pinned to the shipped static copy until the
+ * CMS entries are intentionally refreshed by an approved content update.
+ */
+const STATIC_COPY_LOCKED_SECTIONS = new Set([
+  'hero',
+  'features',
+  'for_doctors',
+  'how_it_works',
+  'compare',
+  'faq',
+  'testimonials',
+  'urgency_bar',
+]);
+
 const SECTION_TO_COPY_KEY: Record<string, string> = {
   hero: 'hero',
   features: 'features',
@@ -128,6 +145,7 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
     const rows = await getAllLandingSections();
     for (const row of rows) {
       if (!row || typeof row.section_key !== 'string') continue;
+      if (STATIC_COPY_LOCKED_SECTIONS.has(row.section_key)) continue;
       const copyKey = SECTION_TO_COPY_KEY[row.section_key] ?? row.section_key;
       merged = deepMerge(merged, { [copyKey]: row.content }) as Record<string, unknown>;
     }
