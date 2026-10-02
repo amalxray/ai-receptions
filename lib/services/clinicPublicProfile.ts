@@ -81,6 +81,7 @@ export type PublicClinicProfile = {
   /** Clinic map coordinates (clinics.latitude/longitude — owner-set via clinic-setup). */
   latitude: number | null;
   longitude: number | null;
+  google_maps_url: string | null;
   phone: string | null; // null unless public_profile.show_phone === true
   services: PublicService[];
   providers: PublicProvider[];
@@ -201,7 +202,7 @@ export async function getPublicClinicProfile(
   // Narrow second read for public-only columns of the resolved clinic.
   const { data: clinicRow } = await supabaseAdmin
     .from('clinics')
-    .select('id, public_id, slug, name, logo, city, area, address_detail, phone, settings, latitude, longitude')
+    .select('id, public_id, slug, name, logo, city, area, address_detail, phone, settings, latitude, longitude, google_maps_url')
     .eq('id', clinic.id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -353,6 +354,7 @@ export async function getPublicClinicProfile(
     address: clinicRow.address_detail ?? null,
     latitude: typeof clinicRow.latitude === 'number' ? clinicRow.latitude : null,
     longitude: typeof clinicRow.longitude === 'number' ? clinicRow.longitude : null,
+    google_maps_url: clinicRow.google_maps_url ?? null,
     phone: showPhone ? (clinicRow.phone ?? null) : null,
     services,
     providers,

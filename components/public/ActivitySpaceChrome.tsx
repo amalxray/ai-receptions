@@ -4,12 +4,13 @@ import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, us
 import dynamic from 'next/dynamic';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
+import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
+import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { ShareSection } from '@/components/public/ShareSection';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
-import RotatingMarquee, { type RotatingMarqueeItem } from '@/components/ui/RotatingMarquee';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
@@ -44,14 +45,6 @@ const GALLERY_CATEGORIES = [
   { value: 'cases', label: 'حالات', icon: '📋' },
   { value: 'other', label: 'أخرى', icon: '📁' },
 ] as const;
-
-const MARQUEE_PALETTE = [
-  { color: 'from-slate-800 via-slate-700 to-slate-900', accent: 'from-cyan-400 to-blue-500' },
-  { color: 'from-rose-700 via-orange-600 to-amber-500', accent: 'from-pink-500 to-orange-400' },
-  { color: 'from-indigo-700 via-violet-600 to-fuchsia-500', accent: 'from-violet-500 to-cyan-400' },
-  { color: 'from-emerald-800 via-teal-700 to-cyan-600', accent: 'from-emerald-400 to-cyan-400' },
-  { color: 'from-slate-800 via-neutral-700 to-zinc-900', accent: 'from-amber-400 to-orange-500' },
-];
 
 function flattenPageChildren(children: ReactNode): ReactNode[] {
   return Children.toArray(children).flatMap((child) =>
@@ -299,11 +292,13 @@ export function ActivitySpaceChrome({
 }) {
   const locationBits = [space.city, space.area].filter(Boolean) as string[];
   const hasAddress = Boolean(space.address);
+  const displayName = displayPublicClinicName(space.name, space.activityType);
+  const displayHeadline = displayPublicClinicName(headline, space.activityType);
   // Rebrand: «اطلب خدمة» → «احجز موعد» (revert: space.activityType === 'clinic' ? 'احجز موعدًا' : 'اطلب خدمة')
   const ctaLabel = space.activityType === 'clinic' ? 'احجز موعدًا' : 'احجز موعد';
   /** Section visibility toggle (default: visible when unset) — owner-controlled. */
   const on = (key: string) => space.sections?.[key] !== false;
-  const showBooking = on('bookingCta') || on('hero');
+  const showBooking = on('bookingCta');
   const showAi = on('aiCta');
   const d = space.display;
   const bodyScale =
@@ -319,54 +314,18 @@ export function ActivitySpaceChrome({
   const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
   const tickerNews = uniquePublicNewsItems(space.news ?? []);
   const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
+  const mapsUrl = clinicMapsUrl({
+    name: displayName,
+    city: space.city,
+    address: [space.area, space.address].filter(Boolean).join('، '),
+    latitude: space.latitude,
+    longitude: space.longitude,
+    google_maps_url: space.google_maps_url,
+  });
   const aboutFeatures = (space.about ?? '')
     .split(/\r?\n|(?=✔️?)/)
     .map((feature) => feature.replace(/^✔️?\s*/, '').trim())
     .filter(Boolean);
-  const genericGalleryLabels = new Set([
-    'غلاف الصفحة العامة',
-    'صورة Amal X-Ray Center',
-    'صورة ',
-    'Amal X-Ray Center',
-    'image',
-    'cover',
-    'gallery',
-  ]);
-  const galleryImages = uniqueMedia.filter((item) => {
-    if (!(item.media_type === 'image') || !/^(https?:\/\/|\/)/i.test(item.public_url)) return false;
-    const title = (item.title ?? '').trim();
-    const alt = (item.alt_text ?? '').trim();
-    if (genericGalleryLabels.has(title) || genericGalleryLabels.has(alt)) return false;
-    return true;
-  });
-  const fallbackImage = space.coverUrl || space.logo;
-  const marqueeSources = galleryImages.length > 0
-    ? galleryImages
-    : fallbackImage
-      ? [{
-          id: `${space.clinicId}-cover`,
-          media_type: 'image' as const,
-          public_url: fallbackImage,
-          title: space.name,
-          caption: space.tagline,
-          alt_text: `صورة ${space.name}`,
-          category: 'clinic' as const,
-        }]
-      : [];
-  const marqueeItems: RotatingMarqueeItem[] = marqueeSources.map((item, index) => {
-    const palette = MARQUEE_PALETTE[index % MARQUEE_PALETTE.length];
-    return {
-      id: item.id,
-      title: item.title || space.name,
-      subtitle: item.caption || item.alt_text || `لقطات من ${space.name}`,
-      Badge: ACTIVITY_TYPE_LABELS_AR[space.activityType],
-      color: palette.color,
-      accent: palette.accent,
-      chip: GALLERY_CATEGORIES.find((category) => category.value === item.category)?.label ?? 'المنشأة',
-      image: item.public_url,
-      imageAlt: item.alt_text || item.title || `صورة ${space.name}`,
-    };
-  });
   const sectionPosition = (key: string) => {
     const index = space.sectionOrder.indexOf(key);
     return index < 0 ? space.sectionOrder.length : index;
@@ -500,7 +459,7 @@ export function ActivitySpaceChrome({
               </p>
             </StaggerReveal>
             <StaggerReveal delay={140}>
-              <h1 className={headingCls}>{headline}</h1>
+                <h1 className={headingCls}>{displayHeadline}</h1>
               {space.tagline && <p className="mt-3 text-lg font-medium text-brand-cyan/90">{space.tagline}</p>}
             </StaggerReveal>
             <StaggerReveal delay={200}>
@@ -523,7 +482,7 @@ export function ActivitySpaceChrome({
             )}
             <StaggerReveal delay={320}>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                <a
+                {showBooking && <a
                   href={space.bookingUrl}
                   className="inline-flex items-center justify-center rounded-full bg-brand-cyan px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-cyan/25 transition hover:-translate-y-0.5 hover:bg-brand-cyan/90 active:translate-y-0"
                   style={{
@@ -535,23 +494,21 @@ export function ActivitySpaceChrome({
                   }}
                 >
                   {ctaLabel}
-                </a>
-                {/* AI Chat hidden — re-enable by uncommenting
+                </a>}
                 {showAi && (
                   <button
                     type="button"
                     onClick={openChat}
                     className="inline-flex items-center justify-center rounded-full border border-cyan-300 bg-white/70 px-8 py-3.5 text-base font-semibold text-slate-700 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan hover:bg-white"
                   >
-                    💬 تحدث مع الاستقبال الذكي
+                    💬 تحدث مع مساعد العيادة
                   </button>
                 )}
-                */}
               </div>
             </StaggerReveal>
             <StaggerReveal delay={380}>
               <p className="mt-4 text-xs text-slate-500">
-                أتحدث مباشرة مع نظام {space.name} — بدون وسيط، على مدار الساعة.
+                أتحدث مباشرة مع نظام {displayName} — بدون وسيط، على مدار الساعة.
               </p>
             </StaggerReveal>
             <StaggerReveal delay={440}>
@@ -564,13 +521,12 @@ export function ActivitySpaceChrome({
           </div>
         </section>
 
-        {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
-        <div style={{ order: sectionPosition('gallery') }}>
-          <RotatingMarquee
-            items={marqueeItems.length > 0 ? marqueeItems : undefined}
-            title={`لقطات من ${space.name}`}
-          />
-        </div>
+        {/* Owner-managed gallery — use the uploaded media, category filters and lightbox. */}
+        {on('gallery') && (
+          <div style={{ order: sectionPosition('gallery') }}>
+            <PublicMediaGallery space={space} />
+          </div>
+        )}
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
         {on('beforeAfter') && space.beforeAfter.length > 0 && (
@@ -711,10 +667,8 @@ export function ActivitySpaceChrome({
         </footer>
       </main>
 
-      {/* Public Chat UX (Phase 8): embedded in the SAME page, not a redirect. */}
-      {/* AI Chat hidden — re-enable by uncommenting
-      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={space.name} externalOpenSignal={chatSignal} activityType={space.activityType} />}
-      */}
+      {/* Clinic-scoped assistant embedded in this same public profile. */}
+      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
 
     </div>
   );
@@ -772,10 +726,10 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
       {typeof space.latitude === 'number' && typeof space.longitude === 'number' && (
         <div className="mt-4">
           <div className="overflow-hidden rounded-2xl border border-slate-200">
-            <PublicLocationMap lat={space.latitude} lng={space.longitude} label={space.name} />
+            <PublicLocationMap lat={space.latitude} lng={space.longitude} label={displayPublicClinicName(space.name, space.activityType)} />
           </div>
           <a
-            href={`https://www.google.com/maps?q=${space.latitude},${space.longitude}`}
+            href={mapsUrl ?? `https://www.google.com/maps?q=${space.latitude},${space.longitude}`}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2 inline-block text-sm font-semibold text-brand-cyan hover:text-brand-cyan/80"
@@ -783,6 +737,11 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
             🗺️ افتح في Google Maps
           </a>
         </div>
+      )}
+      {!(typeof space.latitude === 'number' && typeof space.longitude === 'number') && mapsUrl && (
+        <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-block text-sm font-semibold text-brand-cyan hover:text-brand-cyan/80">
+          🗺️ افتح في Google Maps
+        </a>
       )}
       {Object.entries(space.socialLinks ?? {}).filter(([, v]) => Boolean(v)).length > 0 && (
         <div className="mt-5 flex flex-wrap gap-3">
@@ -820,13 +779,15 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
         >
           احجز الآن
         </a>
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('clinic-chat:open'))}
-          className="rounded-full border border-cyan-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-cyan hover:bg-white"
-        >
-          استشارة
-        </button>
+        {space.sections?.aiCta !== false && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('clinic-chat:open'))}
+            className="rounded-full border border-cyan-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-cyan hover:bg-white"
+          >
+            استشارة
+          </button>
+        )}
       </div>
     </div>
   );

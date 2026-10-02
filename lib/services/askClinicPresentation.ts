@@ -1,9 +1,12 @@
-/** Replace technical demo identifiers with a neutral Arabic label in public cards. */
-export function displayAskClinicName(name: string, activityType?: string | null): string {
+/** Replace technical clinic identifiers with an Arabic label in public surfaces. */
+export function displayPublicClinicName(name: string, activityType?: string | null): string {
   const trimmed = name.trim();
-  if (trimmed && !/^[a-z0-9-]+$/i.test(trimmed) && !trimmed.includes('-')) return trimmed;
+  if (trimmed && !trimmed.includes('-') && !/^[a-z0-9\s]+$/i.test(trimmed)) return trimmed;
   return activityType === 'imaging_center' ? 'مركز طبي' : 'عيادة شريكة';
 }
+
+/** Backwards-compatible name used by the /ask cards. */
+export const displayAskClinicName = displayPublicClinicName;
 
 export type AskConversationMessage = { role: 'user' | 'assistant'; content: string };
 
