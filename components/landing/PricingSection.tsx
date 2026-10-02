@@ -33,10 +33,10 @@ const TIERS = [
   },
   {
     id: 'advanced',
-    title: 'متقدمة',
+    title: 'الأعضاء المؤسسون',
     monthly: '$69',
     yearly: '$699',
-    note: 'الأنسب لعيادة متعددة الأطباء',
+    note: 'مقاعد محدودة فعلياً • السعر يبقى لك للأبد',
     features: [
       'عيادات متعددة',
       'مرضى غير محدود',
@@ -79,10 +79,10 @@ export default function PricingSection() {
         <BlurFade inView>
           <div className="mb-10 text-center">
             <span className="mb-4 inline-block rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1 text-sm font-semibold text-emerald-700">
-              🎁 30 يوماً مجاناً — كل ميزات المتقدمة، بدون بطاقة
+              🔒 الأعضاء المؤسسون • مقاعد محدودة فعلياً
             </span>
-            <h2 className="text-3xl font-black text-slate-900 md:text-5xl">اختر باقتك</h2>
-            <p className="mt-3 text-lg text-slate-600">أسعار بالدولار الأمريكي • إلغاء في أي وقت</p>
+            <h2 className="text-3xl font-black text-slate-900 md:text-5xl">اختر الخطة التي تناسب نمو عيادتك</h2>
+            <p className="mt-3 text-lg text-slate-600">أسعار بالدولار الأمريكي • لا تحتاج إلى التزام سريع • السعر يبقى لك للأبد إذا سجلت مبكراً</p>
           </div>
         </BlurFade>
 
@@ -131,7 +131,7 @@ export default function PricingSection() {
                   <>
                     <ShineBorder borderWidth={2} duration={12} shineColor={['#10B981', '#0EA5E9', '#7C3AED']} />
                     <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#8B5CF6] px-4 py-1 text-sm font-bold text-white">
-                      ⭐ الأكثر اختياراً
+                      ⭐ الأعضاء المؤسسون
                     </div>
                   </>
                 )}

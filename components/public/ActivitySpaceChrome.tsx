@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Children, Fragment, cloneElement, isValidElement, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
@@ -50,6 +50,87 @@ const MARQUEE_PALETTE = [
   { color: 'from-emerald-800 via-teal-700 to-cyan-600', accent: 'from-emerald-400 to-cyan-400' },
   { color: 'from-slate-800 via-neutral-700 to-zinc-900', accent: 'from-amber-400 to-orange-500' },
 ];
+
+function flattenPageChildren(children: ReactNode): ReactNode[] {
+  return Children.toArray(children).flatMap((child) =>
+    isValidElement(child) && child.type === Fragment
+      ? flattenPageChildren((child.props as { children?: ReactNode }).children)
+      : [child],
+  );
+}
+
+function getElementText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(getElementText).join(' ');
+  if (isValidElement(node)) return getElementText((node.props as { children?: ReactNode }).children);
+  return '';
+}
+
+function publicChildSectionKey(node: ReactNode): string {
+  const text = getElementText(node);
+  if (/عروض وإعلانات/.test(text)) return 'offers';
+  if (/الأطباء|مقدمو الخدمة/.test(text)) return 'providers';
+  if (/ساعات العمل/.test(text)) return 'hours';
+  if (/مكان العمل والتواصل|معلومات المركز|معلومات المختبر/.test(text)) return 'contact';
+  if (/جاهز للخطوة التالية/.test(text)) return 'bookingCta';
+  if (/الخدمات|خدمات التصوير|خدمات المختبر/.test(text)) return 'services';
+  if (/قبل وبعد/.test(text)) return 'beforeAfter';
+  if (/التعاون|مشغول في العمل/.test(text)) return 'about';
+  return 'services';
+}
+
+function normalizedPublicText(value: string): string {
+  return value
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+/** Remove repeated public media by URL at the presentation layer. */
+export function uniquePublicMediaItems<T extends { media_type: string; public_url: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const url = item.public_url?.trim();
+    if (!url) return false;
+    const key = `${item.media_type}:${url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Keep one instance of each non-empty news message for the ticker loop. */
+export function uniquePublicNewsItems<T extends { text: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = normalizedPublicText(item.text ?? '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Sanitize testimonials for display without inventing patient identities. */
+export function cleanPublicTestimonials(items: ActivityPublicSpace['testimonials']) {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    const content = (item.content ?? '').replace(/[★☆⭐🌟]/g, '').replace(/\s+/g, ' ').trim();
+    const contentKey = normalizedPublicText(content);
+    if (!contentKey || seen.has(contentKey)) return [];
+    seen.add(contentKey);
+
+    const patientName = (item.patient_name ?? '').trim();
+    const genericName = /^(?:مراجع(?:ة)?(?: موثق(?:ة)?)?|إحدى مراجعات المركز|أحد مراجعي المركز|مراجع(?:ة)? المركز)$/i.test(patientName);
+    const rating = Number(item.rating);
+    return [{
+      ...item,
+      content,
+      patient_name: !patientName || genericName ? 'مراجع موثق' : patientName,
+      rating: Number.isFinite(rating) ? Math.max(1, Math.min(5, Math.round(rating))) : 5,
+    }];
+  });
+}
 
 export function formatTime(time: string): string {
   const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
@@ -187,7 +268,12 @@ export function ActivitySpaceChrome({
       : d?.heading === 'large'
         ? 'text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl'
         : 'text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl';
-  const galleryImages = (space.media ?? []).filter(
+  const themeTextColor = space.theme?.text_color ?? '#0f172a';
+  const linkColor = space.theme?.link_color ?? '#0f766e';
+  const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
+  const tickerNews = uniquePublicNewsItems(space.news ?? []);
+  const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
+  const galleryImages = uniqueMedia.filter(
     (item) => item.media_type === 'image' && /^(https?:\/\/|\/)/i.test(item.public_url),
   );
   const fallbackImage = space.coverUrl || space.logo;
@@ -218,6 +304,22 @@ export function ActivitySpaceChrome({
       imageAlt: item.alt_text || item.title || `صورة ${space.name}`,
     };
   });
+  const sectionPosition = (key: string) => {
+    const index = space.sectionOrder.indexOf(key);
+    return index < 0 ? space.sectionOrder.length : index;
+  };
+  const orderedActivitySections = flattenPageChildren(children).map((child, index) => {
+    const key = publicChildSectionKey(child);
+    if (!isValidElement(child)) {
+      return <div key={`public-activity-section-${index}`} style={{ order: sectionPosition(key) }}>{child}</div>;
+    }
+    const element = child as ReactElement<{ className?: string; style?: CSSProperties }>;
+    return cloneElement(element, {
+      key: element.key ?? `public-activity-section-${index}`,
+      className: [element.props.className, 'mx-auto w-full max-w-5xl px-4'].filter(Boolean).join(' '),
+      style: { ...element.props.style, order: sectionPosition(key) },
+    });
+  });
 
   // Public Chat UX (Phase 8): the conversation opens INSIDE this public page
   // via the FloatingChatWidget (embedded ChatInterface) — never a redirect to
@@ -231,7 +333,7 @@ export function ActivitySpaceChrome({
   }, []);
 
   return (
-    <div dir="rtl" className={`min-h-screen text-slate-800${bodyScale}`} style={{ backgroundColor: space.theme?.background_color ?? '#f6f8ff' }} >
+    <div dir="rtl" className={`min-h-screen${bodyScale}`} style={{ backgroundColor: space.theme?.background_color ?? '#f6f8ff', color: themeTextColor }} >
       {/* Floating wellness blobs + bubbles (calm, reduced-motion safe) */}
       <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-32 right-[-5%] h-[28rem] w-[28rem] rounded-full bg-brand-cyan/15 blur-3xl animate-float-slow" />
@@ -241,33 +343,6 @@ export function ActivitySpaceChrome({
         <span className="absolute top-[30%] left-[18%] h-2 w-2 rounded-full bg-brand-emerald/30 animate-drift" style={{ animationDelay: '2s' }} />
         <span className="absolute top-[12%] left-[38%] h-2.5 w-2.5 rounded-full bg-cyan-400/30 animate-drift" style={{ animationDelay: '4s' }} />
       </div>
-
-      {/* PHASE L — news ticker (owner-managed; bounded colors/speed/height/font) */}
-      {on('news') && space.news.length > 0 && (
-        <div
-          dir="ltr"
-          className={`flex items-center overflow-hidden border-b border-white/10 ${newsHeightClass(d?.news_height)}`}
-          style={{ backgroundColor: space.theme?.primary_color ?? '#0e7490' }}
-        >
-          <div
-            className={`flex w-max animate-ticker items-center gap-10 px-4 ${newsFontClass(d?.news_font)}`}
-            style={{ animationDuration: `${tickerDuration((space.news[0] ?? {}).speed as string | undefined)}s` }}
-          >
-            {[...space.news, ...space.news].map((n, i) => (
-              <a
-                key={`${n.id}-${i}`}
-                href={n.link ?? undefined}
-                target={n.link ? '_blank' : undefined}
-                rel="noopener noreferrer"
-                className="whitespace-nowrap text-xs font-medium"
-                style={{ color: n.text_color ?? '#ffffff' }}
-              >
-                {n.text}{n.link ? ' ↗' : ''}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Sticky CTA row: booking + owner dashboard entry */}
       <div className="sticky top-3 z-20 mx-auto flex w-fit flex-wrap items-center justify-center gap-3 px-4">
@@ -289,17 +364,45 @@ export function ActivitySpaceChrome({
         <a
           href={ownerLoginUrl(space.slug)}
           className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan/60 hover:text-brand-cyan"
+          style={{ color: linkColor }}
         >
           لوحة التحكم / دخول المالك
         </a>
       </div>
 
-      <main>
+      <main className="flex flex-col">
+        {/* PHASE L — ticker follows the owner-saved page order. */}
+        {on('news') && tickerNews.length > 0 && (
+          <div
+            dir="ltr"
+            className={`flex items-center overflow-hidden border-b border-white/10 ${newsHeightClass(d?.news_height)}`}
+            style={{ order: sectionPosition('news'), backgroundColor: space.theme?.primary_color ?? '#0e7490' }}
+          >
+            <div
+              className={`flex w-max animate-ticker [animation-direction:reverse] items-center gap-10 px-4 ${newsFontClass(d?.news_font)}`}
+              style={{ animationDuration: `${tickerDuration((tickerNews[0] ?? {}).speed as string | undefined)}s` }}
+            >
+              {[...tickerNews, ...tickerNews].map((n, i) => (
+                <a
+                  key={`${n.id}-loop-${i}`}
+                  href={n.link ?? undefined}
+                  target={n.link ? '_blank' : undefined}
+                  rel="noopener noreferrer"
+                  dir="rtl"
+                  className="whitespace-nowrap text-xs font-medium"
+                  style={{ color: n.text_color ?? '#ffffff' }}
+                >
+                  {n.text}{n.link ? ' ↗' : ''}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {/* Hero — cover image is its own clean band (no text on top); copy sits
             in a separate section below, so the owner's cover stays readable
             with owner-controlled blur / focus point / vertical offset. */}
-        <section>
-          <div className="relative overflow-hidden" style={{ height: `${d?.cover_height ?? 384}px` }}>
+        <section style={{ order: sectionPosition('hero') }}>
+          <div className="relative max-h-[280px] overflow-hidden sm:max-h-[340px]" style={{ height: `${d?.cover_height ?? 384}px` }}>
             {space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -321,7 +424,7 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* Hero copy — dedicated section below the cover */}
-        <section className="border-b border-slate-200/70 bg-white">
+        <section className="border-b border-slate-200/70 bg-white" style={{ order: sectionPosition('hero') }}>
           <div className="mx-auto max-w-5xl px-4 py-12 text-center sm:py-16">
             <StaggerReveal>
               <div className="mb-6 flex justify-center">
@@ -399,14 +502,16 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
-        <RotatingMarquee
-          items={marqueeItems.length > 0 ? marqueeItems : undefined}
-          title={`لقطات من ${space.name}`}
-        />
+        <div style={{ order: sectionPosition('gallery') }}>
+          <RotatingMarquee
+            items={marqueeItems.length > 0 ? marqueeItems : undefined}
+            title={`لقطات من ${space.name}`}
+          />
+        </div>
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
         {on('beforeAfter') && space.beforeAfter.length > 0 && (
-          <section id="before-after" className="mx-auto w-full max-w-7xl px-4 pt-12">
+          <section id="before-after" className="mx-auto w-full max-w-7xl px-4 pt-12" style={{ order: sectionPosition('beforeAfter') }}>
             <div className="mb-6 text-center">
               <h2 className="text-xl font-bold text-slate-800">قبل وبعد</h2>
               <p className="mt-1 text-sm text-slate-500">نتائج حقيقية — اسحب المقارنة لترى الفرق</p>
@@ -421,7 +526,7 @@ export function ActivitySpaceChrome({
 
         {/* PHASE L — achievements trust cards (right after the gallery) */}
         {on('achievements') && space.achievements.length > 0 && (
-          <section id="achievements" className="mx-auto w-full max-w-7xl px-4 pt-12">
+          <section id="achievements" className="mx-auto w-full max-w-7xl px-4 pt-12" style={{ order: sectionPosition('achievements') }}>
             <div className="mb-6 text-center">
               <h2 className="text-xl font-bold text-slate-800">إنجازاتنا</h2>
               <p className="mt-1 text-sm text-slate-500">أرقام تعكس العمل والثقة</p>
@@ -443,7 +548,7 @@ export function ActivitySpaceChrome({
 
         {/* Phase 5 — verifiable achievement badges */}
         {on('badges') && space.badges.length > 0 && (
-          <section id="badges" className="mx-auto w-full max-w-7xl px-4 pt-12">
+          <section id="badges" className="mx-auto w-full max-w-7xl px-4 pt-12" style={{ order: sectionPosition('badges') }}>
             <div className="mb-6 text-center">
               <h2 className="text-xl font-bold text-slate-800">شهادات وإنجازات</h2>
               <p className="mt-1 text-sm text-slate-500">اعتمادات موثّقة يمكن التحقق منها</p>
@@ -490,7 +595,7 @@ export function ActivitySpaceChrome({
 
         {/* Owner-managed about (shared across activities) */}
         {on('about') && space.about && (
-          <div className="mx-auto max-w-3xl px-4 pt-10">
+          <div className="mx-auto max-w-3xl px-4 pt-10" style={{ order: sectionPosition('about') }}>
             <div className="public-card rounded-3xl border border-slate-200 bg-white/80 p-6">
               <h2 className="mb-2 text-lg font-bold text-slate-800">عن المنشأة</h2>
               <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">{space.about}</p>
@@ -499,14 +604,14 @@ export function ActivitySpaceChrome({
         )}
 
         {/* Content */}
-        <div className="mx-auto max-w-5xl px-4 py-12">{children}</div>
+        <div className="contents">{orderedActivitySections}</div>
 
         {/* PHASE L — testimonials + articles (social proof + education, after content) */}
-        {on('testimonials') && space.testimonials.length > 0 && (
-          <section className="mx-auto w-full max-w-7xl px-4 pb-12">
+        {on('testimonials') && testimonials.length > 0 && (
+          <section className="mx-auto w-full max-w-7xl px-4 pb-12" style={{ order: sectionPosition('testimonials') }}>
             <h2 className="mb-6 text-center text-xl font-bold text-slate-800">ماذا يقول مرضانا</h2>
             <div className="grid gap-4 sm:grid-cols-3">
-              {space.testimonials.map((t) => (
+              {testimonials.map((t) => (
                 <figure key={t.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="text-amber-400" dir="ltr">{'★'.repeat(Math.max(1, Math.min(5, t.rating)))}</div>
                   <blockquote className="mt-2 text-sm leading-relaxed text-slate-600">"{t.content}"</blockquote>
@@ -525,7 +630,7 @@ export function ActivitySpaceChrome({
           </section>
         )}
         {on('articles') && space.articles.length > 0 && (
-          <section className="mx-auto w-full max-w-7xl px-4 pb-14">
+          <section className="mx-auto w-full max-w-7xl px-4 pb-14" style={{ order: sectionPosition('articles') }}>
             <h2 className="mb-6 text-center text-xl font-bold text-slate-800">مقالات ومنشورات</h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {space.articles.map((art) => (
@@ -546,11 +651,13 @@ export function ActivitySpaceChrome({
         )}
 
         {/* QR / share */}
-        {space.publicId && (
-          <ShareSection clinicName={space.name} publicId={space.publicId} pageUrl={space.pageUrl} />
+        {on('qrShare') && space.publicId && (
+          <div style={{ order: sectionPosition('qrShare') }}>
+            <ShareSection clinicName={space.name} publicId={space.publicId} pageUrl={space.pageUrl} />
+          </div>
         )}
 
-        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500">
+        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500" style={{ order: space.sectionOrder.length + 1 }}>
           © AI-Receptions · مساحة {ACTIVITY_TYPE_LABELS_AR[space.activityType]} ·{' '}
           <a href="/" className="text-brand-cyan/80 hover:text-brand-cyan hover:underline">
             منصة الاستقبال الذكي
@@ -676,7 +783,7 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
 
 
 export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
-  const media = space.media ?? [];
+  const media = uniquePublicMediaItems(space.media ?? []);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   if (space.sections?.gallery === false || media.length === 0) return null;
   const d = space.display ?? undefined;

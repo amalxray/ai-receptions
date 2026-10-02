@@ -31,6 +31,30 @@ export default function LandingPage({ galleryImages = [] }: LandingPageProps) {
       <UrgencyBar />
       <main className="bg-landing-bg text-landing-text">
         <Hero />
+
+        <section className="relative overflow-hidden bg-slate-950 py-16 text-white">
+          <div className="mx-auto max-w-6xl px-4">
+            <div className="flex flex-col gap-6 rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-[0_30px_80px_-35px_rgba(15,23,42,0.9)] backdrop-blur-sm md:flex-row md:items-center md:justify-between md:p-8">
+              <div>
+                <p className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-teal-300">Real social proof</p>
+                <h2 className="text-2xl font-black text-white md:text-3xl">مركز أمل لتصوير الأسنان والفكين يعمل فعلياً على المنصة.</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 md:text-base">
+                  هذه ليست شهادة منشأة من الخارج، بل صفحة حقيقية ومباشرة من العيادة نفسها، تعكس تجربة العمل اليومي على المنصة مع واجهة احترافية ومحتوى منشور للعلاج والرسائل والتجربة العامة.
+                </p>
+              </div>
+
+              <a
+                href="https://amal-x-ray-center.dentairec.com"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-teal-400 to-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-teal-500/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-teal-400/30"
+              >
+                معاينة الصفحة العامة ←
+              </a>
+            </div>
+          </div>
+        </section>
+
         <WhySection />
         <RotatingMarquee variant="light" items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined} />
         <ResultsSection />

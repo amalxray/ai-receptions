@@ -45,6 +45,7 @@ function baseProfile(overrides: Record<string, unknown> = {}): DoctorPublicProfi
     specialty: 'طب الأسنان العام',
     bio: 'نبذة تجريبية',
     photo_url: 'https://cdn.example.com/dr.jpg',
+    updated_at: '2026-09-01T00:00:00Z',
     visibility: 'indexable',
     clinic: {
       name: 'Demo Dental Clinic',
@@ -143,7 +144,7 @@ describe('PP-8C — JSON-LD (built from the public projection only)', () => {
     expect(physician.name).toBe('Dr. Ahmad Hassan');
     expect(physician.url).toBe('https://clinics.example.com/d/dr-ahmadhassan');
     expect(physician.image).toBe('https://cdn.example.com/dr.jpg');
-    expect(physician.medicalSpecialty).toBe('طب الأسنان العام');
+    expect(physician.medicalSpecialty).toBe('Dentist (Demo)');
     expect(physician.worksFor['@id']).toBe(clinic['@id']);
     expect(clinic.address.addressLocality).toBe('عمّان');
     expect(clinic.telephone).toBe('+970-555-0001');
@@ -157,6 +158,7 @@ describe('PP-8C — JSON-LD (built from the public projection only)', () => {
       services: [],
       workingHours: [],
       photo_url: null,
+      title: null,
       specialty: null,
     }));
     const graph = ld['@graph'] as any[];

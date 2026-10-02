@@ -117,15 +117,15 @@ export default function Hero() {
           </motion.div>
 
           <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]">
-            <TextReveal text={copy.hero.headline1} duration={0.7} delay={0.2} />
+            <TextReveal text="استقبالك لا ينام، ومرضاك يحجزون" duration={0.7} delay={0.2} />
             <br />
             <span className="bg-gradient-to-l from-[#8B5CF6] to-[#22D3EE] bg-clip-text text-transparent">
-              <TextReveal text={copy.hero.headline2} duration={0.7} delay={0.9} />
+              <TextReveal text="حتى وأنت في غرفة العلاج." duration={0.7} delay={0.9} />
             </span>
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9, duration: 0.6 }} className="mx-auto mt-4 max-w-xl text-xl font-semibold leading-8 text-slate-700 lg:mx-0">
-            كل مكالمة فائتة… <span className="font-black text-[#EF4444]">مريض</span> ذهب لعيادة أخرى
+            كل مكالمة فائتة… <span className="font-black text-[#EF4444]">مريض</span> يذهب لعيادة أخرى، والفرصة تضيع في ثوانٍ.
           </motion.p>
 
           <motion.p
@@ -134,7 +134,7 @@ export default function Hero() {
             transition={{ delay: 1.6, duration: 0.6 }}
             className="mx-auto mt-5 max-w-lg text-lg leading-8 text-slate-600 lg:mx-0"
           >
-            {copy.hero.paragraph}
+            منصة AI-Receptions تشتغل كموظفة استقبال ذكية، تستقبل المرضى، ترد على الأسئلة، وتحجز المواعيد بوضوح، حتى عندما يكون الطبيب في الجلسة أو خارج الدوام.
           </motion.p>
 
           <motion.div
@@ -145,14 +145,14 @@ export default function Hero() {
           >
             <Magnetic>
               <Link href="/register">
-                <ShimmerButton style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)]">{copy.hero.ctaPrimary}</ShimmerButton>
+                <ShimmerButton style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)] transition-all duration-300">ابدأ تجربتك المجانية لمدة 30 يوماً</ShimmerButton>
               </Link>
             </Magnetic>
             <a
               href="#how-it-works"
-              className="rounded-full border border-slate-300 px-8 py-4 text-lg font-semibold text-slate-700 transition hover:border-violet-400/60 hover:bg-violet-50"
+              className="rounded-full border border-slate-300 px-8 py-4 text-lg font-semibold text-slate-700 transition-all duration-300 hover:border-violet-400/60 hover:bg-violet-50 hover:shadow-lg hover:shadow-violet-500/10"
             >
-              {copy.hero.ctaSecondary}
+              شاهد كيف يعمل
             </a>
           </motion.div>
 

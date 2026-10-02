@@ -115,6 +115,7 @@ export function buildClinicSchema(input: {
 
 export function buildDoctorJsonLd(profile: DoctorPublicProfile): Record<string, unknown> {
   const clinicRef = `${profile.clinic.pageUrl}#clinic`;
+  const updatedAt = profile.updated_at ?? null;
 
   const clinicNode: Record<string, unknown> = {
     '@type': 'Dentist',
@@ -151,8 +152,15 @@ export function buildDoctorJsonLd(profile: DoctorPublicProfile): Record<string, 
     name: profile.name,
     url: profile.pageUrl,
     worksFor: { '@id': clinicRef },
+    ...(profile.title?.trim() ? { medicalSpecialty: profile.title.trim() } : {}),
     ...(profile.bio ? { description: profile.bio } : {}),
-    ...(profile.specialty ? { medicalSpecialty: profile.specialty } : {}),
+    ...(updatedAt ? { dateModified: updatedAt } : {}),
+    publisher: {
+      '@type': 'MedicalBusiness',
+      '@id': clinicRef,
+      name: profile.clinic.name,
+      url: profile.clinic.pageUrl,
+    },
   };
   if (profile.photo_url) physicianNode.image = profile.photo_url;
   if (profile.clinic.pageUrl) clinicNode.sameAs = [profile.clinic.pageUrl];

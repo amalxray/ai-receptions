@@ -29,19 +29,20 @@ const MODALITY_LABELS: Record<string, string> = {
  * "no price". Exported for unit tests (pure function).
  */
 export function imagingServicePriceLabel(svc: { pricing_mode: string | null; price: number | null; price_min: number | null; price_max: number | null; price_note: string | null }): string | null {
+  const fallback = svc.price_note?.trim() || 'حسب حالة الفحص';
   switch (svc.pricing_mode) {
     case 'fixed':
-      return svc.price != null ? `${svc.price} ₪` : svc.price_note ?? null;
+      return svc.price != null && Number(svc.price) > 0 ? `${svc.price} ₪` : fallback;
     case 'range':
-      return svc.price_min != null && svc.price_max != null ? `${svc.price_min}–${svc.price_max} ₪` : svc.price_note ?? null;
+      return svc.price_min != null && svc.price_max != null ? `${svc.price_min}–${svc.price_max} ₪` : fallback;
     case 'estimate':
-      return svc.price_min != null ? `≈${svc.price_min} ₪` : svc.price_note ?? null;
+      return svc.price_min != null && Number(svc.price_min) > 0 ? `≈${svc.price_min} ₪` : fallback;
     case 'unspecified': {
       const price = svc.price != null ? Number(svc.price) : null;
-      return price != null && price > 0 ? `${price} ₪` : svc.price_note ?? null;
+      return price != null && price > 0 ? `${price} ₪` : fallback;
     }
     default:
-      return svc.price_note ?? null;
+      return fallback;
   }
 }
 
@@ -84,7 +85,11 @@ export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
                       <h3 className="font-semibold text-slate-800">{service.name}</h3>
                       {service.description && <p className="mt-1 text-sm text-slate-500">{service.description}</p>}
                     </div>
-                    {service.price != null && <span className="shrink-0 font-semibold text-brand-cyan">{service.price} ₪</span>}
+                    {service.price != null && (
+                      <span className="shrink-0 font-semibold text-brand-cyan">
+                        {service.price > 0 ? `${service.price} ₪` : 'حسب حالة الفحص'}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -5,6 +5,7 @@ import {
   doctorPublicUrl,
 } from '@/lib/services/doctorPublicProfile';
 import { buildClinicSchema, buildDoctorJsonLd } from '@/lib/services/doctorJsonLd';
+import { buildAeoSummary } from '@/lib/seo/aeo-structure';
 import { buildHreflangLinks } from '@/lib/seo/hreflang';
 
 /**
@@ -124,6 +125,15 @@ export default async function DoctorPublicPage({ params }: DoctorPublicPageProps
   const hasServices = profile.services.length > 0;
   const hasHours = profile.workingHours.length > 0;
   const locationBits = [profile.clinic.city, profile.clinic.area].filter(Boolean);
+  const aeoSummary = buildAeoSummary({
+    entityName: profile.name,
+    title: profile.title,
+    description: profile.bio,
+    clinicName: profile.clinic.name,
+    city: profile.clinic.city,
+    area: profile.clinic.area,
+    services: profile.services.map((service) => service.name),
+  });
   const jsonLd = buildDoctorJsonLd(profile);
 
   return (
@@ -160,8 +170,7 @@ export default async function DoctorPublicPage({ params }: DoctorPublicPageProps
           </p>
 
           <p className="mt-4 max-w-xl text-sm leading-relaxed text-stone-300">
-            استقبال ذكي يرد على أسئلتك ويساعدك على الحجز في أي وقت — وخدمات واضحة
-            وساعات عمل معلنة، حتى تعرف تمامًا ماذا تتوقع قبل زيارتك.
+            {aeoSummary}
           </p>
 
           <div className="mt-6 w-full">
