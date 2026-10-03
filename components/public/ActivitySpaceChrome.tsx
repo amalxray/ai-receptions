@@ -528,7 +528,7 @@ export function ActivitySpaceChrome({
         {on('gallery') && (
           <div style={{ order: sectionPosition('gallery') }} className="mx-auto my-8 w-full max-w-sm">
             {space.media?.filter((m) => m.media_type === 'image' && m.public_url).length ? (
-              <Stack
+              cards={space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
                 cards={space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
                   <img
                     key={img.id || i}
@@ -538,7 +538,7 @@ export function ActivitySpaceChrome({
                     loading="lazy"
                   />
                 ))}
-                randomRotation={false}
+                </PublicGalleryLightbox>
                 sensitivity={250}
                 sendToBackOnClick={true}
                 autoplay={true}
