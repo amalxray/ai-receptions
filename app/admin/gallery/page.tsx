@@ -21,6 +21,7 @@ const CATEGORY_OPTIONS = ['', 'عروض', 'معدات', 'نصائح', 'بيئة 
  * /admin/gallery — platform image gallery (owner).
  * Upload via /api/admin/upload (storage) + POST /api/admin/gallery (row).
  * Drag&drop + file picker, filters, search, inline edit/delete.
+ * Multi-select & bulk delete support.
  */
 export default function AdminGalleryPage() {
   const [items, setItems] = useState<GalleryItem[]>([]);
@@ -38,6 +39,9 @@ export default function AdminGalleryPage() {
   const [editTags, setEditTags] = useState('');
   const [editActive, setEditActive] = useState(true);
   const [editUrl, setEditUrl] = useState('');
+
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,6 +130,33 @@ export default function AdminGalleryPage() {
     }
   };
 
+  const bulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`هل تريد حذف ${selectedIds.length} صورة نهائياً؟`)) return;
+    setBusy(true);
+    try {
+      const promises = selectedIds.map(id => 
+        fetch('/api/admin/gallery/' + id, { method: 'DELETE' })
+      );
+      await Promise.all(promises);
+      setNotice(`✓ تم حذف ${selectedIds.length} صورة`);
+      setSelectedIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل الحذف الجماعي');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filtered.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map(it => it.id));
+    }
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items
@@ -161,6 +192,29 @@ export default function AdminGalleryPage() {
           {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c === '' ? 'كل التصنيفات' : c}</option>)}
         </select>
         <span className="text-xs text-slate-500">{filtered.length} من {items.length}</span>
+        
+        {filtered.length > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              {selectedIds.length === filtered.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+            </button>
+            
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void bulkDelete()}
+                disabled={busy}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:opacity-50"
+              >
+                🗑️ حذف المحدد ({selectedIds.length})
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {error && <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
@@ -174,8 +228,22 @@ export default function AdminGalleryPage() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((it) => (
             <div key={it.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={it.image_url} alt={it.title} loading="lazy" className="h-40 w-full object-cover" />
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(it.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedIds([...selectedIds, it.id]);
+                    } else {
+                      setSelectedIds(selectedIds.filter(id => id !== it.id));
+                    }
+                  }}
+                  className="absolute left-2 top-2 z-10 h-5 w-5 cursor-pointer rounded accent-violet-500"
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={it.image_url} alt={it.title} loading="lazy" className="h-40 w-full object-cover" />
+              </div>
               <div className="p-3">
                 <p className="truncate text-sm font-semibold text-slate-100">{it.title}</p>
                 <p className="text-xs text-slate-500">{it.category || 'بدون تصنيف'}{(it.tags ?? []).length > 0 ? ` · ${it.tags!.join('، ')}` : ''}{it.is_active ? '' : ' · 🔴 مخفي'}</p>
