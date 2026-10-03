@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import './Stack.css';
 
 export type StackCard = React.ReactNode;
 
@@ -17,10 +16,6 @@ export type StackProps = {
   mobileClickOnly?: boolean;
 };
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
 export default function Stack({
   cards,
   randomRotation = false,
@@ -34,7 +29,6 @@ export default function Stack({
 }: StackProps) {
   const [active, setActive] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [pointerActive, setPointerActive] = useState(false);
 
   const ordered = useMemo(() => (cards.length > 0 ? cards : []), [cards]);
 
@@ -53,74 +47,30 @@ export default function Stack({
     setActive((prev) => (prev + 1) % ordered.length);
   };
 
-  const onPointerDown = () => {
-    if (mobileClickOnly) return;
-    setPointerActive(true);
-  };
-
-  const onPointerUp = () => {
-    if (mobileClickOnly) return;
-    setPointerActive(false);
-    if (sendToBackOnClick) rotateToBack();
-  };
-
-  const rotationByIndex = (index: number) => {
-    if (!randomRotation) return index % 2 === 0 ? -7 : 7;
-    const offsets = [-9, 8, 6, -10, 7, -6, 9, -8];
-    return offsets[index % offsets.length];
-  };
-
   if (ordered.length === 0) {
     return null;
   }
 
+  // تحويل العرض إلى شريط أفقي (Horizontal Slider)
   return (
     <div
-      className="stack-shell"
+      className="flex snap-x snap-mandatory overflow-x-auto pb-4 scrollbar-hide gap-4"
       onPointerEnter={() => pauseOnHover && setIsPaused(true)}
       onPointerLeave={() => pauseOnHover && setIsPaused(false)}
-      onMouseDown={onPointerDown}
-      onMouseUp={onPointerUp}
-      onTouchStart={() => setPointerActive(true)}
-      onTouchEnd={() => {
-        setPointerActive(false);
-        if (sendToBackOnClick) rotateToBack();
-      }}
-      style={{
-        ['--stack-sensitivity' as string]: `${sensitivity}px`,
-        ['--stack-stiffness' as string]: `${animationConfig.stiffness ?? 180}`,
-        ['--stack-damping' as string]: `${animationConfig.damping ?? 18}`,
-      }}
+      aria-label="معرض صور العيادة"
     >
-      <div className="stack-viewport" aria-label="معرض صور العيادة">
-        {ordered.map((card, index) => {
-          const isTop = index === active;
-          const offset = (ordered.length - index - 1) * 10;
-          const depth = clamp(index - active, 0, ordered.length - 1);
-          const transform = isTop
-            ? 'translate3d(0, 0, 0) rotate(0deg) scale(1)'
-            : `translate3d(${(index - active) * 12}px, ${depth * 10}px, 0) rotate(${rotationByIndex(index)}deg) scale(${1 - depth * 0.04})`;
-
-          return (
-            <button
-              key={index}
-              type="button"
-              className={`stack-card ${isTop ? 'is-top' : ''} ${pointerActive ? 'is-active' : ''}`}
-              onClick={() => {
-                if (mobileClickOnly || !sendToBackOnClick) return;
-                rotateToBack();
-              }}
-              style={{
-                transform,
-                zIndex: ordered.length - index,
-                marginTop: `${offset}px`,
-              }}
-            >
-              {card}
-            </button>
-          );
-        })}
-      </div>
+      {ordered.map((card, index) => (
+        <div
+          key={index}
+          className="flex-none snap-center w-[85vw] md:w-[400px] aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm transition-transform duration-300 hover:scale-[1.02]"
+          onClick={() => {
+            if (mobileClickOnly || !sendToBackOnClick) return;
+            rotateToBack();
+          }}
+        >
+          {card}
+        </div>
+      ))}
     </div>
   );
 }
