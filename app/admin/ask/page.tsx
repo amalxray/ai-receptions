@@ -1,14 +1,45 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical, Save } from 'lucide-react';
 
 type Settings = {
   hero: { title: string; subtitle: string; logo: string; assistant_name: string };
   colors: { primary: string; secondary: string; heading: string; warning: string };
-  sections: Record<string, boolean>;
+  sections_order: string[];
+  sections?: Record<string, boolean>;
   questions: string[];
   search_config: { limit: number; sort: string; radius_km: number; require_location: boolean };
 };
+
+const DEFAULT_SECTIONS_ORDER = [
+  'hero',
+  'quick_questions',
+  'tips',
+  'articles',
+  'stories',
+  'fun_facts',
+  'faq',
+  'cta',
+  'gallery',
+];
 
 const SECTION_LABELS: Record<string, string> = {
   hero: 'الغلاف',
@@ -19,6 +50,7 @@ const SECTION_LABELS: Record<string, string> = {
   fun_facts: 'حقائق ممتعة',
   faq: 'الأسئلة الشائعة',
   cta: 'زر الحجز (CTA)',
+  gallery: 'معرض الصور',
 };
 
 const COLOR_FIELDS = [
@@ -37,6 +69,42 @@ type AskGalleryItem = {
   scope?: 'main_site' | 'ask_page';
 };
 
+// مكون العنصر القابل للسحب
+function SortableSectionItem({ id, label }: { id: string; label: string }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 transition-colors hover:border-violet-500/50"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-slate-400 hover:text-violet-400 active:cursor-grabbing"
+        aria-label="سحب لإعادة الترتيب"
+      >
+        <GripVertical className="h-5 w-5" />
+      </button>
+      <span className="text-sm font-medium text-slate-200">{label}</span>
+    </div>
+  );
+}
+
 function AskMediaGallerySection() {
   const [items, setItems] = useState<AskGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,8 +112,6 @@ function AskMediaGallerySection() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  
-  // Multi-select state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
@@ -271,6 +337,13 @@ export default function AdminAskSettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [newQ, setNewQ] = useState('');
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -279,10 +352,15 @@ export default function AdminAskSettingsPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'فشل التحميل');
       const d = (json.data ?? {}) as Partial<Settings>;
+      const legacySectionsOrder = d.sections && typeof d.sections === 'object'
+        ? Object.keys(d.sections)
+        : [];
       setSettings({
         hero: (d.hero ?? { title: '', subtitle: '', logo: '🦷', assistant_name: 'سنّي' }) as Settings['hero'],
         colors: (d.colors ?? { primary: '', secondary: '', heading: '', warning: '' }) as Settings['colors'],
-        sections: d.sections ?? {},
+        sections_order: Array.isArray(d.sections_order) && d.sections_order.every((section) => typeof section === 'string')
+          ? d.sections_order
+          : [...legacySectionsOrder, ...DEFAULT_SECTIONS_ORDER.filter((section) => !legacySectionsOrder.includes(section))],
         questions: d.questions ?? [],
         search_config: d.search_config ?? { limit: 3, sort: 'distance', radius_km: 50, require_location: false },
       });
@@ -292,6 +370,7 @@ export default function AdminAskSettingsPage() {
       setLoading(false);
     }
   }, []);
+
   useEffect(() => { void load(); }, [load]);
 
   const saveKey = async (key: string, value: unknown) => {
@@ -313,6 +392,21 @@ export default function AdminAskSettingsPage() {
       setError(e instanceof Error ? e.message : 'فشل الحفظ');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSettings((prev) => {
+        if (!prev) return prev;
+        const oldIndex = prev.sections_order.indexOf(active.id as string);
+        const newIndex = prev.sections_order.indexOf(over.id as string);
+        return {
+          ...prev,
+          sections_order: arrayMove(prev.sections_order, oldIndex, newIndex),
+        };
+      });
     }
   };
 
@@ -358,18 +452,42 @@ export default function AdminAskSettingsPage() {
         <button type="button" onClick={() => void saveKey('colors', settings.colors)} className="mt-3 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">💾 حفظ الألوان</button>
       </div>
 
-      {/* Sections */}
+      {/* Sections Order (Drag & Drop) */}
       <div className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6">
-        <h3 className="text-sm font-semibold text-white">🧩 الأقسام (إظهار/إخفاء)</h3>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {Object.entries(SECTION_LABELS).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-2 text-sm text-slate-300">
-              <input type="checkbox" checked={Boolean(settings.sections[key])} onChange={(e) => setSettings({ ...settings, sections: { ...settings.sections, [key]: e.target.checked } })} className="accent-violet-500" />
-              {label}
-            </label>
-          ))}
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">🧩 ترتيب الأقسام</h3>
+            <p className="mt-1 text-xs text-slate-400">اسحب الأقسام لإعادة ترتيبها في صفحة /ask العامة.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveKey('sections_order', settings.sections_order)}
+            className="flex items-center gap-2 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
+          >
+            <Save className="h-3.5 w-3.5" />
+            حفظ الترتيب
+          </button>
         </div>
-        <button type="button" onClick={() => void saveKey('sections', settings.sections)} className="mt-3 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">💾 حفظ الأقسام</button>
+
+        <div className="mt-4">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={settings.sections_order} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {settings.sections_order.map((key) => (
+                  <SortableSectionItem
+                    key={key}
+                    id={key}
+                    label={SECTION_LABELS[key] ?? key}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
       </div>
 
       {/* Questions */}
@@ -399,7 +517,6 @@ export default function AdminAskSettingsPage() {
           </div>
           <a href="/ask" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20">معاينة /ask</a>
         </div>
-
         <AskMediaGallerySection />
       </div>
 

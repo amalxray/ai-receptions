@@ -34,12 +34,12 @@ export default function PublicGalleryLightbox({
   gapClassName?: string;
 }) {
   return (
-    <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 ${gapClassName}`}>
+    <div className={`grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 ${gapClassName}`}>
       {media.map((item) => (
         <MorphingDialog key={item.id} transition={{ type: 'spring', stiffness: 200, damping: 24 }}>
           <MorphingDialogTrigger
             style={{ borderRadius: '12px' }}
-            className="group relative aspect-square overflow-hidden border border-slate-200 bg-white"
+            className="group relative aspect-[4/3] min-h-64 overflow-hidden border border-slate-200 bg-white sm:min-h-80"
           >
             {item.media_type === 'video' ? (
               <video

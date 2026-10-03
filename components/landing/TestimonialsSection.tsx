@@ -33,7 +33,7 @@ export default function TestimonialsSection() {
         <div className="relative">
           <div className="absolute bottom-0 left-0 top-0 z-10 w-24 bg-gradient-to-l from-[#FAFBFC] to-transparent" />
           <div className="absolute bottom-0 right-0 top-0 z-10 w-24 bg-gradient-to-r from-[#FAFBFC] to-transparent" />
-          <Marquee pauseOnHover className="[--duration:45s]">
+          <Marquee pauseOnHover repeat={2} className="[--duration:45s]">
             {TESTIMONIALS.map((t, i) => (
               <BlurFade key={t.doctor_name} delay={i * 0.08} inView>
                 <article className="group mx-4 w-96 shrink-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_16px_40px_-18px_rgba(245,158,11,0.28)]">
