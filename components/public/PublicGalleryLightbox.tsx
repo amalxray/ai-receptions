@@ -33,13 +33,15 @@ export default function PublicGalleryLightbox({
   /** Gallery spacing control (owner display.gallery_spacing → approved classes). */
   gapClassName?: string;
 }) {
+  if (!media.length) return null;
+
   return (
-    <div className={`grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 ${gapClassName}`}>
+    <div className={`flex snap-x snap-mandatory overflow-x-auto pb-4 scrollbar-hide ${gapClassName}`}>
       {media.map((item) => (
         <MorphingDialog key={item.id} transition={{ type: 'spring', stiffness: 200, damping: 24 }}>
           <MorphingDialogTrigger
-            style={{ borderRadius: '12px' }}
-            className="group relative aspect-[4/3] min-h-64 overflow-hidden border border-slate-200 bg-white sm:min-h-80"
+            style={{ borderRadius: '16px' }}
+            className="group relative flex-none snap-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm w-[85vw] md:w-[400px] aspect-[4/3]"
           >
             {item.media_type === 'video' ? (
               <video
@@ -47,17 +49,17 @@ export default function PublicGalleryLightbox({
                 muted
                 playsInline
                 preload="metadata"
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
             ) : (
               <MorphingDialogImage
                 src={item.public_url}
                 alt={item.alt_text || item.title || 'صورة من المعرض'}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
             )}
             {item.title && (
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3">
                 <p className="text-sm font-semibold text-white">{item.title}</p>
               </div>
             )}
