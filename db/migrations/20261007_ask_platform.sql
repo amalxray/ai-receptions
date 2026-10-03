@@ -53,11 +53,14 @@ CREATE TABLE IF NOT EXISTS public.platform_gallery (
   image_url TEXT NOT NULL,
   category TEXT,
   tags TEXT[],
+  scope TEXT NOT NULL DEFAULT 'main_site' CHECK (scope IN ('main_site', 'ask_page')),
   sort_order INTEGER DEFAULT 0,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_gallery_scope
+  ON public.platform_gallery(scope, is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_gallery_category
   ON public.platform_gallery(category) WHERE is_active = true;
 

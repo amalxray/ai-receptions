@@ -28,6 +28,174 @@ const COLOR_FIELDS = [
   { key: 'warning', label: 'التحذيرات' },
 ];
 
+type AskGalleryItem = {
+  id: string;
+  title: string;
+  image_url: string;
+  is_active: boolean;
+  sort_order: number;
+  scope?: 'main_site' | 'ask_page';
+};
+
+function AskMediaGallerySection() {
+  const [items, setItems] = useState<AskGalleryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/gallery?scope=ask_page');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'فشل التحميل');
+      setItems((json.data ?? []) as AskGalleryItem[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل تحميل معرض /ask');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const upload = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const uploadRes = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+      const uploadJson = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadJson?.error ?? 'فشل رفع الملف');
+      const title = (file.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ') || 'محتوى /ask').slice(0, 80);
+      const res = await fetch('/api/admin/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          image_url: uploadJson.data.url,
+          category: 'ask_page',
+          tags: [],
+          scope: 'ask_page',
+          sort_order: items.length,
+          is_active: true,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'فشل حفظ الملف');
+      setNotice('✓ تم إضافة عنصر معرض /ask');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل رفع معرض /ask');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleActive = async (id: string, is_active: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/gallery/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active, scope: 'ask_page' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'فشل تحديث الحالة');
+      setNotice('✓ تم تحديث التفعيل');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل تحديث الحالة');
+    }
+  };
+
+  const reorder = async (id: string, direction: -1 | 1) => {
+    const currentIndex = items.findIndex((item) => item.id === id);
+    if (currentIndex < 0) return;
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+    const next = [...items];
+    [next[currentIndex], next[targetIndex]] = [next[targetIndex], next[currentIndex]];
+    setItems(next);
+    for (let i = 0; i < next.length; i += 1) {
+      const item = next[i];
+      await fetch(`/api/admin/gallery/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sort_order: i, scope: 'ask_page' }),
+      });
+    }
+    setNotice('✓ تم تحديث ترتيب المعرض');
+    await load();
+  };
+
+  const remove = async (id: string) => {
+    if (!window.confirm('حذف هذا العنصر من معرض /ask؟')) return;
+    try {
+      const res = await fetch(`/api/admin/gallery/${id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? 'فشل الحذف');
+      setNotice('✓ تم حذف العنصر');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل الحذف');
+    }
+  };
+
+  return (
+    <div className="mt-4 space-y-3">
+      {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
+      {notice && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{notice}</div>}
+
+      <label
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); const file = e.dataTransfer.files?.[0]; if (file) void upload(file); }}
+        className={`block cursor-pointer rounded-2xl border border-dashed px-4 py-6 text-center text-sm transition ${dragging ? 'border-violet-400 bg-violet-500/10 text-violet-200' : 'border-slate-700 bg-slate-950/40 text-slate-300 hover:border-violet-500/50'}`}
+      >
+        <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); e.target.value = ''; }} />
+        {busy ? 'جارٍ الرفع...' : '➕ رفع صورة أو فيديو لمعرض /ask'}
+      </label>
+
+      {loading ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">جارٍ تحميل المعرض...</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">لا توجد عناصر في معرض /ask حتى الآن.</div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => (
+            <div key={item.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50">
+              {item.image_url.match(/\.(mp4|webm|ogg|mov)$/i) ? (
+                <video src={item.image_url} controls className="h-40 w-full object-cover bg-slate-900" />
+              ) : (
+                <img src={item.image_url} alt={item.title} className="h-40 w-full object-cover" />
+              )}
+              <div className="p-3">
+                <p className="truncate text-sm font-semibold text-slate-100">{item.title}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <button type="button" onClick={() => void toggleActive(item.id, !item.is_active)} className={`rounded-full px-2 py-1 text-[11px] font-medium ${item.is_active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-700 text-slate-200'}`}>
+                    {item.is_active ? 'مُفعل' : 'مُخفى'}
+                  </button>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => window.open(item.image_url, '_blank', 'noopener,noreferrer')} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200">معاينة</button>
+                    <button type="button" onClick={() => void reorder(item.id, -1)} disabled={items.indexOf(item) === 0} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200 disabled:opacity-40">↑</button>
+                    <button type="button" onClick={() => void reorder(item.id, 1)} disabled={items.indexOf(item) === items.length - 1} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200 disabled:opacity-40">↓</button>
+                    <button type="button" onClick={() => void remove(item.id)} className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">حذف</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminAskSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,6 +321,19 @@ export default function AdminAskSettingsPage() {
           <button type="button" onClick={() => { if (newQ.trim()) { setSettings({ ...settings, questions: [...settings.questions, newQ.trim()] }); setNewQ(''); } }} className="rounded-full bg-slate-700 px-3 py-1.5 text-xs text-slate-200">➕ إضافة</button>
         </div>
         <button type="button" onClick={() => void saveKey('questions', settings.questions)} className="mt-3 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">💾 حفظ الأسئلة</button>
+      </div>
+
+      {/* Ask media gallery */}
+      <div className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">🖼️ معرض منصة /ask</h3>
+            <p className="mt-1 text-xs text-slate-400">صور/فيديوات خاصة بعرض العيادات داخل صفحة /ask. هذا القسم مفصول عن معرض الموقع الرئيسي.</p>
+          </div>
+          <a href="/ask" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/20">معاينة /ask</a>
+        </div>
+
+        <AskMediaGallerySection />
       </div>
 
       {/* Search config */}
