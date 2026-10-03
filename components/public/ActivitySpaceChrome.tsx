@@ -11,6 +11,7 @@ import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
+import Stack from '@/components/ui/Stack';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
@@ -290,9 +291,9 @@ export function ActivitySpaceChrome({
   headline: string;
   children: React.ReactNode;
 }) {
+  const displayName = displayPublicClinicName(space.name, space.activityType);
   const locationBits = [space.city, space.area].filter(Boolean) as string[];
   const hasAddress = Boolean(space.address);
-  const displayName = displayPublicClinicName(space.name, space.activityType);
   const displayHeadline = displayPublicClinicName(headline, space.activityType);
   // Rebrand: «اطلب خدمة» → «احجز موعد» (revert: space.activityType === 'clinic' ? 'احجز موعدًا' : 'اطلب خدمة')
   const ctaLabel = space.activityType === 'clinic' ? 'احجز موعدًا' : 'احجز موعد';
@@ -459,7 +460,7 @@ export function ActivitySpaceChrome({
               </p>
             </StaggerReveal>
             <StaggerReveal delay={140}>
-                <h1 className={headingCls}>{displayHeadline}</h1>
+              <h1 className={headingCls}>{displayName}</h1>
               {space.tagline && <p className="mt-3 text-lg font-medium text-brand-cyan/90">{space.tagline}</p>}
             </StaggerReveal>
             <StaggerReveal delay={200}>
@@ -482,19 +483,21 @@ export function ActivitySpaceChrome({
             )}
             <StaggerReveal delay={320}>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                {showBooking && <a
-                  href={space.bookingUrl}
-                  className="inline-flex items-center justify-center rounded-full bg-brand-cyan px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-cyan/25 transition hover:-translate-y-0.5 hover:bg-brand-cyan/90 active:translate-y-0"
-                  style={{
-                    backgroundColor: space.theme?.primary_color,
-                    borderRadius: themeRadius(space.theme?.button_shape),
-                    padding: `${themePadSize(space.theme?.button_size).py}px ${themePadSize(space.theme?.button_size).px}px`,
-                    fontSize: themePadSize(space.theme?.button_size).fontSize,
-                    boxShadow: space.theme?.button_shadow === false ? 'none' : undefined,
-                  }}
-                >
-                  {ctaLabel}
-                </a>}
+                {showBooking && (
+                  <a
+                    href={space.bookingUrl}
+                    className="inline-flex items-center justify-center rounded-full bg-brand-cyan px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-cyan/25 transition hover:-translate-y-0.5 hover:bg-brand-cyan/90 active:translate-y-0"
+                    style={{
+                      backgroundColor: space.theme?.primary_color,
+                      borderRadius: themeRadius(space.theme?.button_shape),
+                      padding: `${themePadSize(space.theme?.button_size).py}px ${themePadSize(space.theme?.button_size).px}px`,
+                      fontSize: themePadSize(space.theme?.button_size).fontSize,
+                      boxShadow: space.theme?.button_shadow === false ? 'none' : undefined,
+                    }}
+                  >
+                    {ctaLabel}
+                  </a>
+                )}
                 {showAi && (
                   <button
                     type="button"
@@ -514,17 +517,41 @@ export function ActivitySpaceChrome({
             <StaggerReveal delay={440}>
               <div className="mt-6 flex justify-center">
                 <div className="inline-flex rounded-2xl bg-slate-900/90 px-4 py-2 shadow-lg">
-                  <ShareButtons url={space.pageUrl} title={`${space.name} — ${headline}`} />
+                  <ShareButtons url={space.pageUrl} title={`${displayName} — ${headline}`} />
                 </div>
               </div>
             </StaggerReveal>
           </div>
         </section>
 
-        {/* Owner-managed gallery — use the uploaded media, category filters and lightbox. */}
+        {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
         {on('gallery') && (
-          <div style={{ order: sectionPosition('gallery') }}>
-            <PublicMediaGallery space={space} />
+          <div style={{ order: sectionPosition('gallery') }} className="mx-auto my-8 w-full max-w-sm">
+            {space.media?.filter((m) => m.media_type === 'image' && m.public_url).length ? (
+              <Stack
+                cards={space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
+                  <img
+                    key={img.id || i}
+                    src={img.public_url}
+                    alt={img.alt_text || img.title || `صورة ${i + 1}`}
+                    className="h-full w-full rounded-2xl border-4 border-white object-cover shadow-xl pointer-events-none select-none"
+                    loading="lazy"
+                  />
+                ))}
+                randomRotation={false}
+                sensitivity={250}
+                sendToBackOnClick={true}
+                autoplay={true}
+                autoplayDelay={4000}
+                pauseOnHover={true}
+                animationConfig={{ stiffness: 150, damping: 18 }}
+                mobileClickOnly={true}
+              />
+            ) : (
+              <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 py-12 text-center text-slate-500">
+                📸 معرض الصور قيد التحديث
+              </div>
+            )}
           </div>
         )}
 
@@ -655,7 +682,7 @@ export function ActivitySpaceChrome({
         {/* QR / share */}
         {on('qrShare') && space.publicId && (
           <div style={{ order: sectionPosition('qrShare') }}>
-            <ShareSection clinicName={space.name} publicId={space.publicId} pageUrl={space.pageUrl} />
+            <ShareSection clinicName={displayName} publicId={space.publicId} pageUrl={space.pageUrl} />
           </div>
         )}
 
@@ -667,7 +694,6 @@ export function ActivitySpaceChrome({
         </footer>
       </main>
 
-      {/* Clinic-scoped assistant embedded in this same public profile. */}
       {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
 
     </div>

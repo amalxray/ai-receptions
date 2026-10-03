@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function Home() {
   const [copy, { data: galleryImages }] = await Promise.all([
     getLandingPageContent(),
-    supabaseAdmin.from('platform_gallery').select('id, title, image_url, category').eq('is_active', true).order('sort_order', { ascending: true }).limit(12),
+    supabaseAdmin.from('platform_gallery').select('id, title, image_url, category').eq('scope', 'main_site').eq('is_active', true).order('sort_order', { ascending: true }).limit(12),
   ]);
   return (
     <LandingContentProvider copy={copy}>

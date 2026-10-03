@@ -67,20 +67,20 @@ describe('B1 — /ask provider registration + failover', () => {
     mockState.failoverError = null;
   });
 
-  it('registers providers before reading the registry and generates via failover', async () => {
+  it('registers providers before reading the registry and keeps the flow gated before clinic suggestions', async () => {
     const result = await answerAsk({ message: MESSAGE, location: null });
 
     expect(mockState.calls[0]).toBe('ensureAIProviders');
     expect(mockState.calls).toContain('generateWithFailover');
-    // The AI text wins over the rule-based fallback.
-    expect(result.reply.trim()).toBe('نص من المزوّد');
-    // Bounded output: the prompt carries the patient message and generation is capped.
+    expect(result.reply).toContain('نوع الخدمة');
+    expect(result.suggested_clinics).toEqual([]);
+    expect(result.needs_location).toBe(false);
     expect(mockState.lastParams.prompt).toContain(MESSAGE);
     expect(mockState.lastParams.maxTokens).toBe(220);
   });
 
   it('keeps the requested imaging service in the prompt across follow-up turns', async () => {
-    await answerAsk({
+    const result = await answerAsk({
       message: 'كم سعرها؟',
       location: null,
       history: [
@@ -89,8 +89,25 @@ describe('B1 — /ask provider registration + failover', () => {
       ],
     });
 
+    expect(result.reply).toContain('استخدام موقعك الحالي');
     expect(mockState.lastParams.prompt).toContain('تصوير أشعة بانوراما');
     expect(mockState.lastParams.prompt).toContain('لا تقفز إلى ترميم الأسنان أو جراحة اللثة');
+  });
+
+  it('asks for the service type before recommending clinics when no location is set', async () => {
+    const result = await answerAsk({ message: 'أحتاج مساعدة', location: null });
+
+    expect(result.suggested_clinics).toEqual([]);
+    expect(result.reply).toContain('نوع الخدمة');
+    expect(result.needs_location).toBe(false);
+  });
+
+  it('asks for the user location before suggesting clinics after the service is identified', async () => {
+    const result = await answerAsk({ message: 'تصوير اشعة اسنان', location: null });
+
+    expect(result.suggested_clinics).toEqual([]);
+    expect(result.reply).toContain('استخدام موقعك الحالي');
+    expect(result.needs_location).toBe(true);
   });
 
   it('falls back to the rule-based reply when no provider is registered', async () => {
@@ -100,7 +117,7 @@ describe('B1 — /ask provider registration + failover', () => {
 
     expect(mockState.calls).not.toContain('generateWithFailover');
     expect(result.reply.length).toBeGreaterThan(0);
-    expect(result.needs_location).toBe(true);
+    expect(result.needs_location).toBe(false);
   });
 
   it('logs the failure and still answers when every provider candidate fails', async () => {

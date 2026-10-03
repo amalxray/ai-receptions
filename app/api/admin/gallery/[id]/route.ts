@@ -23,10 +23,12 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
-    const allowed: string[] = [];
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
       if (k === 'id' || k === 'created_at' || k === 'updated_at') continue;
+      if (k === 'scope' && typeof v === 'string' && !['main_site', 'ask_page'].includes(v)) {
+        return NextResponse.json({ error: 'Invalid scope' }, { status: 400 });
+      }
       clean[k] = v;
     }
     const row = await updateRow('platform_gallery', params.id, clean);

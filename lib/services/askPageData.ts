@@ -12,7 +12,7 @@ export async function getAskPageData() {
     supabaseAdmin.from('platform_stories').select('id, patient_name, patient_age, patient_city, content, image_url, rating').eq('is_active', true).order('sort_order').limit(12),
     supabaseAdmin.from('platform_faq').select('id, question, answer').eq('is_active', true).order('sort_order').limit(20),
     supabaseAdmin.from('clinics').select('id, name, slug, city, address_detail, activity_type, latitude, longitude, google_maps_url').is('deleted_at', null).order('slug', { ascending: true }).limit(100),
-    supabaseAdmin.from('platform_gallery').select('id, title, image_url').eq('is_active', true).order('sort_order').limit(12),
+    supabaseAdmin.from('platform_gallery').select('id, title, image_url').eq('scope', 'ask_page').eq('is_active', true).order('sort_order').limit(12),
     supabaseAdmin.from('clinics').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('patients').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabaseAdmin.from('platform_cities').select('*', { count: 'exact', head: true }).eq('is_active', true),

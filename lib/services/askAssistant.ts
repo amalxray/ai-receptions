@@ -131,6 +131,15 @@ async function aiReply(message: string, history: AskConversationMessage[] = []):
   }
 }
 
+function extractServiceIntent(message: string, history: AskConversationMessage[] = []): boolean {
+  const combined = [message, ...history.map((item) => item.content)].join(' ');
+  return /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان)/i.test(combined);
+}
+
+function isLocationIntent(message: string): boolean {
+  return /وين|مكانك|موقعك|عنوانك|أقرب|قريب|مدينتك|مدينتي|حدد موقعي|موقعي/i.test(message);
+}
+
 export async function answerAsk(input: {
   message: string;
   location: AskLocation;
@@ -138,22 +147,46 @@ export async function answerAsk(input: {
 }): Promise<AskReply> {
   const message = (input.message ?? '').trim().slice(0, 1000);
   const hasLocation = Boolean(input.location?.lat && input.location?.lng);
-
-  const needLocation = isAskForLocation(message);
-  const suggestions = hasLocation ? await nearbySuggestions(input.location) : [];
-
-  if (needLocation && !hasLocation) {
-    return {
-      reply: 'طبعاً! عشان نلاقي أقرب شي لبيتك، حط موقعك (📍 حدد موقعي) أو اختر مدينتك من القائمة.',
-      suggested_clinics: [],
-      needs_location: true,
-    };
-  }
+  const serviceIntent = extractServiceIntent(message, input.history ?? []);
+  const wantsLocation = isLocationIntent(message);
+  const suggestions = serviceIntent && hasLocation ? await nearbySuggestions(input.location) : [];
 
   // AI first, rule-based fallback keeps it alive without a model.
   const generated = await aiReply(message, input.history?.slice(-12) ?? []);
   const base = severityReply(message);
   const reply = generated || base.reply;
+
+  if (!serviceIntent && !hasLocation) {
+    return {
+      reply: 'تمام! ما نوع الخدمة اللي تحتاجها؟ مثال: "بانوراما"، "تبييض"، "تنظيف"، أو "صورة لسن معين". بعدين أطلب منك الموقع لتحديد الأقرب.',
+      suggested_clinics: [],
+      needs_location: false,
+    };
+  }
+
+  if (serviceIntent && !hasLocation) {
+    return {
+      reply: 'ممتاز! لتحديد أقرب مركز، هل تريد استخدام موقعك الحالي؟ (📍 حدد موقعي) أو أستطيع أن أعمل على مدينتك إذا رغبت.',
+      suggested_clinics: [],
+      needs_location: true,
+    };
+  }
+
+  if (wantsLocation && !hasLocation) {
+    return {
+      reply: 'طبعاً! عشان نلاقي أقرب مراكز لك، حط موقعك (📍 حدد موقعي) أو اختر مدينتك من القائمة.',
+      suggested_clinics: [],
+      needs_location: true,
+    };
+  }
+
+  if (hasLocation && !serviceIntent) {
+    return {
+      reply: 'أحتاج إلى نوع الخدمة أولاً حتى أستطيع تحديد الأنسب لك، مثل: بانوراما، تصوير سن، تنظيف، أو تبييض. ثم أستطيع اقتراح الأقرب.',
+      suggested_clinics: [],
+      needs_location: false,
+    };
+  }
 
   if (hasLocation) {
     if (suggestions.length === 0) {
@@ -164,18 +197,14 @@ export async function answerAsk(input: {
       };
     }
     const lines = suggestions.map((c, i) =>
-      `${i + 1}. ${c.name} — ${c.city ?? ''} (${c.distance_km != null ? `${c.distance_km} كم` : 'قريب'})${c.address ? `، ${c.address}` : ''}`
+      `${i + 1}. ${c.name} — ${c.city ?? 'نابلس'} (${c.distance_km != null ? `${c.distance_km} كم` : 'قريب'})`
     );
     return {
-      reply: `${reply}\n\n🎯 وجدت أقرب ${suggestions.length} مراكز لموقعك:\n${lines.join('\n')}\n\nاختر واحداً وسأعطيك تفاصيله ورابط الحجز.`,
+      reply: `🎯 وجدت لك أقرب ${suggestions.length} مراكز:\n${lines.join('\n')}\n\nاختر رقمًا للحصول على تفاصيل العيادة المختارة.`,
       suggested_clinics: suggestions,
       needs_location: false,
     };
   }
 
-  return { reply, suggested_clinics: [], needs_location: !hasLocation };
-}
-
-function isAskForLocation(message: string): boolean {
-  return /وين|مكانك|موقعك|عنوانك|أقرب|قريب/i.test(message);
+  return { reply, suggested_clinics: [], needs_location: false };
 }

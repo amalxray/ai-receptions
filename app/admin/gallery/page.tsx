@@ -9,6 +9,7 @@ type GalleryItem = {
   image_url: string;
   category: string | null;
   tags: string[] | null;
+  scope?: 'main_site' | 'ask_page';
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -42,7 +43,7 @@ export default function AdminGalleryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/gallery');
+      const res = await fetch('/api/admin/gallery?scope=main_site');
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'فشل التحميل');
       setItems((json.data ?? []) as GalleryItem[]);
@@ -69,7 +70,7 @@ export default function AdminGalleryPage() {
       const res = await fetch('/api/admin/gallery', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, image_url: upJson.data.url, category: null, tags: [], sort_order: items.length, is_active: true }),
+        body: JSON.stringify({ title, image_url: upJson.data.url, category: null, tags: [], scope: 'main_site', sort_order: items.length, is_active: true }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'فشل الحفظ');
@@ -95,6 +96,7 @@ export default function AdminGalleryPage() {
           tags: editTags.split(/[،,]/).map((t) => t.trim()).filter(Boolean),
           is_active: editActive,
           image_url: editUrl.trim() || editing.image_url,
+          scope: editing.scope ?? 'main_site',
         }),
       });
       const json = await res.json();
