@@ -44,6 +44,9 @@ function AskMediaGallerySection() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -146,6 +149,33 @@ function AskMediaGallerySection() {
     }
   };
 
+  const bulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`هل تريد حذف ${selectedIds.length} عنصر نهائياً من معرض /ask؟`)) return;
+    setBusy(true);
+    try {
+      const promises = selectedIds.map(id => 
+        fetch(`/api/admin/gallery/${id}`, { method: 'DELETE' })
+      );
+      await Promise.all(promises);
+      setNotice(`✓ تم حذف ${selectedIds.length} عنصر`);
+      setSelectedIds([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل الحذف الجماعي');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === items.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(items.map(item => item.id));
+    }
+  };
+
   return (
     <div className="mt-4 space-y-3">
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
@@ -166,31 +196,68 @@ function AskMediaGallerySection() {
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">لا توجد عناصر في معرض /ask حتى الآن.</div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
-            <div key={item.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50">
-              {item.image_url.match(/\.(mp4|webm|ogg|mov)$/i) ? (
-                <video src={item.image_url} controls className="h-40 w-full object-cover bg-slate-900" />
-              ) : (
-                <img src={item.image_url} alt={item.title} className="h-40 w-full object-cover" />
-              )}
-              <div className="p-3">
-                <p className="truncate text-sm font-semibold text-slate-100">{item.title}</p>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <button type="button" onClick={() => void toggleActive(item.id, !item.is_active)} className={`rounded-full px-2 py-1 text-[11px] font-medium ${item.is_active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-700 text-slate-200'}`}>
-                    {item.is_active ? 'مُفعل' : 'مُخفى'}
-                  </button>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => window.open(item.image_url, '_blank', 'noopener,noreferrer')} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200">معاينة</button>
-                    <button type="button" onClick={() => void reorder(item.id, -1)} disabled={items.indexOf(item) === 0} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200 disabled:opacity-40">↑</button>
-                    <button type="button" onClick={() => void reorder(item.id, 1)} disabled={items.indexOf(item) === items.length - 1} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200 disabled:opacity-40">↓</button>
-                    <button type="button" onClick={() => void remove(item.id)} className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">حذف</button>
+        <>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              {selectedIds.length === items.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+            </button>
+            
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void bulkDelete()}
+                disabled={busy}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:opacity-50"
+              >
+                🗑️ حذف المحدد ({selectedIds.length})
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item) => (
+              <div key={item.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(item.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds([...selectedIds, item.id]);
+                      } else {
+                        setSelectedIds(selectedIds.filter(id => id !== item.id));
+                      }
+                    }}
+                    className="absolute left-2 top-2 z-10 h-5 w-5 cursor-pointer rounded accent-violet-500"
+                  />
+                  {item.image_url.match(/\.(mp4|webm|ogg|mov)$/i) ? (
+                    <video src={item.image_url} controls className="h-40 w-full object-cover bg-slate-900" />
+                  ) : (
+                    <img src={item.image_url} alt={item.title} className="h-40 w-full object-cover" />
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="truncate text-sm font-semibold text-slate-100">{item.title}</p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <button type="button" onClick={() => void toggleActive(item.id, !item.is_active)} className={`rounded-full px-2 py-1 text-[11px] font-medium ${item.is_active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-700 text-slate-200'}`}>
+                      {item.is_active ? 'مُفعل' : 'مُخفى'}
+                    </button>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => window.open(item.image_url, '_blank', 'noopener,noreferrer')} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200">معاينة</button>
+                      <button type="button" onClick={() => void reorder(item.id, -1)} disabled={items.indexOf(item) === 0} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200 disabled:opacity-40">↑</button>
+                      <button type="button" onClick={() => void reorder(item.id, 1)} disabled={items.indexOf(item) === items.length - 1} className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-200 disabled:opacity-40">↓</button>
+                      <button type="button" onClick={() => void remove(item.id)} className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">حذف</button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
