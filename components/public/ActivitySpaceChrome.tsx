@@ -11,7 +11,6 @@ import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
-import Stack from '@/components/ui/Stack';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
@@ -528,25 +527,19 @@ export function ActivitySpaceChrome({
         {on('gallery') && (
           <div style={{ order: sectionPosition('gallery') }} className="mx-auto my-8 w-full max-w-sm">
             {space.media?.filter((m) => m.media_type === 'image' && m.public_url).length ? (
-              cards={space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
-                cards={space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
-                  <img
-                    key={img.id || i}
-                    src={img.public_url}
-                    alt={img.alt_text || img.title || `صورة ${i + 1}`}
-                    className="h-full w-full rounded-2xl border-4 border-white object-cover shadow-xl pointer-events-none select-none"
-                    loading="lazy"
-                  />
+              <div className="flex snap-x snap-mandatory overflow-x-auto pb-4 scrollbar-hide gap-4">
+                {space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
+                  <div key={img.id || i} className="flex-none snap-center w-[85vw] md:w-[400px] aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.public_url}
+                      alt={img.alt_text || img.title || `صورة ${i + 1}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
                 ))}
-                </PublicGalleryLightbox>
-                sensitivity={250}
-                sendToBackOnClick={true}
-                autoplay={true}
-                autoplayDelay={4000}
-                pauseOnHover={true}
-                animationConfig={{ stiffness: 150, damping: 18 }}
-                mobileClickOnly={true}
-              />
+              </div>
             ) : (
               <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 py-12 text-center text-slate-500">
                 📸 معرض الصور قيد التحديث
