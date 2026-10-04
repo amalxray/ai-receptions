@@ -223,7 +223,7 @@ export async function rescheduleAppointment(params: {
       clinicId,
       appointmentId,
       scheduledAt: startsAt,
-      channels: ['email'],
+      channels: ['email', 'sms', 'whatsapp'],
       patientId: appointment.patient_id,
       client: supabaseAdmin,
     });

@@ -4,6 +4,7 @@ import { logEvent } from '@/lib/server/logging';
 import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 import { checkSlotAvailability, suggestFreeSlots, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
+import { channelsForNotificationType, filterEnabledChannels, getClinicCommunicationSettings } from '@/lib/communications/settings';
 
 /**
  * `provider_schedules.shifts` (migration 20260827) holds EXTRA working periods
@@ -698,7 +699,7 @@ export async function createBooking(params: {
       clinicId,
       appointmentId: data.id,
       scheduledAt: startsAt,
-      channels: ['email', 'sms'],
+      channels: ['email', 'sms', 'whatsapp'],
       patientId,
       client: supabaseAdmin,
     });
@@ -791,17 +792,23 @@ export async function confirmPublicBooking(params: { clinicId: string; appointme
     throw new Error('Failed to confirm appointment');
   }
 
-  // Confirmation communication (best-effort — communication failure must NOT fail the confirmation)
+  // Confirmation communications are queued separately per enabled channel so a
+  // provider failure is retried only for that channel (not masked by email success).
   try {
-    await supabaseAdmin.from('notification_queue').insert({
-      clinic_id: clinicId,
-      appointment_id: appointmentId,
-      channel: 'email',
-      type: 'appointment_confirmation',
-      payload: { status: 'confirmed' },
-      status: 'pending',
-      scheduled_for: new Date(Date.now() + 60 * 1000).toISOString(),
-    });
+    const settings = await getClinicCommunicationSettings(clinicId);
+    const channels = filterEnabledChannels(settings, channelsForNotificationType(settings, 'appointment_confirmation'));
+    if (channels.length > 0) {
+      await supabaseAdmin.from('notification_queue').insert(channels.map((channel) => ({
+        clinic_id: clinicId,
+        appointment_id: appointmentId,
+        patient_id: appointment.patient_id,
+        channel,
+        type: 'appointment_confirmation',
+        payload: { status: 'confirmed' },
+        status: 'pending',
+        scheduled_for: new Date(Date.now() + 60 * 1000).toISOString(),
+      })));
+    }
     logEvent('booking_confirmation_communication_scheduled', { clinic_id: clinicId, appointment_id: appointmentId });
   } catch (commError) {
     logEvent('booking_confirmation_communication_failure', {

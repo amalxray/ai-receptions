@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getClinicCommunicationSettings, channelsForNotificationType, filterEnabledChannels } from '@/lib/communications/settings';
-import { resolveChannelsForNotification } from '@/lib/communications/dispatcher';
+import { dispatchNotification, resolveChannelsForNotification } from '@/lib/communications/dispatcher';
 import { NoopChannelProvider, ChannelType } from '@/lib/communications/channels/types';
 import { SmsChannelAdapter, WhatsAppChannelAdapter, TelegramChannelAdapter } from '@/lib/communications/channels/adapters';
 
@@ -14,6 +14,14 @@ const mockSupabaseAdmin = vi.hoisted(() => ({
   },
 }));
 vi.mock('@/lib/supabase/admin', () => mockSupabaseAdmin);
+
+const mockChannelAdapters = vi.hoisted(() => ({
+  getChannelAdapter: vi.fn(),
+}));
+vi.mock('@/lib/communications/channels/adapters', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/communications/channels/adapters')>(),
+  ...mockChannelAdapters,
+}));
 
 vi.mock('@/lib/server/logging', () => ({ logEvent: vi.fn() }));
 
@@ -190,6 +198,24 @@ describe('resolveChannelsForNotification (dispatcher channel selection)', () => 
     mockDb({ clinic_id: CLINIC_A, email_enabled: true, confirmation_channels: ['email'] }, null);
     const channels = await resolveChannelsForNotification({ id: 'n1', clinic_id: CLINIC_A, patient_id: PATIENT, type: 'appointment_confirmation' });
     expect(channels).toEqual([]);
+  });
+
+  it('dispatches only the channel represented by the queue row so WhatsApp failures are retried independently', async () => {
+    mockDb(
+      { clinic_id: CLINIC_A, email_enabled: true, whatsapp_enabled: true, confirmation_channels: ['email', 'whatsapp'] },
+      { id: PATIENT, email: 'a@b.com', phone_number: '+970569509093' },
+    );
+    const send = vi.fn().mockRejectedValue(new Error('Meta unavailable'));
+    mockChannelAdapters.getChannelAdapter.mockReturnValue({ send });
+
+    await expect(dispatchNotification({
+      id: 'n1', clinic_id: CLINIC_A, patient_id: PATIENT,
+      type: 'appointment_confirmation', channel: 'whatsapp',
+    })).rejects.toThrow('All channels failed for notification n1: whatsapp');
+
+    expect(mockChannelAdapters.getChannelAdapter).toHaveBeenCalledOnce();
+    expect(mockChannelAdapters.getChannelAdapter).toHaveBeenCalledWith('whatsapp');
+    expect(send).toHaveBeenCalledOnce();
   });
 });
 

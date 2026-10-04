@@ -77,7 +77,13 @@ export async function resolveChannelsForNotification(notification: any): Promise
  * affect the others. The queue's retry behavior handles failures.
  */
 export async function dispatchNotification(notification: any): Promise<void> {
-  const channels = await resolveChannelsForNotification(notification);
+  const configuredChannels = await resolveChannelsForNotification(notification);
+  // notification_queue is channel-scoped (one row per channel). Dispatch only
+  // the channel represented by this row so its provider result determines its
+  // own sent/retried/failed status and successful email cannot mask a WhatsApp failure.
+  const channels = notification.channel
+    ? configuredChannels.filter((channel) => channel === notification.channel)
+    : configuredChannels;
 
   if (channels.length === 0) {
     // No applicable channel — log and resolve so the queue marks it sent
