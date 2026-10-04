@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import LandingPage from '@/components/landing/LandingPage';
 import { LandingContentProvider } from '@/components/landing/LandingContent';
-import { getLandingPageContent } from '@/lib/services/landingContent';
+import { getLandingPageContent, getLandingPageOrder } from '@/lib/services/landingContent';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /** ISR — CMS edits from /admin/landing-page go live within 30 seconds. */
@@ -28,13 +28,15 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Home() {
-  const [copy, { data: galleryImages }] = await Promise.all([
+  const [copy, { data: galleryImages }, sectionOrder] = await Promise.all([
     getLandingPageContent(),
     supabaseAdmin.from('platform_gallery').select('id, title, image_url, category').eq('scope', 'main_site').eq('is_active', true).order('sort_order', { ascending: true }).limit(12),
+    getLandingPageOrder(),
   ]);
+
   return (
     <LandingContentProvider copy={copy}>
-      <LandingPage galleryImages={galleryImages ?? []} />
+      <LandingPage galleryImages={galleryImages ?? []} sectionOrder={sectionOrder} />
     </LandingContentProvider>
   );
 }

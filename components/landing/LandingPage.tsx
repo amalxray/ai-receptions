@@ -21,10 +21,24 @@ import RotatingMarquee from '@/components/ui/RotatingMarquee';
 
 type LandingPageProps = {
   galleryImages?: Array<{ id: string; title: string; image_url: string; category: string | null }>;
+  sectionOrder?: string[];
 };
 
-export default function LandingPage({ galleryImages = [] }: LandingPageProps) {
+const DEFAULT_SECTION_ORDER = ['features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials'];
+
+export default function LandingPage({ galleryImages = [], sectionOrder = DEFAULT_SECTION_ORDER }: LandingPageProps) {
   const copy = useLandingCopy();
+  const orderedSections = sectionOrder.length ? sectionOrder : DEFAULT_SECTION_ORDER;
+
+  const sectionMap: Record<string, React.ReactNode> = {
+    features: <WhySection key="features" />,
+    for_doctors: <ForDoctorsSection key="for_doctors" />,
+    how_it_works: <HowItWorksSection key="how_it_works" />,
+    compare: <ComparisonSection key="compare" />,
+    faq: <FAQ key="faq" />,
+    testimonials: <TestimonialsSection key="testimonials" />,
+  };
+
   return (
     <>
       <Navbar />
@@ -55,17 +69,17 @@ export default function LandingPage({ galleryImages = [] }: LandingPageProps) {
           </div>
         </section>
 
-        <WhySection />
+        {orderedSections
+          .filter((key) => key in sectionMap)
+          .map((key) => (
+            <div key={key}>{sectionMap[key]}</div>
+          ))}
+
         <RotatingMarquee variant="light" items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined} />
         <ResultsSection />
-        <ForDoctorsSection />
-        <HowItWorksSection />
         <Imaging />
         <PricingSection />
         <ClinicAds />
-        <TestimonialsSection />
-        <ComparisonSection />
-        <FAQ />
         <FinalCTASection />
         <LeadForm />
       </main>

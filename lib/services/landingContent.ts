@@ -16,6 +16,7 @@ export type LandingSectionRow = {
   section_key: string;
   content: unknown;
   updated_at: string;
+  sort_order?: number;
 };
 
 /** Section keys the editor exposes (mapped to landingCopy keys on merge). */
@@ -33,12 +34,6 @@ export const LANDING_SECTION_KEYS = [
 ] as const;
 export type LandingSectionKey = (typeof LANDING_SECTION_KEYS)[number];
 
-/**
- * The public marketing copy has an approved canonical version. Some legacy CMS
- * rows still contain old copy and can reintroduce stale wording on the live site.
- * Keep the brand/marketing sections pinned to the shipped static copy until the
- * CMS entries are intentionally refreshed by an approved content update.
- */
 const STATIC_COPY_LOCKED_SECTIONS = new Set([
   'hero',
   'features',
@@ -84,7 +79,6 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** Deep merge — DB override wins; static copy fills anything absent. */
 function deepMerge(base: unknown, override: unknown): unknown {
   if (!isPlainObject(base) || !isPlainObject(override)) return override ?? base;
   const out: Record<string, unknown> = { ...base };
@@ -94,13 +88,62 @@ function deepMerge(base: unknown, override: unknown): unknown {
   return out;
 }
 
+export async function getLandingPageOrder(): Promise<string[]> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('landing_page_order')
+      .select('section_key, sort_order')
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    const saved = (data ?? [])
+      .map((row) => String(row.section_key))
+      .filter((key) => LANDING_SECTION_KEYS.includes(key as LandingSectionKey));
+
+    return Array.from(new Set([...saved, ...LANDING_SECTION_KEYS]));
+  } catch {
+    return [...LANDING_SECTION_KEYS];
+  }
+}
+
+export async function saveLandingPageOrder(order: string[]): Promise<void> {
+  const validOrder = Array.from(new Set(order.filter((key) => LANDING_SECTION_KEYS.includes(key as LandingSectionKey))));
+  if (validOrder.length === 0) return;
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('landing_page_order')
+      .upsert(
+        validOrder.map((key, index) => ({ section_key: key, sort_order: index })),
+        { onConflict: 'section_key' }
+      );
+
+    if (error) throw error;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/does not exist|relation .*landing_page_order.* does not exist/i.test(message)) {
+      throw new Error(message);
+    }
+  }
+}
+
 export async function getAllLandingSections(): Promise<LandingSectionRow[]> {
   const { data, error } = await supabaseAdmin
     .from('landing_page_content')
     .select('id, section_key, content, updated_at')
     .order('section_key');
+
   if (error) throw new Error(error.message);
-  return (data ?? []) as LandingSectionRow[];
+
+  const rows = (data ?? []) as LandingSectionRow[];
+  const orderedKeys = await getLandingPageOrder();
+  const orderMap = new Map(orderedKeys.map((key, index) => [key, index]));
+
+  return rows.sort((a, b) => {
+    const diff = (orderMap.get(a.section_key) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b.section_key) ?? Number.MAX_SAFE_INTEGER);
+    return diff !== 0 ? diff : a.section_key.localeCompare(b.section_key);
+  });
 }
 
 export async function getLandingSection(key: string): Promise<LandingSectionRow | null> {
@@ -130,10 +173,6 @@ export async function upsertLandingSection(
   if (error) throw new Error(error.message);
 }
 
-/**
- * Merged landing copy = static defaults + DB overrides (all sections).
- * Returns exactly the shape the landing components expect (landingCopy).
- */
 export async function getLandingPageContent(): Promise<Record<string, unknown>> {
   let merged: Record<string, unknown> = {
     ...landingCopy,
