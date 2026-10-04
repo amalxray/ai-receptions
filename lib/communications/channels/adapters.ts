@@ -1,5 +1,6 @@
 import { ChannelProvider, ChannelMessage, NoopChannelProvider, ConsoleChannelProvider, ChannelType } from './types';
 import { sendNotificationEmail } from '../email/sender';
+import { sendAppointmentTemplateMessage } from '@/lib/services/notificationAdapters/whatsappAdapter';
 
 /**
  * Email adapter — reuses the existing booking email builder + Resend/noop/console provider.
@@ -48,23 +49,19 @@ export class SmsChannelAdapter implements ChannelProvider {
   }
 }
 
-/**
- * WhatsApp adapter — no real provider credentials exist yet.
- * Uses noop/console provider so the queue can mark sent without claiming real delivery.
- */
+/** Sends an approved WhatsApp template; provider errors are passed to queue retry/status handling. */
 export class WhatsAppChannelAdapter implements ChannelProvider {
   readonly channel: ChannelType = 'whatsapp';
   readonly name = 'whatsapp';
 
-  private readonly inner: ChannelProvider;
-
-  constructor(env: Record<string, string | undefined> = process.env) {
-    const mode = (env.WHATSAPP_PROVIDER || 'noop').toLowerCase();
-    this.inner = mode === 'console' ? new ConsoleChannelProvider('whatsapp') : new NoopChannelProvider('whatsapp');
-  }
+  constructor(_env?: Record<string, string | undefined>) {}
 
   async send(message: ChannelMessage): Promise<void> {
-    await this.inner.send(message);
+    const notification = message.notification;
+    if (!notification || typeof notification !== 'object') {
+      throw new Error('WhatsApp delivery requires a notification_queue item');
+    }
+    await sendAppointmentTemplateMessage(notification as Record<string, unknown>, message.to);
   }
 }
 
