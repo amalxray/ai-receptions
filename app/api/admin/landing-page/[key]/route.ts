@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { getLandingSection, upsertLandingSection } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
+import { heroContentSchema } from '@/lib/landing/hero-schema';
 
 const ALLOWED_KEYS = new Set([
   'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
@@ -38,7 +40,20 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
     if (typeof body.content !== 'object' || body.content === null || Array.isArray(body.content)) {
       return NextResponse.json({ error: 'content يجب أن يكون كائن JSON' }, { status: 400 });
     }
-    await upsertLandingSection(key, body.content, gate.admin.user_id);
+    let content = body.content as Record<string, unknown>;
+    if (key === 'hero') {
+      const parsed = heroContentSchema.safeParse(body.content);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: 'بيانات قسم Hero غير صالحة', issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) },
+          { status: 400 },
+        );
+      }
+      content = parsed.data;
+    }
+
+    await upsertLandingSection(key, content, gate.admin.user_id);
+    if (key === 'hero') revalidatePath('/');
     logEvent('admin_landing_section_updated', { key, by: gate.admin.email });
     return NextResponse.json({ data: { ok: true } });
   } catch (err) {

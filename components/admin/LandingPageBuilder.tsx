@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import HeroEditor from '@/components/admin/editors/HeroEditor';
+import type { HeroContent } from '@/components/landing/Hero';
 
 export type LandingPageSection = {
   section_key: string;
@@ -26,24 +28,20 @@ function SortableSectionCard({ section, isSelected, onSelect }: { section: Landi
         isSelected ? 'border-violet-400 bg-violet-500/10' : 'border-slate-700 bg-slate-900/80'
       } ${isDragging ? 'opacity-70' : 'opacity-100'}`}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex w-full items-center justify-between gap-3 text-left"
-        {...attributes}
-        {...listeners}
-      >
-        <div>
-          <div className="text-sm font-semibold text-white">{section.label}</div>
-          <div className="mt-1 text-[11px] text-slate-400" dir="ltr">
-            {section.section_key}
-            {section.updated_at ? ' · modified' : ''}
+      <div className="flex items-center justify-between gap-3">
+        <button type="button" onClick={onSelect} aria-pressed={isSelected} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left">
+          <div>
+            <div className="text-sm font-semibold text-white">{section.label}</div>
+            <div className="mt-1 text-[11px] text-slate-400" dir="ltr">
+              {section.section_key}
+              {section.updated_at ? ' · modified' : ''}
+            </div>
           </div>
-        </div>
-        <div className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300">
+        </button>
+        <button type="button" aria-label={`اسحب لترتيب ${section.label}`} className="touch-none cursor-grab rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 active:cursor-grabbing" {...attributes} {...listeners}>
           Drag
-        </div>
-      </button>
+        </button>
+      </div>
     </div>
   );
 }
@@ -54,6 +52,7 @@ export default function LandingPageBuilder() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [selectedSectionKey, setSelectedSectionKey] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -112,6 +111,14 @@ export default function LandingPageBuilder() {
     }
   };
 
+  const selectedSection = sections.find((section) => section.section_key === selectedSectionKey) ?? null;
+
+  const handleSectionSaved = (content: HeroContent) => {
+    setSections((current) => current.map((section) => section.section_key === 'hero'
+      ? { ...section, content: content as unknown as Record<string, unknown>, updated_at: new Date().toISOString() }
+      : section));
+  };
+
   return (
     <div className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -150,8 +157,8 @@ export default function LandingPageBuilder() {
                   <SortableSectionCard
                     key={section.section_key}
                     section={section}
-                    isSelected={false}
-                    onSelect={() => undefined}
+                    isSelected={selectedSectionKey === section.section_key}
+                    onSelect={() => setSelectedSectionKey(section.section_key)}
                   />
                 ))}
               </div>
@@ -159,6 +166,22 @@ export default function LandingPageBuilder() {
           </DndContext>
         </>
       )}
+
+      {selectedSection && (selectedSection.section_key === 'hero' ? (
+        <HeroEditor
+          initialContent={selectedSection.content}
+          onClose={() => setSelectedSectionKey(null)}
+          onSaved={handleSectionSaved}
+        />
+      ) : (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSectionKey(null); }}>
+          <section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">{selectedSection.label}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">محرر هذا القسم غير متاح بعد. يمكنك حاليًا تحرير قسم Hero وإعادة ترتيب الأقسام.</p>
+            <button type="button" onClick={() => setSelectedSectionKey(null)} className="mt-5 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white">إغلاق</button>
+          </section>
+        </div>
+      ))}
     </div>
   );
 }
