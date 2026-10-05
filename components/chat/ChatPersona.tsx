@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import receptionistAvatar from '../../receptionist-avatar.png';
 
 export type ChatPersonaKind = 'receptionist' | 'patient';
 
@@ -22,7 +21,7 @@ export function ChatPersonaAvatar({
   size?: 'large' | 'small';
 }) {
   const receptionist = persona === 'receptionist';
-  const dimensions = size === 'large' ? 'h-[5.5rem] w-[5.5rem] sm:h-28 sm:w-28' : 'h-11 w-11';
+  const dimensions = size === 'large' ? 'h-24 w-24 sm:h-32 sm:w-32' : 'h-11 w-11';
 
   return (
     <motion.div
@@ -43,12 +42,12 @@ export function ChatPersonaAvatar({
       >
         {receptionist ? (
           <Image
-            src={imageSrc ?? receptionistAvatar}
+            src={imageSrc ?? '/images/receptionist-avatar-full.png'}
             alt="موظفة الاستقبال"
-            width={112}
-            height={112}
-            sizes={size === 'large' ? '(max-width: 640px) 88px, 112px' : '44px'}
-            className="h-full w-full object-cover"
+            width={1408}
+            height={768}
+            sizes={size === 'large' ? '(max-width: 640px) 96px, 128px' : '44px'}
+            className={`h-full w-full object-cover object-[center_42%] ${size === 'large' ? 'scale-[1.16]' : 'scale-[1.28]'}`}
           />
         ) : (
           <svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-500" fill="none" aria-hidden="true">
