@@ -42,10 +42,17 @@ export default function ImageUpload({ value, onChange, label, aspect = 'square',
         headers,
         body: formData,
       });
-      const json = await res.json();
+      const json = (await res.json()) as {
+        data?: { public_url?: string; item?: { public_url?: string } };
+        error?: string;
+      };
       if (!res.ok) throw new Error(json.error || 'فشل رفع الصورة');
-      const url = String(json.data?.public_url ?? '');
+      const url = json.data?.item?.public_url ?? json.data?.public_url ?? '';
       if (!url) throw new Error('لم يُعد الرفع رابط الصورة');
+      console.log('[ImageUpload] upload succeeded; public URL received', {
+        label,
+        responseStatus: res.status,
+      });
       setPreview(url);
       onChange(url);
     } catch (e) {
@@ -74,13 +81,22 @@ export default function ImageUpload({ value, onChange, label, aspect = 'square',
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/gif"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) void handleUpload(f);
+          if (f) {
+            console.log('[ImageUpload] file selected', {
+              label,
+              name: f.name,
+              type: f.type,
+              sizeBytes: f.size,
+            });
+            void handleUpload(f);
+          }
         }}
         className="mt-2 block w-full text-xs text-slate-600 file:mr-2 file:rounded-full file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-700"
       />
+      <p className="mt-1 text-xs text-slate-400">JPG أو PNG أو WebP أو GIF — بحد أقصى 25MB</p>
       {uploading && <p className="mt-1 text-xs text-cyan-600">جارٍ الرفع...</p>}
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
