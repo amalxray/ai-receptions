@@ -31,10 +31,7 @@ export default function BeforeAfterSection({ items }: { items: BeforeAfterItem[]
   return (
     <section className="mx-auto w-full max-w-7xl px-4 pt-12">
       <div className="mb-6 text-center">
-        <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-700">
-          Transformation
-        </span>
-        <h2 className="mt-3 text-2xl font-black text-slate-800 sm:text-3xl">قبل وبعد</h2>
+        <h2 className="text-2xl font-black text-slate-800 sm:text-3xl">قبل وبعد</h2>
         <p className="mt-2 text-sm text-slate-500">اسحب المقارنة لترى النتائج الحقيقية في لمحة واحدة.</p>
       </div>
 

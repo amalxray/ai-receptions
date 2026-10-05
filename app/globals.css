@@ -246,7 +246,7 @@ body {
   from { transform: translateY(0); }
   to { transform: translateY(calc(-100% - var(--gap))); }
 }
-.animate-marquee { animation: marquee 25s linear infinite; }
+.animate-marquee { animation: marquee 35s linear infinite; }
 .animate-marquee-loop { animation: marquee-loop var(--duration) linear infinite; }
 .animate-marquee-vertical { animation: marquee-vertical var(--duration) linear infinite; }
 @keyframes spotlight-anim {

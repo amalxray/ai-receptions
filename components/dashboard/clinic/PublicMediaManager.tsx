@@ -57,8 +57,8 @@ type MediaItem = {
   enabled: boolean;
 };
 
-const ACCEPT =
-  'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime';
+const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
 const SIZE_LIMIT_MB = 25;
 
 export default function PublicMediaManager() {
@@ -100,10 +100,15 @@ export default function PublicMediaManager() {
     if (clinicId) void load();
   }, [clinicId, load]);
 
-  const upload = async (file: File) => {
+  const uploadFiles = async (files: File[]) => {
     if (!clinicId) return;
-    if (file.size > SIZE_LIMIT_MB * 1024 * 1024) {
-      setError(`حجم الملف يتجاوز الحد الأقصى (${SIZE_LIMIT_MB}MB)`);
+    if (files.length === 0) return;
+    const validFiles = files.filter((file) => file.size <= SIZE_LIMIT_MB * 1024 * 1024);
+    const failedFiles = files
+      .filter((file) => file.size > SIZE_LIMIT_MB * 1024 * 1024)
+      .map((file) => `${file.name}: يتجاوز الحد الأقصى (${SIZE_LIMIT_MB}MB)`);
+    if (validFiles.length === 0) {
+      setError(failedFiles.join('، '));
       return;
     }
     setBusy(true);
@@ -111,22 +116,36 @@ export default function PublicMediaManager() {
     setSuccess(null);
     try {
       const headers = await authHeaders();
-      const form = new FormData();
-      form.append('file', file);
-      if (title.trim()) form.append('title', title.trim());
-      if (altText.trim()) form.append('alt_text', altText.trim());
-      form.append('category', uploadCategory);
-      const res = await fetch(
-        `/api/clinic/public-media?clinic_id=${encodeURIComponent(clinicId)}`,
-        { method: 'POST', headers, body: form }
-      );
-      const body = (await res.json().catch(() => null)) as { data?: MediaItem; error?: string } | null;
-      if (!res.ok) throw new Error(body?.error ?? `فشل الرفع (${res.status})`);
-      setTitle('');
-      setAltText('');
-      setUploadCategory('clinic');
-      setSuccess('تم رفع الملف بنجاح');
-      await load();
+      let uploadedCount = 0;
+      for (const file of validFiles) {
+        const form = new FormData();
+        form.append('file', file);
+        if (title.trim()) form.append('title', title.trim());
+        if (altText.trim()) form.append('alt_text', altText.trim());
+        form.append('category', uploadCategory);
+        try {
+          const res = await fetch(
+            `/api/clinic/public-media?clinic_id=${encodeURIComponent(clinicId)}`,
+            { method: 'POST', headers, body: form }
+          );
+          const body = (await res.json().catch(() => null)) as { data?: MediaItem; error?: string } | null;
+          if (!res.ok) {
+            failedFiles.push(`${file.name}: ${body?.error ?? `فشل الرفع (${res.status})`}`);
+          } else {
+            uploadedCount += 1;
+          }
+        } catch (e) {
+          failedFiles.push(`${file.name}: ${e instanceof Error ? e.message : 'تعذر رفع الملف'}`);
+        }
+      }
+      if (uploadedCount > 0) {
+        setTitle('');
+        setAltText('');
+        setUploadCategory('clinic');
+        setSuccess(`تم رفع ${uploadedCount} ملف${uploadedCount === 1 ? '' : 'ات'} بنجاح`);
+        await load();
+      }
+      if (failedFiles.length > 0) setError(`تعذر رفع بعض الملفات: ${failedFiles.join('، ')}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر رفع الملف');
     } finally {
@@ -379,20 +398,37 @@ export default function PublicMediaManager() {
         </label>
       </div>
 
-      <label className="mt-3 flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50">
-        {busy ? 'جارٍ الرفع…' : '⬆ ارفع صورة أو فيديو'}
-        <input
-          type="file"
-          accept={ACCEPT}
-          disabled={busy}
-          className="sr-only"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void upload(file);
-            e.target.value = '';
-          }}
-        />
-      </label>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50">
+          {busy ? 'جارٍ الرفع…' : '⬆ ارفع صورًا (يمكن اختيار عدة صور)'}
+          <input
+            type="file"
+            accept={IMAGE_ACCEPT}
+            multiple
+            disabled={busy}
+            className="sr-only"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) void uploadFiles(files);
+              e.target.value = '';
+            }}
+          />
+        </label>
+        <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50">
+          {busy ? 'جارٍ الرفع…' : '⬆ ارفع فيديو (MP4 أو WebM)'}
+          <input
+            type="file"
+            accept={VIDEO_ACCEPT}
+            disabled={busy}
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void uploadFiles([file]);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      </div>
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-400">جارٍ التحميل…</p>
