@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { heroContentSchema } from '@/lib/landing/hero-schema';
+import { faqContentSchema, featuresContentSchema, heroContentSchema, testimonialsContentSchema } from '@/lib/landing/hero-schema';
 import { landingCopy } from '@/lib/landing/landing-copy';
 
 const validHero = {
@@ -26,5 +26,28 @@ describe('heroContentSchema', () => {
   it('rejects empty stats and more than six stats', () => {
     expect(heroContentSchema.safeParse({ ...validHero, stats: [] }).success).toBe(false);
     expect(heroContentSchema.safeParse({ ...validHero, stats: Array(7).fill({ value: '1', label: 'إحصائية' }) }).success).toBe(false);
+  });
+});
+
+describe('homepage section content schemas', () => {
+  it('accepts valid feature cards and rejects unsafe destinations', () => {
+    const features = {
+      eyebrow: 'لماذا نحن', title: 'عنوان', titleAccent: 'مميز', subtitle: 'وصف',
+      cards: [{ icon: '✨', title: 'ميزة', desc: 'تفاصيل الميزة', href: '/register', cta: 'ابدأ' }],
+    };
+    expect(featuresContentSchema.safeParse(features).success).toBe(true);
+    expect(featuresContentSchema.safeParse({ ...features, cards: [{ ...features.cards[0], href: 'javascript:alert(1)' }] }).success).toBe(false);
+  });
+
+  it('requires FAQ questions and answers and bounds the list', () => {
+    expect(faqContentSchema.safeParse({ title: 'أسئلة', items: [{ q: 'سؤال؟', a: 'جواب.' }] }).success).toBe(true);
+    expect(faqContentSchema.safeParse({ title: 'أسئلة', items: [{ q: '', a: 'جواب.' }] }).success).toBe(false);
+    expect(faqContentSchema.safeParse({ title: 'أسئلة', items: Array(31).fill({ q: 'سؤال؟', a: 'جواب.' }) }).success).toBe(false);
+  });
+
+  it('accepts testimonial photo URLs only when they are local or HTTPS', () => {
+    const testimonial = { title: 'آراء', subtitle: 'الوصف', items: [{ content: 'رأي المراجع.', doctor_name: 'د. ريم', specialty: 'تقويم', rating: 5, image_url: '/images/reem.webp' }] };
+    expect(testimonialsContentSchema.safeParse(testimonial).success).toBe(true);
+    expect(testimonialsContentSchema.safeParse({ ...testimonial, items: [{ ...testimonial.items[0], image_url: 'http://insecure.example/photo.png' }] }).success).toBe(false);
   });
 });

@@ -6,6 +6,9 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import HeroEditor from '@/components/admin/editors/HeroEditor';
 import type { HeroContent } from '@/components/landing/Hero';
+import FeaturesEditor, { type FeaturesContent } from '@/components/admin/editors/FeaturesEditor';
+import FAQEditor from '@/components/admin/editors/FAQEditor';
+import TestimonialsEditor from '@/components/admin/editors/TestimonialsEditor';
 
 export type LandingPageSection = {
   section_key: string;
@@ -113,8 +116,8 @@ export default function LandingPageBuilder() {
 
   const selectedSection = sections.find((section) => section.section_key === selectedSectionKey) ?? null;
 
-  const handleSectionSaved = (content: HeroContent) => {
-    setSections((current) => current.map((section) => section.section_key === 'hero'
+  const handleSectionSaved = (sectionKey: string, content: object) => {
+    setSections((current) => current.map((section) => section.section_key === sectionKey
       ? { ...section, content: content as unknown as Record<string, unknown>, updated_at: new Date().toISOString() }
       : section));
   };
@@ -167,21 +170,27 @@ export default function LandingPageBuilder() {
         </>
       )}
 
-      {selectedSection && (selectedSection.section_key === 'hero' ? (
-        <HeroEditor
-          initialContent={selectedSection.content}
-          onClose={() => setSelectedSectionKey(null)}
-          onSaved={handleSectionSaved}
-        />
-      ) : (
+      {selectedSection?.section_key === 'hero' && (
+        <HeroEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: HeroContent) => handleSectionSaved('hero', content)} />
+      )}
+      {selectedSection?.section_key === 'features' && (
+        <FeaturesEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: FeaturesContent) => handleSectionSaved('features', content)} />
+      )}
+      {selectedSection?.section_key === 'faq' && (
+        <FAQEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('faq', content)} />
+      )}
+      {selectedSection?.section_key === 'testimonials' && (
+        <TestimonialsEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('testimonials', content)} />
+      )}
+      {selectedSection && !['hero', 'features', 'faq', 'testimonials'].includes(selectedSection.section_key) && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSectionKey(null); }}>
           <section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900">{selectedSection.label}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">محرر هذا القسم غير متاح بعد. يمكنك حاليًا تحرير قسم Hero وإعادة ترتيب الأقسام.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">محرر هذا القسم غير متاح بعد. يمكنك حاليًا تحرير Hero والمميزات والأسئلة الشائعة وآراء الأطباء.</p>
             <button type="button" onClick={() => setSelectedSectionKey(null)} className="mt-5 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white">إغلاق</button>
           </section>
         </div>
-      ))}
+      )}
     </div>
   );
 }

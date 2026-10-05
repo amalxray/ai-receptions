@@ -3,16 +3,13 @@
 import { AvatarCircles } from '@/components/ui/avatar-circles';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { Marquee } from '@/components/ui/marquee';
+import { useLandingCopy } from '@/components/landing/LandingContent';
 
-const TESTIMONIALS = [
-  { content: 'زادت حجوزاتي 40% في أول شهر — المحادثة تلتقط المرضى اللي كنت أفوتهم.', doctor_name: 'د. أحمد', specialty: 'طب أسنان عام', color: 'from-cyan-400 to-blue-500' },
-  { content: 'مرضاي سعداء بالرد الفوري بلغتهم. ما عدى في مكالمات ضايعة بعد الدوام.', doctor_name: 'د. سارة', specialty: 'تقويم', color: 'from-violet-400 to-purple-500' },
-  { content: 'توفير الوقت = توفير فلوس. الجدول يتعبى لحاله وأنا أركز على العلاج.', doctor_name: 'د. محمد', specialty: 'جراحة', color: 'from-emerald-400 to-teal-500' },
-  { content: 'من اليوم الأول ما فقدت مكالمة وحدة. النظام يلتقط كل شي.', doctor_name: 'د. ليان', specialty: 'أطفال', color: 'from-amber-400 to-orange-500' },
-  { content: 'أفضل استثمار سويتو لعيادتي — استرجعت التكلفة بأسبوعين.', doctor_name: 'د. خالد', specialty: 'زراعة', color: 'from-pink-400 to-rose-500' },
-];
+const CARD_COLORS = ['from-cyan-400 to-blue-500', 'from-violet-400 to-purple-500', 'from-emerald-400 to-teal-500', 'from-amber-400 to-orange-500', 'from-pink-400 to-rose-500'];
 
 export default function TestimonialsSection() {
+  const copy = useLandingCopy();
+  const testimonials = copy.testimonials;
   return (
     <section className="relative overflow-hidden bg-[#FAFBFC] py-24">
       <div aria-hidden="true" className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full bg-violet-200/40 blur-[100px]" />
@@ -20,8 +17,8 @@ export default function TestimonialsSection() {
       <div className="mx-auto max-w-6xl px-4">
         <BlurFade inView>
           <div className="mb-10 text-center">
-            <h2 className="text-3xl font-black text-slate-950 md:text-5xl">أطباء يثقون بنا</h2>
-            <p className="mt-3 text-lg text-slate-600">انضم إلى نخبة الأطباء في فلسطين</p>
+            <h2 className="text-3xl font-black text-slate-950 md:text-5xl">{testimonials.title}</h2>
+            <p className="mt-3 text-lg text-slate-600">{testimonials.subtitle}</p>
           </div>
         </BlurFade>
         <BlurFade delay={0.2} inView>
@@ -34,21 +31,29 @@ export default function TestimonialsSection() {
           <div className="absolute bottom-0 left-0 top-0 z-10 w-24 bg-gradient-to-l from-[#FAFBFC] to-transparent" />
           <div className="absolute bottom-0 right-0 top-0 z-10 w-24 bg-gradient-to-r from-[#FAFBFC] to-transparent" />
           <Marquee pauseOnHover repeat={2} className="[--duration:45s]">
-            {TESTIMONIALS.map((t, i) => (
-              <BlurFade key={t.doctor_name} delay={i * 0.08} inView>
+            {testimonials.items.map((raw: { content?: string; text?: string; doctor_name?: string; name?: string; specialty?: string; rating?: number; image_url?: string }, i: number) => {
+              const doctorName = String(raw.doctor_name ?? raw.name ?? 'طبيب');
+              const testimonialText = String(raw.content ?? raw.text ?? '');
+              const rating = Math.max(1, Math.min(5, Number(raw.rating) || 5));
+              return <BlurFade key={`${doctorName}-${i}`} delay={i * 0.08} inView>
                 <article className="group mx-4 w-96 shrink-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-amber-300 hover:shadow-[0_16px_40px_-18px_rgba(245,158,11,0.28)]">
-                  <div aria-label="تقييم خمس نجوم" className="mb-3 text-amber-500">{'⭐'.repeat(5)}</div>
-                  <p className="mb-4 text-lg leading-7 text-slate-700">“{t.content}”</p>
+                  <div aria-label={`تقييم ${rating} من 5`} className="mb-3 text-amber-500">{'⭐'.repeat(rating)}</div>
+                  <p className="mb-4 text-lg leading-7 text-slate-700">“{testimonialText}”</p>
                   <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
-                    <div aria-hidden="true" className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${t.color} font-bold text-white shadow-md ring-2 ring-white`}>{t.doctor_name.replace('د. ', '').charAt(0)}</div>
+                    {raw.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={raw.image_url} alt={doctorName} className="h-12 w-12 rounded-full object-cover shadow-md ring-2 ring-white" />
+                    ) : (
+                      <div aria-hidden="true" className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br ${CARD_COLORS[i % CARD_COLORS.length]} font-bold text-white shadow-md ring-2 ring-white`}>{doctorName.replace('د. ', '').charAt(0)}</div>
+                    )}
                     <div>
-                      <div className="font-bold text-slate-900">{t.doctor_name}</div>
-                      <div className="text-xs text-slate-500">{t.specialty}</div>
+                      <div className="font-bold text-slate-900">{doctorName}</div>
+                      <div className="text-xs text-slate-500">{raw.specialty ?? ''}</div>
                     </div>
                   </div>
                 </article>
-              </BlurFade>
-            ))}
+              </BlurFade>;
+            })}
           </Marquee>
         </div>
       </div>
