@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { freshConversationState, conversationStorageKeysToPurge } from '@/lib/chat/conversationReset';
 import type { ChatInteractive } from '@/lib/ai/chatInteractive';
 import { QuickReplyChips, OptionCards } from './InteractiveReplies';
+import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
 
 type ChatMessage = {
   id?: string;
@@ -315,19 +316,22 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
   // الرسائل الأقدم تبقى نصاً خالصاً — لا أزرار عتيقة.
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const lastInteractive = lastMessage?.role === 'assistant' ? lastMessage.interactive ?? null : null;
+  const patientIsActive = !isSubmitting && draft.trim().length > 0;
+  const receptionistIsActive = isSubmitting || (!patientIsActive && lastMessage?.role !== 'user');
 
   return (
     <div
-      className={`flex flex-col rounded-[2rem] border border-slate-800 bg-slate-900/80 shadow-xl shadow-slate-950/30 ${
-        embedded ? 'h-full w-full' : 'min-h-[40rem]'
+      dir="rtl"
+      className={`flex flex-col rounded-[2rem] border border-slate-200 bg-white text-slate-800 shadow-xl shadow-slate-900/10 ${
+        embedded ? 'h-full min-h-0 w-full' : 'min-h-[40rem]'
       }`}
     >
-      <div className="flex items-start justify-between rounded-t-[2rem] bg-slate-950/90 px-6 py-5">
+      <div className="flex items-center justify-between gap-4 rounded-t-[2rem] border-b border-slate-100 bg-white px-5 py-4 sm:px-7">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300/80">
-            {assistantName ? `${assistantName} — ` : ''}محادثة AI
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">
+            {assistantName ?? 'موظفة الاستقبال'} · محادثة مباشرة
           </p>
-          {clinicName && <p className="mt-1 text-xs text-slate-400">{clinicName}</p>}
+          {clinicName && <p className="mt-1 text-xs text-slate-500">{clinicName}</p>}
         </div>
         {/* New Conversation: full isolation from the previous session. */}
         {!isLoadingHistory && (
@@ -337,77 +341,113 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             disabled={isSubmitting}
             aria-label="بدء محادثة جديدة"
             title="ابدأ محادثة جديدة — المحادثة الحالية تبقى محفوظة في السجل"
-            className="shrink-0 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-500/70 hover:text-white disabled:opacity-50"
+            className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-800 transition hover:border-teal-400 hover:bg-teal-100 disabled:opacity-50"
           >
             + محادثة جديدة
           </button>
         )}
       </div>
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+
+      <div className="grid grid-cols-2 gap-3 border-b border-slate-100 bg-gradient-to-b from-white to-cyan-50/60 px-4 py-5 sm:gap-5 sm:px-7 sm:py-6">
+        <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${patientIsActive ? 'bg-cyan-50 ring-1 ring-cyan-200' : ''}`}>
+          <ChatPersonaAvatar persona="patient" active={patientIsActive} />
+          <span className="min-w-0">
+            <span className="block text-sm font-bold text-slate-800">أنت</span>
+            <span className="block text-xs text-slate-500">المريض</span>
+          </span>
+        </div>
+        <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${receptionistIsActive ? 'bg-teal-50 ring-1 ring-teal-200' : ''}`}>
+          <ChatPersonaAvatar persona="receptionist" active={receptionistIsActive} />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-slate-800">{assistantName ?? 'موظفة الاستقبال'}</span>
+            <span className="mt-0.5 flex items-center justify-center gap-1.5 text-xs text-teal-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
+              متاحة الآن
+            </span>
+          </span>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-5 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_rgba(236,254,255,0.75),_transparent_68%)] px-4 py-5 sm:px-7 sm:py-7">
         {statusMessage ? (
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{statusMessage}</div>
+          <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{statusMessage}</div>
         ) : null}
 
         {isLoadingHistory ? (
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-400" />
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-teal-500" />
             جارٍ تحميل المحادثة...
           </div>
         ) : (
           <>
-            {messages.map((message, index) => (
-              <div
-                key={message.id ?? `${message.role}-${index}`}
-                className={`rounded-3xl px-5 py-4 ${
-                  message.role === 'assistant'
-                    ? 'bg-slate-950 text-slate-200'
-                    : 'bg-cyan-500/10 text-cyan-200 self-end'
-                }`}
-              >
-                <p className="text-sm leading-6 whitespace-pre-wrap">{message.text}</p>
-                {index === messages.length - 1 && message.role === 'assistant' && message.interactive ? (
-                  <>
-                    {message.interactive.card_group && message.interactive.card_group.items.length > 0 ? (
-                      <div>
-                        <p className="mt-3 text-xs font-semibold text-slate-300">{message.interactive.card_group.label}</p>
-                        <OptionCards
-                          options={message.interactive.card_group.items.map((o) => ({
-                            id: o.id,
-                            title: o.title,
-                            subtitle: o.subtitle,
-                            meta: o.price,
-                            icon: o.icon,
-                            value: o.value ?? o.title,
-                            disabled: o.disabled,
-                          }))}
-                          onSelect={(value) => { void handleSubmit(null, value); }}
-                          disabled={isSubmitting}
-                          columns={message.interactive?.card_group?.kind === 'time' ? 3 : 2}
-                        />
-                      </div>
+            {messages.map((message, index) => {
+              const isReceptionist = message.role === 'assistant';
+              return (
+                <div
+                  key={message.id ?? `${message.role}-${index}`}
+                  dir="ltr"
+                  className={`flex w-full items-start gap-3 sm:gap-4 ${isReceptionist ? 'justify-end' : 'justify-start'}`}
+                >
+                  {!isReceptionist && <ChatPersonaAvatar persona="patient" active={patientIsActive && index === messages.length - 1} size="small" />}
+                  <div
+                    dir="rtl"
+                    className={`min-w-0 max-w-[84%] flex-1 py-1 sm:max-w-[78%] ${
+                      isReceptionist ? 'border-r-2 border-teal-300 pr-3 text-right sm:pr-5' : 'border-l-2 border-cyan-300 pl-3 text-right sm:pl-5'
+                    }`}
+                  >
+                    <p className={`mb-1 text-[11px] font-bold tracking-wide ${isReceptionist ? 'text-teal-700' : 'text-cyan-800'}`}>
+                      {isReceptionist ? (assistantName ?? 'موظفة الاستقبال') : 'أنت'}
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-[15px]">{message.text}</p>
+                    {index === messages.length - 1 && isReceptionist && message.interactive ? (
+                      <>
+                        {message.interactive.card_group && message.interactive.card_group.items.length > 0 ? (
+                          <div>
+                            <p className="mt-3 text-xs font-semibold text-slate-600">{message.interactive.card_group.label}</p>
+                            <OptionCards
+                              options={message.interactive.card_group.items.map((o) => ({
+                                id: o.id,
+                                title: o.title,
+                                subtitle: o.subtitle,
+                                meta: o.price,
+                                icon: o.icon,
+                                value: o.value ?? o.title,
+                                disabled: o.disabled,
+                              }))}
+                              onSelect={(value) => { void handleSubmit(null, value); }}
+                              disabled={isSubmitting}
+                              columns={message.interactive?.card_group?.kind === 'time' ? 3 : 2}
+                            />
+                          </div>
+                        ) : null}
+                        {message.interactive.quick_replies && message.interactive.quick_replies.length > 0 ? (
+                          <QuickReplyChips
+                            replies={message.interactive.quick_replies}
+                            onSelect={(value) => { void handleSubmit(null, value); }}
+                            disabled={isSubmitting}
+                          />
+                        ) : null}
+                      </>
                     ) : null}
-                    {message.interactive.quick_replies && message.interactive.quick_replies.length > 0 ? (
-                      <QuickReplyChips
-                        replies={message.interactive.quick_replies}
-                        onSelect={(value) => { void handleSubmit(null, value); }}
-                        disabled={isSubmitting}
-                      />
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            ))}
+                  </div>
+                  {isReceptionist && <ChatPersonaAvatar persona="receptionist" active={index === messages.length - 1 && receptionistIsActive} size="small" />}
+                </div>
+              );
+            })}
 
             {isSubmitting && (
-              <div className="flex items-center gap-2 rounded-3xl bg-slate-950 px-5 py-4 text-sm text-slate-400">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-400" />
-                جارٍ الكتابة...
+              <div dir="ltr" className="flex items-center justify-end gap-3 sm:gap-4">
+                <div dir="rtl" className="flex items-center gap-2 border-r-2 border-teal-300 py-2 pr-3 text-sm text-slate-500 sm:pr-5">
+                  <span>موظفة الاستقبال تكتب</span>
+                  <TypingDots />
+                </div>
+                <ChatPersonaAvatar persona="receptionist" active size="small" />
               </div>
             )}
 
             {showSuggested && messages.length <= 1 && (
-              <div className="mt-2 space-y-2">
-                <p className="text-xs text-slate-500">أسئلة مقترحة:</p>
+              <div className="mt-4 space-y-3 rounded-2xl border border-slate-100 bg-white/70 p-4 sm:p-5">
+                <p className="text-xs font-bold text-slate-600">يمكنك البدء بأحد هذه الأسئلة</p>
                 <div className="flex flex-wrap gap-2">
                   {suggestedQuestionsFor(activityType).map((q) => (
                     <button
@@ -417,7 +457,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                         setDraft(q);
                         setShowSuggested(false);
                       }}
-                      className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200 transition hover:border-cyan-500/70 hover:text-white"
+                      className="rounded-full border border-teal-100 bg-white px-3.5 py-2 text-sm text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-400 hover:text-teal-800"
                     >
                       {q}
                     </button>
@@ -427,7 +467,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             )}
 
             {aiUnavailable && (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 {/*
                   F5: the `<input type="tel">` that used to live here was DEAD —
                   no value/onChange/name and no submit handler, so it silently
@@ -443,8 +483,8 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         )}
         <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={handleSubmit} className="rounded-b-[2rem] border-t border-slate-800 bg-slate-950/90 px-6 py-5">
-        <div className="flex gap-3">
+      <form onSubmit={handleSubmit} className="rounded-b-[2rem] border-t border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5">
+        <div className="flex gap-2 sm:gap-3">
           <input
             type="text"
             value={draft}
@@ -452,12 +492,12 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             placeholder="اكتب رسالة..."
             maxLength={MAX_MESSAGE_LENGTH}
             aria-label="رسالة"
-            className="min-w-0 flex-1 rounded-full border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:bg-white focus:ring-4 focus:ring-teal-500/10"
           />
           <button
             type="submit"
             disabled={isSubmitting || !draft.trim()}
-            className="rounded-full bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-2xl bg-gradient-to-l from-teal-600 to-cyan-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-teal-700/15 transition hover:from-teal-500 hover:to-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
           >
             {isSubmitting ? 'جارٍ الإرسال...' : 'إرسال'}
           </button>

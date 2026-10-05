@@ -1,6 +1,7 @@
 'use client';
 
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
+import { ChatPersonaAvatar } from '@/components/chat/ChatPersona';
 
 /**
  * Premium medical landing page hosting the floating chat widget.
@@ -88,26 +89,33 @@ export default function ChatLanding({ clinicId, clinicName }: { clinicId: string
           <div className="hidden justify-center lg:flex">
             <div className="w-full max-w-sm rounded-3xl border border-white/70 bg-white/80 p-6 shadow-2xl shadow-cyan-500/10 backdrop-blur">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-white">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17 8h1a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4h-8a4 4 0 0 1 0-8h1" />
-                    <path d="M15 12v-1a3 3 0 0 0-3-3H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5z" />
-                  </svg>
-                </div>
+                <ChatPersonaAvatar persona="receptionist" size="small" />
                 <div>
                   <p className="text-sm font-bold text-slate-800">موظفة الاستقبال</p>
                   <p className="text-xs text-emerald-600">● متاحة الآن</p>
                 </div>
               </div>
-              <div className="mt-5 space-y-3">
-                <div className="max-w-[85%] rounded-2xl rounded-tr-none bg-slate-100 px-4 py-3 text-sm text-slate-700">
-                  أهلاً بك! كيف يمكنني مساعدتك اليوم؟
+              <div className="mt-5 space-y-4">
+                <div dir="ltr" className="flex items-start justify-end gap-3">
+                  <p dir="rtl" className="max-w-[82%] border-r-2 border-teal-300 py-1 pr-3 text-right text-sm leading-6 text-slate-700">
+                    <span className="mb-1 block text-[11px] font-bold text-teal-700">موظفة الاستقبال</span>
+                    أهلاً بك! كيف يمكنني مساعدتك اليوم؟
+                  </p>
+                  <ChatPersonaAvatar persona="receptionist" size="small" />
                 </div>
-                <div className="mr-auto max-w-[85%] rounded-2xl rounded-tl-none bg-gradient-to-l from-cyan-500 to-teal-500 px-4 py-3 text-sm text-white">
-                  بدي أعرف أوقات دوام العيادة
+                <div dir="ltr" className="flex items-start justify-start gap-3">
+                  <ChatPersonaAvatar persona="patient" size="small" />
+                  <p dir="rtl" className="max-w-[82%] border-l-2 border-cyan-300 py-1 pl-3 text-right text-sm leading-6 text-slate-700">
+                    <span className="mb-1 block text-[11px] font-bold text-cyan-800">أنت</span>
+                    بدي أعرف أوقات دوام العيادة
+                  </p>
                 </div>
-                <div className="max-w-[85%] rounded-2xl rounded-tr-none bg-slate-100 px-4 py-3 text-sm text-slate-700">
-                  ساعات العمل: الأحد–الخميس ٩ص–٥م، والعيادة مغلقة الجمعة والسبت 😊
+                <div dir="ltr" className="flex items-start justify-end gap-3">
+                  <p dir="rtl" className="max-w-[82%] border-r-2 border-teal-300 py-1 pr-3 text-right text-sm leading-6 text-slate-700">
+                    <span className="mb-1 block text-[11px] font-bold text-teal-700">موظفة الاستقبال</span>
+                    ساعات العمل: الأحد–الخميس ٩ص–٥م، والعيادة مغلقة الجمعة والسبت 😊
+                  </p>
+                  <ChatPersonaAvatar persona="receptionist" size="small" />
                 </div>
               </div>
               <div className="mt-5 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
