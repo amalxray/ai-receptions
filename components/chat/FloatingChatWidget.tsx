@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ChatInterface from '@/components/chat/ChatInterface';
+import { ChatPersonaAvatar } from '@/components/chat/ChatPersona';
 
 /**
  * Premium floating chat bubble + panel.
@@ -98,23 +99,18 @@ export default function FloatingChatWidget({
             exit={{ opacity: 0, y: 60, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
           >
-            <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-950/98 shadow-2xl shadow-slate-950/50 ring-1 ring-slate-800 sm:h-[min(76vh,44rem)] sm:rounded-t-[1.75rem] sm:rounded-l-[1.75rem]">
+            <div className="flex h-[100dvh] flex-col overflow-hidden bg-white shadow-2xl shadow-slate-950/30 ring-1 ring-slate-200 sm:h-[min(76vh,44rem)] sm:rounded-t-[1.75rem] sm:rounded-l-[1.75rem]">
               {/* Panel header */}
-              <div className="flex items-center justify-between bg-gradient-to-l from-cyan-600/25 to-violet-500/25 px-5 py-4">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-white shadow-lg shadow-cyan-500/20">
-                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 8h1a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4h-8a4 4 0 0 1 0-8h1" />
-                      <path d="M15 12v-1a3 3 0 0 0-3-3H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5z" />
-                    </svg>
-                  </div>
+                  <ChatPersonaAvatar persona="receptionist" size="small" />
                   <div className="min-w-0">
-                    <p className="truncate text-base font-bold text-white sm:text-lg">موظفة الاستقبال الافتراضية</p>
+                    <p className="truncate text-base font-bold text-slate-800 sm:text-lg">موظفة الاستقبال الافتراضية</p>
                     {/* Unified status line: emerald dot carries the "online" signal,
                         the text stays light-on-dark for readable contrast (was
                         text-emerald-300 on a cyan/violet wash → barely legible). */}
-                    <p className="mt-0.5 flex items-center gap-2 text-sm text-slate-200">
-                      <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                    <p className="mt-0.5 flex items-center gap-2 text-sm text-slate-500">
+                      <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500" />
                       متاحة الآن — تجيبك فورًا
                     </p>
                   </div>
@@ -123,7 +119,7 @@ export default function FloatingChatWidget({
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="إغلاق المحادثة"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-slate-200 transition hover:bg-white/20"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M18 6 6 18M6 6l12 12" />
