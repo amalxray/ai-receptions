@@ -574,24 +574,29 @@ export function ActivitySpaceChrome({
         )}
 
         {on('gallery') && galleryVideos.length > 0 && (
-          <section className="py-8 bg-slate-50/50" style={{ order: sectionPosition('gallery') + 1 }}>
-            <div className="mx-auto max-w-7xl px-4 mb-6 text-center">
-              <h2 className="text-xl font-bold text-slate-800">معرض الفيديو</h2>
+          <section className="py-12 bg-slate-50/50" style={{ order: sectionPosition('gallery') + 1 }}>
+            <div className="mx-auto max-w-7xl px-4 mb-8 text-center">
+              <h2 className="text-2xl font-bold text-slate-800">معرض الفيديو</h2>
+              <p className="mt-2 text-sm text-slate-500">شاهد مركزنا وخدماتنا عن قرب</p>
             </div>
-            <div className="mx-auto max-w-7xl px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="mx-auto max-w-5xl px-4 grid grid-cols-1 gap-8">
               {galleryVideos.map((vid, i) => (
                 <div
                   key={`vid-${vid.id || i}`}
-                  className="rounded-2xl overflow-hidden border border-slate-200 bg-black shadow-lg"
+                  className="rounded-2xl overflow-hidden border border-slate-200 bg-black shadow-xl"
                 >
                   <video
                     src={vid.public_url}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
                     controls
-                    className="w-full aspect-video object-cover"
+                    className="w-full h-80 md:h-[500px] object-cover bg-black"
                     preload="metadata"
                   />
                   {vid.title && (
-                    <p className="p-3 text-sm font-semibold text-slate-800 bg-white">{vid.title}</p>
+                    <p className="p-4 text-base font-semibold text-slate-800 bg-white">{vid.title}</p>
                   )}
                 </div>
               ))}
