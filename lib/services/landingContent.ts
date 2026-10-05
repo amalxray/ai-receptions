@@ -9,7 +9,7 @@
  * `requirePlatformAdmin`.
  */
 import { landingCopy } from '@/lib/landing/landing-copy';
-import { describeLandingOrderDatabaseError, normalizeLandingPageOrder } from '@/lib/landing/landing-order';
+import { describeLandingOrderDatabaseError, getLandingOrderDatabaseErrorFields, normalizeLandingPageOrder } from '@/lib/landing/landing-order';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export type LandingSectionRow = {
@@ -144,7 +144,10 @@ export async function saveLandingPageOrder(order: string[]): Promise<void> {
         { onConflict: 'section_key' }
       );
 
-    if (error) throw new Error(describeLandingOrderDatabaseError(error));
+    if (error) {
+      console.error('[landing_page_order] Supabase upsert failed', JSON.stringify(getLandingOrderDatabaseErrorFields(error)));
+      throw new Error(describeLandingOrderDatabaseError(error));
+    }
   } catch (error) {
     throw new Error(describeLandingOrderDatabaseError(error));
   }
