@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
-import { getAllLandingSections, LANDING_SECTION_KEYS, landingSectionLabel, saveLandingPageOrder } from '@/lib/services/landingContent';
+import { getAllLandingSections, getLandingPageOrder, landingSectionLabel, saveLandingPageOrder } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
 
 /** GET /api/admin/landing-page — every landing section with its DB override. */
@@ -9,9 +9,9 @@ export async function GET(req: Request) {
   if (!gate.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: gate.status });
 
   try {
-    const rows = await getAllLandingSections();
+    const [rows, orderedKeys] = await Promise.all([getAllLandingSections(), getLandingPageOrder()]);
     const byKey = new Map(rows.map((r) => [r.section_key, r]));
-    const sections = LANDING_SECTION_KEYS.map((key) => {
+    const sections = orderedKeys.map((key) => {
       const row = byKey.get(key);
       return {
         section_key: key,

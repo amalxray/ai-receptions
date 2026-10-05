@@ -6,6 +6,7 @@
     "dev": "next dev",
     "test": "vitest",
     "test:knowledge": "node scripts/test-knowledge.mjs",
+    "verify:aeo-geo": "node scripts/verify-aeo-geo-status.mjs",
     "verify:booking": "node scripts/verify-booking-calendar.mjs",
     "whatsapp:smoke": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/whatsapp-smoke-test.ts",
     "probe:fi": "node node_modules/vite-node/vite-node.mjs -c vitest.config.ts scripts/fi-probe.ts",
