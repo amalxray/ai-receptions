@@ -39,7 +39,7 @@ describe('WhatsApp Cloud API adapter', () => {
       'ar',
       ['Amal X-Ray Center', '2026-10-05', '10:30'],
       config,
-    )).resolves.toEqual({ messages: [{ id: 'wamid.test' }] });
+    )).resolves.toEqual({ messages: [{ id: 'wamid.test' }], httpStatus: 200 });
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
