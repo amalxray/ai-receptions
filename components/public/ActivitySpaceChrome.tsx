@@ -532,9 +532,6 @@ export function ActivitySpaceChrome({
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
         {on('gallery') && (
           <div style={{ order: sectionPosition('gallery') }}>
-            <p className="text-center text-xs text-red-500 mb-2">
-              عدد الصور المكتشفة: {space.media.filter((m) => m.media_type === 'image' && m.public_url).length}
-            </p>
             {galleryImages.length > 0 && (
               <section className="py-8 bg-slate-50/50">
                 <div className="mx-auto max-w-7xl px-4 mb-6 text-center">
@@ -556,7 +553,7 @@ export function ActivitySpaceChrome({
                         {galleryImages.map((img, i) => (
                           <div
                             key={`${setIndex === 0 ? 'original' : 'duplicate'}-${img.id || i}`}
-                            className="h-[220px] w-[300px] flex-none overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl md:h-[260px] md:w-[400px]"
+                            className="relative z-10 h-[220px] w-[300px] flex-none cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg transition-all duration-400 ease-out hover:z-20 hover:-translate-y-2 hover:scale-110 hover:shadow-2xl md:h-[260px] md:w-[400px]"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
