@@ -353,7 +353,6 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           <ChatPersonaAvatar persona="patient" active={patientIsActive} />
           <span className="min-w-0">
             <span className="block text-sm font-bold text-slate-800">أنت</span>
-            <span className="block text-xs text-slate-500">المريض</span>
           </span>
         </div>
         <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${receptionistIsActive ? 'bg-teal-50 ring-1 ring-teal-200' : ''}`}>

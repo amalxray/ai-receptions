@@ -26,7 +26,7 @@ export function ChatPersonaAvatar({
   return (
     <motion.div
       role="img"
-      aria-label={receptionist ? 'صورة موظفة الاستقبال' : 'صورة المريض الرمزية'}
+      aria-label={receptionist ? 'صورة موظفة الاستقبال' : 'أيقونة مستخدم عامة'}
       className={`relative shrink-0 rounded-full p-[3px] transition-shadow duration-300 ${
         active
           ? 'bg-gradient-to-br from-teal-300 via-cyan-400 to-sky-500 shadow-[0_0_28px_rgba(34,211,238,0.42)]'
@@ -42,7 +42,7 @@ export function ChatPersonaAvatar({
       >
         {receptionist ? (
           <Image
-            src={imageSrc ?? '/images/receptionist-avatar-full.png'}
+            src={imageSrc ?? '/images/receptionist-avatar-full.jpg'}
             alt="موظفة الاستقبال"
             width={1408}
             height={768}
