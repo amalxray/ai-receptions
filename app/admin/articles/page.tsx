@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Skeleton from '@/components/ui/Skeleton';
+import ArticleContentProse from '@/components/ask/ArticleContentProse';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Underline } from '@tiptap/extension-underline';
 import { Bold } from '@tiptap/extension-bold';
@@ -55,6 +56,7 @@ export default function AdminArticlesPage() {
   const [tags, setTags] = useState('');
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
   const [featured, setFeatured] = useState(false);
+  const [featuredImageUrl, setFeaturedImageUrl] = useState('');
   const [html, setHtml] = useState('');
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
@@ -98,24 +100,39 @@ export default function AdminArticlesPage() {
   // every existing article opened blank and any later save wiped the stored
   // content. Sync the editor explicitly on every open.
   const openNew = () => {
-    setEditingId(null); setTitle(''); setSlug(''); setExcerpt(''); setCategory(''); setTags(''); setStatus('draft'); setFeatured(false); setHtml(''); setOpen(true);
+    setEditingId(null); setTitle(''); setSlug(''); setExcerpt(''); setCategory(''); setTags(''); setStatus('draft'); setFeatured(false); setFeaturedImageUrl(''); setHtml(''); setOpen(true);
     if (editor) editor.commands.clearContent();
   };
   const openEdit = (a: Article) => {
-    setEditingId(a.id); setTitle(a.title); setSlug(a.slug ?? ''); setExcerpt(a.excerpt ?? ''); setCategory(a.category ?? ''); setTags((a.tags ?? []).join('، ')); setStatus(a.status === 'archived' ? 'draft' : (a.status === 'published' ? 'published' : 'draft')); setFeatured(a.is_featured); setHtml(a.content); setOpen(true);
+    setEditingId(a.id); setTitle(a.title); setSlug(a.slug ?? ''); setExcerpt(a.excerpt ?? ''); setCategory(a.category ?? ''); setTags((a.tags ?? []).join('، ')); setStatus(a.status === 'archived' ? 'draft' : (a.status === 'published' ? 'published' : 'draft')); setFeatured(a.is_featured); setFeaturedImageUrl((a as unknown as { featured_image_url?: string | null }).featured_image_url ?? ''); setHtml(a.content); setOpen(true);
     if (editor) editor.commands.setContent(a.content || '');
   };
 
   const save = async (mode: 'draft' | 'published') => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError('العنوان مطلوب قبل الحفظ');
+      return;
+    }
+    if (!featuredImageUrl.trim()) {
+      setError('يجب اختيار صورة رئيسية للمقال');
+      return;
+    }
+    if (!html.trim()) {
+      setError('محتوى المقال مطلوب قبل الحفظ');
+      return;
+    }
+
     setBusy(true); setError(null);
     try {
       const payload = {
-        title: title.trim(),
+        title: trimmedTitle,
         slug: slug.trim() || undefined,
         excerpt: excerpt.trim() || null,
         category: category.trim() || null,
         tags: tags.split(/[،,]/).map((t) => t.trim()).filter(Boolean),
         content: html,
+        featured_image_url: featuredImageUrl.trim(),
         is_featured: featured,
         status: mode,
         published_at: mode === 'published' ? new Date().toISOString() : null,
@@ -233,8 +250,12 @@ export default function AdminArticlesPage() {
                 <input value={category} onChange={(e) => setCategory(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" placeholder="مثال: صحة الفم" />
               </div>
               <div>
-                <label className="block text-xs text-slate-400">الوسوم (فاصلة)</label>
-                <input value={tags} onChange={(e) => setTags(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" />
+                <label className="block text-xs text-slate-400">الصورة الرئيسية *</label>
+                <input value={featuredImageUrl} onChange={(e) => setFeaturedImageUrl(e.target.value)} dir="ltr" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" placeholder="https://..." />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400">الوسوم (فاصلة أو #)</label>
+                <input value={tags} onChange={(e) => setTags(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" placeholder="#تبييض، #زراعة" />
               </div>
               <div>
                 <label className="block text-xs text-slate-400">الحالة</label>
@@ -268,6 +289,21 @@ export default function AdminArticlesPage() {
               </div>
               <EditorContent editor={editor!} className="mt-2" />
               <p className="mt-1 text-xs text-slate-500" dir="ltr">{html.length} chars</p>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/60 p-3">
+              <p className="text-xs text-slate-400">معاينة المقال</p>
+              <div className="mt-2 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-3">
+                {featuredImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={featuredImageUrl} alt={title || 'معاينة المقال'} className="mb-3 h-40 w-full rounded-xl object-cover" />
+                ) : null}
+                <h4 className="text-lg font-bold text-white">{title || 'عنوان المقال'}</h4>
+                {excerpt && <p className="mt-2 text-sm text-slate-300">{excerpt}</p>}
+                {html ? (
+                  <div className="mt-3"><ArticleContentProse html={html} className="prose prose-invert max-w-none text-sm [&_h1]:text-2xl [&_h2]:text-xl [&_img]:rounded-xl [&_li]:mr-4" /></div>
+                ) : <p className="mt-2 text-sm text-slate-500">سيظهر المحتوى هنا…</p>}
+              </div>
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2">

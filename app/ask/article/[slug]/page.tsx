@@ -14,7 +14,7 @@ const BASE = getAppBaseUrl();
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const article = (await getPublishedArticle(params.slug)) as Record<string, unknown> | null;
   if (!article) return { title: 'المقال غير موجود' };
-  const img = (article.featured_image as { image_url?: string } | null)?.image_url ?? null;
+  const img = String(article.featured_image_url ?? '') || ((article.featured_image as { image_url?: string } | null)?.image_url ?? null);
   const title = String(article.title);
   const description = String(article.excerpt ?? '').slice(0, 160) || undefined;
   return {
@@ -32,7 +32,7 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
   if (!article) notFound();
   await incrementArticleViews(String(article.id));
 
-  const img = (article.featured_image as { image_url?: string } | null)?.image_url ?? null;
+  const img = String(article.featured_image_url ?? '') || ((article.featured_image as { image_url?: string } | null)?.image_url ?? null);
   const faqItems = Array.isArray(article.faq)
     ? (article.faq as Array<Record<string, unknown>>).filter(
         (item) => item && typeof item.question === 'string' && typeof item.answer === 'string',

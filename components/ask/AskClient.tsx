@@ -158,9 +158,9 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
               <BlurFade key={String(a.id)} delay={i * 0.12} inView>
                 <div className="h-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-md hover:shadow-blue-900/5">
                   <Link href={'/ask/article/' + a.slug} className="block h-full">
-                    {(a.featured_image as { image_url?: string } | null)?.image_url && (
+                    {(String(a.featured_image_url ?? '') || (a.featured_image as { image_url?: string } | null)?.image_url) && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={(a.featured_image as { image_url?: string }).image_url!} alt={String(a.title)} loading="lazy" className="h-36 w-full object-cover transition-transform duration-300 ease-out hover:scale-[1.03]" />
+                      <img src={String(a.featured_image_url ?? (a.featured_image as { image_url?: string } | null)?.image_url)} alt={String(a.title)} loading="lazy" className="h-36 w-full object-cover transition-transform duration-300 ease-out hover:scale-[1.03]" />
                     )}
                     <div className="p-4">
                       <p className="font-bold text-slate-800">{String(a.title)}</p>
