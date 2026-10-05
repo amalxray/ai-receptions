@@ -312,6 +312,9 @@ export function ActivitySpaceChrome({
   const themeTextColor = space.theme?.text_color ?? '#0f172a';
   const linkColor = space.theme?.link_color ?? '#0f766e';
   const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
+  const galleryImages = (space.media ?? []).filter(
+    (item) => item.media_type === 'image' && item.public_url?.trim()
+  );
   const tickerNews = uniquePublicNewsItems(space.news ?? []);
   const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
   const mapsUrl = clinicMapsUrl({
@@ -524,9 +527,7 @@ export function ActivitySpaceChrome({
         </section>
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
-        {on('gallery') &&
-          space.media &&
-          space.media.filter((m) => m.media_type === 'image' && m.public_url).length > 0 && (
+        {on('gallery') && galleryImages.length > 0 && (
             <section className="py-8 bg-slate-50/50" style={{ order: sectionPosition('gallery') }}>
               <div className="mx-auto max-w-7xl px-4 mb-6 text-center">
                 <h2 className="text-xl font-bold text-slate-800">معرض الصور</h2>
@@ -534,42 +535,32 @@ export function ActivitySpaceChrome({
               </div>
 
               <div className="relative w-full overflow-hidden">
-                <div className="flex animate-marquee hover:[animation-play-state:paused] gap-4 w-max py-4">
-                  {/* المجموعة الأولى من الصور */}
-                  {space.media
-                    .filter((m) => m.media_type === 'image' && m.public_url)
-                    .map((img, i) => (
-                      <div
-                        key={`set1-${img.id || i}`}
-                        className="w-[300px] md:w-[400px] h-[220px] md:h-[260px] flex-none rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-lg hover:scale-105 hover:shadow-xl transition-all duration-300"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img.public_url}
-                          alt={img.alt_text || img.title || 'صورة من المعرض'}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                    ))}
-
-                  {/* المجموعة الثانية (تكرار) لضمان الحركة المستمرة بدون انقطاع */}
-                  {space.media
-                    .filter((m) => m.media_type === 'image' && m.public_url)
-                    .map((img, i) => (
-                      <div
-                        key={`set2-${img.id || i}`}
-                        className="w-[300px] md:w-[400px] h-[220px] md:h-[260px] flex-none rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-lg hover:scale-105 hover:shadow-xl transition-all duration-300"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img.public_url}
-                          alt={img.alt_text || img.title || 'صورة من المعرض'}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                    ))}
+                <div
+                  dir="ltr"
+                  className="flex w-max animate-marquee py-4 hover:[animation-play-state:paused]"
+                >
+                  {[0, 1].map((setIndex) => (
+                    <div
+                      key={`gallery-set-${setIndex}`}
+                      aria-hidden={setIndex === 1}
+                      className="flex w-max shrink-0 gap-4 pr-4"
+                    >
+                      {galleryImages.map((img, i) => (
+                        <div
+                          key={`${setIndex === 0 ? 'original' : 'duplicate'}-${img.id || i}`}
+                          className="h-[220px] w-[300px] flex-none overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl md:h-[260px] md:w-[400px]"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img.public_url}
+                            alt={img.alt_text || img.title || 'صورة من المعرض'}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
