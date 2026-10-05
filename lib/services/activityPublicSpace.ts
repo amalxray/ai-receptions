@@ -82,10 +82,18 @@ export type ActivityPublicSpace = {
     news_height: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
     news_font: 'sm' | 'base' | 'lg' | 'xl' | '2xl';
   };
-  /** Enabled owner-uploaded public gallery items (clinic_public_media). */
-  media: {
+  /** Enabled image assets from the owner-managed public gallery, sorted by display_order. */
+  images: {
     id: string;
-    media_type: 'image' | 'video';
+    public_url: string;
+    title: string | null;
+    caption: string | null;
+    alt_text: string | null;
+    category: 'clinic' | 'team' | 'equipment' | 'cases' | 'other';
+  }[];
+  /** Enabled video assets from the owner-managed public gallery, sorted by display_order. */
+  videos: {
+    id: string;
     public_url: string;
     title: string | null;
     caption: string | null;
@@ -238,12 +246,12 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   // Owner-managed public gallery — enabled rows only (presentation-only).
   const { data: mediaRows } = await supabaseAdmin
     .from('clinic_public_media')
-    .select('id, media_type, public_url, title, caption, alt_text, category')
+    .select('id, media_type, public_url, title, caption, alt_text, category, display_order')
     .eq('clinic_id', clinic.id)
     .eq('enabled', true)
     .order('display_order', { ascending: true })
     .limit(24);
-  const media = (mediaRows ?? []).map((m) => ({
+  const mediaItems = (mediaRows ?? []).filter((m) => m.media_type === 'image' || m.media_type === 'video').map((m) => ({
     id: m.id,
     media_type: m.media_type as 'image' | 'video',
     public_url: m.public_url,
@@ -251,7 +259,18 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     caption: m.caption ?? null,
     alt_text: m.alt_text ?? null,
     category: (m.category ?? 'other') as 'clinic' | 'team' | 'equipment' | 'cases' | 'other',
+    display_order: Number(m.display_order ?? 0),
   }));
+  const toPublicMedia = (item: (typeof mediaItems)[number]) => ({
+    id: item.id,
+    public_url: item.public_url,
+    title: item.title,
+    caption: item.caption,
+    alt_text: item.alt_text,
+    category: item.category,
+  });
+  const images = mediaItems.filter((item) => item.media_type === 'image').map(toPublicMedia);
+  const videos = mediaItems.filter((item) => item.media_type === 'video').map(toPublicMedia);
 
   // PHASE L — owner-managed public content (enabled rows only, ordered).)
   const [{ data: achievementRows }, { data: testimonialRows }, { data: articleRows }, { data: newsRows }] = await Promise.all([
@@ -365,7 +384,8 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     labServices,
     display: profile.display,
     theme: profile.theme,
-    media,
+    images,
+    videos,
     beforeAfter,
     badges,
     achievements,

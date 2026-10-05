@@ -8,6 +8,7 @@ import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { ShareSection } from '@/components/public/ShareSection';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
+import VideoGallery from '@/components/public/VideoGallery';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
@@ -311,7 +312,6 @@ export function ActivitySpaceChrome({
         : 'text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl';
   const themeTextColor = space.theme?.text_color ?? '#0f172a';
   const linkColor = space.theme?.link_color ?? '#0f766e';
-  const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
   const tickerNews = uniquePublicNewsItems(space.news ?? []);
   const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
   const mapsUrl = clinicMapsUrl({
@@ -523,28 +523,38 @@ export function ActivitySpaceChrome({
           </div>
         </section>
 
-        {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
+        {/* PHASE C — image and video galleries are separate for faster browsing */}
         {on('gallery') && (
-          <div style={{ order: sectionPosition('gallery') }} className="mx-auto my-8 w-full max-w-sm">
-            {space.media?.filter((m) => m.media_type === 'image' && m.public_url).length ? (
-              <div className="flex snap-x snap-mandatory overflow-x-auto pb-4 scrollbar-hide gap-4">
-                {space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
-                  <div key={img.id || i} className="flex-none snap-center w-[85vw] md:w-[400px] aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={img.public_url}
-                      alt={img.alt_text || img.title || `صورة ${i + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                ))}
+          <div style={{ order: sectionPosition('gallery') }} className="w-full">
+            <section id="gallery" className="mx-auto my-8 w-full max-w-7xl px-4">
+              <div className="mb-6 text-center">
+                <h2 className="text-xl font-bold text-slate-800">جولة داخل المركز</h2>
+                <p className="mt-1 text-sm text-slate-500">صور من المركز ومرافقه</p>
               </div>
-            ) : (
-              <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 py-12 text-center text-slate-500">
-                📸 معرض الصور قيد التحديث
-              </div>
-            )}
+              {space.images?.filter((image) => image.public_url).length ? (
+                <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                  {space.images.filter((image) => image.public_url).map((img, i) => (
+                    <div key={img.id || i} className="aspect-[4/3] w-[85vw] flex-none snap-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:w-[400px]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.public_url}
+                        alt={img.alt_text || img.title || `صورة ${i + 1}`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 py-12 text-center text-slate-500">
+                  📸 معرض الصور قيد التحديث
+                </div>
+              )}
+            </section>
+            <VideoGallery
+              items={space.videos ?? []}
+              title="شروحات طبية"
+            />
           </div>
         )}
 
@@ -823,9 +833,10 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
 
 
 export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
-  const media = uniquePublicMediaItems(space.media ?? []);
+  const images = space.images ?? [];
+  const videos = space.videos ?? [];
   const [activeCategory, setActiveCategory] = useState<string>('all');
-  if (space.sections?.gallery === false || media.length === 0) return null;
+  if (space.sections?.gallery === false || (images.length === 0 && videos.length === 0)) return null;
   const d = space.display ?? undefined;
   const gap =
     d?.gallery_spacing === 'compact' ? 'gap-2' : d?.gallery_spacing === 'roomy' ? 'gap-5' : 'gap-4';
@@ -834,60 +845,65 @@ export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
 
   // Category filter — only shown when the owner actually used ≥2 categories.
   const usedCategories = GALLERY_CATEGORIES.filter((c) =>
-    media.some((m) => (m.category ?? 'other') === c.value)
+    images.some((m) => (m.category ?? 'other') === c.value)
   );
   const filtered =
     activeCategory === 'all'
-      ? media
-      : media.filter((m) => (m.category ?? 'other') === activeCategory);
+      ? images
+      : images.filter((m) => (m.category ?? 'other') === activeCategory);
 
   return (
-    <section id="gallery" className="mx-auto w-full max-w-7xl px-4 py-12">
-      <div className="mb-6 text-center">
-        <h2 className={`font-bold text-slate-800 ${titleScale}`}>معرض الأعمال</h2>
-        <p className="mt-1 text-sm text-slate-500">لقطات من بيئة المنشأة وخدماتها</p>
-      </div>
+    <div>
+      {images.length > 0 && (
+        <section id="gallery" className="mx-auto w-full max-w-7xl px-4 py-12">
+          <div className="mb-6 text-center">
+            <h2 className={`font-bold text-slate-800 ${titleScale}`}>جولة داخل المركز</h2>
+            <p className="mt-1 text-sm text-slate-500">لقطات من بيئة المنشأة وخدماتها</p>
+          </div>
 
-      {usedCategories.length > 1 ? (
-        <div className="mb-6 flex flex-wrap justify-center gap-2" role="tablist" aria-label="تصنيفات المعرض">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeCategory === 'all'}
-            onClick={() => setActiveCategory('all')}
-            className={`rounded-full border px-4 py-1.5 text-sm transition ${
-              activeCategory === 'all'
-                ? 'border-cyan-600 bg-cyan-600 text-white'
-                : 'border-slate-300 bg-white text-slate-600 hover:border-cyan-400 hover:text-cyan-700'
-            }`}
-          >
-            🖼 الكل ({media.length})
-          </button>
-          {usedCategories.map((c) => {
-            const count = media.filter((m) => (m.category ?? 'other') === c.value).length;
-            return (
+          {usedCategories.length > 1 ? (
+            <div className="mb-6 flex flex-wrap justify-center gap-2" role="tablist" aria-label="تصنيفات المعرض">
               <button
-                key={c.value}
                 type="button"
                 role="tab"
-                aria-selected={activeCategory === c.value}
-                onClick={() => setActiveCategory(c.value)}
+                aria-selected={activeCategory === 'all'}
+                onClick={() => setActiveCategory('all')}
                 className={`rounded-full border px-4 py-1.5 text-sm transition ${
-                  activeCategory === c.value
+                  activeCategory === 'all'
                     ? 'border-cyan-600 bg-cyan-600 text-white'
                     : 'border-slate-300 bg-white text-slate-600 hover:border-cyan-400 hover:text-cyan-700'
                 }`}
               >
-                {c.icon} {c.label} ({count})
+                🖼 الكل ({images.length})
               </button>
-            );
-          })}
-        </div>
-      ) : null}
+              {usedCategories.map((c) => {
+                const count = images.filter((m) => (m.category ?? 'other') === c.value).length;
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeCategory === c.value}
+                    onClick={() => setActiveCategory(c.value)}
+                    className={`rounded-full border px-4 py-1.5 text-sm transition ${
+                      activeCategory === c.value
+                        ? 'border-cyan-600 bg-cyan-600 text-white'
+                        : 'border-slate-300 bg-white text-slate-600 hover:border-cyan-400 hover:text-cyan-700'
+                    }`}
+                  >
+                    {c.icon} {c.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
-      {/* PHASE 2 — MorphingDialog grid: each item springs open from its thumbnail */}
-      <PublicGalleryLightbox media={filtered} gapClassName={gap} />
-    </section>
+          {/* PHASE 2 — MorphingDialog grid: each image opens from its thumbnail */}
+          <PublicGalleryLightbox media={filtered.map((image) => ({ ...image, media_type: 'image' as const }))} gapClassName={gap} />
+        </section>
+      )}
+      <VideoGallery items={videos} />
+    </div>
   );
 }
 
