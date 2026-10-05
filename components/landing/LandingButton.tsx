@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import type { ReactNode, MouseEventHandler } from 'react';
+import type { ReactNode, MouseEventHandler, CSSProperties } from 'react';
 
 type Props = {
   children: ReactNode;
@@ -11,6 +11,7 @@ type Props = {
   onClick?: MouseEventHandler<HTMLButtonElement>;
   type?: 'button' | 'submit';
   className?: string;
+  style?: CSSProperties;
 };
 
 export default function LandingButton({
@@ -21,6 +22,7 @@ export default function LandingButton({
   onClick,
   type = 'button',
   className = '',
+  style,
 }: Props) {
   const base =
     'inline-flex items-center justify-center gap-2 font-heading font-bold rounded-[14px] transition-all duration-300 ' +
@@ -52,14 +54,14 @@ export default function LandingButton({
 
   if (href) {
     return (
-      <a href={href} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+      <a href={href} style={style} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
         {content}
       </a>
     );
   }
 
   return (
-    <button type={type} onClick={onClick} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+    <button type={type} onClick={onClick} style={style} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
       {content}
     </button>
   );

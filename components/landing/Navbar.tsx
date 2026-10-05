@@ -82,7 +82,7 @@ export default function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-slate-700 transition hover:text-[#8B5CF6]"
+              className="text-sm font-medium text-slate-700 transition hover:text-[var(--landing-primary)]"
             >
               {link.label}
             </a>
@@ -94,7 +94,8 @@ export default function Navbar() {
           {dashboardUrl ? (
             <Link
               href={dashboardUrl}
-              className="rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#22D3EE] px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
+              className="rounded-full px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
+              style={{ background: 'linear-gradient(90deg, var(--landing-primary), var(--landing-secondary))' }}
             >
               لوحة التحكم
             </Link>
@@ -102,13 +103,14 @@ export default function Navbar() {
             <>
               <Link
                 href="/login"
-                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#8B5CF6] hover:text-[#8B5CF6]"
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[var(--landing-primary)] hover:text-[var(--landing-primary)]"
               >
                 تسجيل الدخول
               </Link>
               <Link
                 href="/register"
-                className="rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#22D3EE] px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
+                className="rounded-full px-5 py-2 text-sm font-bold text-white shadow-landing-btn transition hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
+                style={{ background: 'linear-gradient(90deg, var(--landing-primary), var(--landing-secondary))' }}
               >
                 ابدأ مجاناً
               </Link>

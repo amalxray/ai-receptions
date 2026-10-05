@@ -31,6 +31,9 @@ export const landingCopy = {
     text: 'عرض التأسيس — أول 100 طبيب بس بسعر ثابت مدى الحياة. باقي',
     suffix: 'مكان',
     cta: 'احجز مكانك',
+    backgroundColor: '#fff7ed',
+    textColor: '#0f172a',
+    tickerSpeed: 'off',
   },
 
   hero: {
@@ -216,18 +219,20 @@ export const landingCopy = {
 
   pricing: {
     title: 'اختر الخطة التي تناسب نمو عيادتك',
-    basic: {
-      badge: 'للبداية',
-      price: '$39',
-      per: 'شهرياً',
-      note: 'عيادة واحدة — للممارسة الفردية',
-    },
-    advanced: {
-      badge: '⭐ الأكثر طلباً',
-      price: '$69',
-      per: 'شهرياً',
-      note: 'مقاعد محدودة فعلياً • السعر يبقى لك للأبد',
-    },
+    badge: '🔒 الأعضاء المؤسسون • مقاعد محدودة فعلياً',
+    highlightedLabel: '⭐ الأعضاء المؤسسون',
+    monthlyLabel: 'شهري',
+    yearlyLabel: 'سنوي (شهران مجاناً)',
+    trialTitle: 'جرّب 30 يوماً مجاناً',
+    trialDescription: 'كل ميزات "متقدمة" — بدون بطاقة ائتمانية',
+    trialCta: 'ابدأ الآن',
+    footerText: 'تبدأ بالتجربة المجانية 30 يوماً بكل ميزات المتقدمة.',
+    footerLinkText: 'ابدأ التجربة المجانية',
+    tiers: [
+      { id: 'basic', title: 'أساسية', monthly: '$39', yearly: '$399', note: 'عيادة واحدة — للممارسة الفردية', features: ['عيادة واحدة', 'حتى 500 مريض', 'مستخدم واحد', 'محادثات AI غير محدودة'], highlighted: false, buttonText: 'اشترك الآن 🚀' },
+      { id: 'advanced', title: 'الأعضاء المؤسسون', monthly: '$69', yearly: '$699', note: 'مقاعد محدودة فعلياً • السعر يبقى لك للأبد', features: ['عيادات متعددة', 'مرضى غير محدود', '4 مستخدمين', 'فواتير ومدفوعات', 'واتساب + إشعارات', 'تقارير'], highlighted: true, buttonText: 'اشترك الآن 🚀' },
+      { id: 'center', title: 'مركز', monthly: '$119', yearly: '$1199', note: 'لمراكز الأشعة والمختبرات والسلاسل', features: ['عيادات غير محدودة', '10 مستخدمين', 'قبل/بعد Gallery', 'شارات إنجازات', 'تحليلات متقدمة', 'أولوية الدعم'], highlighted: false, buttonText: 'اشترك الآن 🚀' },
+    ],
     /** Yearly discount honoured by every paid tier (2 months free). */
     yearlyNote: 'أسعار بالدولار الأمريكي • لا تحتاج إلى التزام سريع • السعر يبقى لك للأبد إذا سجلت مبكراً',
     trialNote: 'جرّب 30 يوماً مجاناً • كل ميزات المتقدمة — بدون بطاقة',
@@ -248,6 +253,18 @@ export const landingCopy = {
       'إخفاء / إظهار أسعار',
       'تحويل لموظف بشري',
     ],
+  },
+
+  colors: {
+    primary: '#8B5CF6',
+    secondary: '#22D3EE',
+    cta: '#0F172A',
+  },
+
+  seo: {
+    title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
+    description: 'موظفة استقبال رقمية بتحجز مواعيد عيادتك وترد على مرضاك 24/7 بلهجتهم. جرّبها الآن وثبّت سعر عرض التأسيس.',
+    og_image: '',
   },
 
   clinicAds: {

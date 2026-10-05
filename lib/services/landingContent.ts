@@ -43,7 +43,6 @@ const STATIC_COPY_LOCKED_SECTIONS = new Set([
   'for_doctors',
   'how_it_works',
   'compare',
-  'urgency_bar',
 ]);
 
 const SECTION_TO_COPY_KEY: Record<string, string> = {
@@ -123,6 +122,20 @@ function isUntouchedLegacySectionSeed(key: string, content: unknown): boolean {
         { name: 'د. ريم', text: 'المريض بيجيني ومعه معلومات كاملة عن حالته — بيوفر عليّ وقت كثير بالفحص.', rating: 5 },
         { name: 'د. خالد', text: 'ريحت بالي من مكالمات بعد الدوام. النظام شغال وما بيغلط بالمواعيد.', rating: 5 },
       ]);
+  }
+  if (key === 'urgency_bar') {
+    return content.text === 'عرض التأسيس — أول 100 طبيب بس بسعر ثابت مدى الحياة. باقي'
+      && content.suffix === 'مكان'
+      && content.cta === 'احجز مكانك'
+      && Object.keys(content).length === 3;
+  }
+  if (key === 'colors') {
+    return content.cta === '' && content.primary === '' && content.secondary === '' && Object.keys(content).length === 3;
+  }
+  if (key === 'seo') {
+    return content.title === 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك'
+      && content.description === 'موظفة استقبال رقمية بتحجز مواعيد عيادتك وترد على مرضاك 24/7 بلهجتهم. جرّبها الآن وثبّت سعر عرض التأسيس.'
+      && content.og_image === '';
   }
   return false;
 }
@@ -233,9 +246,9 @@ export async function upsertLandingSection(
 export async function getLandingPageContent(): Promise<Record<string, unknown>> {
   let merged: Record<string, unknown> = {
     ...landingCopy,
-    testimonials: { title: 'آراء الأطباء', items: [] },
-    seo: { title: '', description: '', og_image: '' },
-    colors: { cta: '', primary: '', secondary: '' },
+    testimonials: landingCopy.testimonials,
+    seo: landingCopy.seo,
+    colors: landingCopy.colors,
   };
   const cmsOverrides: string[] = [];
   try {
