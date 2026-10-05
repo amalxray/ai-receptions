@@ -18,6 +18,7 @@ export type LandingSectionRow = {
   content: unknown;
   updated_at: string;
   sort_order?: number;
+  legacySeed?: boolean;
 };
 
 /** Section keys the editor exposes (mapped to landingCopy keys on merge). */
@@ -39,12 +40,9 @@ export const LANDING_SECTION_KEYS = [
 export type LandingSectionKey = (typeof LANDING_SECTION_KEYS)[number];
 
 const STATIC_COPY_LOCKED_SECTIONS = new Set([
-  'features',
   'for_doctors',
   'how_it_works',
   'compare',
-  'faq',
-  'testimonials',
   'urgency_bar',
 ]);
 
@@ -99,9 +97,43 @@ function isUntouchedLegacyHeroSeed(content: unknown): boolean {
     ]);
 }
 
+function isUntouchedLegacySectionSeed(key: string, content: unknown): boolean {
+  if (!isPlainObject(content)) return false;
+  if (key === 'hero') return isUntouchedLegacyHeroSeed(content);
+  if (key === 'features') {
+    return content.title === 'مميزات بتحوّل استقبالك'
+      && content.subtitle === 'كل شي عيادتك بتحتاجه بموظفة استقبال رقمية شغالة 24/7'
+      && Array.isArray(content.cards)
+      && (content.cards as Array<Record<string, unknown>>).map((card) => card.title).join('|')
+        === 'لهجة عامية طبيعية|حجز فوري 24/7|بتعرف عيادتك بالتفصيل|خصوصية وأمان كامل|أوقات دوام واضحة لكل طبيب';
+  }
+  if (key === 'faq') {
+    return content.title === 'أسئلة متكررة'
+      && JSON.stringify(content.items) === JSON.stringify([
+        { q: 'شو بيصير لو حالة طارئة؟', a: 'النظام ما بيأجل الحالات الطارئة. إذا ذكر المريض حالة طارئة (ألم حاد، تورم، نزيف...) بيتم تحويله فوراً للاتصال بالعيادة أو بالتوجيه للطوارئ، حسب الإعدادات اللي بتحددها أنت.' },
+        { q: 'بقدر أوقف الاشتراك وقت ما بدي؟', a: 'نعم، الاشتراك مرن وبقدر توقفه أو تغيّره بأي وقت بدون عقوبات. بس إذا كنت ضمن عرض التأسيس، تثبيت السعر مدى الحياة بيضل ساري طالما الاشتراك مستمر.' },
+        { q: 'بيانات مرضاي آمنة؟', a: 'أكيد. كل البيانات مشفّرة ومحمية، ونظام العزل بين العيادات (multi-tenant) بيضمن إن كل عيادة بتشوف بياناتها بس. ما في أي جهة تانية بتوصل لملفات مرضاك.' },
+        { q: 'قديش بياخد وقت الإعداد؟', a: 'أغلب العيادات بتجهّز خلال يوم واحد. بنساعدك تحمّل خدماتك وأطباؤك وأوقاتكم، وبعدها المساعد رح يرد على مرضاك مباشرة.' },
+      ]);
+  }
+  if (key === 'testimonials') {
+    return content.title === 'شنو بيقولو الأطباء'
+      && JSON.stringify(content.items) === JSON.stringify([
+        { name: 'د. أحمد', text: 'من أول أسبوع صار عندي حجوزات مسائية ما كنت بتحلم فيها. المساعد بيرد وبيحجز والمريض بييجي مجهّز.', rating: 5 },
+        { name: 'د. ريم', text: 'المريض بيجيني ومعه معلومات كاملة عن حالته — بيوفر عليّ وقت كثير بالفحص.', rating: 5 },
+        { name: 'د. خالد', text: 'ريحت بالي من مكالمات بعد الدوام. النظام شغال وما بيغلط بالمواعيد.', rating: 5 },
+      ]);
+  }
+  return false;
+}
+
 function resolveLegacyHeroRow(row: LandingSectionRow): LandingSectionRow {
-  return row.section_key === 'hero' && isUntouchedLegacyHeroSeed(row.content)
-    ? { ...row, content: landingCopy.hero }
+  return isUntouchedLegacySectionSeed(row.section_key, row.content)
+    ? {
+        ...row,
+        legacySeed: true,
+        content: (landingCopy as Record<string, unknown>)[SECTION_TO_COPY_KEY[row.section_key] ?? row.section_key],
+      }
     : row;
 }
 
@@ -205,16 +237,20 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
     seo: { title: '', description: '', og_image: '' },
     colors: { cta: '', primary: '', secondary: '' },
   };
+  const cmsOverrides: string[] = [];
   try {
     const rows = await getAllLandingSections();
     for (const row of rows) {
       if (!row || typeof row.section_key !== 'string') continue;
+      if (row.legacySeed) continue;
       if (STATIC_COPY_LOCKED_SECTIONS.has(row.section_key)) continue;
       const copyKey = SECTION_TO_COPY_KEY[row.section_key] ?? row.section_key;
       merged = deepMerge(merged, { [copyKey]: row.content }) as Record<string, unknown>;
+      cmsOverrides.push(copyKey);
     }
   } catch {
     // DB unavailable → pure static copy (never break the landing page).
   }
+  merged.__cmsOverrides = cmsOverrides;
   return merged;
 }

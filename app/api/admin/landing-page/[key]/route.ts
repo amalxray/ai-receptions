@@ -3,11 +3,11 @@ import { revalidatePath } from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { getLandingSection, upsertLandingSection } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
-import { heroContentSchema } from '@/lib/landing/hero-schema';
+import { faqContentSchema, featuresContentSchema, heroContentSchema, testimonialsContentSchema } from '@/lib/landing/hero-schema';
 
 const ALLOWED_KEYS = new Set([
   'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
-  'faq', 'testimonials', 'urgency_bar', 'seo', 'colors',
+  'faq', 'pricing', 'testimonials', 'cta', 'footer', 'urgency_bar', 'seo', 'colors',
 ]);
 
 /** GET /api/admin/landing-page/[key] — one section (null content = static default). */
@@ -41,19 +41,26 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       return NextResponse.json({ error: 'content يجب أن يكون كائن JSON' }, { status: 400 });
     }
     let content = body.content as Record<string, unknown>;
-    if (key === 'hero') {
-      const parsed = heroContentSchema.safeParse(body.content);
+    const contentSchemas = {
+      hero: heroContentSchema,
+      features: featuresContentSchema,
+      faq: faqContentSchema,
+      testimonials: testimonialsContentSchema,
+    } as const;
+    const schema = contentSchemas[key as keyof typeof contentSchemas];
+    if (schema) {
+      const parsed = schema.safeParse(body.content);
       if (!parsed.success) {
         return NextResponse.json(
-          { error: 'بيانات قسم Hero غير صالحة', issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) },
+          { error: `بيانات قسم ${key} غير صالحة`, issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) },
           { status: 400 },
         );
       }
-      content = parsed.data;
+      content = parsed.data as Record<string, unknown>;
     }
 
     await upsertLandingSection(key, content, gate.admin.user_id);
-    if (key === 'hero') revalidatePath('/');
+    revalidatePath('/');
     logEvent('admin_landing_section_updated', { key, by: gate.admin.email });
     return NextResponse.json({ data: { ok: true } });
   } catch (err) {

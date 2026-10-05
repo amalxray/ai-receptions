@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 
 type FaqItem = { id?: string; question: string; answer: string };
+type FaqCopyItem = { q: string; a: string };
 
-export default function FAQSection() {
+export default function FAQSection({ previewContent }: { previewContent?: { title: string; items: FaqCopyItem[] } }) {
   const copy = useLandingCopy();
   const [items, setItems] = useState<FaqItem[]>([]);
+  const hasCmsOverride = Array.isArray(copy.__cmsOverrides) && copy.__cmsOverrides.includes('faq');
 
   useEffect(() => {
+    if (previewContent || hasCmsOverride) return;
     const controller = new AbortController();
     fetch('/api/public/faq', { signal: controller.signal })
       .then(async (response) => {
@@ -21,17 +24,20 @@ export default function FAQSection() {
         // Keep the shipped copy as the resilient fallback if the public FAQ API is unavailable.
       });
     return () => controller.abort();
-  }, []);
+  }, [hasCmsOverride, previewContent]);
 
-  const faqItems = items.length > 0
-    ? items
-    : copy.faq.items.map((item) => ({ question: item.q, answer: item.a }));
+  const activeCopy = previewContent ?? copy.faq;
+  const faqItems = previewContent || hasCmsOverride
+    ? activeCopy.items.map((item: FaqCopyItem) => ({ question: item.q, answer: item.a }))
+    : items.length > 0
+      ? items
+      : activeCopy.items.map((item: FaqCopyItem) => ({ question: item.q, answer: item.a }));
 
   return (
     <section id="faq" className="bg-landing-bg-white py-20 lg:py-28">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
-          {copy.faq.title}
+          {activeCopy.title}
         </h2>
         <div className="mt-10 space-y-3">
           {faqItems.map((item, index) => (
