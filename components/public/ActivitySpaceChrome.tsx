@@ -312,6 +312,12 @@ export function ActivitySpaceChrome({
   const themeTextColor = space.theme?.text_color ?? '#0f172a';
   const linkColor = space.theme?.link_color ?? '#0f766e';
   const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
+  const galleryImages = (space.media ?? []).filter(
+    (item) => item.media_type === 'image' && item.public_url?.trim()
+  );
+  const galleryVideos = (space.media ?? []).filter(
+    (item) => item.media_type === 'video' && item.public_url?.trim()
+  );
   const tickerNews = uniquePublicNewsItems(space.news ?? []);
   const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
   const mapsUrl = clinicMapsUrl({
@@ -525,27 +531,75 @@ export function ActivitySpaceChrome({
 
         {/* PHASE C — Gallery/visual showcase is a PRIMARY element (position 4) */}
         {on('gallery') && (
-          <div style={{ order: sectionPosition('gallery') }} className="mx-auto my-8 w-full max-w-sm">
-            {space.media?.filter((m) => m.media_type === 'image' && m.public_url).length ? (
-              <div className="flex snap-x snap-mandatory overflow-x-auto pb-4 scrollbar-hide gap-4">
-                {space.media.filter((m) => m.media_type === 'image' && m.public_url).map((img, i) => (
-                  <div key={img.id || i} className="flex-none snap-center w-[85vw] md:w-[400px] aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={img.public_url}
-                      alt={img.alt_text || img.title || `صورة ${i + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
+          <div style={{ order: sectionPosition('gallery') }}>
+            <p className="text-center text-xs text-red-500 mb-2">
+              عدد الصور المكتشفة: {space.media.filter((m) => m.media_type === 'image' && m.public_url).length}
+            </p>
+            {galleryImages.length > 0 && (
+              <section className="py-8 bg-slate-50/50">
+                <div className="mx-auto max-w-7xl px-4 mb-6 text-center">
+                  <h2 className="text-xl font-bold text-slate-800">معرض الصور</h2>
+                  <p className="mt-1 text-sm text-slate-500">لمحات من بيئة المركز وأجهزتنا الحديثة</p>
+                </div>
+
+                <div className="relative w-full overflow-hidden">
+                  <div
+                    dir="ltr"
+                    className="flex w-max animate-marquee py-4 hover:[animation-play-state:paused]"
+                  >
+                    {[0, 1].map((setIndex) => (
+                      <div
+                        key={`gallery-set-${setIndex}`}
+                        aria-hidden={setIndex === 1}
+                        className="flex w-max shrink-0 gap-4 pr-4"
+                      >
+                        {galleryImages.map((img, i) => (
+                          <div
+                            key={`${setIndex === 0 ? 'original' : 'duplicate'}-${img.id || i}`}
+                            className="h-[220px] w-[300px] flex-none overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl md:h-[260px] md:w-[400px]"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={img.public_url}
+                              alt={img.alt_text || img.title || 'صورة من المعرض'}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 py-12 text-center text-slate-500">
-                📸 معرض الصور قيد التحديث
-              </div>
+                </div>
+              </section>
             )}
           </div>
+        )}
+
+        {on('gallery') && galleryVideos.length > 0 && (
+          <section className="py-8 bg-slate-50/50" style={{ order: sectionPosition('gallery') + 1 }}>
+            <div className="mx-auto max-w-7xl px-4 mb-6 text-center">
+              <h2 className="text-xl font-bold text-slate-800">معرض الفيديو</h2>
+            </div>
+            <div className="mx-auto max-w-7xl px-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {galleryVideos.map((vid, i) => (
+                <div
+                  key={`vid-${vid.id || i}`}
+                  className="rounded-2xl overflow-hidden border border-slate-200 bg-black shadow-lg"
+                >
+                  <video
+                    src={vid.public_url}
+                    controls
+                    className="w-full aspect-video object-cover"
+                    preload="metadata"
+                  />
+                  {vid.title && (
+                    <p className="p-3 text-sm font-semibold text-slate-800 bg-white">{vid.title}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Phase 4 — before/after case showcase (consent-gated, owner-managed) */}
@@ -890,4 +944,3 @@ export function PublicMediaGallery({ space }: { space: ActivityPublicSpace }) {
     </section>
   );
 }
-

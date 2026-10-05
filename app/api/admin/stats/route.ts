@@ -3,6 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { logEvent } from '@/lib/server/logging';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /** GET /api/admin/stats — platform statistics for the owner dashboard. */
 export async function GET(req: Request) {
   const gate = await requirePlatformAdmin(req);
