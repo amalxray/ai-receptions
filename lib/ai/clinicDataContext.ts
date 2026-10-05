@@ -245,8 +245,12 @@ export async function persistReceptionistSlot(
     patient_name?: string | null;
     phone?: string | null;
     email?: string | null;
+    appointment_id?: string | null;
+    appointment_status?: string | null;
+    scheduled_at?: string | null;
     /** P2: the confirmed flag + state stage live at the metadata ROOT (see body). */
     patient_confirmed_booking?: boolean;
+    imaging_summary_presented?: boolean;
     state?: string;
     /** P1: verified same-day alternative slots for the interactive time card. */
     alternatives?: string[];
@@ -270,11 +274,15 @@ export async function persistReceptionistSlot(
     if (fields.patient_name !== undefined) booking.patient_name = fields.patient_name;
     if (fields.phone !== undefined) booking.phone = fields.phone;
     if (fields.email !== undefined) booking.email = fields.email;
+    if (fields.appointment_id !== undefined) booking.appointment_id = fields.appointment_id;
+    if (fields.appointment_status !== undefined) booking.status = fields.appointment_status;
+    if (fields.scheduled_at !== undefined) booking.scheduled_at = fields.scheduled_at;
     // P2: consent + state stage live at the metadata ROOT (loadReceptionist-
     // ConversationState reads meta.patient_confirmed_booking / meta.state), so
     // persisting them here keeps the confirmation alive across turns — the
     // booking gate must still fire after the patient answers "what's your name?".
     if (fields.patient_confirmed_booking !== undefined) meta.patient_confirmed_booking = fields.patient_confirmed_booking;
+    if (fields.imaging_summary_presented !== undefined) meta.imaging_summary_presented = fields.imaging_summary_presented;
     if (fields.state !== undefined) meta.state = fields.state;
     await supabaseAdmin
       .from('conversations')
@@ -297,6 +305,7 @@ export type ReceptionistConversationState = {
   recommended_service_id: string | null;
   recommended_provider_id: string | null;
   patient_confirmed_booking: boolean;
+  imaging_summary_presented?: boolean;
   pending_question: string;
   /** Operational note for the current turn (e.g. slot became unavailable, booking completed). */
   booking_issue?: string | null;
@@ -368,6 +377,7 @@ export async function loadReceptionistConversationState(
       recommended_service_id: (meta.recommended_service_id as string) ?? null,
       recommended_provider_id: (meta.recommended_provider_id as string) ?? null,
       patient_confirmed_booking: Boolean(meta.patient_confirmed_booking),
+      imaging_summary_presented: Boolean(meta.imaging_summary_presented),
       pending_question: (meta.pending_question as string) ?? '',
       specialty_guidance:
         (contextRaw.specialty_without_service as string) ??

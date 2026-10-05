@@ -119,6 +119,10 @@ describe('missingBookingFields', () => {
   it('reports the name when the patient never gave one', () => {
     expect(missingBookingFields({ booking: { ...baseBooking, patient_name: null } })).toEqual(['patient_name']);
   });
+
+  it('requires a phone when imaging-center policy enables it', () => {
+    expect(missingBookingFields({ booking: { ...baseBooking, phone: null } }, true, true)).toEqual(['phone']);
+  });
 });
 
 describe('matchServiceByName', () => {

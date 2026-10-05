@@ -168,6 +168,8 @@ export function buildPrompt(
 ): string {
   const assistantName = settings?.assistant_name || 'AI Assistant';
   const tone = settings?.tone || 'professional and friendly';
+  const isImagingCenter = ['imaging_center', 'imaging'].includes((options?.activityType ?? '').toLowerCase());
+  const generalKnowledge = isImagingCenter ? '' : GENERAL_DENTAL_KNOWLEDGE;
 
   // Multilingual: use the clinic's configured language, or fall back to the
   // original "the user's language" default. Language detection is used only
@@ -216,7 +218,7 @@ export function buildPrompt(
 
   // Combine all optional sections
   const optionalSections = [
-    buildSourceSeparationSection(Boolean(context.trim())),
+    buildSourceSeparationSection(Boolean(context.trim()), isImagingCenter),
     clinicInfoSection,
     safetyRulesSection,
     answerBoundariesSection,
@@ -224,8 +226,8 @@ export function buildPrompt(
     intentSection,
     conversationStateSection,
     patientContextSection,
-    buildOperatingDataSection(options?.operatingData),
-    buildReceptionistModeSection(options?.receptionistState),
+    buildOperatingDataSection(options?.operatingData, options?.activityType),
+    buildReceptionistModeSection(options?.receptionistState, options?.activityType),
     buildActivityPersonaSection(options?.activityType),
     buildWorkingHoursSection(options?.workingHours),
     citationInstructionsSection,
@@ -248,11 +250,16 @@ Use this information:
 {general_dental_knowledge}
 
 Question: {question}`;
+    if (isImagingCenter) {
+      fallbackPrompt = fallbackPrompt
+        .replace('a helpful assistant with a dental clinic named', 'a helpful receptionist for the imaging center named')
+        .replace('For general dental-health questions, you may use the General Dental Knowledge section below, and always add the note that it is general information and the final assessment must be by a dentist after an examination.', 'For general health questions, give only safe educational information and do not diagnose. For imaging preparation and center-specific information, rely on the clinic context and operating data.');
+    }
     fallbackPrompt = fallbackPrompt.replace('{assistant_name}', assistantName);
     fallbackPrompt = fallbackPrompt.replace('{tone}', tone);
     fallbackPrompt = fallbackPrompt.replace('{language}', language);
     fallbackPrompt = fallbackPrompt.replace('{history}', historyString);
-    fallbackPrompt = fallbackPrompt.replace('{general_dental_knowledge}', GENERAL_DENTAL_KNOWLEDGE);
+    fallbackPrompt = fallbackPrompt.replace('{general_dental_knowledge}', generalKnowledge);
     fallbackPrompt = fallbackPrompt.replace('{question}', question);
 
     // Append optional sections to fallback prompt if any exist
@@ -264,12 +271,17 @@ Question: {question}`;
   }
 
   let prompt = DEFAULT_PROMPT_TEMPLATE;
+  if (isImagingCenter) {
+    prompt = prompt
+      .replace('a helpful AI assistant for a dental clinic', 'a helpful AI receptionist for a dental imaging center')
+      .replace('For general dental-health questions (implants, orthodontics, tooth pain, gums, whitening, etc.), you may use the General Dental Knowledge section below, and always add the note that it is general information and the final assessment must be by a dentist after an examination.', 'For general health questions, give only safe educational information and do not diagnose. For imaging preparation and center-specific information, rely on the clinic context and operating data.');
+  }
   prompt = prompt.replace('{assistant_name}', assistantName);
   prompt = prompt.replace('{tone}', tone);
   prompt = prompt.replace('{language}', language);
   prompt = prompt.replace('{history}', historyString);
   prompt = prompt.replace('{context}', context);
-  prompt = prompt.replace('{general_dental_knowledge}', GENERAL_DENTAL_KNOWLEDGE);
+  prompt = prompt.replace('{general_dental_knowledge}', generalKnowledge);
   prompt = prompt.replace('{question}', question);
 
   // Append optional enhancement sections if any exist
@@ -291,7 +303,7 @@ Question: {question}`;
  * confidence RAG hit is still a CLINIC-document source, never general
  * knowledge, and never a replacement for OperatingData.
  */
-function buildSourceSeparationSection(hasContext: boolean): string {
+function buildSourceSeparationSection(hasContext: boolean, imagingCenter = false): string {
   const ragLine = hasContext
     ? '- RAG / Clinic Knowledge: only what is quoted below with its [Source: …] and Confidence. Treat it as CLINIC documentation — never as general knowledge. If Confidence is below the threshold, you must NOT state it as a confirmed clinic fact; say it is not confirmed.'
     : '- RAG / Clinic Knowledge: none was retrieved for this turn. Do NOT pretend there is any clinic document; if a clinic-specific fact is missing, say it is not available.';
@@ -300,7 +312,9 @@ function buildSourceSeparationSection(hasContext: boolean): string {
     '- ClinicFacts (name/address/phone/website): ONLY from the Clinic Information section. Never invent or infer them.',
     '- OperatingData (services/providers/assignments): ONLY from the Clinic Operating Data section. Never invent a service, doctor, or price.',
     ragLine,
-    '- General Dental Knowledge: ONLY for educational answers about dentistry in general. Always add the note that it is general information and the final assessment is made by a dentist after an examination. NEVER present general knowledge as this clinic\'s policy/price/doctor/availability.',
+    imagingCenter
+      ? '- General health questions: give only safe, brief educational information; do not diagnose, recommend treatment, or invent imaging-center policy. For imaging preparation and results, use only clinic information.'
+      : '- General Dental Knowledge: ONLY for educational answers about dentistry in general. Always add the note that it is general information and the final assessment is made by a dentist after an examination. NEVER present general knowledge as this clinic\'s policy/price/doctor/availability.',
     '- ConversationState: context about the CURRENT patient (their location, requested service, reported symptoms). It is never clinic fact. In particular, patient_location is about the PATIENT, not the clinic.',
     '- NEVER calculate availability, timezones, or slots yourself. Availability is provided ONLY by the real availability system (see REAL AVAILABILITY / booking notes). If none is provided, say availability needs confirmation.',
   ].join('\n');
@@ -404,11 +418,15 @@ export function buildActivityPersonaSection(activityType?: string | null): strin
       return `Business Activity: IMAGING CENTER (مركز تصوير أشعة).
 Receptionist persona rules (mandatory):
 - You are the receptionist of a dental RADIOLOGY / IMAGING center.
+- Speak warmly and professionally in Arabic; use «سلامتك»، «أستاذ/سيدتي»، and «يسعدنا خدمتك» naturally when appropriate, without repeating greetings or asking for information already provided.
 - Use imaging vocabulary: بانوراما، CBCT (تصوير طبقي ثلاثي الأبعاد)، مقطعية، Sections، تقرير، تسليم الصور.
 - NEVER mention "doctors" doing treatments — the staff are radiology TECHNICIANS (فنيو تصوير). Referring doctors are external.
 - Explain preparation when relevant (remove metal objects/jewelry, pregnant patients must inform the center).
 - Mention image/report delivery channels when asked (WhatsApp / email / DICOM / printed) and typical delivery time ONLY if present in the clinic context.
-- Booking = imaging session; duration comes from the service duration in Clinic Operating Data.`;
+- Booking = imaging session; duration comes from the service duration in Clinic Operating Data.
+- Booking order: select the real service and patient-requested clinic-local date/time; check Google Calendar-backed REAL AVAILABILITY for that exact date before offering alternatives; then ask for the patient name, followed by a contact phone, one question per turn.
+- After the verified service/slot, name, and phone are available, present a concise summary and ask for explicit preliminary confirmation. Create/save a Calendar event only after that confirmation; never claim success without [BOOKING_SAVED].
+- If the requested date is unavailable, explain its verified status first, then offer only a real alternative. If Calendar lookup fails, do not guess or book.`;
     case 'dental_lab':
       return `Business Activity: DENTAL LAB (مختبر أسنان).
 Receptionist persona rules (mandatory):
@@ -451,7 +469,7 @@ export function buildWorkingHoursSection(workingHours?: ClinicWorkingHoursData |
   return lines.join('\n');
 }
 
-function buildOperatingDataSection(operatingData?: ClinicOperatingData | null): string {
+function buildOperatingDataSection(operatingData?: ClinicOperatingData | null, activityType?: string | null): string {
   if (!operatingData || operatingData.services.length === 0) return '';
 
   const parts: string[] = ['Clinic Operating Data (source of truth from the clinic database):'];
@@ -468,7 +486,8 @@ function buildOperatingDataSection(operatingData?: ClinicOperatingData | null): 
     parts.push(`  Providers who provide it: ${providerNames}`);
   }
   if (operatingData.providers.length > 0) {
-    parts.push('Clinic dentists/doctors:');
+    const imagingCenter = ['imaging_center', 'imaging'].includes((activityType ?? '').toLowerCase());
+    parts.push(imagingCenter ? 'Imaging technicians/team:' : 'Clinic dentists/doctors:');
     for (const p of operatingData.providers) {
       parts.push(`- ${p.name}${p.title ? ` (${p.title})` : ''}`);
     }
@@ -497,7 +516,7 @@ export function describePriceForPrompt(serviceId: string, data: ClinicOperatingD
  * asks only the NEXT missing question, recommends real DB resources, collects
  * the patient's name/phone in-conversation, and never fabricates anything.
  */
-function buildReceptionistModeSection(receptionistState?: ReceptionistConversationState | null): string {
+function buildReceptionistModeSection(receptionistState?: ReceptionistConversationState | null, activityType?: string | null): string {
   if (!receptionistState) return '';
 
   const lines: string[] = ['RECEPTIONIST OPERATING MODE (follow strictly):'];
@@ -508,6 +527,14 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   lines.push('- HUMAN HANDOFF IS A LAST RESORT ONLY: offer it ONLY when (a) the REAL AVAILABILITY note for this turn says no slot exists at all, or (b) the patient explicitly asks for a human. Whenever a REAL AVAILABILITY note or interactive time card is present, present/point to those options and WAIT for the patient\'s choice — never deflect to reception instead.');
   lines.push('- When the conversation context shows an interactive time card was already sent, do NOT repeat the times textually; the card displays them. Ask the patient to tap a time on the card (or say one aloud).');
   lines.push('- Ask ONLY the single next missing question. Never ask again for something the patient already gave in this conversation.');
+  const isImagingCenter = ['imaging_center', 'imaging'].includes((activityType ?? '').toLowerCase());
+  if (isImagingCenter) {
+    lines.push('- IMAGING CENTER TONE: Speak warmly, professionally, and diplomatically in Arabic. Use natural phrases such as «سلامتك»، «أستاذ/سيدتي»، and «يسعدنا خدمتك» when appropriate; do not force them into every reply. Acknowledge the patient once and do not repeat greetings or already answered questions.');
+    lines.push('- IMAGING BOOKING ORDER (mandatory): first resolve the requested imaging service and the patient-requested clinic-local date/time against the Google Calendar-backed REAL AVAILABILITY for that exact date. Never skip the requested date and never suggest an alternative until that exact day has been checked. Then collect the patient name, then a contact phone number (required for this imaging workflow), one question at a time.');
+    lines.push('- After the service, verified slot, name, and phone are known, present one concise summary (service, exact date/time, patient name, phone) and ask for explicit preliminary confirmation. Only after the patient confirms that summary may booking execute. Never claim success before the booking note contains [BOOKING_SAVED].');
+    lines.push('- If the requested date has no real Google Calendar availability, explain that result first and only then offer the verified alternative date/time provided by the availability system. If calendar lookup fails, say availability could not be checked; do not guess or book.');
+    lines.push('- Imaging staff are radiology technicians. Do not describe the appointment as a dental treatment or imply that an imaging slot is a medical diagnosis.');
+  }
   lines.push(`- Current conversation stage: ${receptionistState.state}.`);
   if (receptionistState.recommended_service_id) {
     lines.push(`- Recommended service id: ${receptionistState.recommended_service_id}.`);
@@ -528,7 +555,9 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
     lines.push('- The patient has a recommendation. Confirm the service + doctor and ask whether they want to book (one clear yes/no question).');
   }
   if (receptionistState.state === 'BOOKING') {
-    lines.push('- Booking in progress. Collect missing details conversationally: patient full name, then preferred day/time. Phone is OPTIONAL — ask ONCE politely; if the patient declines or ignores it, proceed WITHOUT it (never block the booking on a phone number). Confirm the slot before finalizing. IMPORTANT: never say the booking is complete unless THIS turn\'s booking note explicitly says a real appointment was created — if details are still missing, ask only for the next missing one.');
+    lines.push(isImagingCenter
+      ? '- Imaging booking in progress: retain the already chosen verified service/date/time. Collect only the next missing item in this order: patient name, then required contact phone. Once both exist, present the concise booking summary and wait for explicit confirmation of that exact summary.'
+      : '- Booking in progress. Collect missing details conversationally: patient full name, then preferred day/time. Phone is OPTIONAL — ask ONCE politely; if the patient declines or ignores it, proceed WITHOUT it (never block the booking on a phone number). Confirm the slot before finalizing. IMPORTANT: never say the booking is complete unless THIS turn\'s booking note explicitly says a real appointment was created — if details are still missing, ask only for the next missing one.');
   }
   if (receptionistState.booking_issue) {
     lines.push(`- Booking note for this turn: ${receptionistState.booking_issue}`);
@@ -555,9 +584,13 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   if (receptionistState.booking?.slot && !receptionistState.booking?.appointment_id) {
     lines.push(`- REAL proposed slot for this conversation (from the booking system): ${receptionistState.booking.slot}. When the patient asks about the time/date or says they want to book, present EXACTLY this day and time and ask for confirmation. NEVER invent another slot.`);
   }
-  lines.push('- Pricing: never say free. If the price is not shown, say "السعر النهائي بيعتمد على حالتك وبعد فحص الطبيب".');
+  lines.push(isImagingCenter
+    ? '- Imaging pricing: never say free or invent a price. If price is absent from Operating Data, say you will gladly check it with the imaging team; do not mention a dental examination.'
+    : '- Pricing: never say free. If the price is not shown, say "السعر النهائي بيعتمد على حالتك وبعد فحص الطبيب".');
   lines.push('- Never invent: services, doctors, prices, policies, dates, diagnoses, distances. For "doctor near me" without reliable location data, invite the patient to share their area.');
-  lines.push('- Emergency escalations (severe swelling, breathing/swallowing difficulty, heavy bleeding): advise immediate care and hand off to staff.');
+  lines.push(isImagingCenter
+    ? '- Safety: for pregnancy, ask the patient to inform the imaging team before imaging; provide preparation advice only when supported by clinic information. Urgent medical symptoms require appropriate immediate medical care.'
+    : '- Emergency escalations (severe swelling, breathing/swallowing difficulty, heavy bleeding): advise immediate care and hand off to staff.');
   lines.push('- STRICT GROUNDING: State ONLY clinic facts that appear in Clinic Information / Operating Data. NEVER add descriptive words like "متميز", "خبير", "الأفضل", "الأشهر" unless they appear VERBATIM in clinic data. NEVER invent a clinic name/address/phone, doctors, titles, services, prices, policies, or dates.');
   lines.push('- LOCATION: NEVER infer the clinic location from the patient\'s city/area. If the patient says they live in a city, that is about THEM, not the clinic. The clinic location is ONLY the address in Clinic Information (if any); otherwise say it is not currently available.');
   lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time and ask for confirmation. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');

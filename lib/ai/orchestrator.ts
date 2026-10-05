@@ -325,6 +325,7 @@ export async function handleIncomingMessage(opts: {
     // clock is UTC on Vercel while the clinic lives in Asia/Hebron (UTC+3).
     const workingHours = await loadClinicWorkingHours(clinicId, clinicProfile.timezone);
     const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
+    const isImagingCenter = clinicProfile.activityType === 'imaging_center';
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
@@ -432,6 +433,7 @@ export async function handleIncomingMessage(opts: {
             preferredDate: currentState!.preferred_date ?? undefined,
             preferredTimeRange: currentState!.preferred_time_range ?? undefined,
             preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
+            checkGoogleCalendar: isImagingCenter,
           });
           if (clinicLevel.found && clinicLevel.slot) {
             await persistReceptionistSlot(clinicId, conversationId, {
@@ -472,6 +474,9 @@ export async function handleIncomingMessage(opts: {
               timeZone: noteZone,
               subject: 'the clinic',
             });
+          } else if (clinicLevel.reason === 'error') {
+            availabilityNote =
+              'REAL AVAILABILITY could not be checked because Google Calendar or the scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.';
           } else {
             availabilityNote =
               'REAL AVAILABILITY: no provider is currently scheduled for this service in the booking system. ' +
@@ -486,6 +491,7 @@ export async function handleIncomingMessage(opts: {
           preferredTimeRange: currentState!.preferred_time_range ?? undefined,
           preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
           timeZone: clinicProfile?.timezone ?? undefined,
+          checkGoogleCalendar: isImagingCenter,
         });
         if (availability.found) {
           await persistReceptionistSlot(clinicId, conversationId, {
@@ -523,16 +529,16 @@ export async function handleIncomingMessage(opts: {
             provider_id: availability.providerId,
           });
         } else {
-          availabilityNote =
-            `REAL AVAILABILITY check found no available slot for the recommended provider in the near future. ` +
-            `Do NOT invent a date/time. Tell the patient that availability needs to be confirmed and offer to hand off to the clinic reception.`;
+          availabilityNote = availability.reason === 'error'
+            ? 'REAL AVAILABILITY could not be checked because Google Calendar or the scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.'
+            : `REAL AVAILABILITY check found no available slot for the recommended provider in the near future. Do NOT invent a date/time. Tell the patient that availability needs to be confirmed and offer to hand off to the clinic reception.`;
           logEvent('receptionist_real_slot_empty', {
             clinic_id: clinicId,
             conversation_id: conversationId,
             reason: availability.reason,
             message: availability.message ?? null,
           });
-          if (availability.requestedDateUnavailable && currentState?.preferred_date) {
+          if (availability.requestedDateUnavailable && availability.reason !== 'error' && currentState?.preferred_date) {
             // FIX-A: the patient's requested day had NOTHING — state the verified
             // reason (closed / holiday / fully booked) and offer the first REAL
             // day after it. Never a silent day switch, never an invented slot.
@@ -668,23 +674,47 @@ export async function handleIncomingMessage(opts: {
           email: postTurnState.booking.email,
         });
       }
-      const attempt = await attemptConversationBooking({
-        clinicId,
-        conversationId,
-        state: postTurnState.state,
-        patientConfirmedBooking: bookingConfirmed,
-        booking: postTurnState.booking,
-        operatingData,
-        // Deterministic last-chance service resolution by the name the patient
-        // actually used ("بانوراما" → "تصوير بانوراما") — the same catalog
-        // lookup the public booking page performs before POST /api/booking.
-        serviceNameHint:
-          intelligence.appointment?.requestedService ??
-          extractRequestedServiceFromText(text) ??
-          postTurnState.requested_service ??
-          null,
-      });
-      if (attempt.action === 'booked') {
+      const imagingHasRequiredDetails = Boolean(
+        postTurnState.booking.service_id &&
+        postTurnState.booking.slot &&
+        postTurnState.booking.patient_name?.trim() &&
+        postTurnState.booking.phone?.trim()
+      );
+      const shouldWaitForImagingSummaryConsent = isImagingCenter && imagingHasRequiredDetails &&
+        (!postTurnState.imaging_summary_presented || !rawConfirmation);
+      let attempt: Awaited<ReturnType<typeof attemptConversationBooking>> | null = null;
+      if (shouldWaitForImagingSummaryConsent) {
+        if (!postTurnState.imaging_summary_presented) {
+          postTurnState.imaging_summary_presented = true;
+          await persistReceptionistSlot(clinicId, conversationId, { imaging_summary_presented: true });
+        }
+        const summarySlot = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(postTurnState.booking.slot ?? '');
+        const summaryService = operatingData.services.find((service) => service.id === postTurnState.booking.service_id)?.name ?? 'خدمة التصوير المختارة';
+        bookingNote =
+          `IMAGING BOOKING SUMMARY — not saved yet. Service: ${summaryService}; requested verified slot: ${summarySlot ? `${summarySlot[1]} ${summarySlot[2]}` : postTurnState.booking.slot}; patient: ${postTurnState.booking.patient_name}; phone: ${postTurnState.booking.phone}. ` +
+          'Present this concise summary in Arabic and ask one explicit yes/no question to confirm it. Do NOT call booking tools or claim the appointment is saved in this turn.';
+      } else {
+        attempt = await attemptConversationBooking({
+          clinicId,
+          conversationId,
+          state: postTurnState.state,
+          patientConfirmedBooking: bookingConfirmed,
+          booking: postTurnState.booking,
+          operatingData,
+          requirePhone: isImagingCenter,
+          googleCalendar: isImagingCenter,
+          timeZone: clinicProfile.timezone,
+          // Deterministic last-chance service resolution by the name the patient
+          // actually used ("بانوراما" → "تصوير بانوراما") — the same catalog
+          // lookup the public booking page performs before POST /api/booking.
+          serviceNameHint:
+            intelligence.appointment?.requestedService ??
+            extractRequestedServiceFromText(text) ??
+            postTurnState.requested_service ??
+            null,
+        });
+      }
+      if (attempt?.action === 'booked') {
         // Fix [1]: server-computed day/time — the model repeats it verbatim.
         // The stored `scheduled_at` follows the SAME wall-clock-as-UTC convention
         // as the public booking path, so the day/time the patient must be told is
@@ -697,13 +727,13 @@ export async function handleIncomingMessage(opts: {
           `[BOOKING_SAVED: ${attempt.appointment.id}] Booking CONFIRMED and SAVED to the appointments calendar. ` +
           `Scheduled: ${ARABIC_WEEKDAYS[bookedAt.weekday]} ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
           `Reply with a warm Arabic confirmation using EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
-      } else if (attempt.action === 'already_booked') {
+      } else if (attempt?.action === 'already_booked') {
         bookingNote = `[BOOKING_SAVED: ${attempt.appointment_id}] This conversation already has a confirmed booking. Reply confirming it warmly with its day/time.`;
-      } else if (attempt.action === 'need_more_info') {
+      } else if (attempt?.action === 'need_more_info') {
         bookingNote = `Booking NOT saved yet — nothing is confirmed. Still missing: ${attempt.missing.join(', ')}. Ask for exactly these details, one at a time.`;
-      } else if (attempt.action === 'slot_unavailable') {
+      } else if (attempt?.action === 'slot_unavailable') {
         bookingNote = 'Booking NOT saved: the requested slot is no longer available. Apologize and invite the patient to choose another day or time (do not confirm a booking).';
-      } else if (attempt.action === 'failed') {
+      } else if (attempt?.action === 'failed') {
         bookingNote = 'Booking NOT saved: a system issue prevented completing it. Do not confirm — offer human help instead.';
       }
     }
