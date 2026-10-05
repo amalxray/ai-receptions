@@ -9,6 +9,7 @@
  * `requirePlatformAdmin`.
  */
 import { landingCopy } from '@/lib/landing/landing-copy';
+import { describeLandingOrderDatabaseError, normalizeLandingPageOrder } from '@/lib/landing/landing-order';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export type LandingSectionRow = {
@@ -133,8 +134,7 @@ export async function getLandingPageOrder(): Promise<string[]> {
 }
 
 export async function saveLandingPageOrder(order: string[]): Promise<void> {
-  const validOrder = Array.from(new Set(order.filter((key) => LANDING_SECTION_KEYS.includes(key as LandingSectionKey))));
-  if (validOrder.length === 0) return;
+  const validOrder = normalizeLandingPageOrder(order, LANDING_SECTION_KEYS);
 
   try {
     const { error } = await supabaseAdmin
@@ -144,12 +144,9 @@ export async function saveLandingPageOrder(order: string[]): Promise<void> {
         { onConflict: 'section_key' }
       );
 
-    if (error) throw error;
+    if (error) throw new Error(describeLandingOrderDatabaseError(error));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/does not exist|relation .*landing_page_order.* does not exist/i.test(message)) {
-      throw new Error(message);
-    }
+    throw new Error(describeLandingOrderDatabaseError(error));
   }
 }
 
