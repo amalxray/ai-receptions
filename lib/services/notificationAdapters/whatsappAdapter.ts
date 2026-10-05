@@ -2,6 +2,7 @@ import { getWhatsAppConfig, type WhatsAppConfig } from '@/lib/config/whatsapp';
 import { templateForNotificationType, type WhatsAppTemplateName } from '@/lib/constants/whatsappTemplates';
 
 type WhatsAppApiResponse = {
+  httpStatus?: number;
   messages?: Array<{ id?: string }>;
   error?: { message?: string; type?: string; code?: number };
 };
@@ -66,7 +67,7 @@ export async function sendTemplateMessage(
     const reason = result.error?.message || response.statusText || 'Unknown provider error';
     throw new Error(`WhatsApp Cloud API error (${response.status}): ${reason}`);
   }
-  return result;
+  return { ...result, httpStatus: response.status };
 }
 
 /** Loads only clinic-scoped appointment data and sends the matching approved template. */
