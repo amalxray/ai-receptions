@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
-import { getAllLandingSections, getLandingPageOrder, landingSectionLabel, saveLandingPageOrder } from '@/lib/services/landingContent';
+import { getAllLandingSections, getLandingPageOrder, LANDING_SECTION_KEYS, landingSectionLabel, saveLandingPageOrder } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
 
 /** GET /api/admin/landing-page — every landing section with its DB override. */

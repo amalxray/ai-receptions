@@ -10,14 +10,19 @@ export function normalizeLandingPageOrder(order: string[], allowedKeys: readonly
 }
 
 export function describeLandingOrderDatabaseError(error: unknown): string {
-  if (error instanceof Error) return error.message;
   if (!error || typeof error !== 'object') return String(error);
 
   const record = error as Record<string, unknown>;
-  const message = typeof record.message === 'string' ? record.message : '';
+  const rawMessage = record.message;
+  const message = typeof rawMessage === 'string'
+    ? rawMessage
+    : rawMessage === undefined
+      ? ''
+      : JSON.stringify(rawMessage);
   const code = typeof record.code === 'string' ? record.code : '';
   const details = typeof record.details === 'string' ? record.details : '';
   const hint = typeof record.hint === 'string' ? record.hint : '';
+  const name = typeof record.name === 'string' && record.name !== 'Error' ? record.name : '';
   const context = [message, code && `code=${code}`, details && `details=${details}`, hint && `hint=${hint}`]
     .filter(Boolean)
     .join(' — ');
@@ -26,5 +31,20 @@ export function describeLandingOrderDatabaseError(error: unknown): string {
     return `جدول landing_page_order غير موجود أو غير متاح. طبّق ترحيل db/migrations/20261004_landing_page_order.sql. ${context}`.trim();
   }
 
-  return context || JSON.stringify(error);
+  return context || name || JSON.stringify(error);
+}
+
+export function getLandingOrderDatabaseErrorFields(error: unknown): Record<string, unknown> {
+  if (!error || typeof error !== 'object') return { error: String(error) };
+
+  const record = error as Record<string, unknown>;
+  return {
+    name: typeof record.name === 'string' ? record.name : undefined,
+    message: record.message,
+    code: record.code,
+    details: record.details,
+    hint: record.hint,
+    status: record.status,
+    statusText: record.statusText,
+  };
 }

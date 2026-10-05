@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeLandingOrderDatabaseError, normalizeLandingPageOrder } from '@/lib/landing/landing-order';
+import { describeLandingOrderDatabaseError, getLandingOrderDatabaseErrorFields, normalizeLandingPageOrder } from '@/lib/landing/landing-order';
 
 const allowedKeys = ['hero', 'features', 'faq'] as const;
 
@@ -28,5 +28,23 @@ describe('landing page section order', () => {
       code: '42P01',
       message: 'relation "public.landing_page_order" does not exist',
     })).toContain('db/migrations/20261004_landing_page_order.sql');
+  });
+
+  it('keeps PostgREST error fields even when the error inherits from Error', () => {
+    const error = Object.assign(new Error('[object Object]'), {
+      code: '42501',
+      details: 'permission denied',
+      hint: 'check grants',
+      status: 403,
+    });
+
+    expect(describeLandingOrderDatabaseError(error)).toContain('code=42501');
+    expect(getLandingOrderDatabaseErrorFields(error)).toMatchObject({
+      message: '[object Object]',
+      code: '42501',
+      details: 'permission denied',
+      hint: 'check grants',
+      status: 403,
+    });
   });
 });
