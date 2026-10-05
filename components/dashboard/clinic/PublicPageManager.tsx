@@ -216,6 +216,9 @@ export default function PublicPageManager() {
         website: data.social_links?.website ?? '',
         email: data.email ?? data.social_links?.email ?? '',
       });
+      console.log('[PublicPageManager] public page form loaded', {
+        hasCoverUrl: Boolean(data.cover_url),
+      });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر تحميل إعدادات الصفحة العامة');
@@ -240,7 +243,7 @@ export default function PublicPageManager() {
 
   const update = useCallback(
     async (patch: Record<string, unknown>) => {
-      if (!clinicId) return;
+      if (!clinicId) return false;
       setSaving(true);
       setError(null);
       setSuccess(null);
@@ -252,11 +255,23 @@ export default function PublicPageManager() {
           body: JSON.stringify(patch),
         });
         const body = (await res.json().catch(() => null)) as { data?: PageConfig; error?: string } | null;
+        if (Object.prototype.hasOwnProperty.call(patch, 'cover_url')) {
+          console.log('[PublicPageManager] cover update response received', {
+            responseStatus: res.status,
+            ok: res.ok,
+            hasSavedCoverUrl: Boolean(body?.data?.cover_url),
+          });
+        }
         if (!res.ok) throw new Error(body?.error ?? `فشل الحفظ (${res.status})`);
         if (body?.data) setConfig(body.data);
         setSuccess('تم حفظ التغييرات بنجاح');
+        return true;
       } catch (e) {
+        if (Object.prototype.hasOwnProperty.call(patch, 'cover_url')) {
+          console.error('[PublicPageManager] cover update failed', e);
+        }
         setError(e instanceof Error ? e.message : 'تعذر حفظ التغييرات');
+        return false;
       } finally {
         setSaving(false);
       }
@@ -271,6 +286,9 @@ export default function PublicPageManager() {
       return;
     }
 
+    console.log('[PublicPageManager] submitting cover URL with public page settings', {
+      hasCoverUrl: Boolean(form.cover_url.trim()),
+    });
     void update({
       description: form.description.trim() || null,
       tagline: form.tagline.trim() || null,
@@ -283,7 +301,9 @@ export default function PublicPageManager() {
         website: form.website.trim() || null,
         email: form.email.trim() || null,
       },
-    }).then(() => load());
+    }).then((saved) => {
+      if (saved) void load();
+    });
   };
 
   const toggleSection = (key: string, value: boolean) => {
@@ -485,7 +505,12 @@ export default function PublicPageManager() {
             aspect="wide"
             title="غلاف الصفحة العامة"
             value={form.cover_url}
-            onChange={(url) => setForm((f) => ({ ...f, cover_url: url }))}
+            onChange={(url) => {
+              console.log('[PublicPageManager] received uploaded cover URL', {
+                hasCoverUrl: Boolean(url),
+              });
+              setForm((f) => ({ ...f, cover_url: url }));
+            }}
           />
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-slate-700">شعار مختصر (Tagline)</span>
@@ -738,4 +763,3 @@ export default function PublicPageManager() {
     </div>
   );
 }
-
