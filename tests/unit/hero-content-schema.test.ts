@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { faqContentSchema, featuresContentSchema, heroContentSchema, testimonialsContentSchema } from '@/lib/landing/hero-schema';
+import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColorsContentSchema, landingSeoContentSchema, pricingContentSchema, testimonialsContentSchema, urgencyBarContentSchema } from '@/lib/landing/hero-schema';
 import { landingCopy } from '@/lib/landing/landing-copy';
 
 const validHero = {
@@ -49,5 +49,25 @@ describe('homepage section content schemas', () => {
     const testimonial = { title: 'آراء', subtitle: 'الوصف', items: [{ content: 'رأي المراجع.', doctor_name: 'د. ريم', specialty: 'تقويم', rating: 5, image_url: '/images/reem.webp' }] };
     expect(testimonialsContentSchema.safeParse(testimonial).success).toBe(true);
     expect(testimonialsContentSchema.safeParse({ ...testimonial, items: [{ ...testimonial.items[0], image_url: 'http://insecure.example/photo.png' }] }).success).toBe(false);
+  });
+
+  it('accepts only known, unique billing plan IDs for display packages', () => {
+    const pricing = landingCopy.pricing;
+    expect(pricingContentSchema.safeParse(pricing).success).toBe(true);
+    expect(pricingContentSchema.safeParse({ ...pricing, tiers: [pricing.tiers[0], { ...pricing.tiers[1], id: 'unknown' }, pricing.tiers[2]] }).success).toBe(false);
+    expect(pricingContentSchema.safeParse({ ...pricing, tiers: [pricing.tiers[0], { ...pricing.tiers[1], id: 'basic' }] }).success).toBe(false);
+  });
+
+  it('validates urgency colors and supported ticker speeds', () => {
+    expect(urgencyBarContentSchema.safeParse(landingCopy.urgencyBar).success).toBe(true);
+    expect(urgencyBarContentSchema.safeParse({ ...landingCopy.urgencyBar, backgroundColor: 'red' }).success).toBe(false);
+    expect(urgencyBarContentSchema.safeParse({ ...landingCopy.urgencyBar, tickerSpeed: 'insane' }).success).toBe(false);
+  });
+
+  it('validates hex colors and safe SEO images', () => {
+    expect(landingColorsContentSchema.safeParse(landingCopy.colors).success).toBe(true);
+    expect(landingColorsContentSchema.safeParse({ ...landingCopy.colors, primary: 'violet' }).success).toBe(false);
+    expect(landingSeoContentSchema.safeParse({ ...landingCopy.seo, og_image: '/images/social.png' }).success).toBe(true);
+    expect(landingSeoContentSchema.safeParse({ ...landingCopy.seo, og_image: 'javascript:alert(1)' }).success).toBe(false);
   });
 });

@@ -139,7 +139,7 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
           <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]">
             <TextReveal text={heroContent.headline1} duration={0.7} delay={0.2} />
             <br />
-            <span className="bg-gradient-to-l from-[#8B5CF6] to-[#22D3EE] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-l from-[var(--landing-primary)] to-[var(--landing-secondary)] bg-clip-text text-transparent">
               <TextReveal text={heroContent.headline2} duration={0.7} delay={0.9} />
             </span>
           </motion.h1>
@@ -169,12 +169,13 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
           >
             <Magnetic>
               <Link href={heroContent.ctaPrimaryHref}>
-                <ShimmerButton style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)] transition-all duration-300">{heroContent.ctaPrimary}</ShimmerButton>
+                <ShimmerButton style={{ background: 'linear-gradient(135deg, var(--landing-primary) 0%, var(--landing-secondary) 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)] transition-all duration-300">{heroContent.ctaPrimary}</ShimmerButton>
               </Link>
             </Magnetic>
             <a
               href={heroContent.ctaSecondaryHref}
               className="rounded-full border border-slate-300 px-8 py-4 text-lg font-semibold text-slate-700 transition-all duration-300 hover:border-violet-400/60 hover:bg-violet-50 hover:shadow-lg hover:shadow-violet-500/10"
+              style={{ borderColor: 'var(--landing-primary)' }}
             >
               {heroContent.ctaSecondary}
             </a>

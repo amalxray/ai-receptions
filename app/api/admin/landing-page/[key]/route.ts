@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { getLandingSection, upsertLandingSection } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
-import { faqContentSchema, featuresContentSchema, heroContentSchema, testimonialsContentSchema } from '@/lib/landing/hero-schema';
+import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColorsContentSchema, landingSeoContentSchema, pricingContentSchema, testimonialsContentSchema, urgencyBarContentSchema } from '@/lib/landing/hero-schema';
 
 const ALLOWED_KEYS = new Set([
   'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
@@ -46,6 +46,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       features: featuresContentSchema,
       faq: faqContentSchema,
       testimonials: testimonialsContentSchema,
+      pricing: pricingContentSchema,
+      urgency_bar: urgencyBarContentSchema,
+      colors: landingColorsContentSchema,
+      seo: landingSeoContentSchema,
     } as const;
     const schema = contentSchemas[key as keyof typeof contentSchemas];
     if (schema) {

@@ -81,3 +81,56 @@ export const testimonialsContentSchema = z.object({
     image_url: safeMediaUrl.optional().default(''),
   }).strict()).min(1).max(30),
 }).strict();
+
+const billingPlanIdSchema = z.enum(['basic', 'advanced', 'center']);
+
+export const pricingContentSchema = z.object({
+  title: nonEmptyText(180),
+  badge: nonEmptyText(160),
+  highlightedLabel: nonEmptyText(100),
+  monthlyLabel: nonEmptyText(50),
+  yearlyLabel: nonEmptyText(80),
+  trialTitle: nonEmptyText(140),
+  trialDescription: nonEmptyText(300),
+  trialCta: nonEmptyText(80),
+  yearlyNote: nonEmptyText(300),
+  trialNote: nonEmptyText(300),
+  footerText: nonEmptyText(300),
+  footerLinkText: nonEmptyText(100),
+  tiers: z.array(z.object({
+    id: billingPlanIdSchema,
+    title: nonEmptyText(100),
+    monthly: nonEmptyText(30),
+    yearly: nonEmptyText(30),
+    note: nonEmptyText(300),
+    features: z.array(nonEmptyText(160)).min(1).max(30),
+    highlighted: z.boolean(),
+    buttonText: nonEmptyText(100),
+  }).strict()).min(1).max(3),
+}).superRefine((pricing, context) => {
+  const ids = pricing.tiers.map((tier) => tier.id);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['tiers'], message: 'يجب اختيار خطة مختلفة لكل باقة' });
+  }
+});
+
+export const urgencyBarContentSchema = z.object({
+  text: nonEmptyText(300),
+  suffix: nonEmptyText(80),
+  cta: nonEmptyText(100),
+  backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  tickerSpeed: z.enum(['off', 'slow', 'normal', 'fast']),
+}).strict();
+
+export const landingColorsContentSchema = z.object({
+  primary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  secondary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  cta: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+}).strict();
+
+export const landingSeoContentSchema = z.object({
+  title: nonEmptyText(180),
+  description: nonEmptyText(320),
+  og_image: safeMediaUrl,
+}).strict();

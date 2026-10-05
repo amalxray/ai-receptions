@@ -14,14 +14,28 @@ export type LandingCopy = Record<string, any>;
 
 const LandingContentContext = createContext<LandingCopy | null>(null);
 
+function hexToRgbChannels(value: unknown, fallback: string): string {
+  const hex = typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value.slice(1) : fallback.slice(1);
+  return `${parseInt(hex.slice(0, 2), 16)} ${parseInt(hex.slice(2, 4), 16)} ${parseInt(hex.slice(4, 6), 16)}`;
+}
+
 export function LandingContentProvider({
   copy,
   children,
 }: {
-  copy: LandingCopy;
   children: React.ReactNode;
+  copy: LandingCopy;
 }) {
-  return <LandingContentContext.Provider value={copy}>{children}</LandingContentContext.Provider>;
+  const colors = (copy.colors ?? {}) as { primary?: string; secondary?: string; cta?: string };
+  const style = {
+    '--landing-primary': colors.primary || '#8B5CF6',
+    '--landing-secondary': colors.secondary || '#22D3EE',
+    '--landing-cta': colors.cta || '#0F172A',
+    '--landing-primary-rgb': hexToRgbChannels(colors.primary, '#8B5CF6'),
+    '--landing-secondary-rgb': hexToRgbChannels(colors.secondary, '#22D3EE'),
+  } as React.CSSProperties;
+
+  return <LandingContentContext.Provider value={copy}><div className="contents" style={style}>{children}</div></LandingContentContext.Provider>;
 }
 
 export function useLandingCopy(): LandingCopy {

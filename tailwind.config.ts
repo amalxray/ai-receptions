@@ -11,10 +11,10 @@ const config: Config = {
       colors: {
         // ─── Landing page brand palette (AI-Receptions) ───
         landing: {
-          indigo: '#4F46E5',
-          'indigo-light': '#818CF8',
-          violet: '#8B5CF6',
-          cyan: '#22D3EE',
+          indigo: 'rgb(var(--landing-primary-rgb, 79 70 229) / <alpha-value>)',
+          'indigo-light': 'rgb(var(--landing-primary-rgb, 129 140 248) / <alpha-value>)',
+          violet: 'rgb(var(--landing-primary-rgb, 139 92 246) / <alpha-value>)',
+          cyan: 'rgb(var(--landing-secondary-rgb, 34 211 238) / <alpha-value>)',
           amber: '#F5A623',
           bg: '#F6F6FE',
           'bg-white': '#FBFBFF',

@@ -25,11 +25,11 @@ export default function FinalCTASection() {
         <BlurFade delay={0.4} inView>
           <div className="mt-10 flex flex-wrap justify-center gap-4">
             <Magnetic>
-              <Link href="/register" className="inline-flex animate-pulse items-center justify-center rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#22D3EE] px-10 py-5 text-lg font-bold text-white shadow-[0_0_28px_rgba(139,92,246,0.35)] transition hover:shadow-[0_0_42px_rgba(34,211,238,0.55)]">
+              <Link href="/register" style={{ background: 'linear-gradient(90deg, var(--landing-primary), var(--landing-secondary))' }} className="inline-flex animate-pulse items-center justify-center rounded-full px-10 py-5 text-lg font-bold text-white shadow-[0_0_28px_rgba(139,92,246,0.35)] transition hover:shadow-[0_0_42px_rgba(34,211,238,0.55)]">
                 ابدأ الآن ←
               </Link>
             </Magnetic>
-            <a href="mailto:support@ai-receptions.com" className="inline-flex items-center justify-center rounded-full border border-violet-300 bg-white/70 px-10 py-5 text-lg font-bold text-violet-800 transition hover:border-violet-500 hover:bg-violet-50">تحدث معنا</a>
+            <a href="mailto:support@ai-receptions.com" style={{ borderColor: 'var(--landing-primary)', color: 'var(--landing-primary)' }} className="inline-flex items-center justify-center rounded-full border bg-white/70 px-10 py-5 text-lg font-bold transition hover:bg-violet-50">تحدث معنا</a>
           </div>
         </BlurFade>
         <BlurFade delay={0.6} inView>
