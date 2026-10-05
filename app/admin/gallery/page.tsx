@@ -1,6 +1,24 @@
 'use client';
 
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical, Save } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { reorderGalleryItems } from '@/lib/galleryOrder';
 
 type GalleryItem = {
   id: string;
@@ -16,6 +34,64 @@ type GalleryItem = {
 };
 
 const CATEGORY_OPTIONS = ['', 'عروض', 'معدات', 'نصائح', 'بيئة العيادة', 'أخرى'];
+
+function SortableGalleryCard({
+  item,
+  selectedIds,
+  onToggleSelect,
+  onEdit,
+  onRemove,
+}: {
+  item: GalleryItem;
+  selectedIds: string[];
+  onToggleSelect: (id: string, checked: boolean) => void;
+  onEdit: (item: GalleryItem) => void;
+  onRemove: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : 1,
+      }}
+      className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50"
+    >
+      <div className="relative">
+        <div className="absolute left-2 top-2 z-10 flex items-center gap-2">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label="سحب لإعادة الترتيب"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-slate-900/90 text-slate-300 shadow-lg hover:border-violet-400 hover:text-violet-300"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(item.id)}
+            onChange={(e) => onToggleSelect(item.id, e.target.checked)}
+            className="h-5 w-5 cursor-pointer rounded accent-violet-500"
+          />
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={item.image_url} alt={item.title} loading="lazy" className="h-40 w-full object-cover" />
+      </div>
+      <div className="p-3">
+        <p className="truncate text-sm font-semibold text-slate-100">{item.title}</p>
+        <p className="text-xs text-slate-500">{item.category || 'بدون تصنيف'}{(item.tags ?? []).length > 0 ? ` · ${item.tags!.join('، ')}` : ''}{item.is_active ? '' : ' · 🔴 مخفي'}</p>
+        <div className="mt-2 flex gap-2">
+          <button type="button" onClick={() => onEdit(item)} className="rounded-full bg-slate-700 px-3 py-1 text-xs text-slate-200 hover:bg-slate-600">✏️ تعديل</button>
+          <button type="button" onClick={() => onRemove(item.id)} className="rounded-full bg-rose-500/15 px-3 py-1 text-xs text-rose-300 hover:bg-rose-500/25">🗑️ حذف</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * /admin/gallery — platform image gallery (owner).
@@ -157,6 +233,41 @@ export default function AdminGalleryPage() {
     }
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setItems((current) => reorderGalleryItems(current, String(active.id), String(over.id)));
+  };
+
+  const saveOrder = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await Promise.all(
+        items.map((item, index) =>
+          fetch('/api/admin/gallery/' + item.id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sort_order: index, scope: item.scope ?? 'main_site' }),
+          }),
+        ),
+      );
+      setNotice('✓ تم حفظ ترتيب المعرض');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل حفظ الترتيب');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items
@@ -192,6 +303,18 @@ export default function AdminGalleryPage() {
           {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c === '' ? 'كل التصنيفات' : c}</option>)}
         </select>
         <span className="text-xs text-slate-500">{filtered.length} من {items.length}</span>
+
+        {items.length > 1 && (
+          <button
+            type="button"
+            onClick={() => void saveOrder()}
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" />
+            حفظ ترتيب المعرض
+          </button>
+        )}
         
         {filtered.length > 0 && (
           <>
@@ -225,36 +348,35 @@ export default function AdminGalleryPage() {
       ) : filtered.length === 0 ? (
         <p className="mt-6 text-sm text-slate-500">لا توجد صور — ارفع أول صورة من الزر أعلاه.</p>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((it) => (
-            <div key={it.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50">
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(it.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedIds([...selectedIds, it.id]);
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={filtered.map((it) => it.id)} strategy={rectSortingStrategy}>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((it) => (
+                <SortableGalleryCard
+                  key={it.id}
+                  item={it}
+                  selectedIds={selectedIds}
+                  onToggleSelect={(id, checked) => {
+                    if (checked) {
+                      setSelectedIds((current) => (current.includes(id) ? current : [...current, id]));
                     } else {
-                      setSelectedIds(selectedIds.filter(id => id !== it.id));
+                      setSelectedIds((current) => current.filter((itemId) => itemId !== id));
                     }
                   }}
-                  className="absolute left-2 top-2 z-10 h-5 w-5 cursor-pointer rounded accent-violet-500"
+                  onEdit={(item) => {
+                    setEditing(item);
+                    setEditTitle(item.title);
+                    setEditCategory(item.category ?? '');
+                    setEditTags((item.tags ?? []).join('، '));
+                    setEditActive(item.is_active);
+                    setEditUrl(item.image_url);
+                  }}
+                  onRemove={(id) => void remove(id)}
                 />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={it.image_url} alt={it.title} loading="lazy" className="h-40 w-full object-cover" />
-              </div>
-              <div className="p-3">
-                <p className="truncate text-sm font-semibold text-slate-100">{it.title}</p>
-                <p className="text-xs text-slate-500">{it.category || 'بدون تصنيف'}{(it.tags ?? []).length > 0 ? ` · ${it.tags!.join('، ')}` : ''}{it.is_active ? '' : ' · 🔴 مخفي'}</p>
-                <div className="mt-2 flex gap-2">
-                  <button type="button" onClick={() => { setEditing(it); setEditTitle(it.title); setEditCategory(it.category ?? ''); setEditTags((it.tags ?? []).join('، ')); setEditActive(it.is_active); setEditUrl(it.image_url); }} className="rounded-full bg-slate-700 px-3 py-1 text-xs text-slate-200 hover:bg-slate-600">✏️ تعديل</button>
-                  <button type="button" onClick={() => void remove(it.id)} className="rounded-full bg-rose-500/15 px-3 py-1 text-xs text-rose-300 hover:bg-rose-500/25">🗑️ حذف</button>
-                </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {editing && (

@@ -9,6 +9,7 @@ const schema = z.object({
   excerpt: z.string().max(900).optional().nullable(),
   content: z.string().min(1),
   featured_image_id: z.string().uuid().optional().nullable(),
+  featured_image_url: z.string().url().max(1000).optional().nullable(),
   category: z.string().max(60).optional().nullable(),
   tags: z.array(z.string().max(40)).optional().nullable(),
   status: z.enum(['draft', 'published', 'archived']).default('draft'),
