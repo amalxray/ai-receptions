@@ -1,13 +1,28 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   authorizeClinicRequest,
   roleDenied,
   ADMIN_ROLES,
   DATA_ROLES,
 } from '@/lib/services/clinicAuthorization';
-import { listClinicMedia, createClinicMedia } from '@/lib/services/clinicPublicMedia';
+import {
+  listClinicMedia,
+  createClinicMedia,
+  createClinicMediaRecordFromUpload,
+} from '@/lib/services/clinicPublicMedia';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
+
+const uploadedMediaSchema = z.object({
+  path: z.string().min(1).max(600),
+  filename: z.string().trim().min(1).max(255),
+  contentType: z.string().min(1).max(100),
+  title: z.string().max(120).nullable().optional(),
+  caption: z.string().max(500).nullable().optional(),
+  alt_text: z.string().max(500).nullable().optional(),
+  category: z.string().max(20).optional(),
+});
 
 export async function GET(req: Request) {
   try {
@@ -49,6 +64,38 @@ export async function POST(req: Request) {
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
+    }
+
+    if (req.headers.get('content-type')?.includes('application/json')) {
+      const parsed = uploadedMediaSchema.safeParse(await req.json());
+      if (!parsed.success) {
+        return NextResponse.json({ error: 'بيانات الملف المرفوع غير صالحة' }, { status: 400 });
+      }
+
+      const { path, filename, contentType } = parsed.data;
+      if (!path || !filename || !contentType) {
+        return NextResponse.json({ error: 'بيانات الملف المرفوع غير مكتملة' }, { status: 400 });
+      }
+
+      const result = await createClinicMediaRecordFromUpload(clinicId, {
+        ...parsed.data,
+        path,
+        filename,
+        contentType,
+      });
+      if ('message' in result) {
+        return NextResponse.json({ error: result.message }, { status: 400 });
+      }
+
+      await writeAuditLog({
+        clinicId,
+        actorUserId: authorization.user?.id ?? null,
+        action: 'clinic.public_media.create',
+        resourceType: 'clinic',
+        resourceId: clinicId,
+      });
+
+      return NextResponse.json({ data: result.item }, { status: 201 });
     }
 
     const form = await req.formData();

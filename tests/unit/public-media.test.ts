@@ -5,6 +5,7 @@ import {
   mediaPublicUrl,
   deleteClinicMedia,
   MEDIA_BUCKET,
+  MEDIA_VIDEO_MAX_BYTES,
 } from '@/lib/services/clinicPublicMedia';
 import { validateDisplayPatch, readDisplaySettings } from '@/lib/services/clinicPublicConfig';
 
@@ -64,6 +65,25 @@ describe('validateMediaFile', () => {
     const r = validateMediaFile({ name: 'tour.mp4', type: 'video/mp4', size: 2000 });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.mediaType).toBe('video');
+  });
+
+  it('accepts a video larger than the serverless request body limit', () => {
+    const r = validateMediaFile({
+      name: 'tour.mp4',
+      type: 'video/mp4',
+      size: 50 * 1024 * 1024,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects videos larger than 500 MiB', () => {
+    const r = validateMediaFile({
+      name: 'tour.mp4',
+      type: 'video/mp4',
+      size: MEDIA_VIDEO_MAX_BYTES + 1,
+    });
+    expect(r.ok).toBe(false);
+    if ('message' in r) expect(r.message).toContain('500MB');
   });
 
   it('rejects an unsupported MIME even with a harmless name', () => {
