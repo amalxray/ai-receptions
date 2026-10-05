@@ -1,7 +1,11 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
+import { cancelAppointmentReminders } from '@/lib/services/reminderEngine';
+import { bookAppointment as createGoogleCalendarBooking } from '@/lib/services/googleCalendarBooking';
+import { clinicLocalToInstant } from '@/lib/services/clinicClock';
 import type { ClinicOperatingData, ClinicServiceForAI } from './clinicDataContext';
+import { persistReceptionistSlot } from './clinicDataContext';
 
 /**
  * Arabic/English confirmation words (fix [4]). The state machine's
@@ -61,12 +65,13 @@ export function missingBookingFields(
     booking: { service_id: string | null; provider_id: string | null; slot: string | null; patient_name: string | null; phone: string | null };
   },
   requiresProvider: boolean = true,
+  requiresPhone = false,
 ): Array<'service' | 'provider' | 'patient_name' | 'phone' | 'slot'> {
   const missing: Array<'service' | 'provider' | 'patient_name' | 'phone' | 'slot'> = [];
   if (!state.booking.service_id) missing.push('service');
   if (requiresProvider && !state.booking.provider_id) missing.push('provider');
   if (!state.booking.patient_name || !state.booking.patient_name.trim()) missing.push('patient_name');
-  // Phone is OPTIONAL (user decision, fix [5]) — never a blocking field.
+  if (requiresPhone && (!state.booking.phone || !state.booking.phone.trim())) missing.push('phone');
   if (!state.booking.slot) missing.push('slot');
   return missing;
 }
@@ -110,8 +115,11 @@ export async function attemptConversationBooking(params: {
    * between the AI path and the (working) public "request service" path.
    */
   serviceNameHint?: string | null;
+  requirePhone?: boolean;
+  googleCalendar?: boolean;
+  timeZone?: string | null;
 }): Promise<BookingAttemptResult> {
-  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint } = params;
+  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, timeZone } = params;
 
   if (state !== 'BOOKING' || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
@@ -145,7 +153,7 @@ export async function attemptConversationBooking(params: {
 
   const missing = missingBookingFields({
     booking: { ...booking, service_id: service?.id ?? booking.service_id },
-  });
+  }, true, requirePhone);
   if (missing.length > 0) {
     return { action: 'need_more_info', missing };
   }
@@ -155,6 +163,7 @@ export async function attemptConversationBooking(params: {
   // phone"): never blocks the booking, never stores garbage.
   const rawPhone = typeof booking.phone === 'string' ? booking.phone.trim() : null;
   const phone = rawPhone && isValidBookingPhone(rawPhone) ? rawPhone : null;
+  if (requirePhone && !phone) return { action: 'need_more_info', missing: ['phone'] };
 
   // Verify the service + provider actually exist in THIS clinic before creating
   // (the same tenant invariant the public route is bound by).
@@ -200,6 +209,48 @@ export async function attemptConversationBooking(params: {
       // chat-originated appointment by the UTC offset.
     });
 
+    if (googleCalendar) {
+      try {
+        const actualInstant = clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem');
+        await createGoogleCalendarBooking({
+          clinic_id: clinicId,
+          appointment_id: created.id,
+          patient_id: patientId,
+          patient_name: (booking.patient_name as string).trim(),
+          patient_phone: phone ?? '',
+          service: service.name,
+          appointment_time: actualInstant.toISOString(),
+          timezone: timeZone ?? 'Asia/Jerusalem',
+          duration_minutes: service.duration_minutes ?? undefined,
+          status: 'confirmed',
+        });
+        await persistReceptionistSlot(clinicId, conversationId, {
+          appointment_id: created.id,
+          appointment_status: 'confirmed',
+          scheduled_at: created.scheduled_at,
+        });
+      } catch (calendarError) {
+        const reason = calendarError instanceof Error ? calendarError.message : String(calendarError);
+        await supabaseAdmin
+          .from('appointments')
+          .update({ status: 'cancelled' })
+          .eq('clinic_id', clinicId)
+          .eq('id', created.id);
+        await persistReceptionistSlot(clinicId, conversationId, {
+          appointment_id: null,
+          appointment_status: 'google_calendar_failed',
+        });
+        await cancelAppointmentReminders({ clinicId, appointmentId: created.id, client: supabaseAdmin }).catch(() => undefined);
+        logEvent('conversation_google_calendar_booking_failed', {
+          clinic_id: clinicId,
+          conversation_id: conversationId,
+          appointment_id: created.id,
+          error: reason,
+        }, 'error');
+        return { action: 'failed', reason: 'google_calendar_booking_failed' };
+      }
+    }
+
     logEvent('conversation_booking_created', {
       clinic_id: clinicId,
       conversation_id: conversationId,
@@ -207,7 +258,7 @@ export async function attemptConversationBooking(params: {
       provider_id: booking.provider_id,
       service_id: service?.id ?? null,
     });
-    return { action: 'booked', appointment: { id: created.id, scheduled_at: created.scheduled_at, status: created.status } };
+    return { action: 'booked', appointment: { id: created.id, scheduled_at: created.scheduled_at, status: googleCalendar ? 'confirmed' : created.status } };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     if (/Slot unavailable|concurrent booking/i.test(reason)) {

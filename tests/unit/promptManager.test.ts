@@ -240,6 +240,34 @@ describe('Prompt Manager — STEP 5 Network Discovery Mode', () => {
     });
     expect(withoutGuidance).not.toContain('Network Discovery Mode');
   });
+
+  it('adds imaging-specific warm tone, exact-date calendar checks, and sequential booking rules', () => {
+    const prompt = buildPrompt(settings5, 'أريد موعد بانوراما الأربعاء', [], [], undefined, {
+      activityType: 'imaging_center',
+      receptionistState: {
+        ...baseReceptionState,
+        state: 'BOOKING',
+        recommended_service_id: 'panorama',
+      },
+    });
+
+    expect(prompt).toContain('سلامتك');
+    expect(prompt).toContain('Google Calendar-backed REAL AVAILABILITY for that exact date');
+    expect(prompt).toContain('patient name, then a contact phone number');
+    expect(prompt).toContain('present one concise summary');
+    expect(prompt).toContain('explicit preliminary confirmation');
+    expect(prompt).toContain('do not repeat greetings or already answered questions');
+    expect(prompt).not.toContain('phone is OPTIONAL');
+    expect(prompt).not.toContain('General Dental Knowledge');
+    expect(prompt).not.toContain('بعد فحص الطبيب');
+
+    const newConversationPrompt = buildPrompt(settings5, 'مرحبا', [], [], undefined, {
+      activityType: 'imaging_center',
+    });
+    expect(newConversationPrompt).toContain('Business Activity: IMAGING CENTER');
+    expect(newConversationPrompt).toContain('سلامتك');
+    expect(newConversationPrompt).not.toContain('dental clinic named');
+  });
 });
 
   it('injects the DATA SOURCE SEPARATION directive when context exists', () => {
