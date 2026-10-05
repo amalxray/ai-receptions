@@ -102,7 +102,7 @@ export default function LandingPageBuilder() {
         body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'فشل حفظ الترتيب');
+      if (!res.ok) throw new Error(json.detail ?? json.error ?? 'فشل حفظ الترتيب');
       setSuccess('تم حفظ ترتيب الأقسام بنجاح.');
       await loadSections();
     } catch (err) {
