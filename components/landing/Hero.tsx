@@ -11,6 +11,19 @@ import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { TextShimmer } from '@/components/ui/text-shimmer';
+import { landingCopy } from '@/lib/landing/landing-copy';
+
+export type HeroContent = {
+  headline1: string;
+  headline2: string;
+  paragraph: string;
+  description: string;
+  ctaPrimary: string;
+  ctaPrimaryHref: string;
+  ctaSecondary: string;
+  ctaSecondaryHref: string;
+  stats: Array<{ value: string; label: string }>;
+};
 
 
 type ChatStep =
@@ -43,8 +56,15 @@ const GAP_MS = 1300;
 const CONFIRM_DELAY_MS = 1500;
 const LOOP_DELAY_MS = 6000;
 
-export default function Hero() {
+export default function Hero({ content }: { content?: Partial<HeroContent> }) {
   const copy = useLandingCopy();
+  const heroContent: HeroContent = {
+    ...landingCopy.hero,
+    ...copy.hero,
+    ...content,
+    stats: content?.stats ?? copy.hero?.stats ?? landingCopy.hero.stats,
+  };
+  const paragraphHighlightIndex = heroContent.paragraph.indexOf('مريض');
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] });
   const blobY = useTransform(scrollYProgress, [0, 1], [48, -48]);
@@ -117,15 +137,19 @@ export default function Hero() {
           </motion.div>
 
           <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]">
-            <TextReveal text="استقبالك لا ينام، ومرضاك يحجزون" duration={0.7} delay={0.2} />
+            <TextReveal text={heroContent.headline1} duration={0.7} delay={0.2} />
             <br />
             <span className="bg-gradient-to-l from-[#8B5CF6] to-[#22D3EE] bg-clip-text text-transparent">
-              <TextReveal text="حتى وأنت في غرفة العلاج." duration={0.7} delay={0.9} />
+              <TextReveal text={heroContent.headline2} duration={0.7} delay={0.9} />
             </span>
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9, duration: 0.6 }} className="mx-auto mt-4 max-w-xl text-xl font-semibold leading-8 text-slate-700 lg:mx-0">
-            كل مكالمة فائتة… <span className="font-black text-[#EF4444]">مريض</span> يذهب لعيادة أخرى، والفرصة تضيع في ثوانٍ.
+            {paragraphHighlightIndex < 0 ? heroContent.paragraph : <>
+              {heroContent.paragraph.slice(0, paragraphHighlightIndex)}
+              <span className="font-black text-[#EF4444]">مريض</span>
+              {heroContent.paragraph.slice(paragraphHighlightIndex + 'مريض'.length)}
+            </>}
           </motion.p>
 
           <motion.p
@@ -134,7 +158,7 @@ export default function Hero() {
             transition={{ delay: 1.6, duration: 0.6 }}
             className="mx-auto mt-5 max-w-lg text-lg leading-8 text-slate-600 lg:mx-0"
           >
-            منصة AI-Receptions تشتغل كموظفة استقبال ذكية، تستقبل المرضى، ترد على الأسئلة، وتحجز المواعيد بوضوح، حتى عندما يكون الطبيب في الجلسة أو خارج الدوام.
+            {heroContent.description}
           </motion.p>
 
           <motion.div
@@ -144,15 +168,15 @@ export default function Hero() {
             className="mt-9 flex flex-wrap justify-center gap-4 lg:justify-start"
           >
             <Magnetic>
-              <Link href="/register">
-                <ShimmerButton style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)] transition-all duration-300">ابدأ تجربتك المجانية لمدة 30 يوماً</ShimmerButton>
+              <Link href={heroContent.ctaPrimaryHref}>
+                <ShimmerButton style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)] transition-all duration-300">{heroContent.ctaPrimary}</ShimmerButton>
               </Link>
             </Magnetic>
             <a
-              href="#how-it-works"
+              href={heroContent.ctaSecondaryHref}
               className="rounded-full border border-slate-300 px-8 py-4 text-lg font-semibold text-slate-700 transition-all duration-300 hover:border-violet-400/60 hover:bg-violet-50 hover:shadow-lg hover:shadow-violet-500/10"
             >
-              شاهد كيف يعمل
+              {heroContent.ctaSecondary}
             </a>
           </motion.div>
 
@@ -164,7 +188,7 @@ export default function Hero() {
 
           {/* Stats */}
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
-            {copy.hero.stats.map((s, i) => (
+            {heroContent.stats.map((s, i) => (
               <motion.div
                 key={s.label}
                 initial={{ opacity: 0, y: 14 }}

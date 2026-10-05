@@ -35,7 +35,6 @@ export const LANDING_SECTION_KEYS = [
 export type LandingSectionKey = (typeof LANDING_SECTION_KEYS)[number];
 
 const STATIC_COPY_LOCKED_SECTIONS = new Set([
-  'hero',
   'features',
   'for_doctors',
   'how_it_works',
@@ -77,6 +76,26 @@ export function landingSectionLabel(key: string): string {
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isUntouchedLegacyHeroSeed(content: unknown): boolean {
+  if (!isPlainObject(content) || Object.keys(content).length !== 6) return false;
+  return content.headline1 === 'كل مكالمة ما ردّيت عليها'
+    && content.headline2 === 'مريض راح لعيادة تانية'
+    && content.paragraph === 'عيادتك بتحتاج موظفة استقبال ما بتنام، ما بتاخد إجازة، وما بتفوّت ولا مريض — بترد بلهجته العامية، بتحجزله موعد فوراً، وبتجاوبه على مدار الساعة.'
+    && content.ctaPrimary === 'جرّب المحادثة الآن ←'
+    && content.ctaSecondary === 'شوف كيف يشتغل'
+    && JSON.stringify(content.stats) === JSON.stringify([
+      { value: '24/7', label: 'متاحة دايماً' },
+      { value: '<3s', label: 'سرعة الرد' },
+      { value: '100%', label: 'فهم اللهجة' },
+    ]);
+}
+
+function resolveLegacyHeroRow(row: LandingSectionRow): LandingSectionRow {
+  return row.section_key === 'hero' && isUntouchedLegacyHeroSeed(row.content)
+    ? { ...row, content: landingCopy.hero }
+    : row;
 }
 
 function deepMerge(base: unknown, override: unknown): unknown {
@@ -136,7 +155,7 @@ export async function getAllLandingSections(): Promise<LandingSectionRow[]> {
 
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []) as LandingSectionRow[];
+  const rows = ((data ?? []) as LandingSectionRow[]).map(resolveLegacyHeroRow);
   const orderedKeys = await getLandingPageOrder();
   const orderMap = new Map(orderedKeys.map((key, index) => [key, index]));
 
@@ -153,7 +172,7 @@ export async function getLandingSection(key: string): Promise<LandingSectionRow 
     .eq('section_key', key)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data ?? null) as LandingSectionRow | null;
+  return data ? resolveLegacyHeroRow(data as LandingSectionRow) : null;
 }
 
 export async function upsertLandingSection(
