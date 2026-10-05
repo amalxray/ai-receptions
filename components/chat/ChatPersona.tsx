@@ -1,12 +1,14 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import Image from 'next/image';
+import receptionistAvatar from '../../receptionist-avatar.png';
 
 export type ChatPersonaKind = 'receptionist' | 'patient';
 
 /**
- * Avatar placeholder for the two-persona chat. The receptionist portrait can
- * be replaced later by passing imageSrc, without changing the conversation UI.
+ * Avatar portrait for the two-persona chat. The receptionist image can be
+ * replaced later by passing imageSrc, without changing the conversation UI.
  */
 export function ChatPersonaAvatar({
   persona,
@@ -25,7 +27,7 @@ export function ChatPersonaAvatar({
   return (
     <motion.div
       role="img"
-      aria-label={receptionist ? 'صورة موظفة الاستقبال — صورة مؤقتة' : 'صورة المريض الرمزية'}
+      aria-label={receptionist ? 'صورة موظفة الاستقبال' : 'صورة المريض الرمزية'}
       className={`relative shrink-0 rounded-full p-[3px] transition-shadow duration-300 ${
         active
           ? 'bg-gradient-to-br from-teal-300 via-cyan-400 to-sky-500 shadow-[0_0_28px_rgba(34,211,238,0.42)]'
@@ -39,16 +41,15 @@ export function ChatPersonaAvatar({
           receptionist ? 'bg-gradient-to-br from-cyan-50 via-teal-100 to-violet-100' : 'bg-gradient-to-br from-slate-100 to-slate-200'
         }`}
       >
-        {imageSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageSrc} alt="موظفة الاستقبال" className="h-full w-full object-cover" />
-        ) : receptionist ? (
-          <svg viewBox="0 0 96 96" className="h-[74%] w-[74%] text-teal-700" fill="none" aria-hidden="true">
-            <circle cx="48" cy="35" r="17" fill="currentColor" opacity=".78" />
-            <path d="M17 88c2-20 14-31 31-31s29 11 31 31" fill="currentColor" opacity=".66" />
-            <path d="M31 23c2-12 10-18 20-16 8 1 13 7 15 16-5-4-11-6-17-6-7 0-13 2-18 6Z" fill="#475569" opacity=".72" />
-            <path d="M41 43c2 2 4 3 7 3s5-1 7-3" stroke="#fff" strokeLinecap="round" strokeWidth="2" opacity=".8" />
-          </svg>
+        {receptionist ? (
+          <Image
+            src={imageSrc ?? receptionistAvatar}
+            alt="موظفة الاستقبال"
+            width={112}
+            height={112}
+            sizes={size === 'large' ? '(max-width: 640px) 88px, 112px' : '44px'}
+            className="h-full w-full object-cover"
+          />
         ) : (
           <svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-500" fill="none" aria-hidden="true">
             <circle cx="12" cy="8" r="3.4" fill="currentColor" opacity=".85" />
