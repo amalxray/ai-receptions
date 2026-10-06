@@ -1,0 +1,4 @@
+torch>=2.2.0
+ultralytics>=8.2.0
+opencv-python>=4.10.0
+pydicom>=2.4.0

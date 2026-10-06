@@ -47,6 +47,7 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   'my-payslips': 'settings',
   'knowledge-base': 'settings',
   'ai-settings': 'settings',
+  'ai-analysis': 'settings',
   'communication-settings': 'settings',
   ads: 'settings',
   setup: 'settings',
