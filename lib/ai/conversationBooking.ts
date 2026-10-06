@@ -117,9 +117,10 @@ export async function attemptConversationBooking(params: {
   serviceNameHint?: string | null;
   requirePhone?: boolean;
   googleCalendar?: boolean;
+  clinicName?: string | null;
   timeZone?: string | null;
 }): Promise<BookingAttemptResult> {
-  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, timeZone } = params;
+  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, clinicName, timeZone } = params;
 
   if (state !== 'BOOKING' || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
@@ -214,6 +215,7 @@ export async function attemptConversationBooking(params: {
         const actualInstant = clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem');
         await createGoogleCalendarBooking({
           clinic_id: clinicId,
+          clinic_name: clinicName ?? undefined,
           appointment_id: created.id,
           patient_id: patientId,
           patient_name: (booking.patient_name as string).trim(),

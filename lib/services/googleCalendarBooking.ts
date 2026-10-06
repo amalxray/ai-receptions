@@ -11,6 +11,7 @@ export type GoogleCalendarBookingDetails = {
   clinic_id?: string;
   appointment_id?: string;
   patient_id?: string | null;
+  clinic_name?: string;
   service?: string;
   timezone?: string;
   duration_minutes?: number;
@@ -191,8 +192,8 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
     calendarId,
     sendUpdates: 'none',
     requestBody: {
-      summary: `${details.service ?? 'موعد تصوير'} — ${details.patient_name.trim()}`,
-      description: `الخدمة: ${details.service ?? 'تصوير'}\nالاسم: ${details.patient_name.trim()}${details.patient_phone.trim() ? `\nرقم التواصل: ${details.patient_phone.trim()}` : ''}`,
+      summary: `${details.clinic_name ? `${details.clinic_name} — ` : ''}${details.service ?? 'موعد'} — ${details.patient_name.trim()}`,
+      description: `العيادة: ${details.clinic_name ?? '—'}\nالخدمة: ${details.service ?? '—'}\nالاسم: ${details.patient_name.trim()}${details.patient_phone.trim() ? `\nرقم التواصل: ${details.patient_phone.trim()}` : ''}`,
       start: { dateTime: appointmentTime.toISOString(), timeZone: timezone },
       end: { dateTime: endTime.toISOString(), timeZone: timezone },
     },

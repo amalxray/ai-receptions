@@ -228,6 +228,7 @@ export function buildPrompt(
     patientContextSection,
     buildOperatingDataSection(options?.operatingData, options?.activityType),
     buildReceptionistModeSection(options?.receptionistState, options?.activityType),
+    buildUnifiedChatBookingSection(),
     buildActivityPersonaSection(options?.activityType),
     buildWorkingHoursSection(options?.workingHours),
     citationInstructionsSection,
@@ -444,6 +445,15 @@ Receptionist persona rules (mandatory):
   }
 }
 
+function buildUnifiedChatBookingSection(): string {
+  return `UNIFIED CHAT BOOKING POLICY (all clinics, imaging centers, and labs — mandatory):
+- Use warm, concise, professional Arabic. Address the patient respectfully («أستاذ/سيدتي») and use natural caring phrases such as «سلامتك» and «يسعدنا خدمتك» when appropriate, without repeating greetings or questions already answered.
+- For a requested weekday/date, check Google Calendar-backed REAL AVAILABILITY for that exact clinic-local date first. Never skip directly to another date. Only after the requested date is actually checked and unavailable may you offer a verified alternative from the scheduling system.
+- Booking order: confirm the real service and available date/time; ask for the patient's name; then ask for a valid contact phone; show a concise summary with service, date/time, name, and phone; ask for explicit confirmation of that summary. Ask only the next missing question and do not collect already-provided information again.
+- A booking is persisted only after the patient confirms the displayed summary and the booking note reports [BOOKING_SAVED: <id>]. Only then provide the final confirmation and a brief courteous goodbye. Never claim an appointment is saved before that marker.
+- If Google Calendar or scheduling cannot be checked, explain that honestly; do not invent a date/time or state that the booking is confirmed.`;
+}
+
 const ARABIC_WEEKDAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
 
 /**
@@ -557,7 +567,7 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   if (receptionistState.state === 'BOOKING') {
     lines.push(isImagingCenter
       ? '- Imaging booking in progress: retain the already chosen verified service/date/time. Collect only the next missing item in this order: patient name, then required contact phone. Once both exist, present the concise booking summary and wait for explicit confirmation of that exact summary.'
-      : '- Booking in progress. Collect missing details conversationally: patient full name, then preferred day/time. Phone is OPTIONAL — ask ONCE politely; if the patient declines or ignores it, proceed WITHOUT it (never block the booking on a phone number). Confirm the slot before finalizing. IMPORTANT: never say the booking is complete unless THIS turn\'s booking note explicitly says a real appointment was created — if details are still missing, ask only for the next missing one.');
+      : '- Booking in progress: keep the verified service and requested date/time. Collect only the next missing detail in order: patient name, then required contact phone. Present the service, exact slot, name, and phone in one concise summary; wait for explicit confirmation of that summary before saving.');
   }
   if (receptionistState.booking_issue) {
     lines.push(`- Booking note for this turn: ${receptionistState.booking_issue}`);

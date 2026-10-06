@@ -268,6 +268,23 @@ describe('Prompt Manager — STEP 5 Network Discovery Mode', () => {
     expect(newConversationPrompt).toContain('سلامتك');
     expect(newConversationPrompt).not.toContain('dental clinic named');
   });
+
+  it('applies the unified sequential phone-required booking flow to ordinary clinics', () => {
+    const prompt = buildPrompt(settings5, 'أريد أحجز موعد', [], [], undefined, {
+      activityType: 'clinic',
+      receptionistState: {
+        ...baseReceptionState,
+        state: 'BOOKING',
+        recommended_service_id: 'service-1',
+      },
+    });
+
+    expect(prompt).toContain('UNIFIED CHAT BOOKING POLICY (all clinics');
+    expect(prompt).toContain('check Google Calendar-backed REAL AVAILABILITY for that exact clinic-local date first');
+    expect(prompt).toContain('ask for the patient\'s name; then ask for a valid contact phone');
+    expect(prompt).toContain('show a concise summary');
+    expect(prompt).not.toContain('Phone is OPTIONAL');
+  });
 });
 
   it('injects the DATA SOURCE SEPARATION directive when context exists', () => {

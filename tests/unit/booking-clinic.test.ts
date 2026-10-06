@@ -57,6 +57,22 @@ describe('GET /api/booking/clinic', () => {
     expect(mockClinics.resolvePublicClinic).toHaveBeenCalledWith({ id: undefined, slug: VALID_SLUG });
   });
 
+  it('resolves hala-clinic through the same slug-to-clinic_id path as every tenant', async () => {
+    const halaId = 'ab05e3b9-8242-40e5-9392-aa412c8d9af4';
+    mockClinics.resolvePublicClinic.mockResolvedValue({
+      id: halaId,
+      slug: 'hala-clinic',
+      name: 'hala-clinic',
+    });
+
+    const res = await clinicGET(makeRequest('http://localhost/api/booking/clinic?slug=hala-clinic'));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toMatchObject({ id: halaId, slug: 'hala-clinic' });
+    expect(mockClinics.resolvePublicClinic).toHaveBeenCalledWith({ id: undefined, slug: 'hala-clinic' });
+  });
+
   it('returns 400 when neither clinic_id nor slug is provided', async () => {
     const res = await clinicGET(makeRequest('http://localhost/api/booking/clinic'));
     expect(res.status).toBe(400);
