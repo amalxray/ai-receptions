@@ -19,6 +19,7 @@ export async function GET(req: Request) {
         label: landingSectionLabel(key),
         content: row?.content ?? null,
         updated_at: row?.updated_at ?? null,
+        is_visible: row?.is_visible ?? true,
       };
     });
     return NextResponse.json({ data: sections });

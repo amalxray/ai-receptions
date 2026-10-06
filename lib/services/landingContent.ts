@@ -17,6 +17,7 @@ export type LandingSectionRow = {
   section_key: string;
   content: unknown;
   updated_at: string;
+  is_visible?: boolean;
   sort_order?: number;
   legacySeed?: boolean;
 };
@@ -201,12 +202,15 @@ export async function saveLandingPageOrder(order: string[]): Promise<void> {
 export async function getAllLandingSections(): Promise<LandingSectionRow[]> {
   const { data, error } = await supabaseAdmin
     .from('landing_page_content')
-    .select('id, section_key, content, updated_at')
+    .select('id, section_key, content, updated_at, is_visible')
     .order('section_key');
 
   if (error) throw new Error(error.message);
 
-  const rows = ((data ?? []) as LandingSectionRow[]).map(resolveLegacyHeroRow);
+  const rows = ((data ?? []) as LandingSectionRow[]).map((row) => ({
+    ...resolveLegacyHeroRow(row),
+    is_visible: row.is_visible ?? true,
+  }));
   const orderedKeys = await getLandingPageOrder();
   const orderMap = new Map(orderedKeys.map((key, index) => [key, index]));
 
@@ -219,22 +223,27 @@ export async function getAllLandingSections(): Promise<LandingSectionRow[]> {
 export async function getLandingSection(key: string): Promise<LandingSectionRow | null> {
   const { data, error } = await supabaseAdmin
     .from('landing_page_content')
-    .select('id, section_key, content, updated_at')
+    .select('id, section_key, content, updated_at, is_visible')
     .eq('section_key', key)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data ? resolveLegacyHeroRow(data as LandingSectionRow) : null;
+  return data ? ({
+    ...resolveLegacyHeroRow(data as LandingSectionRow),
+    is_visible: data.is_visible ?? true,
+  }) : null;
 }
 
 export async function upsertLandingSection(
   key: string,
   content: unknown,
-  updatedBy: string
+  updatedBy: string,
+  isVisible = true,
 ): Promise<void> {
   const { error } = await supabaseAdmin.from('landing_page_content').upsert(
     {
       section_key: key,
-      content: content as Record<string, unknown>,
+      content: content as Record<string, unknown> | null,
+      is_visible: isVisible,
       updated_by: updatedBy,
       updated_at: new Date().toISOString(),
     },
@@ -256,6 +265,7 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
     for (const row of rows) {
       if (!row || typeof row.section_key !== 'string') continue;
       if (row.legacySeed) continue;
+      if (row.is_visible === false) continue;
       if (STATIC_COPY_LOCKED_SECTIONS.has(row.section_key)) continue;
       const copyKey = SECTION_TO_COPY_KEY[row.section_key] ?? row.section_key;
       merged = deepMerge(merged, { [copyKey]: row.content }) as Record<string, unknown>;

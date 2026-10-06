@@ -13,15 +13,21 @@ import PricingEditor from '@/components/admin/editors/PricingEditor';
 import UrgencyBarEditor from '@/components/admin/editors/UrgencyBarEditor';
 import LandingColorsEditor from '@/components/admin/editors/LandingColorsEditor';
 import LandingSeoEditor from '@/components/admin/editors/LandingSeoEditor';
+import ForDoctorsEditor from '@/components/admin/editors/ForDoctorsEditor';
+import HowItWorksEditor from '@/components/admin/editors/HowItWorksEditor';
+import CompareEditor from '@/components/admin/editors/CompareEditor';
+import FinalCtaEditor from '@/components/admin/editors/FinalCtaEditor';
+import FooterEditor from '@/components/admin/editors/FooterEditor';
 
 export type LandingPageSection = {
   section_key: string;
   label: string;
   content: Record<string, unknown> | null;
   updated_at: string | null;
+  is_visible: boolean;
 };
 
-function SortableSectionCard({ section, isSelected, onSelect }: { section: LandingPageSection; isSelected: boolean; onSelect: () => void }) {
+function SortableSectionCard({ section, isSelected, onSelect, onToggleVisibility }: { section: LandingPageSection; isSelected: boolean; onSelect: () => void; onToggleVisibility: (key: string, isVisible: boolean) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.section_key });
 
   return (
@@ -45,9 +51,15 @@ function SortableSectionCard({ section, isSelected, onSelect }: { section: Landi
             </div>
           </div>
         </button>
-        <button type="button" aria-label={`اسحب لترتيب ${section.label}`} className="touch-none cursor-grab rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 active:cursor-grabbing" {...attributes} {...listeners}>
-          Drag
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-[10px] font-medium text-slate-300">
+            <input type="checkbox" checked={section.is_visible} onChange={(event) => onToggleVisibility(section.section_key, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 accent-violet-500" />
+            مرئي
+          </label>
+          <button type="button" aria-label={`اسحب لترتيب ${section.label}`} className="touch-none cursor-grab rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 active:cursor-grabbing" {...attributes} {...listeners}>
+            Drag
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -62,6 +74,26 @@ export default function LandingPageBuilder() {
   const [selectedSectionKey, setSelectedSectionKey] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const toggleVisibility = async (sectionKey: string, isVisible: boolean) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/landing-page/${encodeURIComponent(sectionKey)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: null, is_visible: isVisible }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(json?.error ?? 'تعذر تحديث حالة الإظهار');
+      setSections((current) => current.map((section) => section.section_key === sectionKey ? { ...section, is_visible: isVisible } : section));
+      setSuccess(isVisible ? 'تم إظهار القسم.' : 'تم إخفاء القسم.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تحديث حالة الإظهار');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const loadSections = async () => {
     setLoading(true);
@@ -166,6 +198,7 @@ export default function LandingPageBuilder() {
                     section={section}
                     isSelected={selectedSectionKey === section.section_key}
                     onSelect={() => setSelectedSectionKey(section.section_key)}
+                    onToggleVisibility={toggleVisibility}
                   />
                 ))}
               </div>
@@ -179,6 +212,15 @@ export default function LandingPageBuilder() {
       )}
       {selectedSection?.section_key === 'features' && (
         <FeaturesEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: FeaturesContent) => handleSectionSaved('features', content)} />
+      )}
+      {selectedSection?.section_key === 'for_doctors' && (
+        <ForDoctorsEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('for_doctors', content)} />
+      )}
+      {selectedSection?.section_key === 'how_it_works' && (
+        <HowItWorksEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('how_it_works', content)} />
+      )}
+      {selectedSection?.section_key === 'compare' && (
+        <CompareEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('compare', content)} />
       )}
       {selectedSection?.section_key === 'faq' && (
         <FAQEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('faq', content)} />
@@ -195,14 +237,20 @@ export default function LandingPageBuilder() {
       {selectedSection?.section_key === 'colors' && (
         <LandingColorsEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('colors', content)} />
       )}
+      {selectedSection?.section_key === 'cta' && (
+        <FinalCtaEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('cta', content)} />
+      )}
+      {selectedSection?.section_key === 'footer' && (
+        <FooterEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('footer', content)} />
+      )}
       {selectedSection?.section_key === 'seo' && (
         <LandingSeoEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('seo', content)} />
       )}
-      {selectedSection && !['hero', 'features', 'faq', 'testimonials', 'pricing', 'urgency_bar', 'colors', 'seo'].includes(selectedSection.section_key) && (
+      {selectedSection && !['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo'].includes(selectedSection.section_key) && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSectionKey(null); }}>
           <section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900">{selectedSection.label}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">محرر هذا القسم غير متاح بعد. الأقسام المتاحة حاليًا تشمل Hero والمميزات والأسئلة الشائعة والآراء والأسعار والألوان وSEO.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">هذا القسم غير متاح في المحرر.</p>
             <button type="button" onClick={() => setSelectedSectionKey(null)} className="mt-5 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white">إغلاق</button>
           </section>
         </div>

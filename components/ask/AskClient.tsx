@@ -3,9 +3,7 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import AskChat from '@/components/ask/AskChat';
-import WhatsAppFloat from '@/components/ask/WhatsAppFloat';
 import { GoogleAnalytics } from '@next/third-parties/google';
-import ShareButtons from '@/components/ask/ShareButtons';
 import { TextLoop } from '@/components/ui/text-loop';
 import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
@@ -44,10 +42,20 @@ const QUICK_CARDS = [
   { text: 'حالة طارئة', emoji: '🚨' },
 ];
 
+const DEFAULT_ASK_SECTION_ORDER = [
+  'hero', 'stats', 'quick_questions', 'clinics', 'gallery', 'stories',
+  'tips', 'articles', 'fun_facts', 'faq', 'cta',
+];
+
 export default function AskClient({ settings, tips, articles, stories, faq, clinics, gallery, stats }: AskClientData) {
   const hero = (settings.hero ?? {}) as { title: string; subtitle: string; logo: string; assistant_name: string };
   const sections = (settings.sections ?? {}) as Record<string, boolean>;
   const questions = (settings.questions ?? []) as string[];
+  const storedOrder = Array.isArray(settings.sections_order)
+    ? settings.sections_order.filter((key): key is string => typeof key === 'string' && DEFAULT_ASK_SECTION_ORDER.includes(key))
+    : [];
+  const sectionOrder = Array.from(new Set([...storedOrder, ...DEFAULT_ASK_SECTION_ORDER]));
+  const sectionPosition = (key: string) => sectionOrder.indexOf(key);
   const on = (k: string) => sections[k] !== false;
   const published = articles.filter((a) => a.slug);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -58,14 +66,12 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
   const featuredTip = tips[0];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/30 text-slate-800" dir="rtl" style={{ colorScheme: 'light' }}>
+    <main className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/30 text-slate-800" dir="rtl" style={{ colorScheme: 'light' }}>
       {process.env.NEXT_PUBLIC_GA_ID && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />}
       <link rel="alternate" type="application/rss+xml" title="سنّي" href="/ask/rss.xml" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
-      <WhatsAppFloat />
-
       {/* ═══ HERO ═══ */}
-      <section className="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-4 pt-10">
+      <section style={{ order: sectionPosition('hero') }} className="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-4 pt-10">
         <div className="relative z-10 mx-auto w-full max-w-4xl text-center">
           <BlurFade>
             <div className="animate-float flex justify-center text-5xl sm:text-6xl">{hero.logo ?? '🦷'}</div>
@@ -101,10 +107,10 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       </section>
 
       {/* ═══ STATS (dynamic from DB) ═══ */}
-      <StatsSection stats={stats} />
+      {on('stats') && <div style={{ order: sectionPosition('stats') }}><StatsSection stats={stats} /></div>}
 
       {/* ═══ CHAT + QUICK CARDS ═══ */}
-      <section className="relative z-10 mx-auto max-w-4xl px-4 pb-10">
+      <section style={{ order: sectionPosition('quick_questions') }} className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-10">
         {on('quick_questions') && questions.length > 0 && (
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             {QUICK_CARDS.map((q, i) => (
@@ -123,17 +129,17 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       </section>
 
       {/* ═══ PARTNER CLINICS (Doctor Cards) ═══ */}
-      <ClinicsSection clinics={clinics as never} />
+      {on('clinics') && <div style={{ order: sectionPosition('clinics') }}><ClinicsSection clinics={clinics as never} /></div>}
 
       {/* ═══ GALLERY ═══ */}
-      <GallerySection images={gallery} />
+      {on('gallery') && <div style={{ order: sectionPosition('gallery') }}><GallerySection images={gallery} /></div>}
 
       {/* ═══ TESTIMONIALS (Marquee) ═══ */}
-      <TestimonialsSection testimonials={stories} />
+      {on('stories') && <div style={{ order: sectionPosition('stories') }}><TestimonialsSection testimonials={stories} /></div>}
 
       {/* ═══ TIPS ═══ */}
       {on('tips') && tips.length > 0 && (
-        <section className="relative z-10 mx-auto max-w-4xl px-4 py-10">
+        <section style={{ order: sectionPosition('tips') }} className="relative z-10 mx-auto max-w-4xl px-4 py-10">
           <h2 className="text-center text-2xl font-black text-blue-800">💡 إرشادات تساعدك على العناية بابتسامتك</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             {tips.slice(0, 3).map((t, i) => (
@@ -151,7 +157,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
 
       {/* ═══ ARTICLES (ShineBorder) ═══ */}
       {on('articles') && published.length > 0 && (
-        <section className="relative z-10 mx-auto max-w-4xl px-4 py-10">
+        <section style={{ order: sectionPosition('articles') }} className="relative z-10 mx-auto max-w-4xl px-4 py-10">
           <h2 className="text-center text-2xl font-black text-blue-800">📝 معلومات موثوقة لصحة فمك</h2>
           <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {published.slice(0, 6).map((a, i) => (
@@ -178,7 +184,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
 
       {/* ═══ FUN FACTS Marquee ═══ */}
       {on('fun_facts') && (
-        <div className="relative z-10 border-y border-blue-100 bg-blue-50/70 py-2">
+        <div style={{ order: sectionPosition('fun_facts') }} className="relative z-10 border-y border-blue-100 bg-blue-50/70 py-2">
           <Marquee pauseOnHover className="text-sm text-blue-800" repeat={2}>
             {(funFacts.length > 0
               ? funFacts.map((t) => ({ id: String(t.id), icon: String(t.icon ?? '✨'), text: String(t.title) }))
@@ -199,7 +205,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
 
       {/* ═══ FAQ ═══ */}
       {on('faq') && faq.length > 0 && (
-        <section className="relative z-10 mx-auto max-w-3xl px-4 py-10">
+        <section style={{ order: sectionPosition('faq') }} className="relative z-10 mx-auto max-w-3xl px-4 py-10">
           <h2 className="text-center text-2xl font-black text-blue-800">❓ إجابات على أسئلتك</h2>
           <div className="mt-6 space-y-2">
             {faq.map((f) => (
@@ -214,7 +220,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
 
       {/* ═══ CTA ═══ */}
       {on('cta') && (
-        <section className="relative z-10 mx-auto max-w-3xl px-4 py-14 text-center">
+        <section style={{ order: sectionPosition('cta') }} className="relative z-10 mx-auto max-w-3xl px-4 py-14 text-center">
           <h2 className="text-2xl font-black text-slate-900">دع سنّي يساعدك الآن.. ابدأ المحادثة</h2>
           <p className="mt-2 text-slate-600">شاركنا ما تحتاجه، وسنرشدك إلى العيادة المناسبة وخطوة الحجز التالية.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-3">
@@ -226,11 +232,10 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
         </section>
       )}
 
-      <AskFooter />
+      <div style={{ order: sectionOrder.length }}><AskFooter /></div>
 
       {/* ═══ SOCIAL DOCK ═══ */}
       <Dock className="hidden md:flex">
-        <DockIcon><a href="https://wa.me/970569509093" target="_blank" rel="noopener noreferrer" aria-label="واتساب">💬</a></DockIcon>
         <DockIcon><a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="فيسبوك">📘</a></DockIcon>
         <DockIcon><a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="انستغرام">📸</a></DockIcon>
         <DockIcon><Link href="/ask/qr" aria-label="QR">📱</Link></DockIcon>
