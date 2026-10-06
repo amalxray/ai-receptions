@@ -112,6 +112,7 @@ export const NAV_PRESENTATION: Record<string, NavPresentation> = {
   'public-content': { emoji: '✏️', description: 'محتوى الصفحة العامة', span: 'unit' },
   profile: { emoji: '👤', description: 'ملفي وكلمة المرور', span: 'unit' },
   'ai-settings': { emoji: '🤖', description: 'إعدادات المساعد الذكي', span: 'wide' },
+  'ai-analysis': { emoji: '🩻', description: 'تحليل الصور الطبية محلياً', span: 'wide' },
   'communication-settings': { emoji: '💬', description: 'قنوات ورسائل العيادة', span: 'unit' },
   ads: { emoji: '📢', description: 'الحملات الإعلانية', span: 'unit' },
   'clinic-setup': { emoji: '🏥', description: 'بيانات العيادة وأوقاتها', span: 'unit' },
