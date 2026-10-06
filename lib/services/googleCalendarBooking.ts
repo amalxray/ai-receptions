@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { google } from 'googleapis';
 
 export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled';
 
@@ -42,6 +43,63 @@ async function resolveCalendarId(clinicId: string): Promise<string> {
     throw new Error('Set a Google Calendar ID for this clinic or configure GOOGLE_CALENDAR_ID.');
   }
   return calendarId;
+}
+
+function getGoogleCalendarClient() {
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL?.trim();
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
+  const missing = [
+    !clientEmail && 'GOOGLE_CLIENT_EMAIL',
+    !privateKey && 'GOOGLE_PRIVATE_KEY',
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    throw new Error(`Google Calendar is not configured. Set ${missing.join(' and ')}.`);
+  }
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: clientEmail,
+      private_key: privateKey,
+    },
+    scopes: ['https://www.googleapis.com/auth/calendar'],
+  });
+
+  return google.calendar({ version: 'v3', auth });
+}
+
+async function createGoogleCalendarEvent(
+  calendarId: string,
+  details: GoogleCalendarBookingDetails,
+  start: Date,
+  end: Date
+) {
+  const calendar = getGoogleCalendarClient();
+  const response = await calendar.events.insert({
+    calendarId,
+    requestBody: {
+      summary: `Dental appointment: ${details.service.trim()}`,
+      description: [
+        `Patient: ${details.patient_name.trim()}`,
+        `Phone: ${details.patient_phone.trim()}`,
+        `Service: ${details.service.trim()}`,
+        `Clinic ID: ${details.clinic_id}`,
+      ].join('\n'),
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: details.timezone || 'UTC',
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: details.timezone || 'UTC',
+      },
+    },
+  });
+
+  if (!response.data.id) {
+    throw new Error('Google Calendar created an event without returning its event ID.');
+  }
+  return response.data.id;
 }
 
 async function findConflictingAppointments(
@@ -131,6 +189,12 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
     throw new Error('Double booking prevention triggered: the requested time is already reserved.');
   }
 
+  const googleEventId = await createGoogleCalendarEvent(
+    calendarId,
+    details,
+    appointmentTime,
+    endTime
+  );
   const date = appointmentTime.toISOString().slice(0, 10);
   const row = {
     clinic_id: details.clinic_id,
@@ -143,7 +207,7 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
     duration_minutes: durationMinutes,
     status: details.status ?? 'pending',
     google_calendar_id: calendarId,
-    google_event_id: `google-calendar-${Date.now()}`,
+    google_event_id: googleEventId,
   };
 
   const { data, error } = await supabaseAdmin
@@ -152,7 +216,20 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
     .select('id, clinic_id, patient_name, patient_phone, service, appointment_time, google_calendar_id, google_event_id, status')
     .single();
 
-  if (error) throw new Error(error.message || 'Failed to save the appointment.');
+  if (error) {
+    const calendar = getGoogleCalendarClient();
+    try {
+      await calendar.events.delete({ calendarId, eventId: googleEventId });
+    } catch (cleanupError) {
+      const cleanupMessage = cleanupError instanceof Error
+        ? cleanupError.message
+        : 'Unknown Google Calendar cleanup error';
+      throw new Error(
+        `Failed to save the appointment (${error.message}). Google Calendar event ${googleEventId} could not be removed: ${cleanupMessage}`
+      );
+    }
+    throw new Error(error.message || 'Failed to save the appointment.');
+  }
 
   return {
     id: data.id,

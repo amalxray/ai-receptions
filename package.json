@@ -48,6 +48,7 @@
     "date-fns": "^4.4.0",
     "file-type": "^18.0.0",
     "framer-motion": "^11.18.2",
+    "googleapis": "^183.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.300.0",
     "mammoth": "^1.4.19",

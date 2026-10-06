@@ -4,10 +4,24 @@ import { bookAppointment } from './googleCalendarBooking';
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   inserts: [] as Array<Record<string, unknown>>,
+  googleInsert: vi.fn(),
+  googleDelete: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: { from: mocks.from },
+}));
+
+vi.mock('googleapis', () => ({
+  google: {
+    auth: { GoogleAuth: vi.fn() },
+    calendar: vi.fn(() => ({
+      events: {
+        insert: mocks.googleInsert,
+        delete: mocks.googleDelete,
+      },
+    })),
+  },
 }));
 
 function query(result: { data: unknown; error: null }) {
@@ -29,9 +43,12 @@ function query(result: { data: unknown; error: null }) {
 
 describe('Google Calendar booking configuration', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
     mocks.inserts = [];
+    mocks.googleInsert.mockResolvedValue({ data: { id: 'real-google-event-id' } });
     process.env.GOOGLE_CALENDAR_ID = 'fallback-calendar@example.com';
+    process.env.GOOGLE_CLIENT_EMAIL = 'calendar-service@example.com';
+    process.env.GOOGLE_PRIVATE_KEY = 'test-private-key';
   });
 
   it('prefers the clinic calendar id over the environment fallback', async () => {
@@ -47,7 +64,7 @@ describe('Google Calendar booking configuration', () => {
           service: 'Dental exam',
           appointment_time: '2026-10-07T09:00:00.000Z',
           google_calendar_id: 'clinic-calendar@example.com',
-          google_event_id: 'google-calendar-test',
+          google_event_id: 'real-google-event-id',
           status: 'pending',
         },
         error: null,
@@ -62,6 +79,10 @@ describe('Google Calendar booking configuration', () => {
     });
 
     expect(mocks.inserts[0].google_calendar_id).toBe('clinic-calendar@example.com');
+    expect(mocks.inserts[0].google_event_id).toBe('real-google-event-id');
+    expect(mocks.googleInsert).toHaveBeenCalledWith(expect.objectContaining({
+      calendarId: 'clinic-calendar@example.com',
+    }));
     expect(mocks.from.mock.calls[0][0]).toBe('clinics');
   });
 
@@ -78,7 +99,7 @@ describe('Google Calendar booking configuration', () => {
           service: 'Dental exam',
           appointment_time: '2026-10-07T09:00:00.000Z',
           google_calendar_id: 'fallback-calendar@example.com',
-          google_event_id: 'google-calendar-test',
+          google_event_id: 'real-google-event-id',
           status: 'pending',
         },
         error: null,
@@ -93,5 +114,6 @@ describe('Google Calendar booking configuration', () => {
     });
 
     expect(mocks.inserts[0].google_calendar_id).toBe('fallback-calendar@example.com');
+    expect(mocks.inserts[0].google_event_id).toBe('real-google-event-id');
   });
 });

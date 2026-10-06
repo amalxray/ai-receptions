@@ -1,17 +1,19 @@
-# Google Calendar booking scaffold
+# Google Calendar booking
 
-The booking endpoints currently save appointment records and use a clinic's
-`google_calendar_id` to scope the booking configuration. This is a scaffold:
-it does not call the Google Calendar API, create calendar events, or confirm
-that a slot is free in Google Calendar. The stored `google_event_id` is
-synthetic and must not be treated as a live Google event.
+The booking endpoint creates a real event in Google Calendar using a Service
+Account, then stores the returned event ID with the appointment. If saving the
+appointment fails after event creation, the service attempts to delete that
+event to avoid leaving an orphaned booking.
 
 ## Configure the calendar ID
 
 1. Apply [`db/migrations/20261018_google_calendar_booking_integration.sql`](../db/migrations/20261018_google_calendar_booking_integration.sql).
-2. Set `clinics.google_calendar_id` for each clinic. If it is empty, the service
-   uses the server-side `GOOGLE_CALENDAR_ID` environment variable.
-3. Restart the application after changing environment variables.
+2. Configure `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, and
+   `GOOGLE_CALENDAR_ID` in `.env.local` and the deployment environment. The
+   clinic's `google_calendar_id` overrides the environment calendar ID when set.
+3. Share the target calendar with the Service Account email and grant it
+   permission to make changes to events.
+4. Restart the application after changing environment variables.
 
 ## Endpoints
 
@@ -20,6 +22,6 @@ synthetic and must not be treated as a live Google event.
 - `POST /api/google-calendar/book` saves an appointment and requires an
   authenticated clinic administrator or owner.
 
-Both endpoints enforce clinic scoping. Configure Google service-account
-credentials and implement live event creation/synchronization before relying on
-Google Calendar itself as the source of truth.
+Both endpoints enforce clinic scoping. Availability currently checks the
+application's appointment records; it does not query external calendar events
+for free/busy conflicts.
