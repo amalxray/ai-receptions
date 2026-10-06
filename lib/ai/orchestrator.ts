@@ -525,7 +525,7 @@ export async function handleIncomingMessage(opts: {
         } else {
           availabilityNote =
             `REAL AVAILABILITY check found no available slot for the recommended provider in the near future. ` +
-            `Do NOT invent a date/time. Tell the patient that availability needs to be confirmed and offer to hand off to the clinic reception.`;
+            `Do NOT invent a date/time or offer a human transfer. Tell the patient no verified time is currently available and ask for another preferred date.`;
           logEvent('receptionist_real_slot_empty', {
             clinic_id: clinicId,
             conversation_id: conversationId,
@@ -696,15 +696,15 @@ export async function handleIncomingMessage(opts: {
         bookingNote =
           `[BOOKING_SAVED: ${attempt.appointment.id}] Booking CONFIRMED and SAVED to the appointments calendar. ` +
           `Scheduled: ${ARABIC_WEEKDAYS[bookedAt.weekday]} ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
-          `Reply with a warm Arabic confirmation using EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
+          `Reply in Arabic and include the exact phrase "تم تثبيت موعدك بنجاح في نظامنا", followed by EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
       } else if (attempt.action === 'already_booked') {
-        bookingNote = `[BOOKING_SAVED: ${attempt.appointment_id}] This conversation already has a confirmed booking. Reply confirming it warmly with its day/time.`;
+        bookingNote = `[BOOKING_SAVED: ${attempt.appointment_id}] This conversation already has a confirmed booking. Reply in Arabic including the exact phrase "تم تثبيت موعدك بنجاح في نظامنا" and its saved day/time.`;
       } else if (attempt.action === 'need_more_info') {
         bookingNote = `Booking NOT saved yet — nothing is confirmed. Still missing: ${attempt.missing.join(', ')}. Ask for exactly these details, one at a time.`;
       } else if (attempt.action === 'slot_unavailable') {
-        bookingNote = 'Booking NOT saved: the requested slot is no longer available. Apologize and invite the patient to choose another day or time (do not confirm a booking).';
+        bookingNote = 'Booking NOT saved: the requested slot is no longer available. Do not apologize for an automated booking system or mention a human transfer. Tell the patient this specific time is no longer available and ask them to choose another verified available time. Do not confirm a booking.';
       } else if (attempt.action === 'failed') {
-        bookingNote = 'Booking NOT saved: a system issue prevented completing it. Do not confirm — offer human help instead.';
+        bookingNote = 'Booking NOT saved: a system issue prevented completing it. Do not claim success, apologize for an automated booking system, or offer a human transfer. Tell the patient the appointment was not saved and ask them to retry with a verified available time.';
       }
     }
     // STEP 5 — Network Discovery Mode: computed ONLY when the patient
@@ -854,9 +854,8 @@ export async function handleIncomingMessage(opts: {
           'If the patient asks about clinic-specific details you do not have, say so honestly and offer human assistance.',
         ],
         handoffConditions: [
-          'Hand off to a human agent if the patient requests emergency care or has urgent symptoms.',
+          'For emergency care or urgent symptoms, advise immediate professional care and staff assistance.',
           'Hand off to a human agent if the patient explicitly asks to speak with staff.',
-          'Hand off to a human agent if the patient expresses dissatisfaction or a complaint.',
         ],
         intent: intelligence.intent,
         conversationState: intelligence.state,
@@ -933,10 +932,8 @@ export async function handleIncomingMessage(opts: {
         'Do not invent services, prices, or policies that are not in the context.',
       ],
       handoffConditions: [
-        'Hand off to a human agent if the patient requests emergency care.',
+        'For emergency care or urgent symptoms, advise immediate professional care and staff assistance.',
         'Hand off to a human agent if the patient explicitly asks to speak with staff.',
-        'Hand off to a human agent if the patient expresses dissatisfaction or a complaint.',
-        'Hand off to a human agent if you are unsure how to answer accurately.',
       ],
       intent: intelligence.intent,
       conversationState: intelligence.state,

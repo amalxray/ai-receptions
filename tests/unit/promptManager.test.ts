@@ -193,6 +193,36 @@ describe('Prompt Manager — receptionist grounding (no-hallucination behavior)'
     expect(prompt).toContain('2026-09-04T13:30:00.000Z');
     expect(prompt).toContain('NEVER invent another slot');
   });
+
+  it('requires a saved booking before using the exact Arabic confirmation and avoids booking handoff', () => {
+    const prompt = buildPrompt(settings, 'تم', [], [], undefined, {
+      receptionistState: {
+        state: 'BOOKING',
+        recommended_service_id: 'svc',
+        recommended_provider_id: 'p1',
+        patient_confirmed_booking: true,
+        pending_question: '',
+        booking_issue:
+          '[BOOKING_SAVED: appt-1] Reply in Arabic and include the exact phrase "تم تثبيت موعدك بنجاح في نظامنا".',
+        booking: {
+          service_id: 'svc',
+          provider_id: 'p1',
+          slot: '2026-09-04T13:30:00.000Z',
+          patient_name: 'أحمد',
+          phone: null,
+          email: null,
+          appointment_id: 'appt-1',
+          scheduled_at: '2026-09-04T13:30:00.000Z',
+        },
+      },
+    });
+
+    expect(prompt).toContain('تم تثبيت موعدك بنجاح في نظامنا');
+    expect(prompt).toContain('[BOOKING_SAVED: appt-1]');
+    expect(prompt).toContain('Do not claim that automated booking is unavailable');
+    expect(prompt).toContain('Never offer a human transfer because booking automation or availability is unavailable');
+    expect(prompt).not.toContain('offer to hand off to the clinic reception');
+  });
 });
 
 describe('Prompt Manager — STEP 4 source separation & anti-hallucination', () => {

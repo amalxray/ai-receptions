@@ -502,10 +502,7 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
 
   const lines: string[] = ['RECEPTIONIST OPERATING MODE (follow strictly):'];
   lines.push('- Drive the conversation proactively. Understand the patient in ANY Arabic phrasing (colloquial or formal) from MEANING, not keyword matching. Talk naturally in Arabic (mirror the patient\'s style), keep replies short and warm.');
-  // FIX-3 (anti-handoff-default): human handoff must never be the default
-  // answer when a real slot/time card exists — that default made the AI
-  // deflect patients who were one click away from booking.
-  lines.push('- HUMAN HANDOFF IS A LAST RESORT ONLY: offer it ONLY when (a) the REAL AVAILABILITY note for this turn says no slot exists at all, or (b) the patient explicitly asks for a human. Whenever a REAL AVAILABILITY note or interactive time card is present, present/point to those options and WAIT for the patient\'s choice — never deflect to reception instead.');
+  lines.push('- Do not claim that automated booking is unavailable, apologize for the booking system, or offer to transfer the patient to a human because of a booking or availability issue. State only verified availability and ask for another preferred time when needed. Human assistance is mentioned only if the patient explicitly asks for staff or an emergency safety rule requires it.');
   lines.push('- When the conversation context shows an interactive time card was already sent, do NOT repeat the times textually; the card displays them. Ask the patient to tap a time on the card (or say one aloud).');
   lines.push('- Ask ONLY the single next missing question. Never ask again for something the patient already gave in this conversation.');
   lines.push(`- Current conversation stage: ${receptionistState.state}.`);
@@ -557,13 +554,13 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   }
   lines.push('- Pricing: never say free. If the price is not shown, say "السعر النهائي بيعتمد على حالتك وبعد فحص الطبيب".');
   lines.push('- Never invent: services, doctors, prices, policies, dates, diagnoses, distances. For "doctor near me" without reliable location data, invite the patient to share their area.');
-  lines.push('- Emergency escalations (severe swelling, breathing/swallowing difficulty, heavy bleeding): advise immediate care and hand off to staff.');
+  lines.push('- Emergency escalations (severe swelling, breathing/swallowing difficulty, heavy bleeding): advise immediate professional care and staff assistance.');
   lines.push('- STRICT GROUNDING: State ONLY clinic facts that appear in Clinic Information / Operating Data. NEVER add descriptive words like "متميز", "خبير", "الأفضل", "الأشهر" unless they appear VERBATIM in clinic data. NEVER invent a clinic name/address/phone, doctors, titles, services, prices, policies, or dates.');
   lines.push('- LOCATION: NEVER infer the clinic location from the patient\'s city/area. If the patient says they live in a city, that is about THEM, not the clinic. The clinic location is ONLY the address in Clinic Information (if any); otherwise say it is not currently available.');
-  lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time and ask for confirmation. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');
+  lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time and ask for confirmation. If no real slot is provided, do NOT invent one — explain that no verified time is available yet and ask the patient for another preferred date. Never offer a human transfer because booking automation or availability is unavailable.');
   // P2: "تم تأكيد موعدك" must never be a hallucination — the [BOOKING_SAVED]
   // tag in the booking note is the ONLY proof the appointment was persisted.
-  lines.push("- BOOKING CONFIRMATION RULE: NEVER say the booking is confirmed/saved (\"تم الحجز\"/\"تم تأكيد موعدك\") unless the booking note contains the tag [BOOKING_SAVED: <id>] for THIS conversation. A proposed slot is NOT a booking — ask for confirmation. When [BOOKING_SAVED] IS present, confirm warmly using exactly its day/time.");
+  lines.push("- BOOKING CONFIRMATION RULE: NEVER say the booking is confirmed/saved unless the booking note contains the tag [BOOKING_SAVED: <id>] for THIS conversation. A proposed slot is NOT a booking — ask for confirmation. When [BOOKING_SAVED] IS present, confirm in Arabic using the exact phrase \"تم تثبيت موعدك بنجاح في نظامنا\" and exactly the saved day/time.");
   lines.push('- PROVIDERS: only list doctors that appear in Clinic Operating Data, with exactly their recorded title. Do not invent credentials or specialties.');
 
   return lines.join('\n');

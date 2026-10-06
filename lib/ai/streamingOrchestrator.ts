@@ -140,10 +140,8 @@ export async function streamAndRecordResponse(opts: {
       'Do not invent services, prices, or policies that are not in the context.',
     ],
     handoffConditions: [
-      'Hand off to a human agent if the patient requests emergency care.',
+      'For emergency care or urgent symptoms, advise immediate professional care and staff assistance.',
       'Hand off to a human agent if the patient explicitly asks to speak with staff.',
-      'Hand off to a human agent if the patient expresses dissatisfaction or a complaint.',
-      'Hand off to a human agent if you are unsure how to answer accurately.',
     ],
     intent: intelligence.intent,
     conversationState: intelligence.state,
