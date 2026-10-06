@@ -36,6 +36,7 @@ import { buildDiscoveryGuidance } from '@/lib/ai/discoveryGuidance';
 import { unavailableReply, expressesTreatmentDesire } from '@/lib/ai/replyText';
 import { persistHandoffReply } from '@/lib/ai/handoffMessages';
 import { generateWithFailover } from '@/lib/ai/resilience';
+import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
 
 type HistoryMessage = Pick<Message, 'role' | 'content'>;
 
@@ -325,7 +326,7 @@ export async function handleIncomingMessage(opts: {
     // clock is UTC on Vercel while the clinic lives in Asia/Hebron (UTC+3).
     const workingHours = await loadClinicWorkingHours(clinicId, clinicProfile.timezone);
     const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
-    const isImagingCenter = clinicProfile.activityType === 'imaging_center';
+    const bookingPolicy = getChatBookingPolicy(clinicProfile.slug, clinicProfile.activityType);
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
@@ -433,7 +434,7 @@ export async function handleIncomingMessage(opts: {
             preferredDate: currentState!.preferred_date ?? undefined,
             preferredTimeRange: currentState!.preferred_time_range ?? undefined,
             preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
-            checkGoogleCalendar: isImagingCenter,
+            checkGoogleCalendar: bookingPolicy.checkGoogleCalendar,
           });
           if (clinicLevel.found && clinicLevel.slot) {
             await persistReceptionistSlot(clinicId, conversationId, {
@@ -491,7 +492,7 @@ export async function handleIncomingMessage(opts: {
           preferredTimeRange: currentState!.preferred_time_range ?? undefined,
           preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
           timeZone: clinicProfile?.timezone ?? undefined,
-          checkGoogleCalendar: isImagingCenter,
+          checkGoogleCalendar: bookingPolicy.checkGoogleCalendar,
         });
         if (availability.found) {
           await persistReceptionistSlot(clinicId, conversationId, {
@@ -674,24 +675,24 @@ export async function handleIncomingMessage(opts: {
           email: postTurnState.booking.email,
         });
       }
-      const imagingHasRequiredDetails = Boolean(
+      const hasRequiredBookingDetails = Boolean(
         postTurnState.booking.service_id &&
         postTurnState.booking.slot &&
         postTurnState.booking.patient_name?.trim() &&
         postTurnState.booking.phone?.trim()
       );
-      const shouldWaitForImagingSummaryConsent = isImagingCenter && imagingHasRequiredDetails &&
-        (!postTurnState.imaging_summary_presented || !rawConfirmation);
+      const shouldWaitForBookingSummaryConsent = hasRequiredBookingDetails &&
+        (!postTurnState.booking_summary_presented || !rawConfirmation);
       let attempt: Awaited<ReturnType<typeof attemptConversationBooking>> | null = null;
-      if (shouldWaitForImagingSummaryConsent) {
-        if (!postTurnState.imaging_summary_presented) {
-          postTurnState.imaging_summary_presented = true;
-          await persistReceptionistSlot(clinicId, conversationId, { imaging_summary_presented: true });
+      if (shouldWaitForBookingSummaryConsent) {
+        if (!postTurnState.booking_summary_presented) {
+          postTurnState.booking_summary_presented = true;
+          await persistReceptionistSlot(clinicId, conversationId, { booking_summary_presented: true });
         }
         const summarySlot = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(postTurnState.booking.slot ?? '');
-        const summaryService = operatingData.services.find((service) => service.id === postTurnState.booking.service_id)?.name ?? 'خدمة التصوير المختارة';
+        const summaryService = operatingData.services.find((service) => service.id === postTurnState.booking.service_id)?.name ?? 'الخدمة المختارة';
         bookingNote =
-          `IMAGING BOOKING SUMMARY — not saved yet. Service: ${summaryService}; requested verified slot: ${summarySlot ? `${summarySlot[1]} ${summarySlot[2]}` : postTurnState.booking.slot}; patient: ${postTurnState.booking.patient_name}; phone: ${postTurnState.booking.phone}. ` +
+          `BOOKING SUMMARY — not saved yet. Service: ${summaryService}; requested verified slot: ${summarySlot ? `${summarySlot[1]} ${summarySlot[2]}` : postTurnState.booking.slot}; patient: ${postTurnState.booking.patient_name}; phone: ${postTurnState.booking.phone}. ` +
           'Present this concise summary in Arabic and ask one explicit yes/no question to confirm it. Do NOT call booking tools or claim the appointment is saved in this turn.';
       } else {
         attempt = await attemptConversationBooking({
@@ -701,8 +702,9 @@ export async function handleIncomingMessage(opts: {
           patientConfirmedBooking: bookingConfirmed,
           booking: postTurnState.booking,
           operatingData,
-          requirePhone: isImagingCenter,
-          googleCalendar: isImagingCenter,
+          requirePhone: bookingPolicy.requirePhone,
+          googleCalendar: bookingPolicy.createGoogleCalendarEvent,
+          clinicName: clinicProfile.name,
           timeZone: clinicProfile.timezone,
           // Deterministic last-chance service resolution by the name the patient
           // actually used ("بانوراما" → "تصوير بانوراما") — the same catalog

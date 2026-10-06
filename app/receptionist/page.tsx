@@ -2,6 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { ChatPersonaAvatar } from '@/components/chat/ChatPersona';
 
 type ChatMessage = {
   role: 'assistant' | 'user';
@@ -226,11 +227,10 @@ function ReceptionistForm() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto max-w-2xl space-y-4">
           {messages.map((message, index) => (
-            <div
-              key={`${message.role}-${index}`}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
+            <div key={`${message.role}-${index}`} dir="ltr" className={`flex items-start gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {message.role === 'assistant' && <ChatPersonaAvatar persona="receptionist" size="small" />}
               <div
+                dir="rtl"
                 className={`max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-6 ${
                   message.role === 'user'
                     ? 'bg-cyan-500/15 text-cyan-100'
@@ -243,13 +243,15 @@ function ReceptionistForm() {
               >
                 {message.text}
               </div>
+              {message.role === 'user' && <ChatPersonaAvatar persona="patient" size="small" />}
             </div>
           ))}
 
           {/* Streaming indicator */}
           {isStreaming && (
-            <div className="flex justify-start">
-              <div className="max-w-[85%] rounded-3xl bg-slate-800/80 px-4 py-3 text-sm leading-6 text-slate-200">
+            <div dir="ltr" className="flex items-start justify-start gap-3">
+              <ChatPersonaAvatar persona="receptionist" active size="small" />
+              <div dir="rtl" className="max-w-[85%] rounded-3xl bg-slate-800/80 px-4 py-3 text-sm leading-6 text-slate-200">
                 {streamText}
                 <span className="ml-1 inline-block h-3 w-0.5 animate-pulse bg-cyan-400 align-middle" />
               </div>
@@ -258,7 +260,8 @@ function ReceptionistForm() {
 
           {/* Typing indicator */}
           {isSubmitting && !isStreaming && (
-            <div className="flex justify-start">
+            <div dir="ltr" className="flex items-center justify-start gap-3">
+              <ChatPersonaAvatar persona="receptionist" active size="small" />
               <div className="flex items-center gap-1 rounded-3xl bg-slate-800/80 px-4 py-3">
                 <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
                 <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:0.1s]" />

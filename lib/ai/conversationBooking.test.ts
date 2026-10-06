@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
+  chain.update = vi.fn(() => chain);
   chain.maybeSingle = vi.fn(async () => ({ data: { metadata: {} }, error: null }));
   return {
     supabaseAdmin: { from: vi.fn(() => chain) },
@@ -41,6 +42,7 @@ const mocks = vi.hoisted(() => {
     isValidBookingPhone: vi.fn(
       (value: unknown) => typeof value === 'string' && /\d/.test(value) && value.trim().length >= 5
     ),
+    createGoogleCalendarBooking: vi.fn(async (_params: Record<string, unknown>) => ({ id: 'appt-1', google_event_id: 'event-1', status: 'confirmed' })),
   };
 });
 
@@ -50,6 +52,7 @@ vi.mock('@/lib/services/bookingService', () => ({
   createBooking: mocks.createBooking,
   isValidBookingPhone: mocks.isValidBookingPhone,
 }));
+vi.mock('@/lib/services/googleCalendarBooking', () => ({ bookAppointment: mocks.createGoogleCalendarBooking }));
 
 const operatingData: ClinicOperatingData = {
   services: [
@@ -248,6 +251,35 @@ describe('attemptConversationBooking', () => {
     });
     expect(result).toEqual({ action: 'already_booked', appointment_id: 'appt-existing' });
     expect(mocks.createBooking).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['amal-clinic', '11111111-1111-1111-1111-111111111111'],
+    ['hala-clinic', '22222222-2222-2222-2222-222222222222'],
+    ['amal-x-ray-center', '33333333-3333-3333-3333-333333333333'],
+  ])('%s chat booking creates a tenant-scoped Google Calendar event after consent', async (_slug, clinicId) => {
+    const result = await attemptConversationBooking({
+      clinicId,
+      conversationId: 'conv-1',
+      state: 'BOOKING',
+      patientConfirmedBooking: true,
+      booking: baseBooking,
+      operatingData,
+      requirePhone: true,
+      googleCalendar: true,
+      clinicName: _slug,
+      timeZone: 'Asia/Hebron',
+    });
+
+    expect(result.action).toBe('booked');
+    expect(mocks.createGoogleCalendarBooking).toHaveBeenCalledWith(expect.objectContaining({
+      clinic_id: clinicId,
+      clinic_name: _slug,
+      patient_name: baseBooking.patient_name,
+      patient_phone: baseBooking.phone,
+      service: 'تصوير بانوراما',
+      status: 'confirmed',
+    }));
   });
 });
 
