@@ -297,11 +297,46 @@ export function Pricing() {
   );
 }
 
-/* ────────────── Clinic Ads (carousel) ────────────── */
+/* ────────────── Clinic Ads (LIVE) ────────────── */
 export function ClinicAds() {
   const copy = useLandingCopy();
-  const [active, setActive] = useState(0);
-  const items = copy.clinicAds.items;
+  const [ads, setAds] = useState<Array<{ id: string; title: string; description: string | null; image_url: string | null; cta_text: string; cta_link: string | null }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch('/api/booking/ads?limit=3');
+        const body = await response.json();
+        if (!response.ok) throw new Error(body?.error ?? 'تعذّر تحميل الإعلانات');
+        if (!cancelled) setAds(body.data?.ads ?? []);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'تعذّر تحميل الإعلانات');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-16 lg:py-20"><div className="mx-auto max-w-6xl px-4 animate-pulse"><div className="h-64 rounded-3xl bg-slate-200" /></div></section>;
+  }
+
+  if (error || ads.length === 0) {
+    return (
+      <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-16 lg:py-20">
+        <div className="mx-auto max-w-3xl px-4 text-center">
+          <p className="text-4xl">📢</p>
+          <h2 className="mt-4 font-heading text-2xl font-black text-landing-text">لا توجد إعلانات متاحة حالياً</h2>
+          <p className="mt-2 text-sm text-landing-text/60">سيظهر هنا عرض العيادة عند إضافته.</p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-20 lg:py-28">
@@ -309,47 +344,21 @@ export function ClinicAds() {
       <div aria-hidden="true" className="pointer-events-none absolute -right-16 bottom-0 -z-10 h-72 w-72 rounded-full bg-[#0EA5E9]/10 blur-3xl" />
       <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
-          <h2 className="text-center font-heading text-3xl font-extrabold sm:text-4xl">
-            {copy.clinicAds.title}
-          </h2>
+          <h2 className="text-center font-heading text-3xl font-extrabold sm:text-4xl">{copy.clinicAds.title}</h2>
         </FadeUp>
-
         <FadeUp delay={0.1} className="mx-auto mt-12 max-w-4xl">
-          <div className="overflow-hidden">
-            <div
-              className="flex transition-transform duration-500 ease-out"
-              style={{ transform: `translateX(${active * 100}%)` }}
-            >
-              {items.map((ad, i) => (
-                <div key={i} className="w-full shrink-0 px-2">
-                  <div className="flex flex-col items-center gap-4 rounded-3xl border border-[#E2E8F0] bg-white p-8 text-center text-landing-text shadow-sm transition hover:shadow-lg">
-                    <span className="text-5xl">{ad.icon}</span>
-                    <span className="rounded-full bg-landing-indigo/10 px-3 py-1 text-xs font-bold text-landing-indigo">
-                      {ad.badge}
-                    </span>
-                    <h3 className="font-heading text-xl font-bold">{ad.name}</h3>
-                    <p className="text-sm text-landing-text/70">{ad.offer}</p>
-                    {/* TODO: connect to clinic_ads table once live content is available */}
-                    <LandingButton href="#pricing" variant="secondary">
-                      {copy.clinicAds.cta}
-                    </LandingButton>
-                  </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {ads.map((ad) => (
+              <div key={ad.id} className="overflow-hidden rounded-3xl border border-[#E2E8F0] bg-white p-0 text-center text-landing-text shadow-sm transition hover:shadow-lg">
+                <div className="flex h-48 items-center justify-center overflow-hidden bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200">
+                  {ad.image_url ? <img src={ad.image_url} alt={ad.title} className="h-full w-full object-cover" loading="lazy" /> : <span className="text-5xl">📢</span>}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Dots */}
-          <div className="mt-6 flex justify-center gap-2">
-            {items.map((_, i) => (
-              <button
-                key={i}
-                aria-label={`ad ${i + 1}`}
-                onClick={() => setActive(i)}
-                className={`h-2.5 rounded-full transition-all ${
-                  active === i ? 'w-6 bg-[#8B5CF6]' : 'w-2.5 bg-slate-200'
-                }`}
-              />
+                <div className="p-8">
+                  <h3 className="font-heading text-xl font-bold">{ad.title}</h3>
+                  {ad.description && <p className="mt-3 text-sm text-landing-text/70">{ad.description}</p>}
+                  {ad.cta_link && <a href={ad.cta_link} className="mt-5 inline-flex items-center gap-2 rounded-full bg-landing-indigo px-4 py-2 text-sm font-bold text-white">{ad.cta_text || copy.clinicAds.cta}</a>}
+                </div>
+              </div>
             ))}
           </div>
         </FadeUp>

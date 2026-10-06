@@ -36,11 +36,12 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
   if (!ALLOWED_KEYS.has(key)) return NextResponse.json({ error: 'قسم غير معروف' }, { status: 404 });
 
   try {
-    const body = (await req.json()) as { content?: unknown };
-    if (typeof body.content !== 'object' || body.content === null || Array.isArray(body.content)) {
+    const body = (await req.json()) as { content?: unknown; is_visible?: boolean };
+    const isVisible = typeof body.is_visible === 'boolean' ? body.is_visible : undefined;
+    if (body.content !== undefined && body.content !== null && (typeof body.content !== 'object' || Array.isArray(body.content))) {
       return NextResponse.json({ error: 'content يجب أن يكون كائن JSON' }, { status: 400 });
     }
-    let content = body.content as Record<string, unknown>;
+    let content = body.content === undefined || body.content === null ? null : body.content as Record<string, unknown>;
     const contentSchemas = {
       hero: heroContentSchema,
       features: featuresContentSchema,
@@ -63,9 +64,11 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       content = parsed.data as Record<string, unknown>;
     }
 
-    await upsertLandingSection(key, content, gate.admin.user_id);
+    if (content !== null || isVisible !== undefined) {
+      await upsertLandingSection(key, content, gate.admin.user_id, isVisible);
+    }
     revalidatePath('/');
-    logEvent('admin_landing_section_updated', { key, by: gate.admin.email });
+    logEvent('admin_landing_section_updated', { key, by: gate.admin.email, is_visible: isVisible });
     return NextResponse.json({ data: { ok: true } });
   } catch (err) {
     logEvent('admin_landing_section_put_error', { key, error: err instanceof Error ? err.message : String(err) }, 'error');
