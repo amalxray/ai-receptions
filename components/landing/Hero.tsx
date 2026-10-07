@@ -11,6 +11,7 @@ import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { TextShimmer } from '@/components/ui/text-shimmer';
+import Image from 'next/image';
 import { landingCopy } from '@/lib/landing/landing-copy';
 
 export type HeroContent = {
@@ -23,6 +24,7 @@ export type HeroContent = {
   ctaSecondary: string;
   ctaSecondaryHref: string;
   stats: Array<{ value: string; label: string }>;
+  image?: string;
 };
 
 
@@ -122,6 +124,20 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
         <motion.div style={{ y: blobY }} animate={{ x: [0, -24, 0] }} transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }} className="absolute right-0 top-32 h-96 w-96 rounded-full bg-[#22D3EE]/25 blur-[100px]" />
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-violet-950/80 to-transparent" />
       </div>
+    {heroContent.image && (
+      <div className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <Image
+          src={heroContent.image}
+          alt="صورة الغلاف لمركز أمل"
+          width={1200}
+          height={630}
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          unoptimized
+          className="w-full rounded-2xl object-cover shadow-2xl"
+        />
+      </div>
+    )}
+
 
       <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-4 lg:grid-cols-2 lg:px-8">
         {/* ── Copy (RTL) ── */}

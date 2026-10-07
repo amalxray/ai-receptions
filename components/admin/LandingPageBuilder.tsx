@@ -158,6 +158,12 @@ export default function LandingPageBuilder() {
       : section));
   };
 
+  const handleHeroImageSaved = (image: string) => {
+    setSections((current) => current.map((section) => section.section_key === 'hero'
+      ? { ...section, content: { ...(section.content ?? {}), image }, updated_at: new Date().toISOString() }
+      : section));
+  };
+
   return (
     <div className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -208,7 +214,7 @@ export default function LandingPageBuilder() {
       )}
 
       {selectedSection?.section_key === 'hero' && (
-        <HeroEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: HeroContent) => handleSectionSaved('hero', content)} />
+        <HeroEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: HeroContent) => handleSectionSaved('hero', content)} onImageSaved={handleHeroImageSaved} />
       )}
       {selectedSection?.section_key === 'features' && (
         <FeaturesEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: FeaturesContent) => handleSectionSaved('features', content)} />

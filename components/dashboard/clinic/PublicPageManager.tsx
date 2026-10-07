@@ -504,12 +504,10 @@ export default function PublicPageManager() {
             label="صورة الغلاف"
             aspect="wide"
             title="غلاف الصفحة العامة"
+            uploadEndpoint="/api/clinic/public-page/cover"
             value={form.cover_url}
             onChange={(url) => {
-              console.log('[PublicPageManager] received uploaded cover URL', {
-                hasCoverUrl: Boolean(url),
-              });
-              setForm((f) => ({ ...f, cover_url: url }));
+              setForm((current) => ({ ...current, cover_url: url }));
             }}
           />
           <label className="block">

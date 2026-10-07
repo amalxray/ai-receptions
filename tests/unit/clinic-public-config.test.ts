@@ -109,6 +109,14 @@ describe('readPublicProfile — defaults + stored values', () => {
     expect(p.description).toBe('مركز طبي حديث');
     expect(p.about).toBeUndefined();
   });
+
+  it('returns the persisted cover URL for the owner screen', () => {
+    const p = readPublicProfile(
+      { public_profile: { cover_url: 'https://storage.example/clinic/cover.webp' } },
+      'imaging_center'
+    );
+    expect(p.cover_url).toBe('https://storage.example/clinic/cover.webp');
+  });
 });
 
 describe('updatePublicPageConfig — tenant-scoped save', () => {
@@ -127,6 +135,15 @@ describe('updatePublicPageConfig — tenant-scoped save', () => {
     expect(mockState.updateCall.settings.public_profile.description).toBe('مركز حديث');
     expect(mockState.updateCall.settings.public_profile.show_phone).toBe(true);
     expect(mockState.eqCalls).toContain(`id:${CID}`);
+  });
+
+  it('persists the uploaded cover URL into clinics.settings.public_profile', async () => {
+    mockState.row = { id: CID, activity_type: 'imaging_center', settings: { public_profile: { tagline: 'المركز' } } };
+    const coverUrl = 'https://storage.example/clinic/cover.webp';
+    const res = await updatePublicPageConfig(CID, { cover_url: coverUrl });
+    expect(res.ok).toBe(true);
+    expect(mockState.updateCall.settings.public_profile.cover_url).toBe(coverUrl);
+    expect(mockState.updateCall.settings.public_profile.tagline).toBe('المركز');
   });
 
   it('empty string deletes a field instead of storing it', async () => {

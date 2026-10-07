@@ -17,11 +17,22 @@ const safeHref = z
     }
   }, 'استخدم رابطاً داخلياً أو رابط HTTPS صالحاً');
 
+const safeMediaUrl = z.string().trim().max(1000).refine((value) => {
+  if (!value) return true;
+  if (value.startsWith('/') && !value.startsWith('//')) return !/[\\\s]/.test(value);
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'استخدم رابط صورة محلياً أو HTTPS صالحاً');
+
 export const heroContentSchema = z.object({
   headline1: nonEmptyText(160),
   headline2: nonEmptyText(160),
   paragraph: nonEmptyText(500),
   description: nonEmptyText(800),
+  image: safeMediaUrl.optional().default(''),
   ctaPrimary: nonEmptyText(100),
   ctaPrimaryHref: safeHref,
   ctaSecondary: nonEmptyText(100),
@@ -33,16 +44,6 @@ export const heroContentSchema = z.object({
 }).strict();
 
 export type ValidatedHeroContent = z.infer<typeof heroContentSchema>;
-
-const safeMediaUrl = z.string().trim().max(1000).refine((value) => {
-  if (!value) return true;
-  if (value.startsWith('/') && !value.startsWith('//')) return !/[\\\s]/.test(value);
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}, 'استخدم رابط صورة محلياً أو HTTPS صالحاً');
 
 export { safeMediaUrl as landingMediaUrlSchema };
 

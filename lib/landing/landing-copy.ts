@@ -41,6 +41,7 @@ export const landingCopy = {
     headline2: 'حتى وأنت في غرفة العلاج.',
     paragraph: 'كل مكالمة فائتة… مريض يذهب لعيادة أخرى، والفرصة تضيع في ثوانٍ.',
     description: 'منصة AI-Receptions تشتغل كموظفة استقبال ذكية، تستقبل المرضى، ترد على الأسئلة، وتحجز المواعيد بوضوح، حتى عندما يكون الطبيب في الجلسة أو خارج الدوام.',
+    image: '/images/receptionist-avatar-full.jpg',
     ctaPrimary: 'ابدأ تجربتك المجانية لمدة 30 يوماً',
     ctaPrimaryHref: '/register',
     ctaSecondary: 'شاهد كيف يعمل',

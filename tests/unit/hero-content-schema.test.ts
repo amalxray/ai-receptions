@@ -14,6 +14,12 @@ describe('heroContentSchema', () => {
     expect(heroContentSchema.safeParse(validHero).success).toBe(true);
   });
 
+  it('accepts local or HTTPS cover images and rejects unsafe image URLs', () => {
+    expect(heroContentSchema.safeParse({ ...validHero, image: '/images/cover.webp' }).success).toBe(true);
+    expect(heroContentSchema.safeParse({ ...validHero, image: 'https://example.com/cover.webp' }).success).toBe(true);
+    expect(heroContentSchema.safeParse({ ...validHero, image: 'javascript:alert(1)' }).success).toBe(false);
+  });
+
   it('rejects empty required text', () => {
     expect(heroContentSchema.safeParse({ ...validHero, headline1: '   ' }).success).toBe(false);
   });
