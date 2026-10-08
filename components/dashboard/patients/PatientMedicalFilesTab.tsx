@@ -18,8 +18,10 @@ import {
   FileIcon,
   RefreshCw,
   HardDrive,
+  Activity,
 } from 'lucide-react';
 import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
+import AiXrayAnalyzer from '@/components/features/AiXrayAnalyzer';
 
 export type MedicalFileRow = {
   id: string;
@@ -210,6 +212,9 @@ export default function PatientMedicalFilesTab({
   const uploadSeqRef = useRef(0);
 
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [panoramaUrls, setPanoramaUrls] = useState<Record<string, string>>({});
+  const [panoramaLoadingId, setPanoramaLoadingId] = useState<string | null>(null);
+  const [panoramaErrors, setPanoramaErrors] = useState<Record<string, string>>({});
   const [fileToDelete, setFileToDelete] = useState<MedicalFileRow | null>(null);
   const [pendingUpload, setPendingUpload] = useState<File | null>(null);
   const [uploadCategory, setUploadCategory] = useState<MedicalCategory>('other');
@@ -421,6 +426,37 @@ export default function PatientMedicalFilesTab({
       setErr(e instanceof Error ? e.message : 'تعذر تحميل الملف');
     } finally {
       setBusyActionId(null);
+    }
+  };
+
+  const loadPanoramaImage = async (file: MedicalFileRow) => {
+    if (!clinicId || panoramaLoadingId) return;
+    setPanoramaLoadingId(file.id);
+    setPanoramaErrors((previous) => {
+      const next = { ...previous };
+      delete next[file.id];
+      return next;
+    });
+
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(
+        `/api/clinic/medical-files/${encodeURIComponent(file.id)}?clinic_id=${encodeURIComponent(clinicId)}`,
+        { headers },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.data?.signed_url) {
+        throw new Error(body?.error || 'تعذّر تحميل صورة الأشعة.');
+      }
+
+      setPanoramaUrls((previous) => ({ ...previous, [file.id]: String(body.data.signed_url) }));
+    } catch (error) {
+      setPanoramaErrors((previous) => ({
+        ...previous,
+        [file.id]: error instanceof Error ? error.message : 'تعذّر تحميل صورة الأشعة.',
+      }));
+    } finally {
+      setPanoramaLoadingId(null);
     }
   };
 
@@ -802,7 +838,9 @@ export default function PatientMedicalFilesTab({
                     visible: { opacity: 1, y: 0 },
                   }}
                   whileHover={{ y: -3 }}
-                  className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border ${meta.border} bg-slate-900/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 ${meta.glow} hover:border-opacity-80`}
+                  className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border ${meta.border} bg-slate-900/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 ${meta.glow} hover:border-opacity-80 ${
+                    cat === 'panorama' && isImage && panoramaUrls[file.id] ? 'sm:col-span-2 lg:col-span-3' : ''
+                  }`}
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2">
@@ -841,6 +879,65 @@ export default function PatientMedicalFilesTab({
                         )}
                       </div>
                     </div>
+                    {cat === 'panorama' && isImage && (
+                      <div className="mt-4 border-t border-slate-800/80 pt-4">
+                        {panoramaUrls[file.id] ? (
+                          <div className="space-y-3">
+                            {panoramaErrors[file.id] ? (
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-rose-300" role="alert">
+                                <span>{panoramaErrors[file.id]}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPanoramaUrls((previous) => {
+                                      const next = { ...previous };
+                                      delete next[file.id];
+                                      return next;
+                                    });
+                                    void loadPanoramaImage(file);
+                                  }}
+                                  className="rounded-lg border border-rose-400/30 px-3 py-1.5 font-semibold transition hover:bg-rose-500/10"
+                                >
+                                  إعادة تحميل الصورة
+                                </button>
+                              </div>
+                            ) : (
+                              <AiXrayAnalyzer
+                                imageUrl={panoramaUrls[file.id]}
+                                imageAlt={`صورة بانوراما للمريض: ${file.original_filename || 'صورة أشعة'}`}
+                                onImageError={() =>
+                                  setPanoramaErrors((previous) => ({
+                                    ...previous,
+                                    [file.id]: 'انتهت صلاحية رابط الصورة. أعد تحميلها للمتابعة.',
+                                  }))
+                                }
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => void loadPanoramaImage(file)}
+                              disabled={panoramaLoadingId !== null}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2.5 text-xs font-bold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-cyan-500/15 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {panoramaLoadingId === file.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <Activity className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              {panoramaLoadingId === file.id ? 'جارٍ تحميل صورة الأشعة...' : 'عرض الصورة والتحليل بالذكاء الاصطناعي'}
+                            </button>
+                            {panoramaErrors[file.id] && (
+                              <p className="text-xs text-rose-300" role="alert">
+                                {panoramaErrors[file.id]}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between border-t border-slate-800/80 pt-3">
