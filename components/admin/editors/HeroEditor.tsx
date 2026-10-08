@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import Hero, { type HeroContent } from '@/components/landing/Hero';
 import { landingCopy } from '@/lib/landing/landing-copy';
 
@@ -10,6 +10,7 @@ type HeroEditorProps = {
   initialContent: Record<string, unknown> | null;
   onClose: () => void;
   onSaved: (content: HeroContent) => void;
+  onImageSaved: (image: string) => void;
 };
 
 function normalizeContent(content: Record<string, unknown> | null): HeroContent {
@@ -22,10 +23,11 @@ function normalizeContent(content: Record<string, unknown> | null): HeroContent 
   };
 }
 
-export default function HeroEditor({ initialContent, onClose, onSaved }: HeroEditorProps) {
+export default function HeroEditor({ initialContent, onClose, onSaved, onImageSaved }: HeroEditorProps) {
   const [draft, setDraft] = useState<HeroContent>(() => normalizeContent(initialContent));
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -38,6 +40,32 @@ export default function HeroEditor({ initialContent, onClose, onSaved }: HeroEdi
       ...current,
       stats: current.stats.map((stat, statIndex) => statIndex === index ? { ...stat, [key]: value } : stat),
     }));
+  };
+
+  const uploadImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    setUploadingImage(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/admin/landing-page/hero/image', { method: 'POST', body: form });
+      const body = await response.json().catch(() => null) as { error?: string; data?: { url?: string } } | null;
+      if (!response.ok || !body?.data?.url) throw new Error(body?.error ?? 'تعذر رفع صورة الغلاف وحفظها');
+
+      setDraft((current) => ({ ...current, image: body.data?.url ?? '' }));
+      onImageSaved(body.data.url);
+      setSuccess('تم رفع صورة الغلاف وحفظها في الموقع.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر رفع صورة الغلاف وحفظها');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const save = async () => {
@@ -91,6 +119,17 @@ export default function HeroEditor({ initialContent, onClose, onSaved }: HeroEdi
           <div className="space-y-4">
             {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             {success && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
+            <label className="block text-sm font-medium text-slate-700">
+              صورة الغلاف
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => void uploadImage(event)} disabled={uploadingImage || saving} className={`${inputClass} file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-1.5 file:font-semibold file:text-violet-700`} />
+              <span className="mt-1 block text-xs text-slate-500">JPEG أو PNG أو WebP أو GIF، بحد أقصى 10 ميغابايت. يُرفع ويحفظ مباشرة.</span>
+            </label>
+            {draft.image && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                <span className="truncate text-xs text-slate-500" dir="ltr">{draft.image}</span>
+                <button type="button" onClick={() => update('image', '')} className="shrink-0 rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-600">إزالة الصورة</button>
+              </div>
+            )}
             {textField('headline1', 'العنوان الرئيسي')}
             {textField('headline2', 'العنوان الفرعي')}
             {textField('paragraph', 'النص التمهيدي', { multiline: true })}
@@ -121,7 +160,7 @@ export default function HeroEditor({ initialContent, onClose, onSaved }: HeroEdi
 
             <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
               <button type="button" onClick={() => setPreview((value) => !value)} className="rounded-full border border-violet-300 px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50">{preview ? 'إخفاء المعاينة' : 'معاينة التغييرات'}</button>
-              <button type="button" onClick={() => void save()} disabled={saving} className="rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">{saving ? 'جارٍ الحفظ…' : 'حفظ Hero'}</button>
+              <button type="button" onClick={() => void save()} disabled={saving || uploadingImage} className="rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">{saving ? 'جارٍ الحفظ…' : 'حفظ Hero'}</button>
             </div>
           </div>
 

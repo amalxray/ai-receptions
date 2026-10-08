@@ -1,29 +1,34 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useClinicContext } from '@/lib/useClinicContext';
 
 interface Props {
   value: string | null;
-  onChange: (url: string) => void;
+  onChange: (url: string) => void | Promise<void>;
   label: string;
   aspect?: 'square' | 'wide';
   /** Optional hint stored as media title for traceability. */
   title?: string;
+  /** Optional tenant-scoped upload API; defaults to the public media gallery. */
+  uploadEndpoint?: string;
 }
 
 /**
  * IMAGE UPLOAD — picks a local file and uploads it through the guarded
- * /api/clinic/public-media endpoint (tenant-scoped storage path under the
- * clinic-public-media bucket), then reports the returned public_url.
+ * guarded tenant-scoped upload API, then reports its persisted public URL.
  * Replaces raw "https://…" URL text inputs so owners never paste links.
  */
-export default function ImageUpload({ value, onChange, label, aspect = 'square', title }: Props) {
+export default function ImageUpload({ value, onChange, label, aspect = 'square', title, uploadEndpoint = '/api/clinic/public-media' }: Props) {
   const { clinicId, authHeaders } = useClinicContext();
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(value ?? null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setPreview(value ?? null);
+  }, [value]);
 
   async function handleUpload(file: File) {
     if (!clinicId) {
@@ -37,24 +42,24 @@ export default function ImageUpload({ value, onChange, label, aspect = 'square',
       const formData = new FormData();
       formData.append('file', file);
       if (title) formData.append('title', title);
-      const res = await fetch(`/api/clinic/public-media?clinic_id=${encodeURIComponent(clinicId)}`, {
+      const res = await fetch(`${uploadEndpoint}?clinic_id=${encodeURIComponent(clinicId)}`, {
         method: 'POST',
         headers,
         body: formData,
       });
       const json = (await res.json()) as {
-        data?: { public_url?: string; item?: { public_url?: string } };
+        data?: { public_url?: string; cover_url?: string; item?: { public_url?: string } };
         error?: string;
       };
       if (!res.ok) throw new Error(json.error || 'فشل رفع الصورة');
-      const url = json.data?.item?.public_url ?? json.data?.public_url ?? '';
+      const url = json.data?.item?.public_url ?? json.data?.cover_url ?? json.data?.public_url ?? '';
       if (!url) throw new Error('لم يُعد الرفع رابط الصورة');
       console.log('[ImageUpload] upload succeeded; public URL received', {
         label,
         responseStatus: res.status,
       });
+      await onChange(url);
       setPreview(url);
-      onChange(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل رفع الصورة');
     } finally {
@@ -82,6 +87,7 @@ export default function ImageUpload({ value, onChange, label, aspect = 'square',
         ref={fileRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
+        disabled={uploading}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) {
