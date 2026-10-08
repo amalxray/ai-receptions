@@ -18,14 +18,17 @@ import {
   FileIcon,
   RefreshCw,
   HardDrive,
+  Activity,
 } from 'lucide-react';
 import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
+import AiXrayAnalyzer from '@/components/features/AiXrayAnalyzer';
 
 export type MedicalFileRow = {
   id: string;
   clinic_id: string;
   patient_id: string;
   imaging_request_id?: string | null;
+  medical_category?: MedicalCategory | null;
   file_type: 'image' | 'video' | 'pdf' | 'document' | 'medical_report' | 'medical_image' | string;
   mime_type: string;
   size_bytes: number;
@@ -34,6 +37,10 @@ export type MedicalFileRow = {
 };
 
 export type MedicalCategory = 'all' | 'panorama' | 'cbct' | 'dicom' | 'report' | 'other';
+
+function isMedicalCategory(value: string): value is Exclude<MedicalCategory, 'all'> {
+  return value === 'panorama' || value === 'cbct' || value === 'dicom' || value === 'report' || value === 'other';
+}
 
 export interface PatientMedicalFilesTabProps {
   clinicId: string;
@@ -110,8 +117,11 @@ export function resolveUploadFileType(
 export function detectFileCategory(
   fileType: string,
   filename?: string | null,
-  mime?: string | null
+  mime?: string | null,
+  medicalCategory?: string | null,
 ): MedicalCategory {
+  if (medicalCategory && isMedicalCategory(medicalCategory)) return medicalCategory;
+
   const name = (filename || '').toLowerCase();
   const m = (mime || '').toLowerCase();
 
@@ -210,6 +220,9 @@ export default function PatientMedicalFilesTab({
   const uploadSeqRef = useRef(0);
 
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [panoramaUrls, setPanoramaUrls] = useState<Record<string, string>>({});
+  const [panoramaLoadingId, setPanoramaLoadingId] = useState<string | null>(null);
+  const [panoramaErrors, setPanoramaErrors] = useState<Record<string, string>>({});
   const [fileToDelete, setFileToDelete] = useState<MedicalFileRow | null>(null);
   const [pendingUpload, setPendingUpload] = useState<File | null>(null);
   const [uploadCategory, setUploadCategory] = useState<MedicalCategory>('other');
@@ -309,6 +322,7 @@ export default function PatientMedicalFilesTab({
           mime_type: mimeType,
           size_bytes: file.size,
           file_type: selectedFileType,
+          medical_category: selectedCategory,
         }),
       });
 
@@ -424,6 +438,37 @@ export default function PatientMedicalFilesTab({
     }
   };
 
+  const loadPanoramaImage = async (file: MedicalFileRow) => {
+    if (!clinicId || panoramaLoadingId) return;
+    setPanoramaLoadingId(file.id);
+    setPanoramaErrors((previous) => {
+      const next = { ...previous };
+      delete next[file.id];
+      return next;
+    });
+
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(
+        `/api/clinic/medical-files/${encodeURIComponent(file.id)}?clinic_id=${encodeURIComponent(clinicId)}`,
+        { headers },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.data?.signed_url) {
+        throw new Error(body?.error || 'تعذّر تحميل صورة الأشعة.');
+      }
+
+      setPanoramaUrls((previous) => ({ ...previous, [file.id]: String(body.data.signed_url) }));
+    } catch (error) {
+      setPanoramaErrors((previous) => ({
+        ...previous,
+        [file.id]: error instanceof Error ? error.message : 'تعذّر تحميل صورة الأشعة.',
+      }));
+    } finally {
+      setPanoramaLoadingId(null);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!fileToDelete || !clinicId) return;
     const fileId = fileToDelete.id;
@@ -454,7 +499,7 @@ export default function PatientMedicalFilesTab({
 
   const filteredFiles = files.filter((f) => {
     if (filter === 'all') return true;
-    const cat = detectFileCategory(f.file_type, f.original_filename, f.mime_type);
+    const cat = detectFileCategory(f.file_type, f.original_filename, f.mime_type, f.medical_category);
     return cat === filter;
   });
 
@@ -697,7 +742,8 @@ export default function PatientMedicalFilesTab({
           {(['panorama', 'cbct', 'dicom', 'report'] as MedicalCategory[]).map((cat) => {
             const meta = CATEGORY_METAS[cat];
             const count = files.filter(
-              (f) => detectFileCategory(f.file_type, f.original_filename, f.mime_type) === cat
+              (f) =>
+                detectFileCategory(f.file_type, f.original_filename, f.mime_type, f.medical_category) === cat
             ).length;
             const active = filter === cat;
             return (
@@ -724,7 +770,10 @@ export default function PatientMedicalFilesTab({
           const count =
             cat === 'all'
               ? files.length
-              : files.filter((f) => detectFileCategory(f.file_type, f.original_filename, f.mime_type) === cat).length;
+              : files.filter(
+                  (f) =>
+                    detectFileCategory(f.file_type, f.original_filename, f.mime_type, f.medical_category) === cat
+                ).length;
           const active = filter === cat;
           return (
             <button
@@ -785,7 +834,12 @@ export default function PatientMedicalFilesTab({
         >
           <AnimatePresence>
             {filteredFiles.map((file) => {
-              const cat = detectFileCategory(file.file_type, file.original_filename, file.mime_type);
+              const cat = detectFileCategory(
+                file.file_type,
+                file.original_filename,
+                file.mime_type,
+                file.medical_category,
+              );
               const meta = CATEGORY_METAS[cat];
               const isImage = file.file_type === 'image' || file.mime_type.startsWith('image/');
               const isBusy = busyActionId === file.id;
@@ -802,7 +856,9 @@ export default function PatientMedicalFilesTab({
                     visible: { opacity: 1, y: 0 },
                   }}
                   whileHover={{ y: -3 }}
-                  className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border ${meta.border} bg-slate-900/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 ${meta.glow} hover:border-opacity-80`}
+                  className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border ${meta.border} bg-slate-900/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 ${meta.glow} hover:border-opacity-80 ${
+                    cat === 'panorama' && isImage && panoramaUrls[file.id] ? 'sm:col-span-2 lg:col-span-3' : ''
+                  }`}
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2">
@@ -841,6 +897,65 @@ export default function PatientMedicalFilesTab({
                         )}
                       </div>
                     </div>
+                    {cat === 'panorama' && isImage && (
+                      <div className="mt-4 border-t border-slate-800/80 pt-4">
+                        {panoramaUrls[file.id] ? (
+                          <div className="space-y-3">
+                            {panoramaErrors[file.id] ? (
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-rose-300" role="alert">
+                                <span>{panoramaErrors[file.id]}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPanoramaUrls((previous) => {
+                                      const next = { ...previous };
+                                      delete next[file.id];
+                                      return next;
+                                    });
+                                    void loadPanoramaImage(file);
+                                  }}
+                                  className="rounded-lg border border-rose-400/30 px-3 py-1.5 font-semibold transition hover:bg-rose-500/10"
+                                >
+                                  إعادة تحميل الصورة
+                                </button>
+                              </div>
+                            ) : (
+                              <AiXrayAnalyzer
+                                imageUrl={panoramaUrls[file.id]}
+                                imageAlt={`صورة بانوراما للمريض: ${file.original_filename || 'صورة أشعة'}`}
+                                onImageError={() =>
+                                  setPanoramaErrors((previous) => ({
+                                    ...previous,
+                                    [file.id]: 'انتهت صلاحية رابط الصورة. أعد تحميلها للمتابعة.',
+                                  }))
+                                }
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => void loadPanoramaImage(file)}
+                              disabled={panoramaLoadingId !== null}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2.5 text-xs font-bold text-cyan-200 transition hover:border-cyan-400/50 hover:bg-cyan-500/15 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {panoramaLoadingId === file.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <Activity className="h-4 w-4" aria-hidden="true" />
+                              )}
+                              {panoramaLoadingId === file.id ? 'جارٍ تحميل صورة الأشعة...' : 'عرض الصورة والتحليل بالذكاء الاصطناعي'}
+                            </button>
+                            {panoramaErrors[file.id] && (
+                              <p className="text-xs text-rose-300" role="alert">
+                                {panoramaErrors[file.id]}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between border-t border-slate-800/80 pt-3">

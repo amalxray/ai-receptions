@@ -75,7 +75,8 @@ export async function POST(req: Request) {
       mimeType: mime_type,
       sizeBytes: size_bytes,
       originalFilename: filename,
-      fileType: file_type ?? 'document',
+      fileType: session.data.file_type ?? file_type ?? 'document',
+      medicalCategory: session.data.medical_category ?? null,
       uploadedBy: auth.user?.id ?? null,
       magicHex: magic ?? null,
     });
@@ -93,7 +94,7 @@ async function getUploadSession(clinicId: string, storagePath: string) {
   const { supabaseAdmin } = await import('@/lib/supabase/admin');
   return supabaseAdmin
     .from('medical_upload_sessions')
-    .select('id, status')
+    .select('id, status, file_type, medical_category')
     .eq('clinic_id', clinicId)
     .eq('storage_path', storagePath)
     // B22 — `.eq`, NOT `.is`: PostgREST's `is` operator only accepts
