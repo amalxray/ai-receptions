@@ -28,6 +28,7 @@ export type MedicalFileRow = {
   clinic_id: string;
   patient_id: string;
   imaging_request_id?: string | null;
+  medical_category?: MedicalCategory | null;
   file_type: 'image' | 'video' | 'pdf' | 'document' | 'medical_report' | 'medical_image' | string;
   mime_type: string;
   size_bytes: number;
@@ -36,6 +37,10 @@ export type MedicalFileRow = {
 };
 
 export type MedicalCategory = 'all' | 'panorama' | 'cbct' | 'dicom' | 'report' | 'other';
+
+function isMedicalCategory(value: string): value is Exclude<MedicalCategory, 'all'> {
+  return value === 'panorama' || value === 'cbct' || value === 'dicom' || value === 'report' || value === 'other';
+}
 
 export interface PatientMedicalFilesTabProps {
   clinicId: string;
@@ -112,8 +117,11 @@ export function resolveUploadFileType(
 export function detectFileCategory(
   fileType: string,
   filename?: string | null,
-  mime?: string | null
+  mime?: string | null,
+  medicalCategory?: string | null,
 ): MedicalCategory {
+  if (medicalCategory && isMedicalCategory(medicalCategory)) return medicalCategory;
+
   const name = (filename || '').toLowerCase();
   const m = (mime || '').toLowerCase();
 
@@ -314,6 +322,7 @@ export default function PatientMedicalFilesTab({
           mime_type: mimeType,
           size_bytes: file.size,
           file_type: selectedFileType,
+          medical_category: selectedCategory,
         }),
       });
 
@@ -490,7 +499,7 @@ export default function PatientMedicalFilesTab({
 
   const filteredFiles = files.filter((f) => {
     if (filter === 'all') return true;
-    const cat = detectFileCategory(f.file_type, f.original_filename, f.mime_type);
+    const cat = detectFileCategory(f.file_type, f.original_filename, f.mime_type, f.medical_category);
     return cat === filter;
   });
 
@@ -733,7 +742,8 @@ export default function PatientMedicalFilesTab({
           {(['panorama', 'cbct', 'dicom', 'report'] as MedicalCategory[]).map((cat) => {
             const meta = CATEGORY_METAS[cat];
             const count = files.filter(
-              (f) => detectFileCategory(f.file_type, f.original_filename, f.mime_type) === cat
+              (f) =>
+                detectFileCategory(f.file_type, f.original_filename, f.mime_type, f.medical_category) === cat
             ).length;
             const active = filter === cat;
             return (
@@ -760,7 +770,10 @@ export default function PatientMedicalFilesTab({
           const count =
             cat === 'all'
               ? files.length
-              : files.filter((f) => detectFileCategory(f.file_type, f.original_filename, f.mime_type) === cat).length;
+              : files.filter(
+                  (f) =>
+                    detectFileCategory(f.file_type, f.original_filename, f.mime_type, f.medical_category) === cat
+                ).length;
           const active = filter === cat;
           return (
             <button
@@ -821,7 +834,12 @@ export default function PatientMedicalFilesTab({
         >
           <AnimatePresence>
             {filteredFiles.map((file) => {
-              const cat = detectFileCategory(file.file_type, file.original_filename, file.mime_type);
+              const cat = detectFileCategory(
+                file.file_type,
+                file.original_filename,
+                file.mime_type,
+                file.medical_category,
+              );
               const meta = CATEGORY_METAS[cat];
               const isImage = file.file_type === 'image' || file.mime_type.startsWith('image/');
               const isBusy = busyActionId === file.id;

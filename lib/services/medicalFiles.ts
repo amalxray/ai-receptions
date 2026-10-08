@@ -12,6 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export const MEDICAL_BUCKET = 'medical-files';
 export type MedicalFileType = 'image' | 'video' | 'pdf' | 'document' | 'medical_report' | 'medical_image';
+export type MedicalFileCategory = 'panorama' | 'cbct' | 'dicom' | 'report' | 'other';
 
 const MIME_MAP: Record<string, { type: MedicalFileType; ext: string }> = {
   'image/jpeg': { type: 'image', ext: '.jpg' },
@@ -76,6 +77,7 @@ export type MedicalFileMeta = {
   imaging_request_id: string | null;
   appointment_id: string | null;
   file_type: MedicalFileType;
+  medical_category: MedicalFileCategory;
   mime_type: string;
   size_bytes: number;
   storage_path: string;
@@ -228,10 +230,19 @@ export type MedicalUploadIntentInput = {
   magicHex?: string | null;
   uploadedBy: string | null;
   fileTypeOverride?: MedicalFileType | null;
+  medicalCategory?: MedicalFileCategory | null;
 };
 
 export type MedicalUploadIntent =
-  | { ok: true; storagePath: string; uploadUrl: string; token: string; fileType: MedicalFileType; maxBytes: number }
+  | {
+      ok: true;
+      storagePath: string;
+      uploadUrl: string;
+      token: string;
+      fileType: MedicalFileType;
+      medicalCategory: MedicalFileCategory;
+      maxBytes: number;
+    }
   | { ok: false; message: string };
 
 export async function createMedicalUploadIntent(input: MedicalUploadIntentInput): Promise<MedicalUploadIntent> {
@@ -266,6 +277,7 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
       mime_type: input.mimeType,
       size_bytes: input.sizeBytes,
       file_type: resolvedType,
+      medical_category: input.medicalCategory ?? 'other',
       original_filename: input.filename,
       status: 'started',
       created_by: input.uploadedBy,
@@ -274,7 +286,15 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
     { onConflict: 'clinic_id,storage_path' }
   );
 
-  return { ok: true, storagePath: path, uploadUrl: data.signedUrl, token: data.token, fileType: resolvedType, maxBytes: validation.maxBytes };
+  return {
+    ok: true,
+    storagePath: path,
+    uploadUrl: data.signedUrl,
+    token: data.token,
+    fileType: resolvedType,
+    medicalCategory: input.medicalCategory ?? 'other',
+    maxBytes: validation.maxBytes,
+  };
 }
 
 export type MedicalUploadConfirmInput = {
@@ -289,6 +309,7 @@ export type MedicalUploadConfirmInput = {
   sizeBytes: number;
   originalFilename: string;
   fileType: MedicalFileType;
+  medicalCategory?: MedicalFileCategory | null;
   uploadedBy: string | null;
   magicHex?: string | null;
 };
@@ -331,6 +352,7 @@ export async function confirmMedicalUpload(
       imaging_request_id: input.imagingRequestId,
       appointment_id: input.appointmentId,
       file_type: resolvedType,
+      medical_category: input.medicalCategory ?? 'other',
       mime_type: input.mimeType,
       size_bytes: input.sizeBytes,
       storage_path: input.storagePath,

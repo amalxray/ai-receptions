@@ -149,7 +149,14 @@ describe('B22 — confirm accepts the upload session this org started', () => {
     state.confirmCalls = [];
     state.forceError = null;
     state.sessions = [
-      { id: 'session-1', clinic_id: CLINIC_ID, storage_path: STORAGE_PATH, status: 'started' },
+      {
+        id: 'session-1',
+        clinic_id: CLINIC_ID,
+        storage_path: STORAGE_PATH,
+        status: 'started',
+        file_type: 'image',
+        medical_category: 'panorama',
+      },
     ];
   });
 
@@ -160,6 +167,7 @@ describe('B22 — confirm accepts the upload session this org started', () => {
     expect(json.data?.storage_path).toBe(STORAGE_PATH);
     expect(state.confirmCalls).toHaveLength(1);
     expect(state.confirmCalls[0].clinicId).toBe(CLINIC_ID);
+    expect(state.confirmCalls[0].medicalCategory).toBe('panorama');
     expect(state.rejectedFilters).toEqual([]); // no invalid `is` filter was ever sent
   });
 

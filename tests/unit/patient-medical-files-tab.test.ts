@@ -58,6 +58,12 @@ describe('detectFileCategory', () => {
     expect(detectFileCategory('image', 'panoramic-view.webp', 'image/webp')).toBe('panorama');
   });
 
+  it('uses the explicitly stored clinical category before guessing from filename or MIME', () => {
+    expect(detectFileCategory('image', 'patient-image-01.jpg', 'image/jpeg', 'panorama')).toBe('panorama');
+    expect(detectFileCategory('image', 'panorama-old.jpg', 'image/jpeg', 'other')).toBe('other');
+    expect(detectFileCategory('medical_image', 'scan.dcm', 'application/dicom', 'cbct')).toBe('cbct');
+  });
+
   it('detects CBCT / 3D cone-beam studies', () => {
     expect(detectFileCategory('medical_image', 'cbct_lower_jaw.dcm', 'application/dicom')).toBe('cbct');
     expect(detectFileCategory('document', '3d reconstruction.zip', 'application/zip')).toBe('cbct');
