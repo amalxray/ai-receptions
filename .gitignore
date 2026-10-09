@@ -30,6 +30,9 @@ ai-solutions-deliverables.zip
 *.egg-info/
 main-page-pic/
 /panorama/
+/external_datasets/
+/.roboflow-work/
+/merged_dataset/
 docs/seo/
 scripts/classify-images.py
 scripts/test-one-image.py
