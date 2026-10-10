@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getClinicGoogleCalendarClient } from '@/lib/services/googleCalendarOAuth';
 import { clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import {
   createBooking,
@@ -39,28 +40,11 @@ export type AvailabilityResult = {
 export type GoogleCalendarBusyInterval = { start: string; end: string };
 
 type GoogleCalendarClient = ReturnType<typeof google.calendar>;
-type GoogleCalendarConfig = { calendar: GoogleCalendarClient; calendarId: string };
-
-export function isGoogleCalendarConfigured(): boolean {
-  return Boolean(
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim()
-    && process.env.GOOGLE_PRIVATE_KEY?.trim()
-    && process.env.GOOGLE_CALENDAR_ID?.trim()
-  );
-}
-
-function getGoogleCalendarClient(): GoogleCalendarConfig | null {
-  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
-  const calendarId = process.env.GOOGLE_CALENDAR_ID?.trim();
-  if (!serviceAccountEmail || !privateKey || !calendarId) return null;
-
-  const auth = new google.auth.GoogleAuth({
-    credentials: { client_email: serviceAccountEmail, private_key: privateKey },
-    scopes: ['https://www.googleapis.com/auth/calendar'],
-  });
-  return { calendar: google.calendar({ version: 'v3', auth }), calendarId };
-}
+type GoogleCalendarConfig = {
+  calendar: GoogleCalendarClient;
+  calendarId: string;
+  flushTokenPersistence?: () => Promise<void>;
+};
 
 function nextDate(date: string): string {
   const next = new Date(`${date}T00:00:00.000Z`);
@@ -69,21 +53,30 @@ function nextDate(date: string): string {
 }
 
 /** Read actual Calendar events for exactly the requested clinic-local date. */
-export async function getGoogleCalendarBusyIntervals(date: string, timezone = 'Asia/Jerusalem'): Promise<GoogleCalendarBusyInterval[]> {
+export async function getGoogleCalendarBusyIntervals(
+  clinicId: string,
+  date: string,
+  timezone = 'Asia/Jerusalem',
+): Promise<GoogleCalendarBusyInterval[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date must be in YYYY-MM-DD format.');
-  const client = getGoogleCalendarClient();
+  const client = await getClinicGoogleCalendarClient(clinicId);
   if (!client) return [];
   const { calendar, calendarId } = client;
   const timeMin = clinicLocalToInstant(date, '00:00', timezone);
   const timeMax = clinicLocalToInstant(nextDate(date), '00:00', timezone);
-  const response = await calendar.events.list({
-    calendarId,
-    timeMin: timeMin.toISOString(),
-    timeMax: timeMax.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 2500,
-  });
+  let response;
+  try {
+    response = await calendar.events.list({
+      calendarId,
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 2500,
+    });
+  } finally {
+    await client.flushTokenPersistence?.();
+  }
 
   const intervals: GoogleCalendarBusyInterval[] = [];
   for (const event of response.data.items ?? []) {
@@ -116,7 +109,7 @@ export async function checkAvailability(
   const [schedule, localSlots, calendarBusy] = await Promise.all([
     loadProviderSchedule(clinicId, providerId),
     getAvailableSlots(clinicId, providerId, date, 200),
-    getGoogleCalendarBusyIntervals(date, timezone),
+    getGoogleCalendarBusyIntervals(clinicId, date, timezone),
   ]);
   if (!schedule) throw new Error('Provider not found for this clinic');
   const openSlots: Array<{ start: string; end: string }> = [];
@@ -183,7 +176,7 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
       throw new Error(`Slot unavailable: ${availability.reason}`);
     }
 
-    const client = getGoogleCalendarClient();
+    const client = await getClinicGoogleCalendarClient(details.clinic_id);
     if (!client) {
       return {
         id: existing.id,
@@ -195,16 +188,16 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
         calendar_connected: false,
       };
     }
-    const calendarConflicts = await getGoogleCalendarBusyIntervals(requestedLocal.date, timezone);
+    const calendarConflicts = await getGoogleCalendarBusyIntervals(details.clinic_id, requestedLocal.date, timezone);
     if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
       throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
     }
     return createEventAndConfirm(details, existing.id, appointmentTime, endTime, client);
   }
 
-  const client = getGoogleCalendarClient();
+  const client = await getClinicGoogleCalendarClient(details.clinic_id);
   if (client) {
-    const calendarConflicts = await getGoogleCalendarBusyIntervals(requestedLocal.date, timezone);
+    const calendarConflicts = await getGoogleCalendarBusyIntervals(details.clinic_id, requestedLocal.date, timezone);
     if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
       throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
     }
@@ -254,16 +247,35 @@ async function createEventAndConfirm(
     appointmentId,
     start: startTime.toISOString(),
   });
-  const eventResponse = await calendar.events.insert({
-    calendarId,
-    sendUpdates: 'none',
-    requestBody: {
-      summary: `${details.clinic_name ? `${details.clinic_name} — ` : ''}${details.service ?? 'موعد'} — ${details.patient_name.trim()}`,
-      description: `العيادة: ${details.clinic_name ?? '—'}\nالخدمة: ${details.service ?? '—'}\nالاسم: ${details.patient_name.trim()}${details.patient_phone.trim() ? `\nرقم التواصل: ${details.patient_phone.trim()}` : ''}`,
-      start: { dateTime: startTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
-      end: { dateTime: endTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
-    },
-  });
+  let eventResponse;
+  try {
+    try {
+      eventResponse = await calendar.events.insert({
+        calendarId,
+        sendUpdates: 'none',
+        requestBody: {
+          summary: `${details.clinic_name ? `${details.clinic_name} — ` : ''}${details.service ?? 'موعد'} — ${details.patient_name.trim()}`,
+          description: `العيادة: ${details.clinic_name ?? '—'}\nالخدمة: ${details.service ?? '—'}\nالاسم: ${details.patient_name.trim()}${details.patient_phone.trim() ? `\nرقم التواصل: ${details.patient_phone.trim()}` : ''}`,
+          start: { dateTime: startTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
+          end: { dateTime: endTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
+        },
+      });
+    } finally {
+      await client.flushTokenPersistence?.();
+    }
+  } catch (error) {
+    const eventId = eventResponse?.data.id;
+    if (eventId) {
+      try {
+        await calendar.events.delete({ calendarId, eventId });
+      } catch (cleanupError) {
+        throw new Error(
+          `Failed to persist refreshed Google credentials and clean up the created event: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`,
+        );
+      }
+    }
+    throw error;
+  }
   const googleEventId = eventResponse.data.id;
   if (!googleEventId) throw new Error('Google Calendar did not return an event id.');
 

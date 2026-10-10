@@ -9,6 +9,10 @@ const calendarMocks = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
+const oauthMocks = vi.hoisted(() => ({
+  getClinicGoogleCalendarClient: vi.fn(),
+}));
+
 const bookingMocks = vi.hoisted(() => ({
   createBooking: vi.fn(),
   findOrCreatePatient: vi.fn(),
@@ -35,6 +39,7 @@ const supabaseMocks = vi.hoisted(() => {
 
 vi.mock('@/lib/services/bookingService', () => bookingMocks);
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: supabaseMocks.query }));
+vi.mock('@/lib/services/googleCalendarOAuth', () => oauthMocks);
 vi.mock('@/lib/services/scheduling', () => ({
   checkSlotAvailability: vi.fn(() => ({ available: true, reason: 'available', endsAt: '2026-10-14T09:30:00.000Z' })),
 }));
@@ -49,9 +54,10 @@ vi.mock('googleapis', () => ({
 describe('getGoogleCalendarBusyIntervals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = 'calendar@example.test';
-    process.env.GOOGLE_PRIVATE_KEY = 'private-key';
-    process.env.GOOGLE_CALENDAR_ID = 'calendar-id';
+    oauthMocks.getClinicGoogleCalendarClient.mockResolvedValue({
+      calendar: { events: { list: calendarMocks.list } },
+      calendarId: 'calendar-id',
+    });
     calendarMocks.list.mockResolvedValue({ data: { items: [] } });
     bookingMocks.createBooking.mockResolvedValue({
       id: 'appointment-id',
@@ -74,7 +80,7 @@ describe('getGoogleCalendarBusyIntervals', () => {
   });
 
   it('queries exactly the patient-requested UTC calendar day', async () => {
-    await getGoogleCalendarBusyIntervals('2026-10-14', 'UTC');
+    await getGoogleCalendarBusyIntervals('clinic-id', '2026-10-14', 'UTC');
 
     expect(calendarMocks.list).toHaveBeenCalledWith(expect.objectContaining({
       calendarId: 'calendar-id',
@@ -94,15 +100,13 @@ describe('getGoogleCalendarBusyIntervals', () => {
       },
     });
 
-    await expect(getGoogleCalendarBusyIntervals('2026-10-14', 'UTC')).resolves.toEqual([
+    await expect(getGoogleCalendarBusyIntervals('clinic-id', '2026-10-14', 'UTC')).resolves.toEqual([
       { start: '2026-10-14T10:00', end: '2026-10-14T10:30' },
     ]);
   });
 
-  it('uses only tenant-scoped local slots when Google credentials are missing', async () => {
-    delete process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    delete process.env.GOOGLE_PRIVATE_KEY;
-    delete process.env.GOOGLE_CALENDAR_ID;
+  it('uses only tenant-scoped local slots when this clinic has no connected calendar', async () => {
+    oauthMocks.getClinicGoogleCalendarClient.mockResolvedValue(null);
 
     await expect(checkAvailability('clinic-id', 'provider-id', '2026-10-14', 'UTC')).resolves.toMatchObject({
       date: '2026-10-14',
@@ -119,10 +123,8 @@ describe('getGoogleCalendarBusyIntervals', () => {
     expect(calendarMocks.list).not.toHaveBeenCalled();
   });
 
-  it('continues local booking as tentative when Google credentials are missing', async () => {
-    delete process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    delete process.env.GOOGLE_PRIVATE_KEY;
-    delete process.env.GOOGLE_CALENDAR_ID;
+  it('continues local booking as tentative when this clinic has no connected calendar', async () => {
+    oauthMocks.getClinicGoogleCalendarClient.mockResolvedValue(null);
 
     await expect(bookAppointment({
       clinic_id: 'clinic-id',

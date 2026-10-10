@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkAvailability } from '@/lib/services/googleCalendarBooking';
+import { getClinicGoogleCalendarClient } from '@/lib/services/googleCalendarOAuth';
+import { authorizeClinicRequest, DATA_ROLES, roleDenied } from '@/lib/services/clinicAuthorization';
 
 const schema = z.object({
   clinic_id: z.string().uuid(),
@@ -17,6 +19,24 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid availability payload', details: parsed.error.errors }, { status: 400 });
     }
+
+    const authorization = await authorizeClinicRequest(req, parsed.data.clinic_id);
+    const denied = roleDenied(authorization, DATA_ROLES);
+    if (denied) {
+      return NextResponse.json(
+        { error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' },
+        { status: denied.status },
+      );
+    }
+
+    const calendarClient = await getClinicGoogleCalendarClient(parsed.data.clinic_id);
+    if (!calendarClient) {
+      return NextResponse.json(
+        { error: 'Google Calendar is not connected for this clinic.' },
+        { status: 409 },
+      );
+    }
+    await calendarClient.flushTokenPersistence?.();
 
     const result = await checkAvailability(
       parsed.data.clinic_id,

@@ -2,6 +2,48 @@
 
 _This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
 
+## 2026-10-10 — Roadmap reconciliation + Google Calendar local verification
+
+- Added `docs/ROADMAP.md` as the consolidated source for milestone history,
+  unresolved owner/external gates, immediate risks, and a 90-day proposal.
+- Reconciled the documented stage claims: PP-8 spec identifies PP-1→PP-7 and
+  STEP 15A–15D as closed; the migration tree and older status notes provide
+  supporting implementation evidence, but this review did not query production
+  to assert that every migration is applied or every feature is currently live.
+- The latest readiness JSON is a historical snapshot from 2026-09-03 (49
+  migrations, 7 external gates). The current migration tree contains 94 files;
+  `docs/external-gates.json` has 8 open entries, including Lahza. Neither number
+  proves live database migration state. The readiness aggregator omitted the
+  Lahza entry; its gate list now includes all 8 tracked external gates.
+- `PROJECT_STATUS.md` documents `20261019_fix_view_grants.sql` as the proposed
+  repair for the reporting-view ACL incident, but does not establish that this
+  migration was applied to production. The file is absent from the current
+  `db/migrations/` directory; production state and replayability remain
+  unverified and must be reconciled with the owner/DBA.
+- Reviewed commits through 2026-10-10 and the local worktree. Recent committed
+  work includes WhatsApp adapters/webhook, landing-page editors/media, AI X-ray
+  analysis, medical-file categorization, and chat booking confirmation/local
+  scheduling fallback. The current feature branch/worktree is not a production
+  deployment. Uncommitted changes include chat booking behavior and per-clinic
+  Calendar OAuth; local dental dataset and training artifacts also exist and
+  were not treated as release evidence.
+- Google Calendar: OAuth connection and encrypted clinic-scoped token were
+  verified in local development; live calendar listing succeeded, a temporary
+  event was created/read/deleted, and an existing unlinked clinic was rejected
+  with HTTP 409. The saved access-token expiry did not change during that live
+  run because the token was still valid. A focused unit test forced refresh and
+  verified encrypted persistence of the new expiry. This is not production
+  OAuth verification or production deployment.
+- Verification for this local change: 13 targeted Calendar tests passed;
+  `tsc --noEmit` passed; local HTTP health check returned 200. Full suite,
+  clean production build, migration application, and production smoke tests
+  were not run in this reconciliation.
+- Critical open items remain: secret rotation is not evidenced (other than
+  local deletion of the Supabase PAT recorded below); subscription `plan_id`
+  migration is unresolved for the three subscriptions listed in
+  `docs/SUBSCRIPTION_PLANS.md`; backup/PITR, staging, and restore drill remain
+  blocked; owner approval and provider/country prerequisites remain open.
+
 ## 2026-10-01 — B60 + production Router smoke test
 
 - B60 committed and pushed as `2262b2166c41a496860e586ceac01c7baef7eaf3` (`main` matches `origin/main`).
@@ -591,4 +633,3 @@ or remediation is planned for this issue at this time.
    - **مستأجر تجريبي** (عيادة/مركز وهمي) بدل بيانات عميل حقيقي.
 3. توكن **Supabase Management API** في `.env.local` غير مُصرَّح (يعيد `401 Unauthorized`) → مسار «تنفيذ SQL» غير متاح حالياً.
 4. أي كتابة إنتاجية لأغراض الاختبار = **موافقة صريحة مسبقة** من المالك.
-

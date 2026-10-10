@@ -51,6 +51,8 @@ export default function CommunicationSettingsForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [calendarStatus, setCalendarStatus] = useState<{ configured: boolean; connected: boolean; connected_at: string | null; email: string | null; missing_settings: string[] } | null>(null);
+  const [calendarBusy, setCalendarBusy] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setLoading(false); return; }
@@ -61,8 +63,58 @@ export default function CommunicationSettingsForm() {
       return;
     }
     void loadSettings(clinicId);
+    void loadCalendarStatus(clinicId);
+    const calendarResult = new URLSearchParams(window.location.search).get('google_calendar');
+    if (calendarResult === 'connected') setSuccess('تم ربط Google Calendar بهذه العيادة بنجاح.');
+    if (calendarResult === 'failed') setError('لم يكتمل ربط Google Calendar. تحقق من إعداد OAuth وحاول مرة أخرى.');
+    if (calendarResult === 'cancelled') setError('تم إلغاء ربط Google Calendar.');
+    if (calendarResult) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('google_calendar');
+      window.history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSupabaseConfigured, clinicLoading, clinicId]);
+
+  async function loadCalendarStatus(id: string) {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/google-calendar?clinic_id=${encodeURIComponent(id)}`, { headers });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'تعذر تحميل حالة التقويم.');
+      setCalendarStatus(body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تحميل حالة التقويم.');
+    }
+  }
+
+  function connectGoogleCalendar() {
+    if (!clinicId) return;
+    setCalendarBusy(true);
+    setError(null);
+    window.location.assign('/api/clinic/google-calendar/connect');
+  }
+
+  async function disconnectGoogleCalendar() {
+    if (!clinicId) return;
+    setCalendarBusy(true);
+    setError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/google-calendar?clinic_id=${encodeURIComponent(clinicId)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'تعذر فصل Google Calendar.');
+      setCalendarStatus((current) => current ? { ...current, connected: false, connected_at: null, email: null } : current);
+      setSuccess('تم فصل تقويم Google عن هذه العيادة.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر فصل Google Calendar.');
+    } finally {
+      setCalendarBusy(false);
+    }
+  }
 
   async function loadSettings(id: string) {
     setLoading(true);
@@ -134,6 +186,45 @@ export default function CommunicationSettingsForm() {
           {success}
         </div>
       )}
+
+      <section className="rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">تقويم Google للعيادة</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              اربط حساب Google الخاص بهذه العيادة لمزامنة الحجوزات والتحقق من الأوقات المشغولة.
+            </p>
+            <p className={`mt-2 text-sm ${calendarStatus?.connected ? 'text-emerald-300' : 'text-amber-300'}`}>
+              {!calendarStatus
+                ? 'جارٍ التحقق من حالة الربط...'
+                : !calendarStatus.configured
+                  ? `إعداد OAuth غير مكتمل. الإعدادات الناقصة: ${calendarStatus.missing_settings.join('، ')}`
+                  : calendarStatus.connected
+                    ? `التقويم متصل بالحساب ${calendarStatus.email ?? 'Google'}${calendarStatus.connected_at ? ` منذ ${new Date(calendarStatus.connected_at).toLocaleString('ar')}` : ''}.`
+                    : 'التقويم غير متصل؛ ستُسجل الحجوزات محلياً فقط.'}
+            </p>
+          </div>
+          {calendarStatus?.connected ? (
+            <button
+              type="button"
+              onClick={() => void disconnectGoogleCalendar()}
+              disabled={calendarBusy}
+              className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-300 disabled:opacity-50"
+            >
+              {calendarBusy ? 'جارٍ الفصل...' : 'فصل التقويم'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void connectGoogleCalendar()}
+              disabled={calendarBusy || !clinicId}
+              className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {calendarBusy ? 'جارٍ التحقق من الإعداد...' : 'ربط Google Calendar'}
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* Channel enablement */}
       <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5">

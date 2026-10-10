@@ -98,6 +98,36 @@ Implementation مستقبلي للشبكة = **مرحلة مستقلة بأمر 
 مشتركين حقيقيين وبقرار معلن بفك الـdeferral المقصود لـDICOM/Case identity
 (DO-NOT-BUILD-YET — STEP 4 §13).
 
+## D10 — Preserve service-role grants when replacing reporting views
+
+- Replacing a PostgreSQL view drops its ACL; every migration that drops/recreates
+  a reporting view must explicitly restore the intended `service_role` grants
+  and verify access through the PostgREST/service-role path, not only as owner.
+- The financial reporting incident record describes
+  `20261019_fix_view_grants.sql` as the proposed repair. Its production
+  application is not established by the record, and the file is absent from
+  the current `db/migrations/` tree. Verify production ACLs and recover the
+  reviewed migration artifact before relying on repository replay.
+
+## D11 — Per-clinic Google Calendar OAuth (2026-10-10)
+
+- **الحساب والتقويم:** كل اتصال Google Calendar ملك لعيادة واحدة، ويُختار عبر
+  OAuth بعد التحقق من جلسة المستخدم وعضويته وصلاحيته للعيادة. لا يُشتق الحساب
+  من بريد التسجيل ولا يُشارك token بين العيادات.
+- **حماية بيانات الاعتماد:** تخزين access/refresh credentials داخل
+  `clinics.settings.google_calendar_oauth` بعد تشفير AES-256-GCM، بمفتاح ثابت
+  32-byte Base64 على الخادم. كل قراءة/تحديث/فصل مقيّد بـ`clinic_id`. تبديل
+  مفتاح التشفير دون ترحيل آمن يجعل الرموز السابقة غير قابلة للفك.
+- **تجديد access token:** حفظ التوكن ووقت الانتهاء الجديدين مشفرين للعيادة نفسها
+  بعد refresh؛ ينتظر مسار Calendar اكتمال الحفظ ويُظهر فشل الحفظ كخطأ بدلاً من
+  اعتباره نجاحاً. يحتفظ كل تدفق حجز بسلوكه المحلي عند غياب اتصال Calendar وفق
+  سياسة fallback الموثقة.
+- **لا اتصال = لا ادعاء اتصال:** endpoint العام لفحص Calendar يرفض العيادة
+  غير المرتبطة بحالة 409؛ عمليات الحجز المحلية منفصلة وتظل tenant-scoped.
+- **حد الإثبات:** اجتياز اختبارات وحدة واختبار Google محلي لا يعني أن OAuth
+  معتمد للإنتاج أو أن Vercel/قاعدة الإنتاج مهيئان. يجب استكمال التحقق والنشر
+  والمراقبة واختبار عيادة واحدة قبل التعميم.
+
 ## DO-NOT-BUILD-YET (مُثبَّت من STEP 4 §13)
 
 Double-entry كامل · Claims engine كامل · Online patient payments/Stripe للمريض · Inventory/POs · DICOM/Imaging · Multi-currency فعلية · Patient portal/Forms/Consent · Voice AI · Franchise dashboards — بكل شرط "متى يصبح منطقيًا" الموثق في تقرير STEP 4.

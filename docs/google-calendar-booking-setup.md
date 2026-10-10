@@ -1,131 +1,126 @@
-# Google Calendar booking integration setup guide
+# Per-clinic Google Calendar OAuth setup
 
-This guide explains how to configure a Google service account for the direct booking flow without connecting the production app to Google yet.
+Each clinic connects its own Google account from **Dashboard → Communication
+Settings → Google Calendar**. The connection is made by a clinic owner or
+manager through Google's account chooser; it is not inferred from the email
+used to register for the application. The selected Google account's primary
+calendar is used only for that clinic. The settings page displays the connected
+Google email so the clinic can verify which account it selected.
 
-## 1. Create a Google Cloud project
+## Google Cloud setup
 
-1. Open https://console.cloud.google.com/
-2. Create a new project or select an existing one.
-3. Give it a clear name such as `clinic-booking-integration`.
-4. Make sure the billing account is enabled if required by your Google Cloud project policy.
+1. Create or select a Google Cloud project and enable the Google Calendar API.
+2. Configure the OAuth consent screen with the app's name and support email.
+   Add the `openid`, `email`, and
+   `https://www.googleapis.com/auth/calendar.events` scopes.
+3. Create an OAuth client ID for a **Web application**.
+4. Add the deployed callback URL (and the local URL for development) to
+   **Authorized redirect URIs**:
+   `https://your-domain.example/api/clinic/google-calendar/callback`
+   `http://localhost:3000/api/clinic/google-calendar/callback`
+   If the development server runs on port 3001, also register
+   `http://localhost:3001/api/clinic/google-calendar/callback` and set the
+   redirect URI environment variable to that exact local URL.
+5. Set the OAuth credentials in the server environment. Do not expose the
+   client secret or encryption key to browser code.
 
-## 2. Enable the Google Calendar API
-
-1. In Google Cloud Console, open `APIs & Services` > `Library`.
-2. Search for `Google Calendar API`.
-3. Click `Enable`.
-4. It may take a few seconds to become active.
-
-## 3. Create a service account
-
-1. Open `IAM & Admin` > `Service Accounts`.
-2. Click `Create Service Account`.
-3. Use a name like `clinic-calendar-bot`.
-4. Add the service account to the project.
-5. After creation, open the service account and go to the `Keys` tab.
-6. Click `Add Key` > `Create new key` > `JSON`.
-7. Download the file. This is the `credentials.json` equivalent.
-
-## 4. Grant access to the target calendar
-
-1. Open Google Calendar.
-2. Select the calendar to be used for appointments.
-3. Open `Settings and sharing`.
-4. In `Share with specific people or groups`, add the service account email address.
-5. Give it `Make changes to events` or `Make changes and manage sharing`, depending on your desired permissions.
-6. Save the settings.
-
-> Without sharing the calendar with the service account, the booking API cannot create calendar events.
-
-## 5. Get the required values
-
-From the downloaded JSON key file, collect:
-
-- `client_email`
-- `private_key`
-- `project_id`
-
-From Google Calendar, also collect the calendar ID:
-
-- Calendar ID appears in `Settings and sharing` as the calendar address, for example:
-  `your-calendar-id@group.calendar.google.com`
-
-## 6. Store the values in environment variables
-
-Add the following to your local `.env.local` or deployment environment:
-
-```bash
-GOOGLE_SERVICE_ACCOUNT_EMAIL="your-service-account@project-id.iam.gserviceaccount.com"
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-GOOGLE_CALENDAR_ID="your-calendar-id@group.calendar.google.com"
+```dotenv
+GOOGLE_CALENDAR_CLIENT_ID=
+GOOGLE_CALENDAR_CLIENT_SECRET=
+GOOGLE_CALENDAR_REDIRECT_URI=https://your-domain.example/api/clinic/google-calendar/callback
+GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY=
 ```
 
-For Vercel, add the same values in the project environment variables page.
+Generate a random 32-byte key and encode it as Base64 for
+`GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`. Keep the same key across deployments:
+changing it makes already stored clinic refresh tokens unreadable. Store all
+four values in the hosting provider's secret/environment-variable manager and
+restart the app after changing them.
 
-## 7. Recommended Node.js library
+## Clinic connection flow
 
-Use `googleapis`:
+1. An owner or manager opens that clinic's Communication Settings.
+2. **Connect Google Calendar** navigates to
+   `/api/clinic/google-calendar/connect`. That route uses the authenticated
+   Supabase session and verified clinic membership to select the clinic; it
+   does not accept a clinic ID in the URL query.
+3. The app redirects to Google with `access_type=offline` and `prompt=consent`.
+   Its short-lived HS256 JWT state binds the callback to the clinic and user.
+4. After consent, the callback validates the signed state and the authenticated
+   clinic membership before storing anything.
+5. Access and refresh tokens are encrypted together with AES-256-GCM and saved
+   in that clinic's `clinics.settings`; neither token is returned to the
+   browser. The selected account email is displayed to clinic administrators.
+5. Disconnecting removes only that clinic's saved OAuth connection.
 
-```bash
-npm install googleapis
-```
+The app reads busy intervals and creates events in the connected account's
+`primary` calendar. Appointment and calendar operations always resolve the
+credentials using the appointment's `clinic_id`, so a connection cannot be
+used by another clinic.
 
-Example initialization:
+## Booking behavior
 
-```ts
-import { google } from 'googleapis';
+When a clinic is connected, booking checks both the clinic's local schedule and
+that clinic's Google Calendar before inserting an event. New events are linked
+to the matching clinic appointment. If a clinic has not connected a calendar,
+the appointment remains database-backed and pending confirmation; the app does
+not silently use a shared or global Google account.
 
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  },
-  scopes: ['https://www.googleapis.com/auth/calendar'],
-});
+OAuth API failures during availability checks are surfaced as availability
+errors rather than treating the calendar as empty. A controlled booking should
+be tested with a clinic-owned test Google account before enabling the feature
+for patients.
 
-const calendar = google.calendar({ version: 'v3', auth });
-```
+## Deployment status and release gates (2026-10-10)
 
-## 8. Safety pattern for direct booking
+The per-clinic OAuth flow has been exercised locally: the clinic connection was
+read, upcoming events were queried, and a temporary event was created, fetched,
+then deleted. A focused test forces token refresh and verifies that the new
+access token and expiry are persisted encrypted for the same clinic. These
+checks do **not** certify production deployment, production database schema,
+or Google's production OAuth verification.
 
-The booking service uses clinic-local wall-clock times for schedule validation
-and stores appointment instants as UTC ISO timestamps. The configured clinic
-timezone is passed explicitly to Calendar. The direct API requires both
-`clinic_id` and `provider_id`; all schedule and appointment reads are scoped to
-that tenant and provider.
+### OAuth consent-screen constraints
 
-When Google Calendar credentials are configured:
+The current Google Cloud consent screen is **External / Testing** and only
+configured test users can authorize. In Testing mode, refresh tokens for these
+non-basic scopes expire after seven days, so this setup is not suitable for
+reliable clinic operations. Before a public launch, configure the production
+consent screen, verify the app/domain and required OAuth scopes/verification
+with Google, and confirm the production user cap and review requirements in
+Google Cloud Console. Do not assume local successful consent means the app has
+passed verification.
 
-1. Check local schedule, vacations, clinic holidays, existing appointment
-   overlaps, and Google Calendar busy intervals.
-2. Insert the appointment as `pending_confirmation` (included among active
-   reservations for overlap checks).
-3. Create the Google Calendar event.
-4. Save the returned `event.id` in `google_event_id` and mark the appointment
-   `confirmed`.
-5. If saving the event link fails, delete the newly-created Calendar event.
+### Production deployment checklist
 
-If any required Google environment variable is absent, Calendar reads and writes
-are skipped and local database booking continues with status
-`pending_confirmation`.
-Availability remains based on clinic/provider schedules, vacations, holidays,
-and appointments in the database. Google API/network errors after valid
-configuration are still surfaced rather than treated as an unconfigured setup.
+1. Register this exact callback URI as an authorized redirect URI in Google
+   Cloud: `https://www.dentairec.com/api/clinic/google-calendar/callback`.
+2. Configure the four server-side Vercel variables for the production
+   environment: `GOOGLE_CALENDAR_CLIENT_ID`,
+   `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI` (the exact
+   callback above), and `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` (32 random bytes,
+   Base64). Never use `NEXT_PUBLIC_` for client secret or encryption key.
+3. Preserve the same encryption key across deploys and environments that must
+   decrypt the same clinic records; never replace it without an approved
+   re-encryption/rotation plan.
+4. Review and apply required migrations to staging first; record production
+   schema state rather than assuming a repository migration has been applied.
+5. Deploy the reviewed OAuth routes and UI, then test connect/status/disconnect,
+   event listing, booking, and per-clinic isolation with a test clinic.
+6. Confirm token-refresh persistence and error monitoring. Roll out to one
+   approved clinic first; only broaden after an owner-approved production
+   smoke test.
 
-## 9. Environment and deployment checklist
+### New clinic connection
 
-- Google Calendar API enabled
-- Service account created
-- JSON key downloaded
-- Calendar shared with service account
-- Environment variables added
-- App restarted after env changes
-- Calendar ID validated
-- Production secrets stored in a secure secret manager
+An owner/manager signs into the clinic dashboard, opens Communication Settings,
+and selects **Connect Google Calendar**. The server derives the clinic from the
+authenticated membership and selected clinic context; the user chooses the
+Google account and grants the requested scopes. The callback re-validates
+session, signed state, and membership, then stores encrypted credentials under
+that clinic's `settings`. Verify the displayed account identity and test
+availability before taking patient bookings. A clinic must explicitly connect
+its own account; registration email alone never creates the link.
 
-## 10. Testing and deployment note
-
-Unit tests mock the Google API and verify local-only degradation. They do not
-prove that the service account can access a real calendar. Before production
-activation, apply the appointment migration and run a controlled test booking
-against a dedicated test calendar.
+The production API and UI changes must be committed, reviewed, and deployed
+before claiming this feature is live on `www.dentairec.com`.
