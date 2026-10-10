@@ -42,14 +42,14 @@ const mockConversationContext = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/ai/conversationContext', () => mockConversationContext);
 
-vi.mock('@/lib/ai/understanding', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    understandMessage: vi.fn(() => ({})),
-    applyUnderstandingToState: vi.fn((s: unknown) => s),
-  };
-});
+const mockUnderstanding = vi.hoisted(() => ({
+  understandMessage: vi.fn(() => ({})),
+  applyUnderstandingToState: vi.fn((s: unknown, _patch?: unknown) => s),
+}));
+vi.mock('@/lib/ai/understanding', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  ...mockUnderstanding,
+}));
 
 const mockConversationBooking = vi.hoisted(() => ({
   attemptConversationBooking: vi.fn(),
@@ -287,6 +287,87 @@ describe('AI Orchestrator — empty Knowledge Base must not block a booking conv
     expect(assistantInserts.length).toBe(1);
     expect(assistantInserts[0][0][0].content).toBe('أكيد، أقدر أساعدك في موضوع التقويم. هل التقويم لك أم لطفل؟');
     expect(assistantInserts[0][0][0].content).not.toContain('غير متوفرة');
+  });
+});
+
+describe('AI Orchestrator — changed booking preferences refresh real availability', () => {
+  it('discards a stale Saturday slot and queries the requested Sunday time', async () => {
+    const state = {
+      state: 'BOOKING',
+      recommended_service_id: 's1',
+      recommended_provider_id: 'p1',
+      patient_confirmed_booking: false,
+      pending_question: '',
+      preferred_date: '2026-10-10',
+      preferred_time_range: { from: '12:00', to: '15:00' },
+      booking: {
+        service_id: 's1',
+        provider_id: 'p1',
+        slot: '2026-10-10T13:00:00.000Z',
+        patient_name: 'راشد',
+        phone: '0598542155',
+        email: null,
+      },
+    };
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent: 'unknown',
+      shouldHandoff: false,
+      appointment: {},
+    } as any);
+    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 's1', name: 'فحص أسنان', duration_minutes: 30, active: true }],
+      providers: [{ id: 'p1', name: 'د. حلا' }],
+      providerServiceIds: [{ service_id: 's1', provider_id: 'p1' }],
+      hasServices: true,
+      hasProviders: true,
+      usable: true,
+    } as any);
+    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue(state as any);
+    mockUnderstanding.understandMessage.mockReturnValue({
+      preferred_date: '2026-10-11',
+      preferred_time_range: { from: '15:00', to: '23:59' },
+    } as any);
+    mockUnderstanding.applyUnderstandingToState.mockImplementation((previous: any, patch?: any) => ({
+      ...previous,
+      ...(patch ?? {}),
+    }));
+    mockAvailabilityTool.findEarliestAvailableSlot.mockImplementation(async () => ({
+      found: true,
+      slot: '2026-10-11T15:00:00.000Z',
+      slotStart: '2026-10-11T15:00:00.000Z',
+      slotEnd: '2026-10-11T15:30:00.000Z',
+      date: '2026-10-11',
+      time: '15:00',
+      providerId: 'p1',
+      serviceId: 's1',
+      alternatives: [],
+    }) as any);
+    mockPromptManager.buildPrompt.mockReturnValue('availability prompt');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'سأتحقق من الموعد المطلوب.',
+      promptTokens: 5,
+      completionTokens: 5,
+      totalTokens: 10,
+      model: 'test-model',
+    });
+
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'الاحد الساعة 3',
+    });
+
+    expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferredDate: '2026-10-11',
+        preferredTimeRange: { from: '15:00', to: '23:59' },
+      }),
+    );
+    expect(mockClinicDataContext.persistReceptionistSlot).toHaveBeenCalledWith(
+      'clinic-1',
+      'conv-1',
+      expect.objectContaining({ slot: null, slot_start: null, slot_end: null, alternatives: [] }),
+    );
   });
 });
     const result = await handleIncomingMessage({

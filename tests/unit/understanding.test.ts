@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   understandMessage,
   applyUnderstandingToState,
+  availabilityPreferencesChanged,
+  isAvailabilityTimesInquiry,
   extractRequestedService,
   extractPreferredProvider,
   extractTimeOptions,
@@ -68,6 +70,27 @@ describe('date extraction (clinic timezone)', () => {
     expect(dateInTimeZone(NOW, TZ)).toBe('2026-08-27');
     expect(addDaysIso('2026-08-27', 1)).toBe('2026-08-28');
     expect(addDaysIso('2026-08-31', 1)).toBe('2026-09-01');
+  });
+
+  it('updates an existing Saturday slot preference to Sunday and 3 PM', () => {
+    const saturdayNow = new Date('2026-10-10T09:00:00.000Z');
+    const previous = {
+      ...baseState(),
+      preferred_date: '2026-10-10',
+      preferred_time_range: { from: '12:00', to: '15:00' },
+      booking: { ...baseState().booking, slot: '2026-10-10T13:00:00.000Z' },
+    };
+    const understanding = understandMessage('الاحد الساعة 3', { now: saturdayNow, timeZone: TZ });
+    const next = applyUnderstandingToState(previous, understanding);
+
+    expect(next.preferred_date).toBe('2026-10-11');
+    expect(next.preferred_time_range).toEqual({ from: '15:00', to: '23:59' });
+    expect(availabilityPreferencesChanged(previous, next)).toBe(true);
+  });
+
+  it('recognizes a request to list the times available on a day', () => {
+    expect(isAvailabilityTimesInquiry('شو الاوقات المتاحة يوم الاحد؟')).toBe(true);
+    expect(isAvailabilityTimesInquiry('بدي احجز يوم الاحد الساعة 3')).toBe(false);
   });
 });
 

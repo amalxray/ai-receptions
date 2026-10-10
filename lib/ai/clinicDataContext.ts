@@ -238,8 +238,8 @@ export async function persistReceptionistSlot(
   conversationId: string,
   fields: {
     slot?: string | null;
-    slot_start?: string;
-    slot_end?: string;
+    slot_start?: string | null;
+    slot_end?: string | null;
     provider_id?: string;
     service_id?: string;
     patient_name?: string | null;
@@ -270,6 +270,7 @@ export async function persistReceptionistSlot(
     if (fields.slot !== undefined) booking.slot = fields.slot;
     if (fields.slot_start !== undefined) booking.slot_start = fields.slot_start;
     if (fields.slot_end !== undefined) booking.slot_end = fields.slot_end;
+    if (fields.alternatives !== undefined) booking.alternatives = fields.alternatives;
     if (fields.provider_id !== undefined) booking.provider_id = fields.provider_id;
     if (fields.service_id !== undefined) booking.service_id = fields.service_id;
     if (fields.patient_name !== undefined) booking.patient_name = fields.patient_name;
