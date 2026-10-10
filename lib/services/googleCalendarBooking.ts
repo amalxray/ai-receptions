@@ -1,14 +1,24 @@
 import { google } from 'googleapis';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
+import {
+  createBooking,
+  findOrCreatePatient,
+  getAvailableSlots,
+  isClinicHoliday,
+  loadExistingAppointments,
+  loadProviderSchedule,
+} from '@/lib/services/bookingService';
+import { checkSlotAvailability } from '@/lib/services/scheduling';
 
-export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled';
+export type AppointmentStatus = 'pending' | 'pending_confirmation' | 'confirmed' | 'cancelled';
 
 export type GoogleCalendarBookingDetails = {
   patient_name: string;
   patient_phone: string;
   appointment_time: string;
-  clinic_id?: string;
+  clinic_id: string;
+  provider_id: string;
   appointment_id?: string;
   patient_id?: string | null;
   clinic_name?: string;
@@ -28,27 +38,28 @@ export type AvailabilityResult = {
 
 export type GoogleCalendarBusyInterval = { start: string; end: string };
 
-function getGoogleCalendarClient() {
+type GoogleCalendarClient = ReturnType<typeof google.calendar>;
+type GoogleCalendarConfig = { calendar: GoogleCalendarClient; calendarId: string };
+
+export function isGoogleCalendarConfigured(): boolean {
+  return Boolean(
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim()
+    && process.env.GOOGLE_PRIVATE_KEY?.trim()
+    && process.env.GOOGLE_CALENDAR_ID?.trim()
+  );
+}
+
+function getGoogleCalendarClient(): GoogleCalendarConfig | null {
   const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
   const calendarId = process.env.GOOGLE_CALENDAR_ID?.trim();
-  const missing = [
-    !serviceAccountEmail && 'GOOGLE_SERVICE_ACCOUNT_EMAIL',
-    !privateKey && 'GOOGLE_PRIVATE_KEY',
-    !calendarId && 'GOOGLE_CALENDAR_ID',
-  ].filter((key): key is string => Boolean(key));
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Google Calendar integration is not configured: ${missing.join(', ')}.`,
-    );
-  }
+  if (!serviceAccountEmail || !privateKey || !calendarId) return null;
 
   const auth = new google.auth.GoogleAuth({
     credentials: { client_email: serviceAccountEmail, private_key: privateKey },
     scopes: ['https://www.googleapis.com/auth/calendar'],
   });
-  return { calendar: google.calendar({ version: 'v3', auth }), calendarId: calendarId as string };
+  return { calendar: google.calendar({ version: 'v3', auth }), calendarId };
 }
 
 function nextDate(date: string): string {
@@ -60,7 +71,9 @@ function nextDate(date: string): string {
 /** Read actual Calendar events for exactly the requested clinic-local date. */
 export async function getGoogleCalendarBusyIntervals(date: string, timezone = 'Asia/Jerusalem'): Promise<GoogleCalendarBusyInterval[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date must be in YYYY-MM-DD format.');
-  const { calendar, calendarId } = getGoogleCalendarClient();
+  const client = getGoogleCalendarClient();
+  if (!client) return [];
+  const { calendar, calendarId } = client;
   const timeMin = clinicLocalToInstant(date, '00:00', timezone);
   const timeMax = clinicLocalToInstant(nextDate(date), '00:00', timezone);
   const response = await calendar.events.list({
@@ -90,67 +103,32 @@ export async function getGoogleCalendarBusyIntervals(date: string, timezone = 'A
   return intervals;
 }
 
-async function findConflictingAppointments(start: Date, end: Date, excludeAppointmentId?: string) {
-  let query = supabaseAdmin
-    .from('appointments')
-    .select('id, scheduled_at, appointment_time, status')
-    .gte('scheduled_at', start.toISOString())
-    .lt('scheduled_at', end.toISOString())
-    .in('status', ['pending', 'confirmed', 'tentative']);
-
-  if (excludeAppointmentId) query = query.neq('id', excludeAppointmentId);
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(error.message || 'Failed to check appointment overlap.');
-  }
-
-  return data ?? [];
-}
-
-export async function checkAvailability(date: string, timezone = 'UTC'): Promise<AvailabilityResult> {
+export async function checkAvailability(
+  clinicId: string,
+  providerId: string,
+  date: string,
+  timezone = 'Asia/Hebron',
+): Promise<AvailabilityResult> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error('Date must be in YYYY-MM-DD format.');
   }
 
-  const startOfDay = new Date(`${date}T00:00:00.000Z`);
-  const endOfDay = new Date(`${date}T23:59:59.999Z`);
-
-  const [calendarBusy, appointmentsResult] = await Promise.all([
+  const [schedule, localSlots, calendarBusy] = await Promise.all([
+    loadProviderSchedule(clinicId, providerId),
+    getAvailableSlots(clinicId, providerId, date, 200),
     getGoogleCalendarBusyIntervals(date, timezone),
-    supabaseAdmin
-    .from('appointments')
-    .select('appointment_time, scheduled_at, status')
-    .gte('appointment_time', startOfDay.toISOString())
-    .lte('appointment_time', endOfDay.toISOString())
-    .in('status', ['pending', 'confirmed', 'tentative']),
   ]);
-  const { data: appointments, error } = appointmentsResult;
-
-  if (error) {
-    throw new Error(error.message || 'Could not load appointment schedule.');
-  }
-
+  if (!schedule) throw new Error('Provider not found for this clinic');
   const openSlots: Array<{ start: string; end: string }> = [];
-  const dayAppointments = appointments ?? [];
-  const businessStart = new Date(`${date}T09:00:00.000Z`);
-  const businessEnd = new Date(`${date}T17:00:00.000Z`);
-
-  for (let slot = new Date(businessStart); slot < businessEnd; slot = new Date(slot.getTime() + 30 * 60 * 1000)) {
-    const end = new Date(slot.getTime() + 30 * 60 * 1000);
-    const slotKey = `${date}T${slot.toISOString().slice(11, 16)}`;
-    const endKey = `${date}T${end.toISOString().slice(11, 16)}`;
-    const isTaken = calendarBusy.some((busy) => slotKey < busy.end && endKey > busy.start) || dayAppointments.some((record) => {
-      const candidate = new Date((record.appointment_time ?? record.scheduled_at) as string | undefined ?? '');
-      return !Number.isNaN(candidate.getTime()) && candidate >= slot && candidate < end;
-    });
-
-    if (!isTaken) {
-      openSlots.push({
-        start: slot.toISOString(),
-        end: end.toISOString(),
-      });
-    }
+  for (const slot of localSlots) {
+    const localStart = slot.slice(0, 16);
+    const localEndDate = new Date(`${localStart}:00Z`);
+    localEndDate.setUTCMinutes(localEndDate.getUTCMinutes() + schedule.appointmentDurationMinutes);
+    const actualStart = clinicLocalToInstant(date, localStart.slice(11, 16), timezone);
+    const actualEnd = new Date(actualStart.getTime() + schedule.appointmentDurationMinutes * 60_000);
+    const localEndKey = localEndDate.toISOString().slice(0, 16);
+    if (calendarBusy.some((busy) => localStart < busy.end && localEndKey > busy.start)) continue;
+    openSlots.push({ start: actualStart.toISOString(), end: actualEnd.toISOString() });
   }
 
   return {
@@ -168,81 +146,165 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
     throw new Error('appointment_time must be a valid ISO timestamp.');
   }
 
-  const { calendar, calendarId } = getGoogleCalendarClient();
-
   const durationMinutes = details.duration_minutes ?? 30;
   const endTime = new Date(appointmentTime.getTime() + durationMinutes * 60 * 1000);
-  const conflicts = await findConflictingAppointments(appointmentTime, endTime, details.appointment_id);
-
-  if (conflicts.length > 0) {
-    throw new Error('Double booking prevention triggered: the requested time is already reserved.');
-  }
-
   const timezone = details.timezone ?? 'Asia/Jerusalem';
   const requestedLocal = zonedParts(appointmentTime, timezone);
   const requestedEndLocal = zonedParts(endTime, timezone);
-  const calendarConflicts = await getGoogleCalendarBusyIntervals(requestedLocal.date, timezone);
   const requestedStartKey = `${requestedLocal.date}T${requestedLocal.time}`;
   const requestedEndKey = `${requestedEndLocal.date}T${requestedEndLocal.time}`;
-  if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
-    throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
+
+  if (details.appointment_id) {
+    const { data: existing, error } = await supabaseAdmin
+      .from('appointments')
+      .select('id, status')
+      .eq('clinic_id', details.clinic_id)
+      .eq('provider_id', details.provider_id)
+      .eq('id', details.appointment_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !existing) throw new Error('Appointment not found for this clinic and provider.');
+
+    const schedule = await loadProviderSchedule(details.clinic_id, details.provider_id);
+    if (!schedule) throw new Error('Provider not found for this clinic');
+    const [holiday, appointments] = await Promise.all([
+      isClinicHoliday(details.clinic_id, requestedLocal.date),
+      loadExistingAppointments(details.clinic_id, details.provider_id, requestedLocal.date),
+    ]);
+    const localStart = `${requestedLocal.date}T${requestedLocal.time}:00.000Z`;
+    const availability = checkSlotAvailability({
+      startsAt: localStart,
+      durationMinutes,
+      schedule,
+      existingAppointments: appointments.filter((appointment) => appointment.id !== details.appointment_id),
+      holiday,
+    });
+    if (!availability.available) {
+      throw new Error(`Slot unavailable: ${availability.reason}`);
+    }
+
+    const client = getGoogleCalendarClient();
+    if (!client) {
+      return {
+        id: existing.id,
+        patient_name: details.patient_name,
+        patient_phone: details.patient_phone,
+        appointment_time: appointmentTime.toISOString(),
+        google_event_id: null,
+        status: existing.status,
+        calendar_connected: false,
+      };
+    }
+    const calendarConflicts = await getGoogleCalendarBusyIntervals(requestedLocal.date, timezone);
+    if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
+      throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
+    }
+    return createEventAndConfirm(details, existing.id, appointmentTime, endTime, client);
   }
-  console.info('[google-calendar] creating-event', { clinicId: details.clinic_id ?? null, appointmentId: details.appointment_id ?? null, start: appointmentTime.toISOString() });
+
+  const client = getGoogleCalendarClient();
+  if (client) {
+    const calendarConflicts = await getGoogleCalendarBusyIntervals(requestedLocal.date, timezone);
+    if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
+      throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
+    }
+  }
+
+  const patientId = details.patient_id ?? await findOrCreatePatient({
+    clinicId: details.clinic_id,
+    name: details.patient_name.trim(),
+    phone: details.patient_phone.trim() || null,
+  });
+  const localBooking = await createBooking({
+    clinicId: details.clinic_id,
+    providerId: details.provider_id,
+    service: details.service ?? 'Google Calendar booking',
+    date: requestedLocal.date,
+    time: requestedLocal.time,
+    patientId,
+    durationMinutes,
+    initialStatus: 'pending_confirmation',
+  });
+
+  if (!client) {
+    return {
+      id: localBooking.id,
+      patient_name: details.patient_name.trim(),
+      patient_phone: details.patient_phone.trim(),
+      appointment_time: appointmentTime.toISOString(),
+      google_event_id: null,
+      status: localBooking.status,
+      calendar_connected: false,
+    };
+  }
+  return createEventAndConfirm(details, localBooking.id, appointmentTime, endTime, client);
+}
+
+async function createEventAndConfirm(
+  details: GoogleCalendarBookingDetails,
+  appointmentId: string,
+  startTime: Date,
+  endTime: Date,
+  client: GoogleCalendarConfig,
+) {
+  const { calendar, calendarId } = client;
+  console.info('[google-calendar] creating-event', {
+    clinicId: details.clinic_id,
+    providerId: details.provider_id,
+    appointmentId,
+    start: startTime.toISOString(),
+  });
   const eventResponse = await calendar.events.insert({
     calendarId,
     sendUpdates: 'none',
     requestBody: {
       summary: `${details.clinic_name ? `${details.clinic_name} — ` : ''}${details.service ?? 'موعد'} — ${details.patient_name.trim()}`,
       description: `العيادة: ${details.clinic_name ?? '—'}\nالخدمة: ${details.service ?? '—'}\nالاسم: ${details.patient_name.trim()}${details.patient_phone.trim() ? `\nرقم التواصل: ${details.patient_phone.trim()}` : ''}`,
-      start: { dateTime: appointmentTime.toISOString(), timeZone: timezone },
-      end: { dateTime: endTime.toISOString(), timeZone: timezone },
+      start: { dateTime: startTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
+      end: { dateTime: endTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
     },
   });
   const googleEventId = eventResponse.data.id;
   if (!googleEventId) throw new Error('Google Calendar did not return an event id.');
 
-  let data: Record<string, any>;
-  if (details.appointment_id && details.clinic_id) {
-    const { data: updated, error } = await supabaseAdmin
-      .from('appointments')
-      .update({ google_event_id: googleEventId, patient_name: details.patient_name.trim(), patient_phone: details.patient_phone.trim(), appointment_time: appointmentTime.toISOString(), status: details.status ?? 'confirmed' })
-      .eq('id', details.appointment_id)
-      .eq('clinic_id', details.clinic_id)
-      .select('*')
-      .single();
-    if (error || !updated) {
-      await calendar.events.delete({ calendarId, eventId: googleEventId }).catch(() => undefined);
-      throw new Error(error?.message ?? 'Failed to link Google Calendar event to the appointment.');
-    }
-    data = updated as Record<string, any>;
-  } else {
-    if (!details.clinic_id) {
-      await calendar.events.delete({ calendarId, eventId: googleEventId }).catch(() => undefined);
-      throw new Error('clinic_id is required to save a calendar booking.');
-    }
-    const row = {
-      clinic_id: details.clinic_id,
-      patient_id: details.patient_id ?? null,
-      service: details.service ?? 'Google Calendar booking',
-      appointment_date: appointmentTime.toISOString().slice(0, 10),
-      scheduled_at: appointmentTime.toISOString(),
-      duration_minutes: durationMinutes,
-      status: details.status ?? 'pending',
+  const { data, error } = await supabaseAdmin
+    .from('appointments')
+    .update({
+      google_event_id: googleEventId,
       patient_name: details.patient_name.trim(),
       patient_phone: details.patient_phone.trim(),
-      appointment_time: appointmentTime.toISOString(),
-      google_event_id: googleEventId,
-      created_at: new Date().toISOString(),
-    };
-    const { data: inserted, error } = await supabaseAdmin.from('appointments').insert([row]).select('*').single();
-    if (error || !inserted) {
-      await calendar.events.delete({ calendarId, eventId: googleEventId }).catch(() => undefined);
-      throw new Error(error?.message ?? 'Failed to save the appointment.');
+      appointment_time: startTime.toISOString(),
+      status: 'confirmed',
+    })
+    .eq('clinic_id', details.clinic_id)
+    .eq('provider_id', details.provider_id)
+    .eq('id', appointmentId)
+    .select('*')
+    .single();
+  if (error || !data) {
+    try {
+      await calendar.events.delete({ calendarId, eventId: googleEventId });
+    } catch (rollbackError) {
+      console.error('[google-calendar] event-rollback-failed', {
+        clinicId: details.clinic_id,
+        providerId: details.provider_id,
+        appointmentId,
+        eventId: googleEventId,
+        error: rollbackError instanceof Error ? rollbackError.message : 'Unknown rollback error',
+      });
+      throw new Error(
+        `Failed to save the appointment after creating its Google Calendar event; event cleanup also failed: ${error?.message ?? 'database update returned no row'}`,
+      );
     }
-    data = inserted as Record<string, any>;
+    throw new Error(error?.message ?? 'Failed to link Google Calendar event to the appointment.');
   }
 
-  console.info('[google-calendar] event-created-and-linked', { clinicId: details.clinic_id ?? null, appointmentId: data.id, eventId: googleEventId });
+  console.info('[google-calendar] event-created-and-linked', {
+    clinicId: details.clinic_id,
+    providerId: details.provider_id,
+    appointmentId: data.id,
+    eventId: googleEventId,
+  });
 
   return {
     id: data.id,
@@ -251,5 +313,6 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
     appointment_time: data.appointment_time,
     google_event_id: data.google_event_id,
     status: data.status,
+    calendar_connected: true,
   };
 }

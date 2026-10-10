@@ -33,16 +33,21 @@ const mocks = vi.hoisted(() => {
   return {
     supabaseAdmin: { from: vi.fn(() => chain) },
     findOrCreatePatient: vi.fn(async (_params: Record<string, unknown>) => 'patient-1'),
-    createBooking: vi.fn(async (_params: Record<string, unknown>) => ({
+    createBooking: vi.fn(async (params: Record<string, unknown>) => ({
       id: 'appt-1',
       scheduled_at: '2026-09-19T09:00:00.000Z',
-      status: 'tentative',
+      status: String(params.initialStatus ?? 'tentative'),
       booking_token: 'tok',
     })),
     isValidBookingPhone: vi.fn(
       (value: unknown) => typeof value === 'string' && /\d/.test(value) && value.trim().length >= 5
     ),
-    createGoogleCalendarBooking: vi.fn(async (_params: Record<string, unknown>) => ({ id: 'appt-1', google_event_id: 'event-1', status: 'confirmed' })),
+    createGoogleCalendarBooking: vi.fn(async (_params: Record<string, unknown>) => ({
+      id: 'appt-1',
+      google_event_id: 'event-1',
+      status: 'confirmed',
+      calendar_connected: true,
+    })),
   };
 });
 
@@ -99,12 +104,12 @@ const baseBooking = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.createBooking.mockResolvedValue({
+  mocks.createBooking.mockImplementation(async (params: Record<string, unknown>) => ({
     id: 'appt-1',
     scheduled_at: '2026-09-19T09:00:00.000Z',
-    status: 'tentative',
+    status: String(params.initialStatus ?? 'tentative'),
     booking_token: 'tok',
-  });
+  }));
 });
 
 describe('parseSlot', () => {
@@ -272,14 +277,45 @@ describe('attemptConversationBooking', () => {
     });
 
     expect(result.action).toBe('booked');
+    expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      initialStatus: 'pending_confirmation',
+    }));
     expect(mocks.createGoogleCalendarBooking).toHaveBeenCalledWith(expect.objectContaining({
       clinic_id: clinicId,
+      provider_id: 'prov-1',
       clinic_name: _slug,
       patient_name: baseBooking.patient_name,
       patient_phone: baseBooking.phone,
       service: 'تصوير بانوراما',
       status: 'confirmed',
     }));
+  });
+
+  it('keeps the database booking when Google Calendar is not configured', async () => {
+    mocks.createGoogleCalendarBooking.mockResolvedValueOnce({
+      id: 'appt-1',
+      google_event_id: null,
+      status: 'pending_confirmation',
+      calendar_connected: false,
+    });
+
+    const result = await attemptConversationBooking({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      state: 'BOOKING',
+      patientConfirmedBooking: true,
+      booking: baseBooking,
+      operatingData,
+      requirePhone: true,
+      googleCalendar: true,
+      timeZone: 'Asia/Hebron',
+    });
+
+    expect(result).toMatchObject({
+      action: 'booked',
+      appointment: { id: 'appt-1', status: 'pending_confirmation' },
+    });
+    expect(mocks.supabaseAdmin.from).toHaveBeenCalledTimes(1);
   });
 });
 

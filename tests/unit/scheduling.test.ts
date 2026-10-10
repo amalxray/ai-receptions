@@ -22,8 +22,23 @@ describe('appointment scheduling', () => {
       schedule,
       existingAppointments: [{ startsAt: '2026-07-20T10:00:00.000Z', durationMinutes: 30, status: 'confirmed' }],
     });
+
     expect(overlap).toMatchObject({ available: false, reason: 'overlap' });
     expect(checkSlotAvailability({ startsAt: '2026-07-20T12:15:00.000Z', durationMinutes: 30, schedule }).reason).toBe('break_time');
+  });
+
+  it('treats pending Google Calendar confirmation as an active overlap', () => {
+    const overlap = checkSlotAvailability({
+      startsAt: '2026-07-20T10:15:00.000Z',
+      durationMinutes: 30,
+      schedule,
+      existingAppointments: [{
+        startsAt: '2026-07-20T10:00:00.000Z',
+        durationMinutes: 30,
+        status: 'pending_confirmation',
+      }],
+    });
+    expect(overlap).toMatchObject({ available: false, reason: 'overlap' });
   });
 
   it('suggests available slots while respecting working hours', () => {

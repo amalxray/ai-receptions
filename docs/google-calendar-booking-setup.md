@@ -88,16 +88,29 @@ const calendar = google.calendar({ version: 'v3', auth });
 
 ## 8. Safety pattern for direct booking
 
-Before creating the Google event, the app should:
+The booking service uses clinic-local wall-clock times for schedule validation
+and stores appointment instants as UTC ISO timestamps. The configured clinic
+timezone is passed explicitly to Calendar. The direct API requires both
+`clinic_id` and `provider_id`; all schedule and appointment reads are scoped to
+that tenant and provider.
 
-1. Check availability for the requested slot.
-2. Reject overlaps with existing confirmed or pending appointments.
-3. Insert the appointment row into `public.appointments`.
-4. Create the Google Calendar event.
-5. Save the returned `event.id` in `google_event_id`.
-6. Update the booking status to `confirmed` after the event is created.
+When Google Calendar credentials are configured:
 
-This avoids double booking and keeps the database and calendar in sync.
+1. Check local schedule, vacations, clinic holidays, existing appointment
+   overlaps, and Google Calendar busy intervals.
+2. Insert the appointment as `pending_confirmation` (included among active
+   reservations for overlap checks).
+3. Create the Google Calendar event.
+4. Save the returned `event.id` in `google_event_id` and mark the appointment
+   `confirmed`.
+5. If saving the event link fails, delete the newly-created Calendar event.
+
+If any required Google environment variable is absent, Calendar reads and writes
+are skipped and local database booking continues with status
+`pending_confirmation`.
+Availability remains based on clinic/provider schedules, vacations, holidays,
+and appointments in the database. Google API/network errors after valid
+configuration are still surfaced rather than treated as an unconfigured setup.
 
 ## 9. Environment and deployment checklist
 
@@ -110,6 +123,9 @@ This avoids double booking and keeps the database and calendar in sync.
 - Calendar ID validated
 - Production secrets stored in a secure secret manager
 
-## 10. Important note
+## 10. Testing and deployment note
 
-The code in this branch is intentionally structured as a safe scaffolding layer. It does not create live Google Calendar events until the credentials are supplied and the environment is configured.
+Unit tests mock the Google API and verify local-only degradation. They do not
+prove that the service account can access a real calendar. Before production
+activation, apply the appointment migration and run a controlled test booking
+against a dedicated test calendar.

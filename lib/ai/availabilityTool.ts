@@ -12,6 +12,25 @@ import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
  */
 export const MIN_REALISTIC_DURATION_MINUTES = 10;
 
+async function getGoogleCalendarBusyIntervalsOrEmpty(
+  date: string,
+  timeZone: string | undefined,
+  context: { clinicId: string; serviceId: string; providerId?: string },
+): Promise<Array<{ start: string; end: string }>> {
+  try {
+    return await getGoogleCalendarBusyIntervals(date, timeZone);
+  } catch (err) {
+    logEvent('availability_google_calendar_error', {
+      clinic_id: context.clinicId,
+      provider_id: context.providerId ?? null,
+      service_id: context.serviceId,
+      requested_date: date,
+      error: err instanceof Error ? err.message : String(err),
+    }, 'warn');
+    return [];
+  }
+}
+
 /**
  * REAL AVAILABILITY TOOL (receptionist)
  *
@@ -162,7 +181,7 @@ async function describeUnavailableRequestedDay(params: {
       const [providerSlots, calendarBusy] = await Promise.all([
         getAvailableSlots(params.clinicId, params.providerId, nextDay, 20, params.serviceId),
         params.checkGoogleCalendar
-          ? getGoogleCalendarBusyIntervals(nextDay, params.timeZone)
+          ? getGoogleCalendarBusyIntervalsOrEmpty(nextDay, params.timeZone, params)
           : Promise.resolve([]),
       ]);
       const slots = (providerSlots ?? []).filter((slot) =>
@@ -294,18 +313,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
   for (const day of days) {
     let calendarBusy: Array<{ start: string; end: string }> = [];
     if (checkGoogleCalendar) {
-      try {
-        calendarBusy = await getGoogleCalendarBusyIntervals(day, timeZone);
-      } catch (err) {
-        logEvent('availability_google_calendar_error', {
-          clinic_id: clinicId,
-          provider_id: providerId,
-          service_id: serviceId,
-          requested_date: day,
-          error: err instanceof Error ? err.message : String(err),
-        }, 'error');
-        return { found: false, reason: 'error', message: 'Google Calendar availability lookup failed' };
-      }
+      calendarBusy = await getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, providerId, serviceId });
     }
     try {
       const providerSlots = await getAvailableSlots(clinicId, providerId, day, limitPerDay, serviceId);
@@ -506,7 +514,9 @@ export async function findClinicLevelSlots(params: {
     for (const day of days) {
       const [candidates, calendarBusy] = await Promise.all([
         Promise.resolve(buildDaySlots(day)),
-        params.checkGoogleCalendar ? getGoogleCalendarBusyIntervals(day, timeZone) : Promise.resolve([]),
+        params.checkGoogleCalendar
+          ? getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, serviceId })
+          : Promise.resolve([]),
       ]);
       const daySlots = candidates.filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, calendarBusy));
       if (daySlots.length === 0) continue;
@@ -530,7 +540,7 @@ export async function findClinicLevelSlots(params: {
       const [requestedCandidates, requestedBusy] = await Promise.all([
         Promise.resolve(buildDaySlots(params.preferredDate)),
         params.checkGoogleCalendar
-          ? getGoogleCalendarBusyIntervals(params.preferredDate, timeZone)
+          ? getGoogleCalendarBusyIntervalsOrEmpty(params.preferredDate, timeZone, { clinicId, serviceId })
           : Promise.resolve([]),
       ]);
       const requestedSlots = requestedCandidates.filter((slot) =>
@@ -542,7 +552,9 @@ export async function findClinicLevelSlots(params: {
         const day = addDaysIso(params.preferredDate, i);
         const [candidates, busy] = await Promise.all([
           Promise.resolve(buildDaySlots(day)),
-          params.checkGoogleCalendar ? getGoogleCalendarBusyIntervals(day, timeZone) : Promise.resolve([]),
+          params.checkGoogleCalendar
+            ? getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, serviceId })
+            : Promise.resolve([]),
         ]);
         const slots = candidates.filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, busy));
         if (slots.length > 0) {

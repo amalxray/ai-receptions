@@ -103,12 +103,15 @@ export async function loadProviderSchedule(clinicId: string, providerId: string)
  * Loads existing appointments for a provider on a given date.
  */
 export async function loadExistingAppointments(clinicId: string, providerId: string, date: string): Promise<ScheduledAppointment[]> {
+  const previousDate = new Date(`${date}T00:00:00.000Z`);
+  previousDate.setUTCDate(previousDate.getUTCDate() - 1);
   const { data, error } = await supabaseAdmin
     .from('appointments')
     .select('id, provider_id, scheduled_at, duration_minutes, status')
     .eq('clinic_id', clinicId)
     .eq('provider_id', providerId)
-    .eq('appointment_date', date)
+    .gte('appointment_date', previousDate.toISOString().slice(0, 10))
+    .lte('appointment_date', date)
     .is('deleted_at', null);
 
   if (error) {
@@ -541,6 +544,7 @@ export async function createBooking(params: {
   serviceId?: string;
   conversationId?: string | null;
   durationMinutes?: number;
+  initialStatus?: 'tentative' | 'pending_confirmation';
   /**
    * Clinic IANA zone (e.g. "Asia/Hebron"). When supplied, `date`+`time` are
    * treated as CLINIC-LOCAL wall clock and converted to the matching UTC
@@ -551,7 +555,19 @@ export async function createBooking(params: {
    */
   timeZone?: string;
 }): Promise<{ id: string; scheduled_at: string; status: string; booking_token: string }> {
-  const { clinicId, providerId, service, date, time, patientId, serviceId, conversationId, durationMinutes, timeZone } = params;
+  const {
+    clinicId,
+    providerId,
+    service,
+    date,
+    time,
+    patientId,
+    serviceId,
+    conversationId,
+    durationMinutes,
+    initialStatus = 'tentative',
+    timeZone,
+  } = params;
 
   // A chat-originated booking may carry its source conversation. Verify its
   // clinic ownership before persisting the link; the public booking page can
@@ -637,7 +653,7 @@ export async function createBooking(params: {
       appointment_date: date,
       scheduled_at: startsAt,
       duration_minutes: resolvedDuration,
-      status: 'tentative',
+      status: initialStatus,
       booking_token: tokenHash,
     })
     .select('id, scheduled_at, status')
@@ -677,7 +693,7 @@ export async function createBooking(params: {
               appointment_id: data.id,
               service_id: serviceId ?? null,
               provider_id: providerId,
-              status: 'tentative',
+              status: initialStatus,
               // Persisted so later turns ("موعدي متى؟") answer from REAL
               // data instead of inventing a slot.
               scheduled_at: startsAt,

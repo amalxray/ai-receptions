@@ -37,6 +37,7 @@ import { unavailableReply, expressesTreatmentDesire } from '@/lib/ai/replyText';
 import { persistHandoffReply } from '@/lib/ai/handoffMessages';
 import { generateWithFailover } from '@/lib/ai/resilience';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
+import { getGoogleCalendarBusyIntervals } from '@/lib/services/googleCalendarBooking';
 
 type HistoryMessage = Pick<Message, 'role' | 'content'>;
 
@@ -477,7 +478,7 @@ export async function handleIncomingMessage(opts: {
             });
           } else if (clinicLevel.reason === 'error') {
             availabilityNote =
-              'REAL AVAILABILITY could not be checked because Google Calendar or the scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.';
+              'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.';
           } else {
             availabilityNote =
               'REAL AVAILABILITY: no provider is currently scheduled for this service in the booking system. ' +
@@ -531,7 +532,7 @@ export async function handleIncomingMessage(opts: {
           });
         } else {
           availabilityNote = availability.reason === 'error'
-            ? 'REAL AVAILABILITY could not be checked because Google Calendar or the scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.'
+            ? 'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.'
             : `REAL AVAILABILITY check found no available slot for the recommended provider in the near future. Do NOT invent a date/time. Tell the patient that availability needs to be confirmed and offer to hand off to the clinic reception.`;
           logEvent('receptionist_real_slot_empty', {
             clinic_id: clinicId,
@@ -684,6 +685,7 @@ export async function handleIncomingMessage(opts: {
       const shouldWaitForBookingSummaryConsent = hasRequiredBookingDetails &&
         (!postTurnState.booking_summary_presented || !rawConfirmation);
       let attempt: Awaited<ReturnType<typeof attemptConversationBooking>> | null = null;
+      let createGoogleCalendarEvent = bookingPolicy.createGoogleCalendarEvent;
       if (shouldWaitForBookingSummaryConsent) {
         if (!postTurnState.booking_summary_presented) {
           postTurnState.booking_summary_presented = true;
@@ -695,6 +697,19 @@ export async function handleIncomingMessage(opts: {
           `BOOKING SUMMARY — not saved yet. Service: ${summaryService}; requested verified slot: ${summarySlot ? `${summarySlot[1]} ${summarySlot[2]}` : postTurnState.booking.slot}; patient: ${postTurnState.booking.patient_name}; phone: ${postTurnState.booking.phone}. ` +
           'Present this concise summary in Arabic and ask one explicit yes/no question to confirm it. Do NOT call booking tools or claim the appointment is saved in this turn.';
       } else {
+        const slotDate = /^(\d{4}-\d{2}-\d{2})T/.exec(postTurnState.booking.slot ?? '')?.[1];
+        if (bookingConfirmed && bookingPolicy.checkGoogleCalendar && slotDate) {
+          try {
+            await getGoogleCalendarBusyIntervals(slotDate, clinicProfile.timezone ?? undefined);
+          } catch (calendarError) {
+            createGoogleCalendarEvent = false;
+            logEvent('conversation_google_calendar_unavailable_fallback', {
+              clinic_id: clinicId,
+              conversation_id: conversationId,
+              error: calendarError instanceof Error ? calendarError.message : String(calendarError),
+            }, 'warn');
+          }
+        }
         attempt = await attemptConversationBooking({
           clinicId,
           conversationId,
@@ -703,7 +718,7 @@ export async function handleIncomingMessage(opts: {
           booking: postTurnState.booking,
           operatingData,
           requirePhone: bookingPolicy.requirePhone,
-          googleCalendar: bookingPolicy.createGoogleCalendarEvent,
+          googleCalendar: createGoogleCalendarEvent,
           clinicName: clinicProfile.name,
           timeZone: clinicProfile.timezone,
           // Deterministic last-chance service resolution by the name the patient
