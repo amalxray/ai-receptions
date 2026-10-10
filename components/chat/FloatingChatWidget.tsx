@@ -105,7 +105,7 @@ export default function FloatingChatWidget({
                 <div className="flex items-center gap-3">
                   <ChatPersonaAvatar persona="receptionist" size="small" />
                   <div className="min-w-0">
-                    <p className="truncate text-base font-bold text-slate-800 sm:text-lg">موظفة الاستقبال الافتراضية</p>
+                    <p className="truncate text-base font-bold text-slate-800 sm:text-lg">موظفة الاستقبال الذكية</p>
                     {/* Unified status line: emerald dot carries the "online" signal,
                         the text stays light-on-dark for readable contrast (was
                         text-emerald-300 on a cyan/violet wash → barely legible). */}

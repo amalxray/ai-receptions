@@ -8,7 +8,7 @@ export default function Page({ searchParams }: { searchParams?: { clinic?: strin
       <div className="mx-auto max-w-4xl">
         <header className="mb-6 rounded-lg bg-slate-800/60 px-6 py-4">
           <h1 className="text-2xl font-semibold text-slate-100">محادثة العيادة</h1>
-          <p className="text-sm text-slate-300">تحدث مع موظفة الاستقبال الافتراضية للعيادة</p>
+          <p className="text-sm text-slate-300">تحدث مع موظفة الاستقبال الذكية للعيادة</p>
         </header>
 
         <main>

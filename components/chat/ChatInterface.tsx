@@ -163,8 +163,8 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
 
       // No history — show welcome message
       const fallbackWelcome = clinicName
-        ? `أهلًا بك في ${clinicName} 👋\nأنا ${assistantName ?? 'موظفة الاستقبال الافتراضية'}. كيف يمكنني مساعدتك؟`
-        : 'أهلًا بك 👋\nأنا موظفة الاستقبال الافتراضية. كيف يمكنني مساعدتك؟';
+        ? `أهلًا بك في ${clinicName} 👋\nأنا ${assistantName ?? 'موظفة الاستقبال الذكية'}. كيف يمكنني مساعدتك؟`
+        : 'أهلًا بك 👋\nأنا موظفة الاستقبال الذكية. كيف يمكنني مساعدتك؟';
       setMessages([{ role: 'assistant', text: welcomeMessage ?? fallbackWelcome }]);
       setShowSuggested(true);
       setIsLoadingHistory(false);
@@ -362,7 +362,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
   // in the database and stays visible in the clinic dashboard history.
   const startNewConversation = useCallback(() => {
     const welcome = welcomeMessage
-      ?? (clinicName ? `أهلًا بك في ${clinicName} 👋\nأنا ${assistantName ?? 'موظفة الاستقبال الافتراضية'}. كيف يمكنني مساعدتك؟` : 'أهلًا بك 👋\nأنا موظفة الاستقبال الافتراضية. كيف يمكنني مساعدتك؟');
+      ?? (clinicName ? `أهلًا بك في ${clinicName} 👋\nأنا ${assistantName ?? 'موظفة الاستقبال الذكية'}. كيف يمكنني مساعدتك؟` : 'أهلًا بك 👋\nأنا موظفة الاستقبال الذكية. كيف يمكنني مساعدتك؟');
     const fresh = freshConversationState(welcome);
 
     setMessages(fresh.messages);
@@ -419,24 +419,26 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 border-b border-slate-100 bg-gradient-to-b from-white to-cyan-50/60 px-4 py-5 sm:gap-5 sm:px-7 sm:py-6">
-        <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${patientIsActive ? 'bg-cyan-50 ring-1 ring-cyan-200' : ''}`}>
-          <ChatPersonaAvatar persona="patient" active={patientIsActive} />
-          <span className="min-w-0">
-            <span className="block text-sm font-bold text-slate-800">أنت</span>
-          </span>
-        </div>
-        <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${receptionistIsActive ? 'bg-teal-50 ring-1 ring-teal-200' : ''}`}>
-          <ChatPersonaAvatar persona="receptionist" active={receptionistIsActive} />
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-bold text-slate-800">{assistantName ?? 'موظفة الاستقبال'}</span>
-            <span className="mt-0.5 flex items-center justify-center gap-1.5 text-xs text-teal-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
-              متاحة الآن
+      {!embedded && (
+        <div className="grid grid-cols-2 gap-3 border-b border-slate-100 bg-gradient-to-b from-white to-cyan-50/60 px-4 py-5 sm:gap-5 sm:px-7 sm:py-6">
+          <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${patientIsActive ? 'bg-cyan-50 ring-1 ring-cyan-200' : ''}`}>
+            <ChatPersonaAvatar persona="patient" active={patientIsActive} />
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-slate-800">أنت</span>
             </span>
-          </span>
+          </div>
+          <div className={`flex min-w-0 flex-col items-center gap-2 rounded-3xl px-2 py-3 text-center transition-colors sm:gap-3 ${receptionistIsActive ? 'bg-teal-50 ring-1 ring-teal-200' : ''}`}>
+            <ChatPersonaAvatar persona="receptionist" active={receptionistIsActive} />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-bold text-slate-800">{assistantName ?? 'موظفة الاستقبال'}</span>
+              <span className="mt-0.5 flex items-center justify-center gap-1.5 text-xs text-teal-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
+                متاحة الآن
+              </span>
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 space-y-5 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_rgba(236,254,255,0.75),_transparent_68%)] px-4 py-5 sm:px-7 sm:py-7">
         {statusMessage ? (

@@ -53,7 +53,7 @@ export default function ChatLanding({ clinicId, clinicName }: { clinicId: string
               </span>
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
-              موظفة الاستقبال الافتراضية جاهزة للرد على استفساراتك، إرشادك، وحجز موعدك — بشكل طبيعي
+              موظفة الاستقبال الذكية جاهزة للرد على استفساراتك، إرشادك، وحجز موعدك — بشكل طبيعي
               وبأي صياغة تُحب التحدث بها.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
