@@ -129,7 +129,10 @@ function firstMatch(text: string, expressions: RegExp[]) {
 const NAME_STOPWORDS = /حجز|احجز|موعد|بدي|اريد|أريد|تصوير|اتصور|أتصور|سعر|كم|شو|متى|وين|أشعة|اشعة|بانوراما/i;
 
 function cleanPatientName(raw: string | undefined): string | null {
-  const value = raw?.trim().replace(/[\s،,]+$/g, '');
+  const value = raw
+    ?.replace(/\s+(?:ورقم(?:\s+هاتفي)?|رقمي|وهاتفي|هاتفي)(?=\s|$)[\s\S]*$/i, '')
+    .trim()
+    .replace(/[\s،,]+$/g, '');
   if (!value || NAME_STOPWORDS.test(value)) return null;
   return value;
 }

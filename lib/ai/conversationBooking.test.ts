@@ -317,6 +317,28 @@ describe('attemptConversationBooking', () => {
     });
     expect(mocks.supabaseAdmin.from).toHaveBeenCalledTimes(1);
   });
+
+  it('saves chat bookings as pending confirmation when Google Calendar is disabled', async () => {
+    const result = await attemptConversationBooking({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      state: 'BOOKING',
+      patientConfirmedBooking: true,
+      booking: baseBooking,
+      operatingData,
+      requirePhone: true,
+      googleCalendar: false,
+    });
+
+    expect(result).toMatchObject({
+      action: 'booked',
+      appointment: { id: 'appt-1', status: 'pending_confirmation' },
+    });
+    expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      initialStatus: 'pending_confirmation',
+    }));
+    expect(mocks.createGoogleCalendarBooking).not.toHaveBeenCalled();
+  });
 });
 
   it('resolves the service the patient actually named ("بانوراما")', () => {

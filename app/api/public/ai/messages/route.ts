@@ -9,6 +9,8 @@ import { RateLimiter, getClientId } from '@/lib/services/gateway/security/rate-l
 import { logEvent } from '@/lib/server/logging';
 import { buildPendingBookingContext } from '@/lib/ai/bookingContextBridge';
 import { buildChatInteractive } from '@/lib/ai/chatInteractive';
+import { buildBookingConfirmation } from '@/lib/ai/bookingConfirmation';
+import { loadClinicOperatingData, loadReceptionistConversationState } from '@/lib/ai/clinicDataContext';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 
@@ -109,17 +111,29 @@ export async function POST(req: Request) {
     // operating data, and slot from real availability) — never invents.
     // STEP 10C: suppress entirely once the conversation is handed off to staff.
     const bookingContext = buildPendingBookingContext(metadata, { conversationState });
+    const [receptionState, operatingData] = await Promise.all([
+      loadReceptionistConversationState(clinic.id, convId),
+      loadClinicOperatingData(clinic.id),
+    ]);
+    const bookingConfirmation = metadata.handoff === true
+      ? null
+      : buildBookingConfirmation(clinic, receptionState, operatingData);
+    const responseAssistant = bookingConfirmation
+      ? { ...safeAssistant, content: 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.' }
+      : safeAssistant;
     return NextResponse.json({
       conversation_id: convId,
       user_message: userMessage,
-      assistant_message: safeAssistant,
+      assistant_message: responseAssistant,
       booking_context: bookingContext,
+      booking_completed: Boolean(receptionState?.booking.appointment_id),
       // الردود التفاعلية (أزرار سريعة + بطاقات + مؤشر تقدّم) — مشتقة من
       // الحالة الخادمية فقط: slot محقَّق من التوفر + نية الحجز في metadata.
       interactive: buildChatInteractive({
         bookingContext,
         conversationState: { state: conversationState },
         metadata,
+        bookingConfirmation,
       }),
     });
   } catch (err: any) {
@@ -170,15 +184,32 @@ export async function GET(req: Request) {
     const metadata = (conv as any)?.metadata ?? {};
     const conversationState = (conv as any)?.conversation_state ?? null;
     const bookingContext = buildPendingBookingContext(metadata, { conversationState });
+    const [receptionState, operatingData] = await Promise.all([
+      loadReceptionistConversationState(clinic.id, convId),
+      loadClinicOperatingData(clinic.id),
+    ]);
+    const bookingConfirmation = metadata.handoff === true
+      ? null
+      : buildBookingConfirmation(clinic, receptionState, operatingData);
+    if (bookingConfirmation) {
+      for (let index = (messages ?? []).length - 1; index >= 0; index -= 1) {
+        if (messages[index].role === 'assistant') {
+          messages[index].content = 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.';
+          break;
+        }
+      }
+    }
     return NextResponse.json({
       data: messages ?? [],
       // STEP 10C: suppress pending-booking projection for staff-handoff conversations.
       booking_context: bookingContext,
+      booking_completed: Boolean(receptionState?.booking.appointment_id),
       // نفس الحمولة التفاعلية بعد إعادة التحميل — تُشتق من الخادم لا من localStorage.
       interactive: buildChatInteractive({
         bookingContext,
         conversationState: { state: conversationState },
         metadata,
+        bookingConfirmation,
       }),
     });
   } catch (err: any) {

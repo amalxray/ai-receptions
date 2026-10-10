@@ -31,6 +31,13 @@ describe('detectConversationIntelligence (imaging-center bookings)', () => {
     expect(detectConversationIntelligence('نعم باسم طلال ابو جميل').appointment.patientName).toBe('طلال ابو جميل');
   });
 
+  it('does not append a phone-number phrase to the patient name', () => {
+    expect(detectConversationIntelligence('اسمي هادي جاد الله ورقم هاتفي 056000111').appointment).toMatchObject({
+      patientName: 'هادي جاد الله',
+      phone: '056000111',
+    });
+  });
+
   it('never stores a request phrase as a patient name', () => {
     expect(detectConversationIntelligence('نعم أنا بدي احجز').appointment.patientName).toBeNull();
   });

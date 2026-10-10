@@ -25,7 +25,7 @@ import {
   type ReceptionistConversationState,
   type ClinicProfile,
 } from '@/lib/ai/clinicDataContext';
-import { attemptConversationBooking, containsConfirmationWord, matchServiceByName } from '@/lib/ai/conversationBooking';
+import { matchServiceByName } from '@/lib/ai/conversationBooking';
 import { extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
@@ -37,7 +37,6 @@ import { unavailableReply, expressesTreatmentDesire } from '@/lib/ai/replyText';
 import { persistHandoffReply } from '@/lib/ai/handoffMessages';
 import { generateWithFailover } from '@/lib/ai/resilience';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
-import { getGoogleCalendarBusyIntervals } from '@/lib/services/googleCalendarBooking';
 
 type HistoryMessage = Pick<Message, 'role' | 'content'>;
 
@@ -347,6 +346,22 @@ export async function handleIncomingMessage(opts: {
       if (Object.keys(understanding).length > 0) {
         await saveConversationContext(clinicId, conversationId, understanding as unknown as ConversationContext);
       }
+      const explicitlyNamedService = matchServiceByName(text, operatingData.services);
+      if (
+        explicitlyNamedService &&
+        (currentState.booking.service_id !== explicitlyNamedService.id ||
+          currentState.recommended_service_id !== explicitlyNamedService.id)
+      ) {
+        const selectedServiceChanged = currentState.booking.service_id !== explicitlyNamedService.id;
+        currentState.recommended_service_id = explicitlyNamedService.id;
+        currentState.booking.service_id = explicitlyNamedService.id;
+        if (selectedServiceChanged) currentState.booking.slot = null;
+        await persistReceptionistSlot(clinicId, conversationId, {
+          service_id: explicitlyNamedService.id,
+          ...(selectedServiceChanged ? { slot: null } : {}),
+          patient_confirmed_booking: false,
+        });
+      }
       // Resolve requested names against THIS clinic's real operating data.
       // null = no match or ambiguous → the assistant asks for clarification.
       if (!currentState.recommended_service_id && currentState.requested_service) {
@@ -360,10 +375,8 @@ export async function handleIncomingMessage(opts: {
       // UNIFIED SAVE PATH — deterministic SERVICE resolution (no LLM). The
       // public "request service" button always books a real service chosen from
       // the catalog; the chat path previously depended on the model storing
-      // `recommended_service_id`. When it didn't, no slot was resolved, the
-      // state machine never left INITIAL and NOTHING was saved (while the model
-      // claimed «تم تثبيت موعدك»). Resolving + persisting the service here lets
-      // the SAME createBooking() run for both entry points.
+      // `recommended_service_id`. Resolve and persist a real catalog service
+      // here so availability and the confirmation capsule share the same id.
       if (!currentState.recommended_service_id) {
         const serviceHint =
           intelligence.appointment?.requestedService ??
@@ -405,8 +418,7 @@ export async function handleIncomingMessage(opts: {
     // slot, the state machine never advanced and nothing was ever saved.
     const bookingSignal =
       intelligence.intent === 'appointment_booking' ||
-      Boolean(intelligence.appointment?.requestedService) ||
-      containsConfirmationWord(text);
+      Boolean(intelligence.appointment?.requestedService);
     const needsRealSlot =
       bookingSignal &&
       currentState &&
@@ -567,191 +579,62 @@ export async function handleIncomingMessage(opts: {
       }
     }
 
-    // ── P1 UNLOCK: when the patient confirms (احجز/نعم/تمام...) while the state
-    // machine is parked at AWAITING_BOOKING_CONFIRMATION with a persisted slot,
-    // promote the state LOCALLY to BOOKING + confirmed BEFORE the booking gate:
-    // derive date/time from the saved slot and carry the conversation forward.
-    // (Previously the gate required state==='BOOKING' which never arrived, so
-    // attemptConversationBooking never ran and nothing was saved.)
-    if (currentState && currentState.state === 'AWAITING_BOOKING_CONFIRMATION' && containsConfirmationWord(text)) {
-      const slotString = currentState.booking?.slot ?? null;
-      if (slotString) {
-        // The loader always builds `booking`; this fallback keeps legacy rows
-        // (no metadata.booking yet) type-safe without a bare `{}` assignment.
-        currentState.booking = currentState.booking ?? {
-          service_id: null,
-          provider_id: null,
-          slot: slotString,
-          patient_name: null,
-          phone: null,
-          email: null,
-        };
-        currentState.state = 'BOOKING';
-        currentState.patient_confirmed_booking = true;
-        // `slot` is the SINGLE source of truth — conversationBooking derives
-        // date/time from it via parseSlot; no parallel date/time fields exist.
-        logEvent('booking_gate_unlocked', { clinic_id: clinicId, conversation_id: conversationId, slot: slotString });
-      }
-    }
-    // --- Conversational booking execution ---
-    // When the state machine reached BOOKING and the patient explicitly
-    // confirmed, try to complete the booking INSIDE the conversation using the
-    // existing, concurrency-safe `createBooking`. Results are passed to the
-    // LLM as an instruction note so the reply stays natural.
+    // Booking confirmation is a deterministic UI action now. Text such as
+    // «نعم» must never create an appointment; the public confirmation endpoint
+    // performs the final availability check and saves the booking.
     let bookingNote: string | null = null;
-    // P1/P2 ROOT FIX: the gate MUST use the post-transition state (`currentState`)
-    // and MUST accept `AWAITING_BOOKING_CONFIRMATION` — that is the state the
-    // state machine actually stores after "طيب احجز" (BOOKING is reserved for the
-    // final confirmed step), so the old `=== 'BOOKING'` check never opened the
-    // gate and nothing was saved while the model said "تم تأكيد موعدك".
-    // A raw-text confirmation word (no LLM) is accepted as the consent path too.
     const postTurnState = currentState ?? receptionState;
-    const rawConfirmation = containsConfirmationWord(text);
-    // UNIFIED SAVE PATH: the gate also opens on an EXPLICIT confirmation when
-    // the conversation already carries a real service + a real (availability-
-    // verified) slot, even if the state machine is parked earlier because the
-    // classifier returned `unknown`. This mirrors the public form's contract:
-    // the patient chose a real service/slot and confirmed ⇒ SAVE.
-    const hasBookableSelection = Boolean(
-      (postTurnState?.recommended_service_id ?? postTurnState?.booking.service_id) && postTurnState?.booking.slot
+    const hasBookingSignal = Boolean(
+      postTurnState &&
+      !postTurnState.booking.appointment_id &&
+      (postTurnState.booking_intent ||
+        postTurnState.booking.service_id ||
+        postTurnState.recommended_service_id ||
+        postTurnState.booking.slot)
     );
-    const inBookingFlow =
-      postTurnState?.state === 'BOOKING' ||
-      postTurnState?.state === 'AWAITING_BOOKING_CONFIRMATION' ||
-      (rawConfirmation && hasBookableSelection);
-    const bookingConfirmed = Boolean(postTurnState?.patient_confirmed_booking) || (inBookingFlow && rawConfirmation);
-    if (inBookingFlow && bookingConfirmed) {
-      logEvent('booking_attempt', {
-        clinic_id: clinicId,
-        conversation_id: conversationId,
-        confirmed_via: postTurnState.patient_confirmed_booking ? 'state_machine' : 'raw_text',
-        slot: postTurnState.booking.slot,
-      });
-      if (rawConfirmation && !postTurnState.patient_confirmed_booking) {
-        // Keep the consent alive for the next turns (metadata root).
-        postTurnState.patient_confirmed_booking = true;
-        await persistReceptionistSlot(clinicId, conversationId, { patient_confirmed_booking: true });
-      }
-      // Mirror the resolved ids into the booking record: `missingBookingFields`
-      // (the same invariant set the public route is bound by) reads them from
-      // `booking`, while the availability step writes them as recommendations.
-      if (!postTurnState.booking.service_id && postTurnState.recommended_service_id) {
-        postTurnState.booking.service_id = postTurnState.recommended_service_id;
+    if (postTurnState && hasBookingSignal) {
+      const requestedService = postTurnState.booking.service_id ?? postTurnState.recommended_service_id;
+      if (!postTurnState.booking.service_id && requestedService) {
+        postTurnState.booking.service_id = requestedService;
       }
       if (!postTurnState.booking.provider_id && postTurnState.recommended_provider_id) {
         postTurnState.booking.provider_id = postTurnState.recommended_provider_id;
       }
       if (!postTurnState.booking.provider_id && postTurnState.booking.service_id) {
-        // Same auto-resolution the availability step uses: the FIRST provider
-        // actually assigned to this service (never an invented one).
         const autoProvider = await resolveFirstProviderForService(clinicId, postTurnState.booking.service_id);
         if (autoProvider) {
           postTurnState.booking.provider_id = autoProvider;
           postTurnState.recommended_provider_id = autoProvider;
-          await persistReceptionistSlot(clinicId, conversationId, {
-            provider_id: autoProvider,
-            service_id: postTurnState.booking.service_id,
-          });
         }
       }
-      // `attemptConversationBooking` (and the state machine) execute a booking in
-      // the BOOKING stage only. When consent + a real service/slot arrived while
-      // the state was still parked earlier, promote + persist it now.
-      if (postTurnState.state !== 'BOOKING') {
-        postTurnState.state = 'BOOKING';
-        await persistReceptionistSlot(clinicId, conversationId, { state: 'BOOKING' });
-      }
-      // Carry any patient name/phone/email collected in THIS turn into the
-      // booking state so the patient doesn't have to repeat it and the booking
-      // can complete. Persisted so later turns keep it too.
-      const ap = intelligence.appointment;
-      if (ap?.patientName && !postTurnState.booking.patient_name) postTurnState.booking.patient_name = ap.patientName;
-      if (ap?.phone && !postTurnState.booking.phone) postTurnState.booking.phone = ap.phone;
-      if (ap?.email && !postTurnState.booking.email) postTurnState.booking.email = ap.email;
-      const hasCollected = Boolean(ap?.patientName || ap?.phone || ap?.email);
-      if (hasCollected) {
-        await persistReceptionistSlot(clinicId, conversationId, {
-          patient_name: postTurnState.booking.patient_name,
-          phone: postTurnState.booking.phone,
-          email: postTurnState.booking.email,
-        });
-      }
-      const hasRequiredBookingDetails = Boolean(
+
+      const appointment = intelligence.appointment;
+      if (appointment?.patientName) postTurnState.booking.patient_name = appointment.patientName;
+      if (appointment?.phone) postTurnState.booking.phone = appointment.phone;
+      if (appointment?.email) postTurnState.booking.email = appointment.email;
+
+      const readyToReview = Boolean(
         postTurnState.booking.service_id &&
+        postTurnState.booking.provider_id &&
         postTurnState.booking.slot &&
         postTurnState.booking.patient_name?.trim() &&
         postTurnState.booking.phone?.trim()
       );
-      const shouldWaitForBookingSummaryConsent = hasRequiredBookingDetails &&
-        (!postTurnState.booking_summary_presented || !rawConfirmation);
-      let attempt: Awaited<ReturnType<typeof attemptConversationBooking>> | null = null;
-      let createGoogleCalendarEvent = bookingPolicy.createGoogleCalendarEvent;
-      if (shouldWaitForBookingSummaryConsent) {
-        if (!postTurnState.booking_summary_presented) {
-          postTurnState.booking_summary_presented = true;
-          await persistReceptionistSlot(clinicId, conversationId, { booking_summary_presented: true });
-        }
-        const summarySlot = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(postTurnState.booking.slot ?? '');
-        const summaryService = operatingData.services.find((service) => service.id === postTurnState.booking.service_id)?.name ?? 'الخدمة المختارة';
+      if (readyToReview) postTurnState.state = 'BOOKING';
+      postTurnState.patient_confirmed_booking = false;
+      await persistReceptionistSlot(clinicId, conversationId, {
+        ...(postTurnState.booking.service_id ? { service_id: postTurnState.booking.service_id } : {}),
+        ...(postTurnState.booking.provider_id ? { provider_id: postTurnState.booking.provider_id } : {}),
+        ...(postTurnState.booking.slot ? { slot: postTurnState.booking.slot } : {}),
+        ...(postTurnState.booking.patient_name ? { patient_name: postTurnState.booking.patient_name } : {}),
+        ...(postTurnState.booking.phone ? { phone: postTurnState.booking.phone } : {}),
+        ...(postTurnState.booking.email ? { email: postTurnState.booking.email } : {}),
+        state: postTurnState.state,
+        patient_confirmed_booking: false,
+      });
+      if (readyToReview) {
         bookingNote =
-          `BOOKING SUMMARY — not saved yet. Service: ${summaryService}; requested verified slot: ${summarySlot ? `${summarySlot[1]} ${summarySlot[2]}` : postTurnState.booking.slot}; patient: ${postTurnState.booking.patient_name}; phone: ${postTurnState.booking.phone}. ` +
-          'Present this concise summary in Arabic and ask one explicit yes/no question to confirm it. Do NOT call booking tools or claim the appointment is saved in this turn.';
-      } else {
-        const slotDate = /^(\d{4}-\d{2}-\d{2})T/.exec(postTurnState.booking.slot ?? '')?.[1];
-        if (bookingConfirmed && bookingPolicy.checkGoogleCalendar && slotDate) {
-          try {
-            await getGoogleCalendarBusyIntervals(slotDate, clinicProfile.timezone ?? undefined);
-          } catch (calendarError) {
-            createGoogleCalendarEvent = false;
-            logEvent('conversation_google_calendar_unavailable_fallback', {
-              clinic_id: clinicId,
-              conversation_id: conversationId,
-              error: calendarError instanceof Error ? calendarError.message : String(calendarError),
-            }, 'warn');
-          }
-        }
-        attempt = await attemptConversationBooking({
-          clinicId,
-          conversationId,
-          state: postTurnState.state,
-          patientConfirmedBooking: bookingConfirmed,
-          booking: postTurnState.booking,
-          operatingData,
-          requirePhone: bookingPolicy.requirePhone,
-          googleCalendar: createGoogleCalendarEvent,
-          clinicName: clinicProfile.name,
-          timeZone: clinicProfile.timezone,
-          // Deterministic last-chance service resolution by the name the patient
-          // actually used ("بانوراما" → "تصوير بانوراما") — the same catalog
-          // lookup the public booking page performs before POST /api/booking.
-          serviceNameHint:
-            intelligence.appointment?.requestedService ??
-            extractRequestedServiceFromText(text) ??
-            postTurnState.requested_service ??
-            null,
-        });
-      }
-      if (attempt?.action === 'booked') {
-        // Fix [1]: server-computed day/time — the model repeats it verbatim.
-        // The stored `scheduled_at` follows the SAME wall-clock-as-UTC convention
-        // as the public booking path, so the day/time the patient must be told is
-        // read back in UTC (converting the clinic zone here would announce a time
-        // 3h off what the dashboard and the confirmation emails show).
-        const bookedAt = zonedParts(new Date(attempt.appointment.scheduled_at), 'UTC');
-        // P2: the [BOOKING_SAVED] tag is the ONLY proof of persistence the model
-        // may cite — promptManager forbids claiming confirmation without it.
-        bookingNote =
-          `[BOOKING_SAVED: ${attempt.appointment.id}] Booking CONFIRMED and SAVED to the appointments calendar. ` +
-          `Scheduled: ${ARABIC_WEEKDAYS[bookedAt.weekday]} ${bookedAt.date} at ${format12h(bookedAt.time)} clinic-local. ` +
-          `Reply with a warm Arabic confirmation using EXACTLY this day name and 12-hour time — never compute or convert them yourself.`;
-      } else if (attempt?.action === 'already_booked') {
-        bookingNote = `[BOOKING_SAVED: ${attempt.appointment_id}] This conversation already has a confirmed booking. Reply confirming it warmly with its day/time.`;
-      } else if (attempt?.action === 'need_more_info') {
-        bookingNote = `Booking NOT saved yet — nothing is confirmed. Still missing: ${attempt.missing.join(', ')}. Ask for exactly these details, one at a time.`;
-      } else if (attempt?.action === 'slot_unavailable') {
-        bookingNote = 'Booking NOT saved: the requested slot is no longer available. Apologize and invite the patient to choose another day or time (do not confirm a booking).';
-      } else if (attempt?.action === 'failed') {
-        bookingNote = 'Booking NOT saved: a system issue prevented completing it. Do not confirm — offer human help instead.';
+          'The patient details are complete. The interface will show a booking confirmation card with Confirm and Edit buttons. Do not ask for another confirmation, do not ask for details already present, and do not claim that the booking has been saved.';
       }
     }
     // STEP 5 — Network Discovery Mode: computed ONLY when the patient

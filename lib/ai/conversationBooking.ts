@@ -27,8 +27,8 @@ export function containsConfirmationWord(text: string | null | undefined): boole
 }
 
 /**
- * Conversational booking execution — completes a booking INSIDE the AI
- * conversation when (and only when) the state machine says:
+ * Conversational booking execution — creates the appointment only when the
+ * explicit booking-action endpoint calls it with:
  *   state === 'BOOKING' && patient_confirmed_booking
  * AND every required field (service, provider, patient name, phone, slot) is
  * already known.
@@ -200,7 +200,7 @@ export async function attemptConversationBooking(params: {
       serviceId: service.id,
       conversationId,
       durationMinutes: service.duration_minutes ?? undefined,
-      initialStatus: googleCalendar ? 'pending_confirmation' : 'tentative',
+      initialStatus: 'pending_confirmation',
       // UNIFIED SAVE PATH: no `timeZone` here on purpose — the availability
       // engine already emits wall-clock-as-UTC slots ("2026-09-19T09:00:00Z"
       // means 09:00 AT THE CLINIC), which is the convention the public

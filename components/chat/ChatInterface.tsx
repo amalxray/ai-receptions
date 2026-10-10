@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { freshConversationState, conversationStorageKeysToPurge } from '@/lib/chat/conversationReset';
-import type { ChatInteractive } from '@/lib/ai/chatInteractive';
+import type { BookingConfirmationData, ChatInteractive } from '@/lib/ai/chatInteractive';
 import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
 
@@ -74,6 +74,9 @@ export default function ChatInterface({ clinicId = '', initialConversationId = n
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
   const [showSuggested, setShowSuggested] = useState(true);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [bookingCompleted, setBookingCompleted] = useState(false);
+  const [editingBooking, setEditingBooking] = useState(false);
+  const [bookingDraft, setBookingDraft] = useState<BookingConfirmationData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string | null>(null);
 
@@ -126,6 +129,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           const response = await fetch(`${base}?${params}`);
           if (response.ok) {
             const payload = await response.json();
+            setBookingCompleted(Boolean(payload?.booking_completed));
             const items = Array.isArray(payload?.data) ? payload.data : [];
             if (items.length > 0) {
               const restored = items.map((item: any) => ({
@@ -179,6 +183,10 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
 
   async function handleSubmit(event: FormEvent<HTMLFormElement> | null, overrideText?: string) {
     if (event) event.preventDefault();
+    if (bookingCompleted) {
+      setStatusMessage('اكتمل الحجز. ابدأ محادثة جديدة إذا أردت طلباً آخر.');
+      return;
+    }
     const trimmed = (overrideText ?? draft).trim();
 
     // Empty / whitespace-only validation
@@ -285,6 +293,68 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
   }
 
+  async function handleBookingAction(action: 'confirm' | 'edit') {
+    if (!conversationId) {
+      setStatusMessage('تعذر تحديد المحادثة. أرسل رسالة أولاً ثم أعد المحاولة.');
+      return;
+    }
+    setIsSubmitting(true);
+    setStatusMessage(null);
+    try {
+      const requestBody = {
+        ...(isUuid ? { clinic_id: clinicId } : { clinic_slug: clinicId }),
+        conversation_id: conversationId,
+        action,
+        ...(action === 'edit' && bookingDraft ? {
+          service_id: bookingDraft.service_id,
+          provider_id: bookingDraft.provider_id,
+          date: bookingDraft.date,
+          time: bookingDraft.time,
+          patient_name: bookingDraft.patient_name,
+          phone: bookingDraft.phone,
+        } : {}),
+      };
+      const response = await fetch('/api/public/ai/booking-action', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setStatusMessage(payload?.error ?? 'تعذر تنفيذ الإجراء. يرجى المحاولة مرة أخرى.');
+        return;
+      }
+      if (action === 'edit') {
+        setEditingBooking(false);
+        setBookingDraft(null);
+        setMessages((current) => current.map((message, index) =>
+          index === current.length - 1 && message.role === 'assistant'
+            ? {
+                ...message,
+                interactive: {
+                  ...message.interactive,
+                  booking_confirmation: payload.booking_confirmation,
+                },
+              }
+            : message,
+        ));
+      } else {
+        setEditingBooking(false);
+        setBookingDraft(null);
+        setBookingCompleted(true);
+        setMessages((current) => [
+          ...current,
+          { role: 'assistant', text: payload.message ?? 'تم حجز موعدك بنجاح ✅ سنرسل لك تذكيراً قبل الموعد.' },
+        ]);
+      }
+    } catch (error) {
+      console.error('[chat booking action] request failed:', error);
+      setStatusMessage('تعذر الاتصال بالخادم لتنفيذ الحجز. حاول مرة أخرى.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   // NEW-CONVERSATION ISOLATION (root-cause fix): starts a genuinely fresh
   // conversation — new conversation_id on the next message, fresh messages,
   // fresh PatientContext/state-machine (server-side: new conversation row has
@@ -297,6 +367,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
 
     setMessages(fresh.messages);
     setConversationId(fresh.conversationId);
+    setBookingCompleted(false);
     setShowSuggested(fresh.showSuggested);
     setStatusMessage(fresh.statusMessage);
     lastSentRef.current = null;
@@ -400,7 +471,72 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                     <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-[15px]">{message.text}</p>
                     {index === messages.length - 1 && isReceptionist && message.interactive ? (
                       <>
-                        {message.interactive.card_group && message.interactive.card_group.items.length > 0 ? (
+                        {message.interactive.booking_confirmation ? (() => {
+                          const booking = message.interactive!.booking_confirmation!.data;
+                          const draft = bookingDraft ?? booking;
+                          return (
+                            <section className="mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-right shadow-sm" aria-label="تأكيد تفاصيل الحجز">
+                              <h3 className="mb-3 text-base font-bold text-teal-900">تأكيد تفاصيل الموعد</h3>
+                              <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                                <p><strong>العيادة:</strong> {booking.clinic}</p>
+                                <label className="grid gap-1"><strong>الخدمة</strong>
+                                  {editingBooking ? (
+                                    <select className="rounded-lg border border-slate-300 bg-white px-2 py-2" value={draft.service_id} onChange={(event) => {
+                                      const selected = booking.service_options.find((option) => option.id === event.target.value);
+                                      setBookingDraft({ ...draft, service_id: event.target.value, service: selected?.name ?? draft.service });
+                                    }}>
+                                      {booking.service_options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                                    </select>
+                                  ) : <span>{booking.service}</span>}
+                                </label>
+                                <label className="grid gap-1"><strong>الطبيب</strong>
+                                  {editingBooking ? (
+                                    <select className="rounded-lg border border-slate-300 bg-white px-2 py-2" value={draft.provider_id} onChange={(event) => {
+                                      const selected = booking.provider_options.find((option) => option.id === event.target.value);
+                                      setBookingDraft({ ...draft, provider_id: event.target.value, provider: selected?.name ?? draft.provider });
+                                    }}>
+                                      {booking.provider_options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                                    </select>
+                                  ) : <span>{booking.provider}</span>}
+                                </label>
+                                <label className="grid gap-1"><strong>التاريخ</strong>
+                                  {editingBooking
+                                    ? <input className="rounded-lg border border-slate-300 bg-white px-2 py-2" type="date" value={draft.date} onChange={(event) => setBookingDraft({ ...draft, date: event.target.value })} />
+                                    : <span>{booking.date}</span>}
+                                </label>
+                                <label className="grid gap-1"><strong>الساعة</strong>
+                                  {editingBooking
+                                    ? <input className="rounded-lg border border-slate-300 bg-white px-2 py-2" type="time" value={draft.time} onChange={(event) => setBookingDraft({ ...draft, time: event.target.value })} />
+                                    : <span>{booking.time}</span>}
+                                </label>
+                                <label className="grid gap-1"><strong>الاسم</strong>
+                                  {editingBooking
+                                    ? <input className="rounded-lg border border-slate-300 bg-white px-2 py-2" value={draft.patient_name} onChange={(event) => setBookingDraft({ ...draft, patient_name: event.target.value })} />
+                                    : <span>{booking.patient_name}</span>}
+                                </label>
+                                <label className="grid gap-1"><strong>الهاتف</strong>
+                                  {editingBooking
+                                    ? <input className="rounded-lg border border-slate-300 bg-white px-2 py-2" type="tel" value={draft.phone} onChange={(event) => setBookingDraft({ ...draft, phone: event.target.value })} />
+                                    : <span>{booking.phone}</span>}
+                                </label>
+                              </div>
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {editingBooking ? (
+                                  <>
+                                    <button type="button" disabled={isSubmitting} onClick={() => { void handleBookingAction('edit'); }} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">حفظ التعديلات</button>
+                                    <button type="button" disabled={isSubmitting} onClick={() => { setEditingBooking(false); setBookingDraft(null); }} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">إلغاء</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button type="button" disabled={isSubmitting} onClick={() => { void handleBookingAction('confirm'); }} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">✅ تأكيد الحجز</button>
+                                    <button type="button" disabled={isSubmitting} onClick={() => { setBookingDraft(booking); setEditingBooking(true); }} className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-300 disabled:opacity-50">↩️ تعديل</button>
+                                  </>
+                                )}
+                              </div>
+                            </section>
+                          );
+                        })() : null}
+                        {!message.interactive.booking_confirmation && message.interactive.card_group && message.interactive.card_group.items.length > 0 ? (
                           <div>
                             <p className="mt-3 text-xs font-semibold text-slate-600">{message.interactive.card_group.label}</p>
                             <OptionCards
@@ -419,7 +555,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                             />
                           </div>
                         ) : null}
-                        {message.interactive.quick_replies && message.interactive.quick_replies.length > 0 ? (
+                        {!message.interactive.booking_confirmation && message.interactive.quick_replies && message.interactive.quick_replies.length > 0 ? (
                           <QuickReplyChips
                             replies={message.interactive.quick_replies}
                             onSelect={(value) => { void handleSubmit(null, value); }}
@@ -488,14 +624,15 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             type="text"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="اكتب رسالة..."
+            placeholder={bookingCompleted ? 'اكتمل الحجز — ابدأ محادثة جديدة لطلب آخر' : 'اكتب رسالة...'}
             maxLength={MAX_MESSAGE_LENGTH}
             aria-label="رسالة"
+            disabled={bookingCompleted}
             className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:bg-white focus:ring-4 focus:ring-teal-500/10"
           />
           <button
             type="submit"
-            disabled={isSubmitting || !draft.trim()}
+            disabled={bookingCompleted || isSubmitting || !draft.trim()}
             className="rounded-2xl bg-gradient-to-l from-teal-600 to-cyan-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-teal-700/15 transition hover:from-teal-500 hover:to-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
           >
             {isSubmitting ? 'جارٍ الإرسال...' : 'إرسال'}
