@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildBookingConfirmation } from '@/lib/ai/bookingConfirmation';
+import { buildChatInteractive } from '@/lib/ai/chatInteractive';
 import type { ClinicOperatingData, ReceptionistConversationState } from '@/lib/ai/clinicDataContext';
 
 const operatingData: ClinicOperatingData = {
@@ -68,5 +69,44 @@ describe('buildBookingConfirmation', () => {
       ...completeState,
       state: 'awaiting_staff',
     }, operatingData)).toBeNull();
+  });
+
+  it('uses clinic-scoped recommendations when booking ids are absent from the booking object', () => {
+    const state = {
+      ...completeState,
+      booking: {
+        ...completeState.booking,
+        service_id: null,
+        provider_id: null,
+      },
+    };
+    expect(buildBookingConfirmation({ slug: 'hala-clinic' }, state, operatingData)?.data).toMatchObject({
+      service_id: 'service-1',
+      provider_id: 'provider-1',
+    });
+  });
+
+  it('hides the proposed-time card while collecting details or showing confirmation', () => {
+    const bookingContext = {
+      slot: completeState.booking.slot,
+      missing: ['patient_name', 'phone'],
+      booking_service_id: 'service-1',
+      booking_provider_id: 'provider-1',
+    };
+    const details = buildChatInteractive({
+      bookingContext,
+      conversationState: { state: 'ai' },
+    });
+    expect(details.booking_step).toBe('details');
+    expect(details.card_group).toBeUndefined();
+    expect(details.quick_replies).toBeUndefined();
+
+    const confirmation = buildChatInteractive({
+      bookingContext: { ...bookingContext, missing: [] },
+      conversationState: { state: 'ai' },
+    });
+    expect(confirmation.booking_step).toBe('confirmation');
+    expect(confirmation.card_group).toBeUndefined();
+    expect(confirmation.quick_replies).toBeUndefined();
   });
 });

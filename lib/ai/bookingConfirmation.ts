@@ -13,7 +13,9 @@ export function buildBookingConfirmation(
     state.booking.appointment_id
   ) return null;
 
-  const { service_id, provider_id, slot, patient_name, phone } = state.booking;
+  const service_id = state.booking.service_id ?? state.recommended_service_id;
+  const provider_id = state.booking.provider_id ?? state.recommended_provider_id;
+  const { slot, patient_name, phone } = state.booking;
   if (!service_id || !provider_id || !slot || !patient_name?.trim() || !phone?.trim()) return null;
 
   const service = operatingData.services.find((item) => item.id === service_id && item.active);

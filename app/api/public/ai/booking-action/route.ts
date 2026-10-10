@@ -24,7 +24,11 @@ const requestSchema = z.object({
   phone: z.string().max(30).optional(),
 });
 
-const BOOKING_SUCCESS = 'تم حجز موعدك بنجاح ✅ سنرسل لك تذكيراً قبل الموعد.';
+const BOOKING_SUCCESS = 'تمت مزامنة موعدك مع تقويم العيادة ✅';
+const BOOKING_PENDING =
+  'تم تسجيل طلب الموعد في قاعدة بيانات العيادة، لكن لم تتم مزامنته مع Google Calendar لأن ربط التقويم غير مفعّل حالياً. يرجى التواصل مع الاستقبال لتأكيد الموعد.';
+const bookingMessage = (status?: string | null) =>
+  status === 'confirmed' ? BOOKING_SUCCESS : BOOKING_PENDING;
 const bookingActionLimiter = new RateLimiter(10, 60_000);
 
 export async function POST(request: Request) {
@@ -55,13 +59,13 @@ export async function POST(request: Request) {
         ok: true,
         appointment_id: state.booking.appointment_id,
         status: state.booking.appointment_status,
-        message: BOOKING_SUCCESS,
+        message: bookingMessage(state.booking.appointment_status),
       });
     }
 
     if (input.action === 'edit') {
-      const serviceId = input.service_id ?? state.booking.service_id;
-      const providerId = input.provider_id ?? state.booking.provider_id;
+      const serviceId = input.service_id ?? state.booking.service_id ?? state.recommended_service_id;
+      const providerId = input.provider_id ?? state.booking.provider_id ?? state.recommended_provider_id;
       const date = input.date;
       const time = input.time;
       const patientName = input.patient_name?.trim() ?? state.booking.patient_name?.trim();
@@ -118,13 +122,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'تعذر تثبيت تأكيد الحجز. حاول مرة أخرى.' }, { status: 500 });
     }
 
-    const policy = getChatBookingPolicy(clinic.slug, profile.activityType);
+    const policy = await getChatBookingPolicy(clinic.id);
     const result = await attemptConversationBooking({
       clinicId: clinic.id,
       conversationId: input.conversation_id,
       state: 'BOOKING',
       patientConfirmedBooking: true,
-      booking: bookingState.booking,
+      booking: {
+        ...bookingState.booking,
+        service_id: bookingState.booking.service_id ?? bookingState.recommended_service_id,
+        provider_id: bookingState.booking.provider_id ?? bookingState.recommended_provider_id,
+      },
       operatingData,
       requirePhone: true,
       googleCalendar: policy.createGoogleCalendarEvent,
@@ -133,7 +141,12 @@ export async function POST(request: Request) {
     });
 
     if (result.action === 'already_booked') {
-      return NextResponse.json({ ok: true, message: BOOKING_SUCCESS, appointment_id: result.appointment_id });
+      return NextResponse.json({
+        ok: true,
+        message: bookingMessage(state.booking.appointment_status),
+        appointment_id: result.appointment_id,
+        status: state.booking.appointment_status,
+      });
     }
     if (result.action === 'slot_unavailable') {
       await persistReceptionistSlot(clinic.id, input.conversation_id, { patient_confirmed_booking: false });
@@ -151,12 +164,13 @@ export async function POST(request: Request) {
       state: 'COMPLETED',
       patient_confirmed_booking: true,
     });
+    const resultMessage = bookingMessage(result.appointment.status);
     try {
       await saveMessage({
         conversation_id: input.conversation_id,
         clinic_id: clinic.id,
         role: 'assistant',
-        content: BOOKING_SUCCESS,
+        content: resultMessage,
       });
     } catch (error) {
       logEvent('public_ai_booking_confirmation_message_failed', {
@@ -169,7 +183,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: BOOKING_SUCCESS,
+      message: resultMessage,
       appointment_id: result.appointment.id,
       status: result.appointment.status,
     });

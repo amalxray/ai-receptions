@@ -11,6 +11,14 @@ import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
  * surfaced as a WARNING instead of being applied silently.
  */
 export const MIN_REALISTIC_DURATION_MINUTES = 10;
+const GOOGLE_CALENDAR_UNAVAILABLE_MESSAGE = 'تعذّر التحقق من التقويم الآن، حاول لاحقاً';
+
+class GoogleCalendarAvailabilityError extends Error {
+  constructor() {
+    super(GOOGLE_CALENDAR_UNAVAILABLE_MESSAGE);
+    this.name = 'GoogleCalendarAvailabilityError';
+  }
+}
 
 async function getGoogleCalendarBusyIntervalsOrEmpty(
   date: string,
@@ -18,7 +26,7 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
   context: { clinicId: string; serviceId: string; providerId?: string },
 ): Promise<Array<{ start: string; end: string }>> {
   try {
-    return await getGoogleCalendarBusyIntervals(date, timeZone);
+    return await getGoogleCalendarBusyIntervals(context.clinicId, date, timeZone);
   } catch (err) {
     logEvent('availability_google_calendar_error', {
       clinic_id: context.clinicId,
@@ -27,7 +35,7 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
       requested_date: date,
       error: err instanceof Error ? err.message : String(err),
     }, 'warn');
-    return [];
+    throw new GoogleCalendarAvailabilityError();
   }
 }
 
@@ -196,7 +204,8 @@ async function describeUnavailableRequestedDay(params: {
         break;
       }
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof GoogleCalendarAvailabilityError) throw err;
     // No alternative is fine — the caller falls back to an honest handoff.
   }
 
@@ -313,7 +322,14 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
   for (const day of days) {
     let calendarBusy: Array<{ start: string; end: string }> = [];
     if (checkGoogleCalendar) {
-      calendarBusy = await getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, providerId, serviceId });
+      try {
+        calendarBusy = await getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, providerId, serviceId });
+      } catch (err) {
+        if (err instanceof GoogleCalendarAvailabilityError) {
+          return { found: false, reason: 'error', message: err.message };
+        }
+        throw err;
+      }
     }
     try {
       const providerSlots = await getAvailableSlots(clinicId, providerId, day, limitPerDay, serviceId);
@@ -370,17 +386,26 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
   // (closed / holiday / fully booked) and offer the first REAL day after it —
   // never a silent day switch, never an invented slot.
   if (preferredDate) {
-    const { dayStatus, nextAvailable } = await describeUnavailableRequestedDay({
-      clinicId,
-      providerId,
-      serviceId,
-      requestedDate: preferredDate,
-      constraints,
-      lookaheadDays,
-      timeZone,
-      checkGoogleCalendar,
-      durationMinutes: service.duration_minutes,
-    });
+    let unavailableDay: Awaited<ReturnType<typeof describeUnavailableRequestedDay>>;
+    try {
+      unavailableDay = await describeUnavailableRequestedDay({
+        clinicId,
+        providerId,
+        serviceId,
+        requestedDate: preferredDate,
+        constraints,
+        lookaheadDays,
+        timeZone,
+        checkGoogleCalendar,
+        durationMinutes: service.duration_minutes,
+      });
+    } catch (err) {
+      if (err instanceof GoogleCalendarAvailabilityError) {
+        return { found: false, reason: 'error', message: err.message };
+      }
+      throw err;
+    }
+    const { dayStatus, nextAvailable } = unavailableDay;
     logEvent('availability_requested_day_unavailable', {
       clinic_id: clinicId,
       provider_id: providerId,
@@ -585,6 +610,12 @@ export async function findClinicLevelSlots(params: {
       service_id: serviceId,
       error: err instanceof Error ? err.message : String(err),
     }, 'warn');
-    return { found: false, reason: 'error', message: 'clinic-level availability failed' };
+    return {
+      found: false,
+      reason: 'error',
+      message: err instanceof GoogleCalendarAvailabilityError
+        ? err.message
+        : 'clinic-level availability failed',
+    };
   }
 }

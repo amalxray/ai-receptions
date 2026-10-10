@@ -118,9 +118,34 @@ export async function POST(req: Request) {
     const bookingConfirmation = metadata.handoff === true
       ? null
       : buildBookingConfirmation(clinic, receptionState, operatingData);
+    const assistantContent = String(safeAssistant.content ?? '');
+    const hasCompleteBookingDetails = Boolean(
+      receptionState &&
+      (receptionState.booking.service_id ?? receptionState.recommended_service_id) &&
+      (receptionState.booking.provider_id ?? receptionState.recommended_provider_id) &&
+      receptionState.booking.slot &&
+      receptionState.booking.patient_name?.trim() &&
+      receptionState.booking.phone?.trim()
+    );
+    const hasUnverifiedBookingClaim = !receptionState?.booking.appointment_id &&
+      (/\[BOOKING_SAVED\b/i.test(assistantContent) ||
+        /(?:تم|قمنا)\s+(?:ب)?(?:حجز|تثبيت|تأكيد)\s+(?:موعدك|حجزك|الحجز)/.test(assistantContent) ||
+        /(?:لقد\s+)?(?:تم|جرى)\s+(?:تثبيت|تأكيد)\s+(?:موعدك|حجزك|الحجز)/.test(assistantContent));
+    const bookingDetailsPending = !metadata.handoff &&
+      receptionState?.state === 'BOOKING' &&
+      Boolean(receptionState.booking.slot) &&
+      !receptionState.booking.appointment_id;
     const responseAssistant = bookingConfirmation
       ? { ...safeAssistant, content: 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.' }
-      : safeAssistant;
+      : hasCompleteBookingDetails && !metadata.handoff
+        ? { ...safeAssistant, content: 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.' }
+      : bookingDetailsPending && !receptionState.booking.patient_name?.trim()
+        ? { ...safeAssistant, content: 'ما الاسم الكامل للمريض/ة؟' }
+      : bookingDetailsPending && !receptionState.booking.phone?.trim()
+        ? { ...safeAssistant, content: 'ما رقم الهاتف للتواصل؟' }
+      : hasUnverifiedBookingClaim
+        ? { ...safeAssistant, content: 'لم يتم تأكيد الحجز بعد. أكمل/ي البيانات المطلوبة، ثم استخدم/ي زر «تأكيد الحجز» في بطاقة الموعد.' }
+        : safeAssistant;
     return NextResponse.json({
       conversation_id: convId,
       user_message: userMessage,
@@ -191,10 +216,28 @@ export async function GET(req: Request) {
     const bookingConfirmation = metadata.handoff === true
       ? null
       : buildBookingConfirmation(clinic, receptionState, operatingData);
-    if (bookingConfirmation) {
+    const bookingDetailsPending = metadata.handoff !== true &&
+      receptionState?.state === 'BOOKING' &&
+      Boolean(receptionState.booking.slot) &&
+      !receptionState.booking.appointment_id;
+    const hasCompleteBookingDetails = Boolean(
+      receptionState &&
+      (receptionState.booking.service_id ?? receptionState.recommended_service_id) &&
+      (receptionState.booking.provider_id ?? receptionState.recommended_provider_id) &&
+      receptionState.booking.slot &&
+      receptionState.booking.patient_name?.trim() &&
+      receptionState.booking.phone?.trim()
+    );
+    if (bookingConfirmation || bookingDetailsPending || hasCompleteBookingDetails) {
       for (let index = (messages ?? []).length - 1; index >= 0; index -= 1) {
         if (messages[index].role === 'assistant') {
-          messages[index].content = 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.';
+          messages[index].content = bookingConfirmation
+            ? 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.'
+            : hasCompleteBookingDetails
+              ? 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.'
+              : !receptionState?.booking.patient_name?.trim()
+                ? 'ما الاسم الكامل للمريض/ة؟'
+                : 'ما رقم الهاتف للتواصل؟';
           break;
         }
       }

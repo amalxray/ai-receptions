@@ -285,7 +285,10 @@ export type ChatInteractiveInput = {
 
 function readBookingStep(source: unknown): string | undefined {
   if (!isRecord(source)) return undefined;
-  return firstString(source, ['booking_step', 'bookingStep', 'step', 'current_step', 'currentStep']);
+  const step = firstString(source, ['booking_step', 'bookingStep', 'step', 'current_step', 'currentStep']);
+  if (!step) return undefined;
+  if (step.toLowerCase() === 'completed') return 'completed';
+  return buildProgress(step) ? step : undefined;
 }
 
 /** يشتق خطوة الحجز من projection الحجز الحقيقي (slot/missing/تأكيد المريض). */
@@ -331,7 +334,15 @@ export function buildChatInteractive(input: ChatInteractiveInput): ChatInteracti
 
   // بطاقة الموعد المقترح — من slot حقيقي محفوظ بعد التحقق من التوفر فقط.
   let slotCard: OptionCardGroup | undefined;
-  if (isRecord(bookingCtx) && typeof bookingCtx.slot === 'string' && bookingCtx.slot) {
+  if (
+    !input.bookingConfirmation &&
+    bookingStep !== 'details' &&
+    bookingStep !== 'confirmation' &&
+    bookingStep !== 'completed' &&
+    isRecord(bookingCtx) &&
+    typeof bookingCtx.slot === 'string' &&
+    bookingCtx.slot
+  ) {
     const [date, time] = bookingCtx.slot.split('T');
     if (time) {
       const dayIndex = date ? new Date(`${date}T00:00:00Z`).getUTCDay() : -1;
@@ -352,21 +363,21 @@ export function buildChatInteractive(input: ChatInteractiveInput): ChatInteracti
     }
   }
 
+  const waitingForPatientDetails = bookingStep === 'details';
+  const showingConfirmation = Boolean(input.bookingConfirmation) || bookingStep === 'confirmation';
   const sources = { booking: bookingCtx, state: input.conversationState, meta };
-  const cardGroup =
-    slotCard ??
-    buildGroup(sources, 'time', TIME_SLOT_KEYS, 'الأوقات المتاحة — اختر واحداً', 12) ??
-    buildGroup(sources, 'day', DAY_SLOT_KEYS, 'الأيام المتاحة', 7) ??
-    buildGroup(sources, 'provider', PROVIDER_KEYS, 'اختر المقدّم', 6) ??
-    buildGroup(sources, 'service', SERVICE_KEYS, 'اختر الخدمة', 6) ??
-    buildGroup(sources, 'clinic', CLINIC_KEYS, 'اختر المنشأة', 3);
+  const cardGroup = waitingForPatientDetails || showingConfirmation || bookingStep === 'completed'
+    ? undefined
+    : slotCard ??
+      buildGroup(sources, 'time', TIME_SLOT_KEYS, 'الأوقات المتاحة — اختر واحداً', 12) ??
+      buildGroup(sources, 'day', DAY_SLOT_KEYS, 'الأيام المتاحة', 7) ??
+      buildGroup(sources, 'provider', PROVIDER_KEYS, 'اختر المقدّم', 6) ??
+      buildGroup(sources, 'service', SERVICE_KEYS, 'اختر الخدمة', 6) ??
+      buildGroup(sources, 'clinic', CLINIC_KEYS, 'اختر المنشأة', 3);
 
   let quickReplies: QuickReply[] | undefined;
-  if (bookingStep === 'confirmation') {
-    quickReplies = [
-      { label: 'نعم، أكّد الحجز', value: 'نعم، أكّد الحجز' },
-      { label: 'لا، غيّر الموعد', value: 'لا، أريد تغيير الموعد' },
-    ];
+  if (showingConfirmation) {
+    quickReplies = undefined;
   } else if (bookingStep === 'details') {
     quickReplies = undefined; // الاسم/الهاتف تُكتب يدوياً
   } else if (cardGroup?.kind === 'day') {

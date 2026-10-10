@@ -27,6 +27,7 @@ import {
 } from '@/lib/ai/clinicDataContext';
 import { matchServiceByName } from '@/lib/ai/conversationBooking';
 import { extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
+import { extractPatientNameFromBookingReply } from '@/lib/ai/intelligence';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import { format12h } from '@/lib/time/format';
@@ -331,7 +332,7 @@ export async function handleIncomingMessage(opts: {
     // clock is UTC on Vercel while the clinic lives in Asia/Hebron (UTC+3).
     const workingHours = await loadClinicWorkingHours(clinicId, clinicProfile.timezone);
     const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
-    const bookingPolicy = getChatBookingPolicy(clinicProfile.slug, clinicProfile.activityType);
+    const bookingPolicy = await getChatBookingPolicy(clinicId);
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
@@ -577,7 +578,9 @@ export async function handleIncomingMessage(opts: {
           });
         } else {
           availabilityNote = availability.reason === 'error'
-            ? 'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.'
+            ? availability.message
+              ? `REAL AVAILABILITY could not be checked. Tell the patient exactly: "${availability.message}". Do NOT invent or offer dates or times.`
+              : 'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.'
             : `REAL AVAILABILITY check found no available slot for the recommended provider in the near future. Do NOT invent a date/time. Tell the patient that availability needs to be confirmed and offer to hand off to the clinic reception.`;
           logEvent('receptionist_real_slot_empty', {
             clinic_id: clinicId,
@@ -642,7 +645,15 @@ export async function handleIncomingMessage(opts: {
       }
 
       const appointment = intelligence.appointment;
-      if (appointment?.patientName) postTurnState.booking.patient_name = appointment.patientName;
+      const bookingReplyName =
+        !postTurnState.booking.patient_name &&
+        postTurnState.state === 'BOOKING' &&
+        postTurnState.booking.slot
+          ? extractPatientNameFromBookingReply(text)
+          : null;
+      if (appointment?.patientName || bookingReplyName) {
+        postTurnState.booking.patient_name = appointment?.patientName ?? bookingReplyName;
+      }
       if (appointment?.phone) postTurnState.booking.phone = appointment.phone;
       if (appointment?.email) postTurnState.booking.email = appointment.email;
 

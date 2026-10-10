@@ -39,6 +39,28 @@ import { analyzeAndPersistMessage } from '@/lib/services/conversationIntelligenc
 const clinicId = '11111111-1111-1111-1111-111111111111';
 const conversationId = '22222222-2222-2222-2222-222222222222';
 
+function createConversationClient(existingMetadata: Record<string, unknown> = {}) {
+  const lookup: Record<string, ReturnType<typeof vi.fn>> = {};
+  lookup.eq = vi.fn(() => lookup);
+  lookup.maybeSingle = vi.fn(async () => ({ data: { metadata: existingMetadata }, error: null }));
+  let updateFilters = 0;
+  const updateResult = {} as Record<string, ReturnType<typeof vi.fn>>;
+  updateResult.eq = vi.fn(() => {
+    updateFilters += 1;
+    return updateFilters === 2 ? Promise.resolve({ error: null }) : updateResult;
+  });
+  const update = vi.fn((_payload: Record<string, unknown>) => updateResult);
+  return {
+    client: {
+      from: vi.fn(() => ({
+        select: vi.fn(() => lookup),
+        update,
+      })),
+    },
+    update,
+  };
+}
+
 function state() {
   return {
     state: 'DISCOVERING_PROBLEM',
@@ -72,8 +94,11 @@ describe('conversation intelligence recommendation integration', () => {
       recommendedServiceId: 'service-a', recommendedServiceName: 'فحص أسنان',
       recommendedProviderId: 'provider-a', recommendedProviderName: 'د. أ', candidates: [], multipleProviders: false,
     });
-    const update = vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) }));
-    const client = { from: vi.fn(() => ({ update })) };
+    const { client, update } = createConversationClient({
+      booking: { slot: '2026-10-11T15:00:00.000Z', patient_name: 'نرجس حسن' },
+      state: 'BOOKING',
+      patient_confirmed_booking: true,
+    });
 
     await analyzeAndPersistMessage(client as any, { clinicId, conversationId, text: 'عندي ألم في ضرس' });
 
@@ -84,12 +109,18 @@ describe('conversation intelligence recommendation integration', () => {
       recommended_provider_id: 'provider-a',
       context: expect.objectContaining({ recommended_service: 'فحص أسنان', recommended_provider: 'د. أ' }),
     }));
+    const updatePayload = update.mock.calls[0][0];
+    expect(updatePayload.metadata).toMatchObject({
+      booking: { slot: '2026-10-11T15:00:00.000Z', patient_name: 'نرجس حسن' },
+      state: 'BOOKING',
+      patient_confirmed_booking: true,
+      conversation_state_machine: 'RECOMMENDING_PROVIDER',
+    });
   });
 
   it('does not enter recommendation state when deterministic reasoning finds no valid pair', async () => {
     mocks.reasonServiceProvider.mockResolvedValue({ recommendedServiceId: null, recommendedServiceName: null, recommendedProviderId: null, recommendedProviderName: null, candidates: [], multipleProviders: false });
-    const update = vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(async () => ({ error: null })) })) }));
-    const client = { from: vi.fn(() => ({ update })) };
+    const { client } = createConversationClient();
 
     await analyzeAndPersistMessage(client as any, { clinicId, conversationId, text: 'عندي ألم في ضرس' });
 

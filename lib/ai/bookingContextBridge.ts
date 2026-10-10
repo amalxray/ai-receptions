@@ -59,8 +59,8 @@ export function buildPendingBookingContext(
 
   const recommended_service_id = (meta.recommended_service_id as string) ?? null;
   const recommended_provider_id = (meta.recommended_provider_id as string) ?? null;
-  const service_id = (booking.service_id as string) ?? null;
-  const provider_id = (booking.provider_id as string) ?? null;
+  const service_id = (booking.service_id as string) ?? recommended_service_id;
+  const provider_id = (booking.provider_id as string) ?? recommended_provider_id;
   const patient_name = (booking.patient_name as string) ?? null;
   const phone = (booking.phone as string) ?? (booking.phone_number as string) ?? null;
   const email = (booking.email as string) ?? null;
@@ -74,7 +74,7 @@ export function buildPendingBookingContext(
       patient_name,
       phone,
     },
-  });
+  }, true, true);
 
   return {
     recommended_service_id,

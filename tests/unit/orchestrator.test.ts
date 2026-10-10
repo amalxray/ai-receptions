@@ -441,4 +441,59 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
     expect(Array.isArray(assistantInserts[0][0][0].metadata?.citations)).toBe(true);
     expect(assistantInserts[0][0][0].metadata?.citations.length).toBe(0);
   });
+
+  it('persists an unlabelled full name when the booking flow is waiting for patient details', async () => {
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent: 'appointment_booking',
+      shouldHandoff: false,
+      appointment: {},
+    } as any);
+    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 's1', name: 'تصوير بانوراما', duration_minutes: 30, active: true }],
+      providers: [{ id: 'p1', name: 'أ. أمل نوري' }],
+      providerServiceIds: [{ provider_id: 'p1', service_id: 's1' }],
+      hasServices: true,
+      hasProviders: true,
+      usable: true,
+    } as any);
+    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
+      state: 'BOOKING',
+      recommended_service_id: 's1',
+      recommended_provider_id: 'p1',
+      patient_confirmed_booking: true,
+      pending_question: '',
+      booking: {
+        service_id: 's1',
+        provider_id: 'p1',
+        slot: '2026-10-11T15:00:00.000Z',
+        patient_name: null,
+        phone: null,
+        email: null,
+      },
+    } as any);
+    mockContextRetrieval.retrieveContext.mockResolvedValue([]);
+    mockPromptManager.buildPrompt.mockReturnValue('booking details prompt');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'ما رقم الهاتف للتواصل؟',
+      promptTokens: 5,
+      completionTokens: 5,
+      totalTokens: 10,
+      model: 'test-model',
+    });
+
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'نهايه احمد',
+    });
+
+    expect(mockClinicDataContext.persistReceptionistSlot).toHaveBeenCalledWith(
+      'clinic-1',
+      'conv-1',
+      expect.objectContaining({
+        patient_name: 'نهايه احمد',
+        state: 'BOOKING',
+      }),
+    );
+  });
 });

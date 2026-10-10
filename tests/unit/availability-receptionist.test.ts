@@ -34,9 +34,27 @@ describe('findEarliestAvailableSlot (real availability tool)', () => {
     vi.clearAllMocks();
   });
 
-  it('uses local availability when Google Calendar lookup fails', async () => {
+  it('uses local availability for an unconnected clinic without querying Google Calendar', async () => {
     bookingMocks.getActiveServiceById.mockResolvedValue({ id: 'svc', name: 'Panorama', duration_minutes: 30 });
     bookingMocks.getAvailableSlots.mockResolvedValue(['2026-09-04T13:30:00.000Z']);
+    bookingMocks.getGoogleCalendarBusyIntervals.mockRejectedValue(new Error('Calendar credentials are invalid'));
+
+    const result = await findEarliestAvailableSlot({
+      clinicId: 'c1',
+      providerId: 'p1',
+      serviceId: 'svc',
+      preferredDate: '2026-09-04',
+      checkGoogleCalendar: false,
+      now: FIXED_NOW,
+    });
+
+    expect(result.found).toBe(true);
+    if (result.found) expect(result.slot).toBe('2026-09-04T13:30:00.000Z');
+    expect(bookingMocks.getGoogleCalendarBusyIntervals).not.toHaveBeenCalled();
+  });
+
+  it('rejects availability for a connected clinic when Google Calendar cannot be checked', async () => {
+    bookingMocks.getActiveServiceById.mockResolvedValue({ id: 'svc', name: 'Panorama', duration_minutes: 30 });
     bookingMocks.getGoogleCalendarBusyIntervals.mockRejectedValue(new Error('Calendar credentials are invalid'));
 
     const result = await findEarliestAvailableSlot({
@@ -48,8 +66,12 @@ describe('findEarliestAvailableSlot (real availability tool)', () => {
       now: FIXED_NOW,
     });
 
-    expect(result.found).toBe(true);
-    if (result.found) expect(result.slot).toBe('2026-09-04T13:30:00.000Z');
+    expect(result).toEqual({
+      found: false,
+      reason: 'error',
+      message: 'تعذّر التحقق من التقويم الآن، حاول لاحقاً',
+    });
+    expect(bookingMocks.getAvailableSlots).not.toHaveBeenCalled();
   });
 
   it('returns the earliest real slot from the availability engine', async () => {

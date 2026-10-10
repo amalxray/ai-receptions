@@ -137,6 +137,42 @@ function cleanPatientName(raw: string | undefined): string | null {
   return value;
 }
 
+const NON_NAME_REPLY_WORDS = new Set([
+  'نعم', 'اه', 'آه', 'اكيد', 'أكيد', 'تمام', 'طيب', 'موافق', 'موافقة',
+  'موعد', 'يوم', 'بكرة', 'بكره', 'غدا', 'غداً', 'اليوم', 'الاحد', 'الأحد',
+  'الاثنين', 'الثلاثاء', 'الاربعاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت',
+  'الساعة', 'الساعه', 'صباحا', 'مساء', 'ظهرا', 'الظهر', 'العصر',
+  'متى', 'وين', 'شو', 'كم', 'الاوقات', 'الأوقات', 'المتاحة', 'المتاح',
+  'بانوراما', 'تصوير', 'اشعة', 'أشعة', 'حجز', 'احجز', 'اريد', 'أريد', 'بدي',
+]);
+
+/**
+ * A bare full name is accepted only by the caller when it is already waiting
+ * for the patient's name in an active booking. Unlabelled one-word replies
+ * remain ambiguous and are deliberately not treated as names.
+ */
+export function extractPatientNameFromBookingReply(text: string): string | null {
+  const explicitName = text.match(
+    /(?:my name is|i am|this is|اسمي|أنا|انا|باسم|بسم)\s+([^,.\n]{2,60})/i,
+  )?.[1];
+  const cleanedExplicitName = cleanPatientName(explicitName);
+  if (cleanedExplicitName) return cleanedExplicitName;
+
+  const candidate = text.trim().replace(/[،,؛;.!؟?]+$/g, '');
+  const parts = candidate.split(/\s+/);
+  if (
+    parts.length < 2 ||
+    parts.length > 5 ||
+    parts.some((part) =>
+      NON_NAME_REPLY_WORDS.has(part.toLocaleLowerCase()) ||
+      !/^[\u0600-\u06FFa-z]+(?:[-'][\u0600-\u06FFa-z]+)*$/i.test(part)
+    )
+  ) {
+    return null;
+  }
+  return cleanPatientName(candidate);
+}
+
 function extractAppointment(text: string): AppointmentExtraction {
   const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? null;
   const phone = text.match(/(?:\+?\d[\d\s().-]{7,}\d)/g)?.map((candidate) => candidate.trim()).find((candidate) => !/^20\d{2}[-/]\d{1,2}[-/]\d{1,2}$/.test(candidate) && !/^\d{1,2}[-/]\d{1,2}[-/]20\d{2}$/.test(candidate)) ?? null;

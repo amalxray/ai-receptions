@@ -106,6 +106,10 @@ describe('public chat booking action', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({ ok: true, status: 'pending_confirmation', appointment_id: 'appointment-1' });
+    expect(payload.message).toContain('لم تتم مزامنته مع Google Calendar');
+    expect(mocks.saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('لم تتم مزامنته مع Google Calendar'),
+    }));
     expect(mocks.attemptConversationBooking).toHaveBeenCalledWith(expect.objectContaining({
       clinicId: 'clinic-1',
       state: 'BOOKING',

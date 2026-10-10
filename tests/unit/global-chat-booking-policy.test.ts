@@ -1,40 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
+import { getGoogleCalendarConnectionStatus } from '@/lib/services/googleCalendarOAuth';
 
-describe('global public-chat booking policy', () => {
+vi.mock('@/lib/services/googleCalendarOAuth', () => ({
+  getGoogleCalendarConnectionStatus: vi.fn(),
+}));
+
+const getConnectionStatus = vi.mocked(getGoogleCalendarConnectionStatus);
+
+describe('clinic-scoped public-chat booking policy', () => {
   beforeEach(() => {
-    vi.stubEnv('GOOGLE_SERVICE_ACCOUNT_EMAIL', 'service@example.com');
-    vi.stubEnv('GOOGLE_PRIVATE_KEY', '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----');
-    vi.stubEnv('GOOGLE_CALENDAR_ID', 'test-calendar');
+    getConnectionStatus.mockResolvedValue({ connected: true, connected_at: '2026-10-10T12:00:00.000Z', email: 'clinic@example.test' });
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    vi.clearAllMocks();
   });
 
-  const tenants: Array<[string, string]> = [
-    ['amal-clinic', 'clinic'],
-    ['hala-clinic', 'clinic'],
-    ['amal-x-ray-center', 'imaging_center'],
-    ['future-dental-lab', 'dental_lab'],
-    ['future-activity', 'unknown'],
-  ];
-
-  it.each(tenants)('%s (%s) uses the same real booking guarantees', (slug, activity) => {
-    expect(getChatBookingPolicy(slug, activity)).toEqual({
+  it('enables calendar checks and event creation only for the requested connected clinic', async () => {
+    await expect(getChatBookingPolicy('clinic-a')).resolves.toEqual({
       checkGoogleCalendar: true,
       requirePhone: true,
       createGoogleCalendarEvent: true,
     });
+    expect(getConnectionStatus).toHaveBeenCalledWith('clinic-a');
   });
 
-  it('disables Google checks when calendar configuration is missing', () => {
-    vi.stubEnv('GOOGLE_PRIVATE_KEY', 'not-a-private-key');
+  it('keeps an unconnected clinic local-only even if another clinic is connected', async () => {
+    getConnectionStatus.mockResolvedValue({ connected: false, connected_at: null, email: null });
 
-    expect(getChatBookingPolicy('amal-x-ray-center', 'imaging_center')).toEqual({
+    await expect(getChatBookingPolicy('clinic-b')).resolves.toEqual({
       checkGoogleCalendar: false,
       requirePhone: true,
       createGoogleCalendarEvent: false,
     });
+    expect(getConnectionStatus).toHaveBeenCalledWith('clinic-b');
   });
 });

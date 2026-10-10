@@ -5,7 +5,7 @@ import {
 } from '@/lib/ai/bookingContextBridge';
 
 const db = vi.hoisted(() => {
-  const q: Record<string, any> = { from: vi.fn(), select: vi.fn(), insert: vi.fn(), update: vi.fn(), eq: vi.fn(), is: vi.fn(), maybeSingle: vi.fn(), single: vi.fn() };
+  const q: Record<string, any> = { from: vi.fn(), select: vi.fn(), insert: vi.fn(), update: vi.fn(), eq: vi.fn(), is: vi.fn(), gte: vi.fn(), lte: vi.fn(), maybeSingle: vi.fn(), single: vi.fn() };
   return { q };
 });
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: db.q }));
@@ -28,6 +28,8 @@ describe('booking conversation linkage (createBooking)', () => {
     db.q.select.mockReturnValue(db.q);
     db.q.eq.mockReturnValue(db.q);
     db.q.is.mockReturnValue(db.q);
+    db.q.gte.mockReturnValue(db.q);
+    db.q.lte.mockReturnValue(db.q);
     db.q.insert.mockReturnValue(db.q);
     db.q.update.mockReturnValue(db.q);
     db.q.maybeSingle.mockResolvedValue({ data: { id: conversationId, metadata: { subject_analysis: { problem: 'ألم' } } }, error: null });

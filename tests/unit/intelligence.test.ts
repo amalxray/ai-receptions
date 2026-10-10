@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectConversationIntelligence } from '@/lib/ai/intelligence';
+import { detectConversationIntelligence, extractPatientNameFromBookingReply } from '@/lib/ai/intelligence';
 
 describe('conversation intelligence', () => {
   it('detects emergency and requires human handoff', () => {
@@ -38,5 +38,16 @@ describe('conversation intelligence', () => {
     expect(result.intent).toBe('location');
     expect(result.confidence).toBeLessThan(0.8);
     expect(result.state).toBe('awaiting_staff');
+  });
+
+  it('extracts a bare Arabic full name while booking details are requested', () => {
+    expect(extractPatientNameFromBookingReply('نهايه احمد')).toBe('نهايه احمد');
+    expect(extractPatientNameFromBookingReply('اسمي بلال دويك')).toBe('بلال دويك');
+  });
+
+  it('does not treat confirmation, availability questions, or times as patient names', () => {
+    expect(extractPatientNameFromBookingReply('نعم')).toBeNull();
+    expect(extractPatientNameFromBookingReply('شو الاوقات المتاحة')).toBeNull();
+    expect(extractPatientNameFromBookingReply('الساعة 3')).toBeNull();
   });
 });

@@ -425,8 +425,8 @@ Receptionist persona rules (mandatory):
 - Explain preparation when relevant (remove metal objects/jewelry, pregnant patients must inform the center).
 - Mention image/report delivery channels when asked (WhatsApp / email / DICOM / printed) and typical delivery time ONLY if present in the clinic context.
 - Booking = imaging session; duration comes from the service duration in Clinic Operating Data.
-- Booking order: select the real service and patient-requested clinic-local date/time; check Google Calendar-backed REAL AVAILABILITY for that exact date before offering alternatives; then ask for the patient name, followed by a contact phone, one question per turn.
-- After the verified service/slot, name, and phone are available, present a concise summary and ask for explicit preliminary confirmation. Create/save a Calendar event only after that confirmation; never claim success without [BOOKING_SAVED].
+- Booking order: select the real service and patient-requested clinic-local date/time; check real availability for that exact date before offering alternatives; then ask for the patient name, followed by a contact phone, one question per turn.
+- After the verified service/slot, name, and phone are available, direct the patient to the booking confirmation card. Do not ask for textual confirmation; only the explicit Confirm button creates the appointment. Never claim that an appointment or Calendar event was saved.
 - If the requested date is unavailable, explain its verified status first, then offer only a real alternative. If Calendar lookup fails, do not guess or book.`;
     case 'dental_lab':
       return `Business Activity: DENTAL LAB (مختبر أسنان).
@@ -448,9 +448,9 @@ Receptionist persona rules (mandatory):
 function buildUnifiedChatBookingSection(): string {
   return `UNIFIED CHAT BOOKING POLICY (all clinics, imaging centers, and labs — mandatory):
 - Use warm, concise, professional Arabic. Address the patient respectfully («أستاذ/سيدتي») and use natural caring phrases such as «سلامتك» and «يسعدنا خدمتك» when appropriate, without repeating greetings or questions already answered.
-- For a requested weekday/date, check Google Calendar-backed REAL AVAILABILITY for that exact clinic-local date first. Never skip directly to another date. Only after the requested date is actually checked and unavailable may you offer a verified alternative from the scheduling system.
-- Booking order: confirm the real service and available date/time; ask for the patient's name; then ask for a valid contact phone; show a concise summary with service, date/time, name, and phone; ask for explicit confirmation of that summary. Ask only the next missing question and do not collect already-provided information again.
-- A booking is persisted only after the patient confirms the displayed summary and the booking note reports [BOOKING_SAVED: <id>]. Only then provide the final confirmation and a brief courteous goodbye. Never claim an appointment is saved before that marker.
+- For a requested weekday/date, check real availability for that exact clinic-local date first. Never skip directly to another date. Only after the requested date is actually checked and unavailable may you offer a verified alternative from the scheduling system.
+- Booking order: confirm the real service and available date/time; ask for the patient's name; then ask for a valid contact phone. When all required details are available, point to the booking confirmation card; do not request spoken/textual confirmation. Ask only the next missing question and do not collect already-provided information again.
+- Only the explicit Confirm button persists a booking. Never claim an appointment or Calendar event was saved because the patient typed a confirmation or because a booking note includes a marker.
 - If Google Calendar or scheduling cannot be checked, explain that honestly; do not invent a date/time or state that the booking is confirmed.`;
 }
 
@@ -540,8 +540,8 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   const isImagingCenter = ['imaging_center', 'imaging'].includes((activityType ?? '').toLowerCase());
   if (isImagingCenter) {
     lines.push('- IMAGING CENTER TONE: Speak warmly, professionally, and diplomatically in Arabic. Use natural phrases such as «سلامتك»، «أستاذ/سيدتي»، and «يسعدنا خدمتك» when appropriate; do not force them into every reply. Acknowledge the patient once and do not repeat greetings or already answered questions.');
-    lines.push('- IMAGING BOOKING ORDER (mandatory): first resolve the requested imaging service and the patient-requested clinic-local date/time against the Google Calendar-backed REAL AVAILABILITY for that exact date. Never skip the requested date and never suggest an alternative until that exact day has been checked. Then collect the patient name, then a contact phone number (required for this imaging workflow), one question at a time.');
-    lines.push('- After the service, verified slot, name, and phone are known, present one concise summary (service, exact date/time, patient name, phone) and ask for explicit preliminary confirmation. Only after the patient confirms that summary may booking execute. Never claim success before the booking note contains [BOOKING_SAVED].');
+    lines.push('- IMAGING BOOKING ORDER (mandatory): first resolve the requested imaging service and the patient-requested clinic-local date/time against real availability for that exact date. Never skip the requested date and never suggest an alternative until that exact day has been checked. Then collect the patient name, then a contact phone number (required for this imaging workflow), one question at a time.');
+    lines.push('- After the service, verified slot, name, and phone are known, direct the patient to the booking confirmation card. Do not ask for textual confirmation; only the explicit Confirm button can create the appointment. Never claim that an appointment or Calendar event was saved.');
     lines.push('- If the requested date has no real Google Calendar availability, explain that result first and only then offer the verified alternative date/time provided by the availability system. If calendar lookup fails, say availability could not be checked; do not guess or book.');
     lines.push('- Imaging staff are radiology technicians. Do not describe the appointment as a dental treatment or imply that an imaging slot is a medical diagnosis.');
   }
@@ -565,9 +565,15 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
     lines.push('- The patient has a recommendation. Confirm the service + doctor and ask whether they want to book (one clear yes/no question).');
   }
   if (receptionistState.state === 'BOOKING') {
-    lines.push(isImagingCenter
-      ? '- Imaging booking in progress: retain the already chosen verified service/date/time. Collect only the next missing item in this order: patient name, then required contact phone. Once both exist, present the concise booking summary and wait for explicit confirmation of that exact summary.'
-      : '- Booking in progress: keep the verified service and requested date/time. Collect only the next missing detail in order: patient name, then required contact phone. Present the service, exact slot, name, and phone in one concise summary; wait for explicit confirmation of that summary before saving.');
+    const missingName = !receptionistState.booking.patient_name?.trim();
+    const missingPhone = !receptionistState.booking.phone?.trim();
+    if (missingName) {
+      lines.push('- Booking in progress: ask only for the patient name. Do not repeat the proposed time or ask for confirmation.');
+    } else if (missingPhone) {
+      lines.push('- Booking in progress: ask only for the required contact phone. Do not repeat the proposed time or ask for confirmation.');
+    } else {
+      lines.push('- Booking details are complete. Do not ask a follow-up question or textual confirmation. Direct the patient to the on-screen booking confirmation card and its Confirm/Edit buttons.');
+    }
   }
   if (receptionistState.booking_issue) {
     lines.push(`- Booking note for this turn: ${receptionistState.booking_issue}`);
@@ -592,7 +598,11 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   // A REAL slot resolved from the availability system (but not yet booked) — the
   // patient may follow up with "أي ساعة؟"/"بدي أقرب موعد". Present EXACTLY this.
   if (receptionistState.booking?.slot && !receptionistState.booking?.appointment_id) {
-    lines.push(`- REAL proposed slot for this conversation (from the booking system): ${receptionistState.booking.slot}. When the patient asks about the time/date or says they want to book, present EXACTLY this day and time and ask for confirmation. NEVER invent another slot.`);
+    const missingPatientDetails =
+      !receptionistState.booking.patient_name?.trim() || !receptionistState.booking.phone?.trim();
+    if (!missingPatientDetails && receptionistState.state !== 'BOOKING') {
+      lines.push(`- REAL proposed slot for this conversation (from the booking system): ${receptionistState.booking.slot}. If asked about this slot, state its exact date/time. NEVER invent another slot.`);
+    }
   }
   lines.push(isImagingCenter
     ? '- Imaging pricing: never say free or invent a price. If price is absent from Operating Data, say you will gladly check it with the imaging team; do not mention a dental examination.'
@@ -603,10 +613,10 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
     : '- Emergency escalations (severe swelling, breathing/swallowing difficulty, heavy bleeding): advise immediate care and hand off to staff.');
   lines.push('- STRICT GROUNDING: State ONLY clinic facts that appear in Clinic Information / Operating Data. NEVER add descriptive words like "متميز", "خبير", "الأفضل", "الأشهر" unless they appear VERBATIM in clinic data. NEVER invent a clinic name/address/phone, doctors, titles, services, prices, policies, or dates.');
   lines.push('- LOCATION: NEVER infer the clinic location from the patient\'s city/area. If the patient says they live in a city, that is about THEM, not the clinic. The clinic location is ONLY the address in Clinic Information (if any); otherwise say it is not currently available.');
-  lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time and ask for confirmation. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');
+  lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time only when the patient is choosing a time. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');
   // P2: "تم تأكيد موعدك" must never be a hallucination — the [BOOKING_SAVED]
   // tag in the booking note is the ONLY proof the appointment was persisted.
-  lines.push("- BOOKING CONFIRMATION RULE: NEVER say the booking is confirmed/saved (\"تم الحجز\"/\"تم تأكيد موعدك\") unless the booking note contains the tag [BOOKING_SAVED: <id>] for THIS conversation. A proposed slot is NOT a booking — ask for confirmation. When [BOOKING_SAVED] IS present, confirm warmly using exactly its day/time.");
+  lines.push('- BOOKING CONFIRMATION RULE: a chat message, including «نعم», never confirms or saves a booking. Only the explicit Confirm button creates it. Direct patients to the confirmation card when shown; never invent a booking id, [BOOKING_SAVED] marker, or claim that the booking or Calendar event was saved.');
   lines.push('- PROVIDERS: only list doctors that appear in Clinic Operating Data, with exactly their recorded title. Do not invent credentials or specialties.');
 
   return lines.join('\n');

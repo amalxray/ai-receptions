@@ -178,7 +178,7 @@ describe('Prompt Manager — receptionist grounding (no-hallucination behavior)'
     expect(prompt).toContain('NEVER add descriptive words like');
   });
 
-  it('renders the REAL proposed slot so follow-up "أي ساعة؟" answers are grounded (not invented)', () => {
+  it('does not repeat the proposed slot while patient booking details are incomplete', () => {
     const prompt = buildPrompt(settings, 'أي ساعة متوفر؟', [], [], undefined, {
       receptionistState: {
         state: 'AWAITING_BOOKING_CONFIRMATION',
@@ -189,9 +189,10 @@ describe('Prompt Manager — receptionist grounding (no-hallucination behavior)'
         booking: { service_id: 'svc', provider_id: 'p1', slot: '2026-09-04T13:30:00.000Z', patient_name: null, phone: null, email: null },
       },
     });
-    expect(prompt).toContain('REAL proposed slot');
-    expect(prompt).toContain('2026-09-04T13:30:00.000Z');
-    expect(prompt).toContain('NEVER invent another slot');
+    expect(prompt).not.toContain('REAL proposed slot');
+    expect(prompt).not.toContain('2026-09-04T13:30:00.000Z');
+    expect(prompt).toContain('Only the explicit Confirm button creates it');
+    expect(prompt).toContain('claim that the booking or Calendar event was saved');
   });
 });
 
@@ -252,10 +253,10 @@ describe('Prompt Manager — STEP 5 Network Discovery Mode', () => {
     });
 
     expect(prompt).toContain('سلامتك');
-    expect(prompt).toContain('Google Calendar-backed REAL AVAILABILITY for that exact date');
+    expect(prompt).toContain('real availability for that exact date');
     expect(prompt).toContain('patient name, then a contact phone number');
-    expect(prompt).toContain('present one concise summary');
-    expect(prompt).toContain('explicit preliminary confirmation');
+    expect(prompt).toContain('direct the patient to the booking confirmation card');
+    expect(prompt).toContain('Do not ask for textual confirmation');
     expect(prompt).toContain('do not repeat greetings or already answered questions');
     expect(prompt).not.toContain('phone is OPTIONAL');
     expect(prompt).not.toContain('General Dental Knowledge');
@@ -280,9 +281,9 @@ describe('Prompt Manager — STEP 5 Network Discovery Mode', () => {
     });
 
     expect(prompt).toContain('UNIFIED CHAT BOOKING POLICY (all clinics');
-    expect(prompt).toContain('check Google Calendar-backed REAL AVAILABILITY for that exact clinic-local date first');
+    expect(prompt).toContain('check real availability for that exact clinic-local date first');
     expect(prompt).toContain('ask for the patient\'s name; then ask for a valid contact phone');
-    expect(prompt).toContain('show a concise summary');
+    expect(prompt).toContain('Only the explicit Confirm button persists a booking');
     expect(prompt).not.toContain('Phone is OPTIONAL');
   });
 });

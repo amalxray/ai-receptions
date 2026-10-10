@@ -1,34 +1,20 @@
-/**
- * Public AI chat booking policy is tenant/activity agnostic. Clinic identity is
- * resolved separately for every request and all persistence stays clinic-scoped.
- */
+import { getGoogleCalendarConnectionStatus } from '@/lib/services/googleCalendarOAuth';
+
 export type ChatBookingPolicy = {
   checkGoogleCalendar: boolean;
   requirePhone: true;
   createGoogleCalendarEvent: boolean;
 };
 
-function hasGoogleCalendarConfiguration(): boolean {
-  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
-  const calendarId = process.env.GOOGLE_CALENDAR_ID?.trim();
-
-  return Boolean(
-    serviceAccountEmail?.includes('@')
-    && privateKey?.includes('-----BEGIN PRIVATE KEY-----')
-    && calendarId
-  );
-}
-
 /**
- * Deliberately does not branch on slug or activity: Hala, Amal Clinic, imaging
- * centers, labs, and future tenants all share the same booking guarantees.
+ * Calendar checks and event creation are enabled only for this clinic's
+ * explicitly connected Google account. A missing connection remains local-only.
  */
-export function getChatBookingPolicy(_clinicSlug?: string | null, _activityType?: string | null): ChatBookingPolicy {
-  const googleCalendarConfigured = hasGoogleCalendarConfiguration();
+export async function getChatBookingPolicy(clinicId: string): Promise<ChatBookingPolicy> {
+  const { connected } = await getGoogleCalendarConnectionStatus(clinicId);
   return {
-    checkGoogleCalendar: googleCalendarConfigured,
+    checkGoogleCalendar: connected,
     requirePhone: true,
-    createGoogleCalendarEvent: googleCalendarConfigured,
+    createGoogleCalendarEvent: connected,
   };
 }

@@ -186,6 +186,19 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
     subject_analysis: patientContext,
   };
 
+  const { data: existingConversation, error: metadataReadError } = await client.from('conversations')
+    .select('metadata')
+    .eq('id', params.conversationId)
+    .eq('clinic_id', params.clinicId)
+    .maybeSingle();
+  if (metadataReadError) throw metadataReadError;
+  const existingMetadata =
+    existingConversation?.metadata &&
+    typeof existingConversation.metadata === 'object' &&
+    !Array.isArray(existingConversation.metadata)
+      ? existingConversation.metadata as Record<string, unknown>
+      : {};
+
   const { error: conversationError } = await client.from('conversations')
     .update({
       conversation_state: mapToLegacyConversationState(convoState.state),
@@ -193,7 +206,7 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
       intent_confidence: intelligence.confidence,
       urgency: intelligence.urgency,
       appointment_data: intelligence.appointment,
-      metadata,
+      metadata: { ...existingMetadata, ...metadata },
     })
     .eq('id', params.conversationId)
     .eq('clinic_id', params.clinicId);
