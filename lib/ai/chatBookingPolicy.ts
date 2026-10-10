@@ -3,21 +3,32 @@
  * resolved separately for every request and all persistence stays clinic-scoped.
  */
 export type ChatBookingPolicy = {
-  checkGoogleCalendar: true;
+  checkGoogleCalendar: boolean;
   requirePhone: true;
-  createGoogleCalendarEvent: true;
+  createGoogleCalendarEvent: boolean;
 };
 
-const GLOBAL_CHAT_BOOKING_POLICY: ChatBookingPolicy = Object.freeze({
-  checkGoogleCalendar: true,
-  requirePhone: true,
-  createGoogleCalendarEvent: true,
-});
+function hasGoogleCalendarConfiguration(): boolean {
+  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
+  const calendarId = process.env.GOOGLE_CALENDAR_ID?.trim();
+
+  return Boolean(
+    serviceAccountEmail?.includes('@')
+    && privateKey?.includes('-----BEGIN PRIVATE KEY-----')
+    && calendarId
+  );
+}
 
 /**
  * Deliberately does not branch on slug or activity: Hala, Amal Clinic, imaging
  * centers, labs, and future tenants all share the same booking guarantees.
  */
 export function getChatBookingPolicy(_clinicSlug?: string | null, _activityType?: string | null): ChatBookingPolicy {
-  return GLOBAL_CHAT_BOOKING_POLICY;
+  const googleCalendarConfigured = hasGoogleCalendarConfiguration();
+  return {
+    checkGoogleCalendar: googleCalendarConfigured,
+    requirePhone: true,
+    createGoogleCalendarEvent: googleCalendarConfigured,
+  };
 }

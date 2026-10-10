@@ -4,11 +4,12 @@ import { bookAppointment } from '@/lib/services/googleCalendarBooking';
 
 const schema = z.object({
   clinic_id: z.string().uuid(),
+  provider_id: z.string().uuid(),
   service: z.string().trim().min(1).max(200).optional(),
   patient_name: z.string().trim().min(2).max(200),
   patient_phone: z.string().trim().min(5).max(30),
   appointment_time: z.string().datetime(),
-  timezone: z.string().optional().default('UTC'),
+  timezone: z.string().optional().default('Asia/Hebron'),
   duration_minutes: z.coerce.number().int().min(15).max(480).optional().default(30),
   status: z.enum(['pending', 'confirmed', 'cancelled']).optional().default('pending'),
 });
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
 
     const result = await bookAppointment({
       clinic_id: parsed.data.clinic_id,
+      provider_id: parsed.data.provider_id,
       service: parsed.data.service,
       patient_name: parsed.data.patient_name,
       patient_phone: parsed.data.patient_phone,

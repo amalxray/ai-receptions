@@ -33,11 +33,32 @@ export type OptionCardGroup = {
 
 export type BookingProgressStep = { key: string; label: string; done: boolean };
 
+export type BookingConfirmationData = {
+  clinic: string;
+  service: string;
+  service_id: string;
+  provider: string;
+  provider_id: string;
+  date: string;
+  time: string;
+  patient_name: string;
+  phone: string;
+  service_options: Array<{ id: string; name: string }>;
+  provider_options: Array<{ id: string; name: string }>;
+};
+
+export type BookingConfirmation = {
+  type: 'booking_confirmation';
+  data: BookingConfirmationData;
+  actions: ['confirm', 'edit'];
+};
+
 export type ChatInteractive = {
   quick_replies?: QuickReply[];
   card_group?: OptionCardGroup;
   booking_step?: string;
   progress?: BookingProgressStep[];
+  booking_confirmation?: BookingConfirmation;
 };
 
 /** خطوات الحجز المعروضة في شريط التقدّم (بالترتيب). */
@@ -259,6 +280,7 @@ export type ChatInteractiveInput = {
   /** metadata المحادثة/الرسالة كما خزّنها الـ orchestrator. */
   metadata?: unknown;
   activityType?: string | null;
+  bookingConfirmation?: BookingConfirmation | null;
 };
 
 function readBookingStep(source: unknown): string | undefined {
@@ -364,5 +386,11 @@ export function buildChatInteractive(input: ChatInteractiveInput): ChatInteracti
   }
 
   if (!bookingStep && !cardGroup && !quickReplies) return {};
-  return { quick_replies: quickReplies, card_group: cardGroup, booking_step: bookingStep, progress };
+  return {
+    quick_replies: quickReplies,
+    card_group: cardGroup,
+    booking_step: bookingStep,
+    progress,
+    ...(input.bookingConfirmation ? { booking_confirmation: input.bookingConfirmation } : {}),
+  };
 }

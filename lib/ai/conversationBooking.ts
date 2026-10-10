@@ -27,8 +27,8 @@ export function containsConfirmationWord(text: string | null | undefined): boole
 }
 
 /**
- * Conversational booking execution — completes a booking INSIDE the AI
- * conversation when (and only when) the state machine says:
+ * Conversational booking execution — creates the appointment only when the
+ * explicit booking-action endpoint calls it with:
  *   state === 'BOOKING' && patient_confirmed_booking
  * AND every required field (service, provider, patient name, phone, slot) is
  * already known.
@@ -200,6 +200,7 @@ export async function attemptConversationBooking(params: {
       serviceId: service.id,
       conversationId,
       durationMinutes: service.duration_minutes ?? undefined,
+      initialStatus: 'pending_confirmation',
       // UNIFIED SAVE PATH: no `timeZone` here on purpose — the availability
       // engine already emits wall-clock-as-UTC slots ("2026-09-19T09:00:00Z"
       // means 09:00 AT THE CLINIC), which is the convention the public
@@ -210,11 +211,13 @@ export async function attemptConversationBooking(params: {
       // chat-originated appointment by the UTC offset.
     });
 
+    let googleCalendarConnected = false;
     if (googleCalendar) {
       try {
         const actualInstant = clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem');
-        await createGoogleCalendarBooking({
+        const calendarBooking = await createGoogleCalendarBooking({
           clinic_id: clinicId,
+          provider_id: booking.provider_id as string,
           clinic_name: clinicName ?? undefined,
           appointment_id: created.id,
           patient_id: patientId,
@@ -226,11 +229,14 @@ export async function attemptConversationBooking(params: {
           duration_minutes: service.duration_minutes ?? undefined,
           status: 'confirmed',
         });
-        await persistReceptionistSlot(clinicId, conversationId, {
-          appointment_id: created.id,
-          appointment_status: 'confirmed',
-          scheduled_at: created.scheduled_at,
-        });
+        googleCalendarConnected = calendarBooking.calendar_connected;
+        if (googleCalendarConnected) {
+          await persistReceptionistSlot(clinicId, conversationId, {
+            appointment_id: created.id,
+            appointment_status: 'confirmed',
+            scheduled_at: created.scheduled_at,
+          });
+        }
       } catch (calendarError) {
         const reason = calendarError instanceof Error ? calendarError.message : String(calendarError);
         await supabaseAdmin
@@ -260,7 +266,14 @@ export async function attemptConversationBooking(params: {
       provider_id: booking.provider_id,
       service_id: service?.id ?? null,
     });
-    return { action: 'booked', appointment: { id: created.id, scheduled_at: created.scheduled_at, status: googleCalendar ? 'confirmed' : created.status } };
+    return {
+      action: 'booked',
+      appointment: {
+        id: created.id,
+        scheduled_at: created.scheduled_at,
+        status: googleCalendarConnected ? 'confirmed' : created.status,
+      },
+    };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     if (/Slot unavailable|concurrent booking/i.test(reason)) {

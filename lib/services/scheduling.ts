@@ -37,7 +37,7 @@ export type AvailabilityReason = 'available' | 'invalid_duration' | 'provider_un
 
 export type AvailabilityResult = { available: boolean; reason: AvailabilityReason; endsAt: string };
 
-const ACTIVE_STATUSES = new Set(['scheduled', 'tentative', 'confirmed']);
+const ACTIVE_STATUSES = new Set(['scheduled', 'tentative', 'pending_confirmation', 'confirmed']);
 
 function minutes(time: string) {
   const [hours, mins] = time.split(':').map(Number);

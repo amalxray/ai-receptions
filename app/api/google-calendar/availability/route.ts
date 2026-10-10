@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { checkAvailability } from '@/lib/services/googleCalendarBooking';
 
 const schema = z.object({
+  clinic_id: z.string().uuid(),
+  provider_id: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  timezone: z.string().optional().default('UTC'),
+  timezone: z.string().optional().default('Asia/Hebron'),
 });
 
 export async function POST(req: Request) {
@@ -16,10 +18,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid availability payload', details: parsed.error.errors }, { status: 400 });
     }
 
-    const result = await checkAvailability(parsed.data.date, parsed.data.timezone);
+    const result = await checkAvailability(
+      parsed.data.clinic_id,
+      parsed.data.provider_id,
+      parsed.data.date,
+      parsed.data.timezone,
+    );
     return NextResponse.json({ data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 501 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

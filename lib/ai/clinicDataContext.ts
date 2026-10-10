@@ -237,7 +237,7 @@ export async function persistReceptionistSlot(
   clinicId: string,
   conversationId: string,
   fields: {
-    slot?: string;
+    slot?: string | null;
     slot_start?: string;
     slot_end?: string;
     provider_id?: string;
