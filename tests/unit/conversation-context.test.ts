@@ -129,6 +129,18 @@ describe('conversation context — merge semantics', () => {
     expect(merged.patient_location).toEqual({ city: 'رام الله', region: 'الوسطى', source: 'conversation' });
   });
 
+  it('clears stale time constraints when the patient asks for all available times', () => {
+    const merged = mergeConversationContext(
+      {
+        preferred_time_range: { from: '15:00', to: '23:59' },
+        preferred_time_options: ['15:00'],
+      },
+      { preferred_time_range: null, preferred_time_options: null },
+    );
+    expect(merged.preferred_time_range).toBeNull();
+    expect(merged.preferred_time_options).toBeNull();
+  });
+
   it('appends patient_reported_symptoms as a faithful record, not a diagnosis', () => {
     const merged = mergeConversationContext(
       { patient_reported_symptoms: 'ألم في الضرس' },

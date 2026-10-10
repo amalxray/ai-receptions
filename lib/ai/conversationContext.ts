@@ -39,9 +39,10 @@ export const conversationContextSchema = z.object({
       from: timeString.optional(),
       to: timeString.optional(),
     })
+    .nullable()
     .optional(),
   /** Explicit time preferences like "1 أو 4" → ["13:00","16:00"]. Constraints only — never invented slots. */
-  preferred_time_options: z.array(timeString).optional(),
+  preferred_time_options: z.array(timeString).nullable().optional(),
   selected_clinic: z
     .object({ id: z.string().min(1), slug: z.string().min(1), name: z.string().min(1) })
     .optional(),

@@ -387,3 +387,23 @@ export function applyUnderstandingToState(
 
   return next;
 }
+
+export function availabilityPreferencesChanged(
+  previous: ReceptionistConversationState,
+  next: ReceptionistConversationState,
+): boolean {
+  const previousRange = previous.preferred_time_range;
+  const nextRange = next.preferred_time_range;
+  const previousOptions = previous.preferred_time_options ?? [];
+  const nextOptions = next.preferred_time_options ?? [];
+
+  return previous.preferred_date !== next.preferred_date ||
+    (previousRange?.from ?? null) !== (nextRange?.from ?? null) ||
+    (previousRange?.to ?? null) !== (nextRange?.to ?? null) ||
+    previousOptions.length !== nextOptions.length ||
+    previousOptions.some((option, index) => option !== nextOptions[index]);
+}
+
+export function isAvailabilityTimesInquiry(text: string): boolean {
+  return /(?:أوقات|اوقات|الأوقات|الاوقات|مواعيد)/.test(text) && /متاح|متوفر/.test(text);
+}

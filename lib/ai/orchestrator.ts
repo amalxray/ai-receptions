@@ -30,7 +30,12 @@ import { extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import { format12h } from '@/lib/time/format';
-import { understandMessage, applyUnderstandingToState } from '@/lib/ai/understanding';
+import {
+  understandMessage,
+  applyUnderstandingToState,
+  availabilityPreferencesChanged,
+  isAvailabilityTimesInquiry,
+} from '@/lib/ai/understanding';
 import { saveConversationContext, type ConversationContext } from '@/lib/ai/conversationContext';
 import { buildDiscoveryGuidance } from '@/lib/ai/discoveryGuidance';
 import { unavailableReply, expressesTreatmentDesire } from '@/lib/ai/replyText';
@@ -331,6 +336,8 @@ export async function handleIncomingMessage(opts: {
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
     let currentState = receptionState;
+    let availabilityPreferencesChangedThisTurn = false;
+    const availabilityTimesInquiryThisTurn = isAvailabilityTimesInquiry(text);
     // STEP 5 — discovery intent is PER-TURN: only this message's explicit ask
     // ("وين عيادة ثانية؟") triggers Network Discovery Mode. The persisted
     // network_discovery_agreed flag stays as history but never re-triggers
@@ -343,6 +350,29 @@ export async function handleIncomingMessage(opts: {
       });
       turnDiscoveryAgreed = understanding.network_discovery_agreed ?? null;
       currentState = applyUnderstandingToState(currentState, understanding);
+      if (
+        availabilityTimesInquiryThisTurn &&
+        !understanding.preferred_time_range &&
+        !understanding.preferred_time_options
+      ) {
+        currentState.preferred_time_range = null;
+        currentState.preferred_time_options = null;
+        await saveConversationContext(clinicId, conversationId, {
+          preferred_time_range: null,
+          preferred_time_options: null,
+        });
+      }
+      availabilityPreferencesChangedThisTurn = availabilityPreferencesChanged(receptionState, currentState);
+      if (currentState.booking.slot && (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)) {
+        currentState.booking.slot = null;
+        await persistReceptionistSlot(clinicId, conversationId, {
+          slot: null,
+          slot_start: null,
+          slot_end: null,
+          alternatives: [],
+          patient_confirmed_booking: false,
+        });
+      }
       if (Object.keys(understanding).length > 0) {
         await saveConversationContext(clinicId, conversationId, understanding as unknown as ConversationContext);
       }
@@ -418,13 +448,16 @@ export async function handleIncomingMessage(opts: {
     // slot, the state machine never advanced and nothing was ever saved.
     const bookingSignal =
       intelligence.intent === 'appointment_booking' ||
-      Boolean(intelligence.appointment?.requestedService);
+      Boolean(intelligence.appointment?.requestedService) ||
+      Boolean(
+        currentState?.recommended_service_id &&
+        (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)
+      );
     const needsRealSlot =
       bookingSignal &&
       currentState &&
       currentState.recommended_service_id &&
       !currentState.booking.slot &&
-      currentState.state !== 'BOOKING' &&
       currentState.state !== 'COMPLETED';
 
     if (needsRealSlot) {
