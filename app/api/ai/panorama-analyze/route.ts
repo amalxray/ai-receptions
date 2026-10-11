@@ -4,9 +4,11 @@ import { authorizeClinicRequest, DATA_ROLES, roleDenied } from '@/lib/services/c
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { rateLimit } from '@/lib/rateLimit';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getPanoramaInferenceConfig } from '@/lib/ai/panoramaInferenceConfig';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -16,7 +18,19 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
+export async function GET() {
+  return NextResponse.json(
+    { enabled: getPanoramaInferenceConfig() !== null },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
+}
+
 export async function POST(request: Request) {
+  const inferenceConfig = getPanoramaInferenceConfig();
+  if (!inferenceConfig) {
+    return errorResponse('ميزة تحليل صور البانوراما غير مفعلة.', 404);
+  }
+
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
     return errorResponse('خدمة قاعدة البيانات غير مهيأة.', 503);
@@ -115,24 +129,6 @@ export async function POST(request: Request) {
       return errorResponse('صيغة صورة الأشعة غير مدعومة.', 415);
     }
 
-    const inferenceUrl = process.env.AI_INFERENCE_URL;
-    const inferenceKey = process.env.AI_INFERENCE_API_KEY;
-    if (!inferenceUrl || !inferenceKey) {
-      console.error('[panorama-analyze] Oracle inference configuration is missing.');
-      return errorResponse('خدمة تحليل الصور غير مهيأة.', 503);
-    }
-    let endpoint: URL;
-    try {
-      endpoint = new URL('/analyze', inferenceUrl);
-    } catch {
-      console.error('[panorama-analyze] AI_INFERENCE_URL is invalid.');
-      return errorResponse('خدمة تحليل الصور غير مهيأة.', 503);
-    }
-    if (process.env.NODE_ENV === 'production' && endpoint.protocol !== 'https:') {
-      console.error('[panorama-analyze] Production inference URL must use HTTPS.');
-      return errorResponse('إعداد اتصال خدمة تحليل الصور غير آمن.', 503);
-    }
-
     const oracleForm = new FormData();
     oracleForm.append(
       'image',
@@ -142,9 +138,9 @@ export async function POST(request: Request) {
 
     let inferenceResponse: Response;
     try {
-      inferenceResponse = await fetch(endpoint, {
+      inferenceResponse = await fetch(inferenceConfig.endpoint, {
         method: 'POST',
-        headers: { 'X-API-Key': inferenceKey },
+        headers: { 'X-API-Key': inferenceConfig.apiKey },
         body: oracleForm,
         signal: AbortSignal.timeout(55_000),
       });
@@ -214,9 +210,24 @@ export async function POST(request: Request) {
     if (insertError || !analysis) {
       console.error(
         '[panorama-analyze] analysis persistence failed:',
+        insertError?.code,
         insertError?.message ?? 'Database returned no row'
       );
-      return errorResponse('تعذر حفظ نتيجة التحليل.', 500);
+      if (insertError?.code === 'PGRST205' || insertError?.code === '42P01') {
+        return errorResponse(
+          'جدول نتائج تحليل البانوراما غير مهيأ في قاعدة البيانات. يلزم تطبيق migration 20261011_medical_image_analyses.sql.',
+          500
+        );
+      }
+      if (insertError?.code === '42501') {
+        return errorResponse('لا تملك قاعدة البيانات صلاحية حفظ نتيجة التحليل.', 500);
+      }
+      return errorResponse(
+        insertError?.code
+          ? `تعذر حفظ نتيجة التحليل (رمز الخطأ: ${insertError.code}).`
+          : 'تعذر حفظ نتيجة التحليل.',
+        500
+      );
     }
 
     return NextResponse.json({ data: analysis }, { status: 201 });
