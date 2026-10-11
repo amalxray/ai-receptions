@@ -10,18 +10,59 @@ interface Prediction {
   width: number;
   height: number;
   confidence: number;
-  class: string;
-  class_id?: number;
+  class_name: string;
+  class_id: number;
 }
 
-interface DetectionResponse {
-  success?: boolean;
-  predictions?: Prediction[];
-  error?: string;
-  details?: string;
+interface Analysis {
+  id: string;
+  model_version: string;
+  image_width: number;
+  image_height: number;
+  predictions: Prediction[];
+  created_at: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPrediction(value: unknown): value is Prediction {
+  if (!isRecord(value) || !isRecord(value.box)) return false;
+  return (
+    typeof value.class_id === 'number' &&
+    Number.isInteger(value.class_id) &&
+    typeof value.class_name === 'string' &&
+    typeof value.confidence === 'number' &&
+    Number.isFinite(value.confidence) &&
+    ['x', 'y', 'width', 'height'].every(
+      (key) => typeof value.box[key] === 'number' && Number.isFinite(value.box[key]),
+    )
+  );
+}
+
+function isAnalysis(value: unknown): value is Analysis {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.model_version === 'string' &&
+    typeof value.image_width === 'number' &&
+    Number.isInteger(value.image_width) &&
+    value.image_width > 0 &&
+    typeof value.image_height === 'number' &&
+    Number.isInteger(value.image_height) &&
+    value.image_height > 0 &&
+    typeof value.created_at === 'string' &&
+    Array.isArray(value.predictions) &&
+    value.predictions.every(isPrediction)
+  );
 }
 
 export interface AiXrayAnalyzerProps {
+  clinicId: string;
+  patientId: string;
+  medicalFileId: string;
+  authHeaders: () => Promise<Record<string, string>>;
   imageUrl?: string;
   imageFile?: File;
   imageAlt?: string;
@@ -51,6 +92,10 @@ function getCategoryStyle(className: string) {
 }
 
 export default function AiXrayAnalyzer({
+  clinicId,
+  patientId,
+  medicalFileId,
+  authHeaders,
   imageUrl,
   imageFile,
   imageAlt = 'Dental panoramic X-ray',
@@ -65,6 +110,7 @@ export default function AiXrayAnalyzer({
   const [isResultsOpen, setIsResultsOpen] = useState(true);
   const [activePrediction, setActivePrediction] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
 
@@ -92,11 +138,12 @@ export default function AiXrayAnalyzer({
     setHasAnalyzed(false);
     setError(null);
     setActivePrediction(null);
+    setConsent(false);
     setIsResultsOpen(true);
   }, [displayedImageUrl]);
 
   const analyzeImage = async () => {
-    if (isAnalyzing || (!imageFile && !imageUrl)) return;
+    if (isAnalyzing || !consent || (!imageFile && !imageUrl)) return;
 
     setIsAnalyzing(true);
     setError(null);
@@ -105,36 +152,33 @@ export default function AiXrayAnalyzer({
     setActivePrediction(null);
 
     try {
-      let fileToAnalyze = imageFile;
-
-      if (!fileToAnalyze && imageUrl) {
-        const imageResponse = await fetch(imageUrl);
-        if (!imageResponse.ok) {
-          throw new Error('تعذّر تحميل صورة الأشعة لتحليلها.');
-        }
-
-        const imageBlob = await imageResponse.blob();
-        const fileName = imageUrl.split('/').pop()?.split('?')[0] || 'patient-xray';
-        fileToAnalyze = new File([imageBlob], fileName, {
-          type: imageBlob.type || 'image/jpeg',
-        });
-      }
-
-      if (!fileToAnalyze) {
-        throw new Error('لم يتم العثور على صورة لتحليلها.');
-      }
-
+      const headers = await authHeaders();
       const formData = new FormData();
-      formData.append('image', fileToAnalyze);
+      formData.set('clinic_id', clinicId);
+      formData.set('patient_id', patientId);
+      formData.set('medical_file_id', medicalFileId);
+      formData.set('consent', 'true');
 
-      const response = await fetch('/api/detect', { method: 'POST', body: formData });
-      const data = (await response.json()) as DetectionResponse;
+      const response = await fetch('/api/ai/panorama-analyze', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      const payload: unknown = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(data.error || 'تعذّر تحليل الصورة. حاول مرة أخرى.');
+        const message =
+          isRecord(payload) && typeof payload.error === 'string'
+            ? payload.error
+            : 'تعذّر تحليل الصورة. حاول مرة أخرى.';
+        throw new Error(message);
       }
 
-      setPredictions(data.predictions || []);
+      if (!isRecord(payload) || !isAnalysis(payload.data)) {
+        throw new Error('استجابة خدمة التحليل غير صالحة.');
+      }
+
+      setPredictions(payload.data.predictions);
       setHasAnalyzed(true);
     } catch (analysisError) {
       setError(
@@ -148,7 +192,7 @@ export default function AiXrayAnalyzer({
   };
 
   const resultCounts = predictions.reduce<Record<string, number>>((counts, prediction) => {
-    counts[prediction.class] = (counts[prediction.class] || 0) + 1;
+    counts[prediction.class_name] = (counts[prediction.class_name] || 0) + 1;
     return counts;
   }, {});
 
@@ -179,17 +223,17 @@ export default function AiXrayAnalyzer({
         {imageSize.width > 0 && imageSize.height > 0 && predictions.length > 0 && (
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             {predictions.map((prediction, index) => {
-              const style = getCategoryStyle(prediction.class);
+              const style = getCategoryStyle(prediction.class_name);
               const isActive = activePrediction === index;
               const isDimmed = activePrediction !== null && !isActive;
 
               return (
                 <div
-                  key={`${prediction.class}-${prediction.class_id ?? index}-${index}`}
+                  key={`${prediction.class_name}-${prediction.class_id}-${index}`}
                   className="absolute rounded-sm border-2 transition-all duration-200"
                   style={{
-                    left: `${((prediction.x - prediction.width / 2) / imageSize.width) * 100}%`,
-                    top: `${((prediction.y - prediction.height / 2) / imageSize.height) * 100}%`,
+                    left: `${(prediction.x / imageSize.width) * 100}%`,
+                    top: `${(prediction.y / imageSize.height) * 100}%`,
                     width: `${(prediction.width / imageSize.width) * 100}%`,
                     height: `${(prediction.height / imageSize.height) * 100}%`,
                     borderColor: style.color,
@@ -241,10 +285,31 @@ export default function AiXrayAnalyzer({
         </AnimatePresence>
       </div>
 
+      {!hasAnalyzed && (
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+          <p>
+            التحليل مساعد فقط وليس تشخيصاً طبياً. ستُعالج صورة الملف الطبي المحفوظ عبر خدمة
+            تحليل خارجية، دون إرسال هوية المريض إلى مزود الاستدلال.
+          </p>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(event) => setConsent(event.target.checked)}
+              className="mt-1 accent-indigo-600"
+            />
+            <span>
+              أؤكد إبلاغ المريض أو ممثله القانوني والحصول على موافقته على معالجة الصورة لهذا
+              الغرض.
+            </span>
+          </label>
+        </div>
+      )}
+
       <button
         type="button"
         onClick={analyzeImage}
-        disabled={isAnalyzing}
+        disabled={isAnalyzing || !consent}
         className="group inline-flex min-h-12 w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-3 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:opacity-75 sm:w-auto"
       >
         {isAnalyzing ? (
@@ -338,11 +403,11 @@ export default function AiXrayAnalyzer({
 
                           <ul className="grid gap-2 sm:grid-cols-2">
                             {predictions.map((prediction, index) => {
-                              const style = getCategoryStyle(prediction.class);
+                              const style = getCategoryStyle(prediction.class_name);
                               const confidence = Math.max(0, Math.min(1, prediction.confidence));
 
                               return (
-                                <li key={`${prediction.class}-${prediction.class_id ?? index}-${index}`}>
+                                <li key={`${prediction.class_name}-${prediction.class_id}-${index}`}>
                                   <button
                                     type="button"
                                     onMouseEnter={() => setActivePrediction(index)}

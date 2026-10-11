@@ -28,6 +28,8 @@ build.exit
 migrations.zip
 ai-solutions-deliverables.zip
 *.egg-info/
+__pycache__/
+/ai-inference/models/*.onnx
 main-page-pic/
 /panorama/
 /external_datasets/
