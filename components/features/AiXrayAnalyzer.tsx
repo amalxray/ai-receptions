@@ -14,12 +14,24 @@ interface Prediction {
   class_id: number;
 }
 
+interface InferencePrediction {
+  class_id: number;
+  class_name: string;
+  confidence: number;
+  box: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 interface Analysis {
   id: string;
   model_version: string;
   image_width: number;
   image_height: number;
-  predictions: Prediction[];
+  predictions: InferencePrediction[];
   created_at: string;
 }
 
@@ -27,17 +39,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isPrediction(value: unknown): value is Prediction {
+function isPrediction(value: unknown): value is InferencePrediction {
   if (!isRecord(value) || !isRecord(value.box)) return false;
+  const box = value.box;
   return (
     typeof value.class_id === 'number' &&
     Number.isInteger(value.class_id) &&
     typeof value.class_name === 'string' &&
     typeof value.confidence === 'number' &&
     Number.isFinite(value.confidence) &&
-    ['x', 'y', 'width', 'height'].every(
-      (key) => typeof value.box[key] === 'number' && Number.isFinite(value.box[key]),
-    )
+    typeof box.x === 'number' &&
+    Number.isFinite(box.x) &&
+    typeof box.y === 'number' &&
+    Number.isFinite(box.y) &&
+    typeof box.width === 'number' &&
+    Number.isFinite(box.width) &&
+    typeof box.height === 'number' &&
+    Number.isFinite(box.height)
   );
 }
 
@@ -178,7 +196,14 @@ export default function AiXrayAnalyzer({
         throw new Error('استجابة خدمة التحليل غير صالحة.');
       }
 
-      setPredictions(payload.data.predictions);
+      setPredictions(
+        payload.data.predictions.map((prediction) => ({
+          class_id: prediction.class_id,
+          class_name: prediction.class_name,
+          confidence: prediction.confidence,
+          ...prediction.box,
+        })),
+      );
       setHasAnalyzed(true);
     } catch (analysisError) {
       setError(

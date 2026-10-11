@@ -863,15 +863,13 @@ export default function PatientMedicalFilesTab({
                       </div>
                     </div>
                     {cat === 'panorama' && isImage && (
-                      <div className="mt-4 border-t border-slate-800/80 pt-4">
-                        <PanoramaAiAnalysis
-                          clinicId={clinicId}
-                          patientId={patientId}
-                          medicalFileId={file.id}
-                          filename={file.original_filename ?? 'صورة بانوراما'}
-                          authHeaders={authHeaders}
-                        />
-                      </div>
+                      <PanoramaAiAnalysis
+                        clinicId={clinicId}
+                        patientId={patientId}
+                        medicalFileId={file.id}
+                        filename={file.original_filename ?? 'صورة بانوراما'}
+                        authHeaders={authHeaders}
+                      />
                     )}
                   </div>
 
