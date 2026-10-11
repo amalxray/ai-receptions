@@ -95,8 +95,9 @@ describe('PHASE 8 — readiness core: overall verdict', () => {
 
   it('gate id lists match the gate script contract', () => {
     expect(CODE_GATE_IDS).toHaveLength(6);
-    expect(EXTERNAL_GATE_IDS).toHaveLength(7);
+    expect(EXTERNAL_GATE_IDS).toHaveLength(8);
     expect(EXTERNAL_GATE_IDS).toContain('owner_approval_first_real_patient');
     expect(EXTERNAL_GATE_IDS).toContain('restore_drill');
+    expect(EXTERNAL_GATE_IDS).toContain('lahza_gateway_live');
   });
 });

@@ -42,6 +42,30 @@
     "owner_approval_first_real_patient": "open"
   },
   "code": "PASS",
-  "overall": "PASS — IMPLEMENTATION COMPLETE / EXTERNAL GATES OPEN",
-  "reason": "7 external gate(s) still open"
+  "overall": "HISTORICAL PASS — 2026-09-03 snapshot; current production readiness NOT CERTIFIED",
+  "reason": "This report is superseded: current migrations and tracked external gates changed; production checks have not been rerun.",
+  "historical_snapshot": true,
+  "not_current_release_evidence": true,
+  "current_review": {
+    "reviewed_at": "2026-10-10",
+    "local_typescript": "pass",
+    "targeted_google_calendar_tests": "13 passed",
+    "local_server_smoke": "HTTP 200",
+    "full_test_suite": "not run",
+    "production_build": "not run",
+    "production_database_migration_state": "not verified",
+    "production_deployment": "not verified",
+    "external_gate_count": 8,
+    "external_gates_open": 8,
+    "external_gates": {
+      "supabase_backups_pitr": "open",
+      "staging_project": "open",
+      "restore_drill": "open",
+      "stripe_production_secrets": "open",
+      "stripe_connect_kyc": "open",
+      "country_gate_ps_jo_sa_kw": "open",
+      "owner_approval_first_real_patient": "open",
+      "lahza_gateway_live": "open"
+    }
+  }
 }
