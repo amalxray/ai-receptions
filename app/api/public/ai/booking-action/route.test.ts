@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   persistReceptionistSlot: vi.fn(),
   resolvePublicClinic: vi.fn(),
   saveMessage: vi.fn(),
+  logEvent: vi.fn(),
+  getChatBookingPolicy: vi.fn(async () => ({ createGoogleCalendarEvent: false })),
 }));
 
 vi.mock('@/lib/ai/conversationBooking', () => ({
@@ -29,9 +31,9 @@ vi.mock('@/lib/services/bookingService', () => ({
   isValidBookingPhone: (value: unknown) => typeof value === 'string' && /^\d{5,30}$/.test(value),
 }));
 vi.mock('@/lib/ai/chatBookingPolicy', () => ({
-  getChatBookingPolicy: () => ({ createGoogleCalendarEvent: false }),
+  getChatBookingPolicy: mocks.getChatBookingPolicy,
 }));
-vi.mock('@/lib/server/logging', () => ({ logEvent: vi.fn() }));
+vi.mock('@/lib/server/logging', () => ({ logEvent: mocks.logEvent }));
 vi.mock('@/lib/services/gateway/security/rate-limiter', () => ({
   RateLimiter: class {
     isAllowed() { return true; }
@@ -86,6 +88,7 @@ beforeEach(() => {
     action: 'booked',
     appointment: { id: 'appointment-1', status: 'pending_confirmation', scheduled_at: '2026-10-10T16:00:00.000Z' },
   });
+  mocks.getChatBookingPolicy.mockResolvedValue({ createGoogleCalendarEvent: false });
   mocks.saveMessage.mockResolvedValue({ id: 'message-1' });
 });
 
@@ -122,5 +125,64 @@ describe('public chat booking action', () => {
       appointment_status: 'pending_confirmation',
       state: 'COMPLETED',
     }));
+  });
+
+  it('logs the clinic, root failure reason, Calendar connection, and stack before returning 503', async () => {
+    mocks.attemptConversationBooking.mockResolvedValue({
+      action: 'failed',
+      reason: 'appointments insert failed',
+      failureSource: 'database_or_booking',
+      stack: 'Error: appointments insert failed\n at createBooking',
+    });
+    const request = new Request('http://localhost/api/public/ai/booking-action', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clinic_slug: 'hala-clinic',
+        conversation_id: 'conversation-1',
+        action: 'confirm',
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(503);
+    expect(mocks.logEvent).toHaveBeenCalledWith('public_ai_booking_action_failed', expect.objectContaining({
+      clinic_id: 'clinic-1',
+      failure_source: 'database_or_booking',
+      error: 'appointments insert failed',
+      stack: expect.stringContaining('createBooking'),
+      google_calendar_connected: false,
+    }), 'error');
+  });
+
+  it('logs Google Calendar failures separately from database/booking failures', async () => {
+    mocks.getChatBookingPolicy.mockResolvedValue({ createGoogleCalendarEvent: true });
+    mocks.attemptConversationBooking.mockResolvedValue({
+      action: 'failed',
+      reason: 'Google Calendar request failed',
+      failureSource: 'google_calendar',
+      stack: 'Error: Google Calendar request failed\n at createGoogleCalendarBooking',
+    });
+    const request = new Request('http://localhost/api/public/ai/booking-action', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clinic_slug: 'hala-clinic',
+        conversation_id: 'conversation-1',
+        action: 'confirm',
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(503);
+    expect(mocks.logEvent).toHaveBeenCalledWith('public_ai_booking_action_failed', expect.objectContaining({
+      clinic_id: 'clinic-1',
+      failure_source: 'google_calendar',
+      error: 'Google Calendar request failed',
+      stack: expect.stringContaining('createGoogleCalendarBooking'),
+      google_calendar_connected: true,
+    }), 'error');
   });
 });

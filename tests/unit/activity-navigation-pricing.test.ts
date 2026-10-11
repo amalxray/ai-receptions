@@ -60,11 +60,15 @@ describe('AI PRICING — fixed price from the canonical `price` column', () => {
     expect(describeServicePrice(pano)).toBe('30');
   });
   it('describePriceForPrompt includes the fixed price in the prompt section', () => {
-    expect(describePriceForPrompt('pano', imagingData)).toBe(', price: 30');
+    expect(describePriceForPrompt('pano', imagingData)).toBe(', price: 30 شيكل');
+  });
+  it('uses the clinic currency when available, falling back to ILS otherwise', () => {
+    expect(describePriceForPrompt('pano', { ...imagingData, currency: 'jod' })).toBe(', price: 30 دينار أردني');
+    expect(describePriceForPrompt('pano', imagingData)).toBe(', price: 30 شيكل');
   });
   it('CBCT range pricing still renders', () => {
     expect(describeServicePrice(imagingData.services[1])).toBe('70–300');
-    expect(describePriceForPrompt('cbct', imagingData)).toBe(', price range: 70–300');
+    expect(describePriceForPrompt('cbct', imagingData)).toBe(', price range: 70–300 شيكل');
   });
   it('legacy fixed rows using price_min still work (no regression)', () => {
     expect(describeServicePrice(imagingData.services[2])).toBe('50');

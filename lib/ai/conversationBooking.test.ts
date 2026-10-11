@@ -232,7 +232,11 @@ describe('attemptConversationBooking', () => {
       booking: { ...baseBooking, provider_id: 'prov-other-clinic' },
       operatingData,
     });
-    expect(result).toEqual({ action: 'failed', reason: 'recommendation_out_of_clinic' });
+    expect(result).toEqual({
+      action: 'failed',
+      reason: 'recommendation_out_of_clinic',
+      failureSource: 'validation',
+    });
     expect(mocks.createBooking).not.toHaveBeenCalled();
   });
 
