@@ -183,6 +183,25 @@ describe('public AI messages booking responses and history restoration', () => {
     expect(payload.assistant_message.content).toContain('زر «تأكيد الحجز»');
   });
 
+  it('POST strips source citations from the patient-facing assistant response', async () => {
+    mocks.loadReceptionistConversationState.mockResolvedValue(null);
+    mocks.receivePatientMessage.mockResolvedValue({
+      userMessage: { id: 'user-1', role: 'patient', content: 'ما هي ساعات الدوام؟' },
+      assistantMessage: {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'نفتح الساعة التاسعة. [Source: clinic-hours.pdf, ID: doc-1, Chunk: 2]',
+      },
+    });
+
+    const response = await postMessage();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.assistant_message.content).toBe('نفتح الساعة التاسعة.');
+    expect(payload.assistant_message.content).not.toContain('[Source:');
+  });
+
   it('POST returns an explicit failure message when complete details cannot form a valid confirmation card', async () => {
     mocks.loadClinicOperatingData.mockResolvedValue({
       services: [],
@@ -204,7 +223,6 @@ describe('public AI messages booking responses and history restoration', () => {
       ...completeState,
       booking: { ...completeState.booking, patient_name: null },
     });
-
     const response = await getMessages();
     const payload = await response.json();
 
@@ -212,6 +230,32 @@ describe('public AI messages booking responses and history restoration', () => {
     expect(payload.data[1].content).toBe('ما الاسم الكامل للمريض/ة؟');
     expect(payload.data[0].content).toBe('أريد حجز موعد');
     expect(payload.booking_context).toBeDefined();
+  });
+
+  it('GET strips source citations from restored assistant messages', async () => {
+    const query = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      order: vi.fn(),
+    };
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    query.order.mockResolvedValue({
+      data: [
+        { id: 'user-1', role: 'patient', content: 'ما هي ساعات الدوام؟' },
+        { id: 'assistant-1', role: 'assistant', content: 'نفتح الساعة التاسعة. [Source: hours.txt, ID: doc-2, Chunk: 1]' },
+      ],
+      error: null,
+    });
+    mocks.from.mockReturnValue(query);
+    mocks.loadReceptionistConversationState.mockResolvedValue(null);
+
+    const response = await getMessages();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data[1].content).toBe('نفتح الساعة التاسعة.');
+    expect(payload.data[1].content).not.toContain('[Source:');
   });
 
   it('GET restores the confirmation-card prompt when booking details are complete', async () => {

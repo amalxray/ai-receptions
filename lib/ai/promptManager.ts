@@ -5,6 +5,7 @@ import { detectLanguage } from '@/lib/services/knowledge/multilingual';
 import { ConversationIntent, ConversationState } from '@/lib/ai/intelligence';
 import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
 import type { ReceptionistConversationState } from '@/lib/ai/clinicDataContext';
+import { currencyLabel } from '@/lib/clinic/formatting';
 
 type HistoryMessage = Pick<Message, 'role' | 'content'>;
 
@@ -510,12 +511,13 @@ export function describePriceForPrompt(serviceId: string, data: ClinicOperatingD
   const s = data.services.find((x) => x.id === serviceId);
   if (!s) return '';
   if (s.price_visible_to_patients === false) return '';
+  const currency = currencyLabel(data.currency || 'ils', 'ar');
   // Canonical `price` first, legacy price_min fallback (بانوراما bug).
   const fixed = s.price != null && Number(s.price) > 0 ? Number(s.price) : s.price_min != null && Number(s.price_min) > 0 ? Number(s.price_min) : null;
-  if (s.pricing_type === 'fixed' && fixed != null) return `, price: ${fixed}`;
-  if (s.pricing_type === 'range' && s.price_min != null && s.price_max != null && Number(s.price_min) > 0) return `, price range: ${s.price_min}–${s.price_max}`;
-  if (s.pricing_type === 'range' && fixed != null) return `, price: ${fixed}`;
-  if (s.pricing_type === 'estimate' && fixed != null) return `, estimated price: approx ${fixed}`;
+  if (s.pricing_type === 'fixed' && fixed != null) return `, price: ${fixed} ${currency}`;
+  if (s.pricing_type === 'range' && s.price_min != null && s.price_max != null && Number(s.price_min) > 0) return `, price range: ${s.price_min}–${s.price_max} ${currency}`;
+  if (s.pricing_type === 'range' && fixed != null) return `, price: ${fixed} ${currency}`;
+  if (s.pricing_type === 'estimate' && fixed != null) return `, estimated price: approx ${fixed} ${currency}`;
   if (s.pricing_type === 'case_by_case') return ', price: depends on the case (after the doctor’s examination)';
   return '';
 } // unspecified → omitted; never "free"

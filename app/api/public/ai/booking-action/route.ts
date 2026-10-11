@@ -35,6 +35,8 @@ export async function POST(request: Request) {
   if (!bookingActionLimiter.isAllowed(getClientId(request))) {
     return NextResponse.json({ error: 'أرسلت طلبات كثيرة بسرعة. انتظر دقيقة ثم أعد المحاولة.' }, { status: 429 });
   }
+  let clinicIdForLogging: string | null = null;
+  let googleCalendarConnectedForLogging: boolean | null = null;
   try {
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: 'بيانات الطلب غير صالحة.' }, { status: 400 });
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
     }
     const clinic = await resolvePublicClinic({ slug: input.clinic_slug, id: input.clinic_id });
     if (!clinic) return NextResponse.json({ error: 'العيادة غير موجودة.' }, { status: 404 });
+    clinicIdForLogging = clinic.id;
     const conversation = await getConversationById(input.conversation_id, clinic.id);
     if (!conversation) return NextResponse.json({ error: 'المحادثة غير موجودة لهذه العيادة.' }, { status: 404 });
 
@@ -123,6 +126,7 @@ export async function POST(request: Request) {
     }
 
     const policy = await getChatBookingPolicy(clinic.id);
+    googleCalendarConnectedForLogging = policy.createGoogleCalendarEvent;
     const result = await attemptConversationBooking({
       clinicId: clinic.id,
       conversationId: input.conversation_id,
@@ -153,6 +157,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'هذا الموعد حُجز للتو. عدّل الوقت لاختيار موعد آخر.' }, { status: 409 });
     }
     if (result.action !== 'booked') {
+      logEvent('public_ai_booking_action_failed', {
+        clinic_id: clinic.id,
+        conversation_id: input.conversation_id,
+        failure_source: result.action === 'failed'
+          ? result.failureSource ?? (result.reason === 'google_calendar_booking_failed' ? 'google_calendar' : 'database_or_booking')
+          : result.action,
+        error: result.action === 'failed' ? result.reason : result.action,
+        stack: result.action === 'failed' ? result.stack ?? null : null,
+        google_calendar_connected: googleCalendarConnectedForLogging,
+      }, 'error');
       await persistReceptionistSlot(clinic.id, input.conversation_id, { patient_confirmed_booking: false });
       return NextResponse.json({ error: 'تعذر إتمام الحجز حالياً. يرجى المحاولة مجدداً أو التواصل مع العيادة.' }, { status: 503 });
     }
@@ -189,7 +203,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     logEvent('public_ai_booking_action_error', {
+      clinic_id: clinicIdForLogging,
+      failure_source: googleCalendarConnectedForLogging ? 'google_calendar_or_database' : 'database_or_booking',
+      google_calendar_connected: googleCalendarConnectedForLogging,
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack ?? null : null,
     }, 'error');
     return NextResponse.json({ error: 'تعذر تنفيذ إجراء الحجز حالياً.' }, { status: 500 });
   }

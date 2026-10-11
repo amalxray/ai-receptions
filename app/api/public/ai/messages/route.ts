@@ -39,6 +39,11 @@ const POST_RATE_WINDOW_SECONDS = Math.ceil(POST_RATE_WINDOW_MS / 1000);
 const postLimiter = new RateLimiter(POST_RATE_MAX, POST_RATE_WINDOW_MS);
 // History reads are cheap DB queries but still public: 30 / minute / IP.
 const getLimiter = new RateLimiter(30, 60_000);
+const SOURCE_CITATION_PATTERN = /\[Source:[^\]]+\]/g;
+
+function stripSourceCitations(content: string): string {
+  return content.replace(SOURCE_CITATION_PATTERN, '').replace(/[ \t]{2,}/g, ' ').trim();
+}
 
 export async function POST(req: Request) {
   if (!postLimiter.isAllowed(getClientId(req))) {
@@ -146,6 +151,7 @@ export async function POST(req: Request) {
       : hasUnverifiedBookingClaim
         ? { ...safeAssistant, content: 'لم يتم تأكيد الحجز بعد. أكمل/ي البيانات المطلوبة، ثم استخدم/ي زر «تأكيد الحجز» في بطاقة الموعد.' }
         : safeAssistant;
+    responseAssistant.content = stripSourceCitations(String(responseAssistant.content ?? ''));
     return NextResponse.json({
       conversation_id: convId,
       user_message: userMessage,
@@ -240,6 +246,11 @@ export async function GET(req: Request) {
                 : 'ما رقم الهاتف للتواصل؟';
           break;
         }
+      }
+    }
+    for (const message of messages ?? []) {
+      if (message.role === 'assistant' && typeof message.content === 'string') {
+        message.content = stripSourceCitations(message.content);
       }
     }
     return NextResponse.json({

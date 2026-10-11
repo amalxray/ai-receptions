@@ -50,6 +50,7 @@ export type ClinicOperatingData = {
   services: ClinicServiceForAI[];
   providers: ClinicProviderForAI[];
   providerServiceIds: Array<{ provider_id: string; service_id: string }>;
+  currency?: string;
   hasServices: boolean;
   hasProviders: boolean;
   /** True when the clinic has at least one service OR one provider to reason about. */
@@ -60,6 +61,7 @@ export const EMPTY_OPERATING_DATA: ClinicOperatingData = {
   services: [],
   providers: [],
   providerServiceIds: [],
+  currency: 'ils',
   hasServices: false,
   hasProviders: false,
   usable: false,
@@ -95,7 +97,7 @@ export async function loadClinicWorkingHours(clinicId: string, timezone?: string
 
 export async function loadClinicOperatingData(clinicId: string): Promise<ClinicOperatingData> {
   try {
-    const [servicesRes, providersRes, assignmentsRes] = await Promise.all([
+    const [servicesRes, providersRes, assignmentsRes, settingsRes, clinicRes] = await Promise.all([
       supabaseAdmin
         .from('clinic_services')
         .select(
@@ -113,6 +115,17 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
         .from('provider_services')
         .select('provider_id, service_id')
         .eq('clinic_id', clinicId),
+      supabaseAdmin
+        .from('clinic_settings')
+        .select('currency')
+        .eq('clinic_id', clinicId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('clinics')
+        .select('settings')
+        .eq('id', clinicId)
+        .is('deleted_at', null)
+        .maybeSingle(),
     ]);
 
     const services = (servicesRes.data ?? []) as ClinicServiceForAI[];
@@ -122,11 +135,18 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
     if (servicesRes.error) logEvent('clinic_data_services_error', { clinic_id: clinicId, error: servicesRes.error.message }, 'error');
     if (providersRes.error) logEvent('clinic_data_providers_error', { clinic_id: clinicId, error: providersRes.error.message }, 'error');
     if (assignmentsRes.error) logEvent('clinic_data_assignments_error', { clinic_id: clinicId, error: assignmentsRes.error.message }, 'error');
+    if (settingsRes.error) logEvent('clinic_data_currency_error', { clinic_id: clinicId, error: settingsRes.error.message }, 'error');
+    if (clinicRes.error) logEvent('clinic_data_legacy_currency_error', { clinic_id: clinicId, error: clinicRes.error.message }, 'warn');
+    const legacySettings = clinicRes.data?.settings;
+    const legacyCurrency = legacySettings && typeof legacySettings === 'object' && !Array.isArray(legacySettings)
+      ? (legacySettings as Record<string, unknown>).currency
+      : null;
 
     return {
       services,
       providers,
       providerServiceIds,
+      currency: settingsRes.data?.currency || (typeof legacyCurrency === 'string' ? legacyCurrency : null) || 'ils',
       hasServices: services.length > 0,
       hasProviders: providers.length > 0,
       usable: services.length > 0 || providers.length > 0,

@@ -51,7 +51,7 @@ export type BookingAttemptResult =
   | { action: 'slot_unavailable'; reason: string }
   | { action: 'booked'; appointment: { id: string; scheduled_at: string; status: string } }
   | { action: 'already_booked'; appointment_id: string }
-  | { action: 'failed'; reason: string };
+  | { action: 'failed'; reason: string; failureSource?: 'database_or_booking' | 'google_calendar' | 'validation'; stack?: string };
 
 /**
  * PHASE A — `provider` is a blocking field ONLY when the selected service
@@ -177,7 +177,7 @@ export async function attemptConversationBooking(params: {
       provider_id: booking.provider_id,
       service_resolved_by_name: Boolean(!booking.service_id && service),
     }, 'error');
-    return { action: 'failed', reason: 'recommendation_out_of_clinic' };
+    return { action: 'failed', reason: 'recommendation_out_of_clinic', failureSource: 'validation' };
   }
   try {
     const patientId = await findOrCreatePatient({
@@ -254,8 +254,14 @@ export async function attemptConversationBooking(params: {
           conversation_id: conversationId,
           appointment_id: created.id,
           error: reason,
+          stack: calendarError instanceof Error ? calendarError.stack ?? null : null,
         }, 'error');
-        return { action: 'failed', reason: 'google_calendar_booking_failed' };
+        return {
+          action: 'failed',
+          reason,
+          failureSource: 'google_calendar',
+          stack: calendarError instanceof Error ? calendarError.stack : undefined,
+        };
       }
     }
 
@@ -283,8 +289,9 @@ export async function attemptConversationBooking(params: {
       clinic_id: clinicId,
       conversation_id: conversationId,
       error: reason,
+      stack: err instanceof Error ? err.stack ?? null : null,
     }, 'error');
-    return { action: 'failed', reason };
+    return { action: 'failed', reason, failureSource: 'database_or_booking', stack: err instanceof Error ? err.stack : undefined };
   }
 }
 
