@@ -210,9 +210,24 @@ export async function POST(request: Request) {
     if (insertError || !analysis) {
       console.error(
         '[panorama-analyze] analysis persistence failed:',
+        insertError?.code,
         insertError?.message ?? 'Database returned no row'
       );
-      return errorResponse('تعذر حفظ نتيجة التحليل.', 500);
+      if (insertError?.code === 'PGRST205' || insertError?.code === '42P01') {
+        return errorResponse(
+          'جدول نتائج تحليل البانوراما غير مهيأ في قاعدة البيانات. يلزم تطبيق migration 20261011_medical_image_analyses.sql.',
+          500
+        );
+      }
+      if (insertError?.code === '42501') {
+        return errorResponse('لا تملك قاعدة البيانات صلاحية حفظ نتيجة التحليل.', 500);
+      }
+      return errorResponse(
+        insertError?.code
+          ? `تعذر حفظ نتيجة التحليل (رمز الخطأ: ${insertError.code}).`
+          : 'تعذر حفظ نتيجة التحليل.',
+        500
+      );
     }
 
     return NextResponse.json({ data: analysis }, { status: 201 });

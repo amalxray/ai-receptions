@@ -1,7 +1,16 @@
 'use client';
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Activity, AlertCircle, ChevronDown, RotateCcw, ScanLine, Sparkles } from 'lucide-react';
+import {
+  Activity,
+  AlertCircle,
+  ChevronDown,
+  RotateCcw,
+  ScanLine,
+  Sparkles,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 
 interface Prediction {
@@ -129,6 +138,7 @@ export default function AiXrayAnalyzer({
   const [activePrediction, setActivePrediction] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
 
@@ -157,6 +167,7 @@ export default function AiXrayAnalyzer({
     setError(null);
     setActivePrediction(null);
     setConsent(false);
+    setZoom(1);
     setIsResultsOpen(true);
   }, [displayedImageUrl]);
 
@@ -243,10 +254,15 @@ export default function AiXrayAnalyzer({
           onLoad={updateImageSize}
           onError={onImageError}
           className="block h-auto w-full"
+          style={{ transform: `scale(${zoom})`, transition: 'transform 200ms ease' }}
         />
 
         {imageSize.width > 0 && imageSize.height > 0 && predictions.length > 0 && (
-          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ transform: `scale(${zoom})`, transition: 'transform 200ms ease' }}
+            aria-hidden="true"
+          >
             {predictions.map((prediction, index) => {
               const style = getCategoryStyle(prediction.class_name);
               const isActive = activePrediction === index;
@@ -282,6 +298,42 @@ export default function AiXrayAnalyzer({
           </div>
         )}
 
+        <div className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-xl border border-white/15 bg-slate-950/75 p-1 text-white shadow-lg backdrop-blur">
+          <button
+            type="button"
+            onClick={() => setZoom((value) => Math.max(1, Math.round((value - 0.25) * 100) / 100))}
+            disabled={zoom <= 1}
+            aria-label="تصغير صورة البانوراما"
+            title="تصغير"
+            className="rounded-lg p-2 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ZoomOut className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <span className="min-w-12 text-center text-xs font-semibold tabular-nums" aria-live="polite">
+            {Math.round(zoom * 100)}٪
+          </span>
+          <button
+            type="button"
+            onClick={() => setZoom((value) => Math.min(3, Math.round((value + 0.25) * 100) / 100))}
+            disabled={zoom >= 3}
+            aria-label="تكبير صورة البانوراما"
+            title="تكبير"
+            className="rounded-lg p-2 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ZoomIn className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom(1)}
+            disabled={zoom === 1}
+            aria-label="إعادة حجم صورة البانوراما"
+            title="الحجم الأصلي"
+            className="rounded-lg p-2 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
         <AnimatePresence>
           {isAnalyzing && (
             <motion.div
@@ -294,12 +346,20 @@ export default function AiXrayAnalyzer({
             >
               <div className="absolute inset-0 bg-cyan-400/5" />
               {!prefersReducedMotion && (
-                <motion.div
-                  className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent shadow-[0_0_24px_8px_rgba(34,211,238,0.55)]"
-                  initial={{ top: '-2%' }}
-                  animate={{ top: '102%' }}
-                  transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
-                />
+                <>
+                  <motion.div
+                    className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent shadow-[0_0_24px_8px_rgba(34,211,238,0.55)]"
+                    initial={{ top: '-2%' }}
+                    animate={{ top: '102%' }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+                  />
+                  <motion.div
+                    className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-rose-500 to-transparent shadow-[0_0_18px_5px_rgba(244,63,94,0.55)]"
+                    initial={{ top: '102%' }}
+                    animate={{ top: '-2%' }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+                  />
+                </>
               )}
               <div className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-full border border-cyan-200/30 bg-slate-950/75 px-3 py-2 text-xs font-semibold text-cyan-50 backdrop-blur">
                 <Activity className="h-4 w-4 animate-pulse text-cyan-300" aria-hidden="true" />
@@ -313,8 +373,8 @@ export default function AiXrayAnalyzer({
       {!hasAnalyzed && (
         <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
           <p>
-            التحليل مساعد فقط وليس تشخيصاً طبياً. ستُعالج صورة الملف الطبي المحفوظ عبر خدمة
-            تحليل خارجية، دون إرسال هوية المريض إلى مزود الاستدلال.
+            نسخة تجريبية غير معتمدة للتشخيص. ستُعالج صورة الملف الطبي المحفوظ عبر خدمة تحليل
+            خارجية، دون إرسال هوية المريض إلى مزود الاستدلال.
           </p>
           <label className="flex cursor-pointer items-start gap-2">
             <input
@@ -468,10 +528,6 @@ export default function AiXrayAnalyzer({
                             })}
                           </ul>
 
-                          <div className="flex items-center gap-2 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">
-                            <RotateCcw className="h-4 w-4 shrink-0" aria-hidden="true" />
-                            النتائج مساعدة بصرية أولية وليست تشخيصًا طبيًا؛ يُرجى مراجعتها من قبل طبيب الأسنان.
-                          </div>
                         </>
                       )}
                     </div>

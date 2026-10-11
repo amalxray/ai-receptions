@@ -18,7 +18,7 @@ describe('getPanoramaInferenceConfig', () => {
     ).toBeNull();
   });
 
-  it('keeps the feature disabled on Vercel Production even when configured', () => {
+  it('enables the feature on Vercel Production when configured with HTTPS', () => {
     expect(
       getPanoramaInferenceConfig({
         NODE_ENV: 'production',
@@ -26,7 +26,10 @@ describe('getPanoramaInferenceConfig', () => {
         AI_INFERENCE_URL: 'https://inference.example.com',
         AI_INFERENCE_API_KEY: 'secret',
       })
-    ).toBeNull();
+    ).toEqual({
+      endpoint: new URL('https://inference.example.com/analyze'),
+      apiKey: 'secret',
+    });
   });
 
   it('builds the analysis endpoint from the local inference URL', () => {
