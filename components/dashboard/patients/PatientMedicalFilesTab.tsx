@@ -20,6 +20,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
+import PanoramaAiAnalysis from '@/components/dashboard/patients/PanoramaAiAnalysis';
 
 export type MedicalFileRow = {
   id: string;
@@ -861,6 +862,15 @@ export default function PatientMedicalFilesTab({
                         )}
                       </div>
                     </div>
+                    {cat === 'panorama' && isImage && (
+                      <PanoramaAiAnalysis
+                        clinicId={clinicId}
+                        patientId={patientId}
+                        medicalFileId={file.id}
+                        filename={file.original_filename ?? 'صورة بانوراما'}
+                        authHeaders={authHeaders}
+                      />
+                    )}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between border-t border-slate-800/80 pt-3">
