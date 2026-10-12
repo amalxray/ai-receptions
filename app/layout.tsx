@@ -30,6 +30,21 @@ export const metadata: Metadata = {
   metadataBase: new URL(getAppBaseUrl()),
   title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
   description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
+  openGraph: {
+    images: [
+      {
+        url: 'https://www.dentairec.com/icons/icon-512.png',
+        width: 512,
+        height: 512,
+        alt: 'AI-Receptions Logo',
+      },
+    ],
+    locale: 'ar_AR',
+    type: 'website',
+  },
+  twitter: {
+    images: ['https://www.dentairec.com/icons/icon-512.png'],
+  },
   // Bing Webmaster verification → renders <meta name="msvalidate.01" content="…">
   // PWA - installable app: web manifest, iOS standalone meta and icons.
   manifest: '/manifest.json',
