@@ -71,6 +71,7 @@ function getProviderKeyEnv(providerId: string): string | null {
     case 'openai': return 'OPENAI_API_KEY';
     case 'anthropic': return 'ANTHROPIC_API_KEY';
     case 'gemini': return 'GEMINI_API_KEY';
+    case 'groq': return 'GROQ_API_KEY';
     case 'ollama': return 'OLLAMA_MODEL';
     default: return null;
   }
