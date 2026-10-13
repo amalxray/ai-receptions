@@ -651,10 +651,8 @@ export async function handleIncomingMessage(opts: {
       const appointment = intelligence.appointment;
       const bookingReplyName =
         !postTurnState.booking.patient_name &&
-        postTurnState.booking.slot &&
-        (postTurnState.booking_intent ||
-          postTurnState.booking.service_id ||
-          postTurnState.recommended_service_id)
+        postTurnState.state === 'BOOKING' &&
+        postTurnState.booking.slot
           ? extractPatientNameFromBookingReply(text)
           : null;
       if (appointment?.patientName || bookingReplyName) {
