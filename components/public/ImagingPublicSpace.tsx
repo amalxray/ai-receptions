@@ -17,7 +17,23 @@ const MODALITY_LABELS: Record<string, string> = {
   intraoral: 'داخل الفم',
   cbct: 'تصوير ثلاثي الأبعاد (CBCT)',
   cephalometric: 'تصوير جانبي للجمجمة',
+  tmj: 'مفصل الفك (TMJ)',
 };
+
+/**
+ * Icon for an imaging service card. Name-based rules run FIRST so a service
+ * mis-filed under a generic modality (e.g. "مفصل الفكين" stored as `cbct`)
+ * still shows the correct bone icon instead of the CBCT x-ray. Falls back to
+ * the modality map, then to a rotating decorative glyph by index.
+ * Exported as a pure function for unit tests.
+ */
+export function imagingServiceIcon(name: string, modality: string | null, index = 0): string {
+  const n = (name ?? '').toLowerCase();
+  if (n.includes('مفصل') || n.includes('tmj')) return '🦴';
+  if (modality === 'panoramic') return '🦷';
+  if (modality === 'cbct') return '🩻';
+  return ['📷', '✨', '🔬'][index % 3];
+}
 
 /**
  * B18 — price label for a public imaging service.
@@ -64,7 +80,7 @@ export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
                   <li key={svc.name} className="public-card group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-white to-sky-50/80 p-5 shadow-[0_12px_35px_rgba(8,145,178,0.07)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]">
                     <div className="mb-4 flex items-start justify-between gap-3">
                       <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-blue-400/20 text-3xl shadow-inner shadow-cyan-500/10 transition duration-300 group-hover:scale-110 group-hover:shadow-[0_0_24px_rgba(6,182,212,0.28)]" aria-hidden="true">
-                        {svc.modality === 'panoramic' ? '🦷' : svc.modality === 'cbct' ? '🩻' : ['📷', '✨', '🔬'][index % 3]}
+                        {imagingServiceIcon(svc.name, svc.modality, index)}
                       </span>
                       {imagingServicePriceLabel(svc) && <span className="rounded-full border border-cyan-100 bg-white/85 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">{imagingServicePriceLabel(svc)}</span>}
                     </div>
