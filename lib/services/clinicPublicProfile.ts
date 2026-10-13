@@ -130,6 +130,7 @@ type PublicProfileShape = {
   tagline?: unknown;
   about?: unknown;
   cover_url?: unknown;
+  logo?: unknown;
   show_phone?: unknown;
   show_prices?: unknown;
   social_links?: unknown;
@@ -342,7 +343,7 @@ export async function getPublicClinicProfile(
     public_id: clinicRow.public_id ?? null,
     slug: clinicRow.slug,
     name: clinicRow.name,
-    logo: clinicRow.logo ?? null,
+    logo: clinicRow.logo ?? (typeof pp.logo === 'string' ? pp.logo : null),
     description,
     tagline,
     about,
