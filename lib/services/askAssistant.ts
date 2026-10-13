@@ -22,6 +22,7 @@ import { ensureAIProviders } from '@/lib/ai/providers/registry';
 import { generateWithFailover } from '@/lib/ai/resilience';
 import { logEvent } from '@/lib/server/logging';
 import { runNearbyClinics, getAskSettings } from '@/lib/services/askContent';
+import { classifyActivity } from '@/lib/services/askActivityIntent';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrls } from '@/lib/vercel/tenantLinks';
 import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
@@ -51,16 +52,24 @@ export type AskReply = {
 
 const DENTAL_HINT = /طاحون|ضرس|سن|ألم|وجع|تفتيح|تبييض|تقويم|زراعة|تنظيف|قيح|ورم|نزيف|بانوراما|عصب|حشو|خلع|صفراء|كلاب/i;
 
-async function nearbySuggestions(location: AskLocation, limit = 3) {
+async function nearbySuggestions(location: AskLocation, limit = 3, activityType: string | null = null) {
   if (!location) return [];
   try {
-    const rows = await runNearbyClinics(location.lat, location.lng, 50, limit);
+    // Fetch a wider candidate pool (up to 10) so that after narrowing to the
+    // single relevant activity we can still fill the requested `limit`.
+    const rows = await runNearbyClinics(location.lat, location.lng, 50, 10);
+    // Narrow to the requested activity (e.g. imaging for a panorama request).
+    // `null` keeps the previous behaviour: every activity type, distance-ranked.
+    const filtered = activityType
+      ? rows.filter((r) => r.activity_type === activityType)
+      : rows;
     // Reachable target per suggestion (P1): the canonical tenant subdomain when
     // its host is registered on the Vercel project, else `/c/{slug}` — a patient
     // must never be sent to a host whose TLS handshake fails. One listing for
     // the whole suggestion set.
-    const urls = await resolveTenantPublicUrls(rows.map((r) => r.slug));
-    return rows.map((r) => ({
+    const chosen = filtered.slice(0, limit);
+    const urls = await resolveTenantPublicUrls(chosen.map((r) => r.slug));
+    return chosen.map((r) => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
@@ -147,9 +156,20 @@ export async function answerAsk(input: {
 }): Promise<AskReply> {
   const message = (input.message ?? '').trim().slice(0, 1000);
   const hasLocation = Boolean(input.location?.lat && input.location?.lng);
-  const serviceIntent = extractServiceIntent(message, input.history ?? []);
   const wantsLocation = isLocationIntent(message);
-  const suggestions = serviceIntent && hasLocation ? await nearbySuggestions(input.location) : [];
+  // Narrow suggestions to the single activity that can serve the request
+  // (imaging for panoramas, clinic for extraction, lab for crowns). `null`
+  // → keep showing every activity type, as before. The history is folded in so
+  // an activity declared earlier survives a generic location-confirmation turn.
+  const activity = classifyActivity(
+    message,
+    (input.history ?? []).map((h) => h.content),
+  );
+  // A recognised service activity (e.g. "صورة طبقية") IS a service intent even
+  // when the legacy keyword gate misses it — otherwise imaging requests would be
+  // turned away before ever reaching the filtered suggestions.
+  const serviceIntent = extractServiceIntent(message, input.history ?? []) || activity !== null;
+  const suggestions = serviceIntent && hasLocation ? await nearbySuggestions(input.location, 3, activity) : [];
 
   // AI first, rule-based fallback keeps it alive without a model.
   const generated = await aiReply(message, input.history?.slice(-12) ?? []);

@@ -2,11 +2,11 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { type SuggestedClinic } from './ClinicCard';
 import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 import { sendGAEvent } from '@next/third-parties/google';
-import { TextShimmer } from '@/components/ui/text-shimmer';
 import type { PatientLocation } from './LocationPicker';
 import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
 
@@ -15,7 +15,7 @@ const LocationPicker = dynamic(() => import('./LocationPicker'), {
   loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />,
 });
 
-type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean };
+type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean; bookingUrl?: string };
 
 const STORE_KEY = 'patient_location';
 
@@ -68,7 +68,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       `🔗 الحجز: ${clinic.booking_url}`,
     ].filter(Boolean).join('\n');
 
-    setMessages((m) => [...m, { role: 'user', content: `${num}` }, { role: 'assistant', content: details }]);
+    setMessages((m) => [...m, { role: 'user', content: `${num}` }, { role: 'assistant', content: details, bookingUrl: clinic.booking_url }]);
   };
 
   const send = async (text: string, locOverride?: PatientLocation | null) => {
@@ -120,7 +120,9 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-slate-200/70" dir="rtl">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-        <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-lg text-white">{logo}</span>
+        <span className="relative grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-lg text-white shadow-glow animate-pulse-coral">
+          <span className="inline-block animate-wiggle">{logo}</span>
+        </span>
         <div>
           <p className="text-sm font-bold text-slate-800">{assistantName}</p>
           <p className="text-xs font-medium text-emerald-700">● متاح الآن — يرد فوراً</p>
@@ -129,14 +131,55 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
 
       {/* Messages */}
       <div className="mt-3 max-h-96 min-h-40 space-y-3 overflow-y-auto p-1">
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-            <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
-              {m.content}
-           </div>
-         </div>
-        ))}
-        {sending && <div className="flex justify-start"><div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-700 shadow-sm"><TextShimmer duration={1}>سنّي يفكر…</TextShimmer></div></div>}
+        <AnimatePresence initial={false}>
+          {messages.map((m, i) => (
+            <motion.div
+              key={i}
+              layout
+              initial={{ opacity: 0, x: m.role === 'user' ? 24 : -24, y: 8 }}
+              animate={{ opacity: 1, x: 0, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+              className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
+            >
+              <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white shadow-glow-coral' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
+                {m.content}
+              </div>
+              {m.role === 'assistant' && m.bookingUrl && (
+                <a
+                  href={m.bookingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-glow-coral transition hover:bg-blue-700 hover:scale-105 active:scale-95"
+                >
+                  🦷 احجز الآن
+                </a>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        <AnimatePresence>
+          {sending && (
+            <motion.div
+              key="typing"
+              initial={{ opacity: 0, x: -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex justify-start"
+            >
+              <div className="flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm" aria-label="سنّي يفكر">
+                {[0, 1, 2].map((d) => (
+                  <motion.span
+                    key={d}
+                    className="h-2 w-2 rounded-full bg-blue-500"
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: d * 0.15, ease: 'easeInOut' }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div ref={endRef} />
       </div>
 
@@ -179,8 +222,17 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       {/* Quick replies */}
       {quickQuestions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {quickQuestions.map((q) => (
-            <button key={q} type="button" onClick={() => void send(q)} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 transition hover:border-blue-300 hover:bg-blue-100">{q}</button>
+          {quickQuestions.map((q, i) => (
+            <motion.button
+              key={q}
+              type="button"
+              onClick={() => void send(q)}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.06, type: 'spring', stiffness: 320, damping: 20 }}
+              whileHover={{ scale: 1.06, boxShadow: '0 0 18px rgba(6,182,212,0.35)' }}
+              whileTap={{ scale: 0.95 }}
+              className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 transition hover:border-blue-300 hover:bg-blue-100">{q}</motion.button>
           ))}
         </div>
       )}
