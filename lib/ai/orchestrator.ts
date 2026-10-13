@@ -451,6 +451,11 @@ export async function handleIncomingMessage(opts: {
       intelligence.intent === 'appointment_booking' ||
       Boolean(intelligence.appointment?.requestedService) ||
       Boolean(
+        clinicProfile?.activityType?.toLowerCase() === 'clinic' &&
+        currentState?.booking_intent &&
+        currentState.recommended_service_id
+      ) ||
+      Boolean(
         currentState?.recommended_service_id &&
         (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)
       );

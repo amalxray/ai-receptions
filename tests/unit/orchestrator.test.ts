@@ -20,7 +20,7 @@ const mockSupabase = vi.hoisted(() => {
 const mockClinicDataContext = vi.hoisted(() => ({
   loadClinicOperatingData: vi.fn(),
   loadReceptionistConversationState: vi.fn(),
-  loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, hasProfile: true })),
+  loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, activityType: 'clinic', hasProfile: true })),
   // Mock drift repair: the orchestrator resolves the clinic's working hours
   // (unified hours source) BEFORE the reception state; without this export every
   // RAG-pipeline test in this file crashed before reaching its assertions.
@@ -368,6 +368,90 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
       'conv-1',
       expect.objectContaining({ slot: null, slot_start: null, slot_end: null, alternatives: [] }),
     );
+  });
+});
+
+describe('AI Orchestrator — persisted clinic booking intent resolves availability', () => {
+  it.each([
+    ['clinic', true],
+    ['imaging_center', false],
+  ])('uses the persisted booking intent only for %s activity', async (activityType, shouldResolveAvailability) => {
+    const preferredTimeRange = { from: '15:00', to: '15:59' };
+    mockClinicDataContext.loadClinicProfile.mockResolvedValue({
+      id: 'clinic-1',
+      slug: 'test',
+      name: 'Test',
+      address: null,
+      phone: null,
+      website: null,
+      timezone: 'Asia/Hebron',
+      activityType,
+      hasProfile: true,
+    } as any);
+    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 'service-1', name: 'فحص أسنان', duration_minutes: 30, active: true }],
+      providers: [{ id: 'provider-1', name: 'د. حلا' }],
+      providerServiceIds: [{ service_id: 'service-1', provider_id: 'provider-1' }],
+      hasServices: true,
+      hasProviders: true,
+      usable: true,
+    } as any);
+    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
+      state: 'DISCOVERING_PROBLEM',
+      booking_intent: true,
+      recommended_service_id: 'service-1',
+      recommended_provider_id: 'provider-1',
+      preferred_date: '2026-10-13',
+      preferred_time_range: preferredTimeRange,
+      preferred_time_options: null,
+      patient_confirmed_booking: false,
+      pending_question: '',
+      booking: {
+        service_id: null,
+        provider_id: null,
+        slot: null,
+        patient_name: null,
+        phone: null,
+        email: null,
+      },
+    } as any);
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent: 'services_inquiry',
+      shouldHandoff: false,
+      appointment: {},
+    } as any);
+    mockAvailabilityTool.findEarliestAvailableSlot.mockResolvedValue({
+      found: false,
+      reason: 'no_slots',
+    } as any);
+    mockPromptManager.buildPrompt.mockReturnValue('booking follow-up prompt');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'سأتحقق من الموعد المطلوب.',
+      promptTokens: 5,
+      completionTokens: 5,
+      totalTokens: 10,
+      model: 'test-model',
+    });
+
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'فحص أسنان',
+    });
+
+    if (shouldResolveAvailability) {
+      expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clinicId: 'clinic-1',
+          providerId: 'provider-1',
+          serviceId: 'service-1',
+          preferredDate: '2026-10-13',
+          preferredTimeRange,
+        }),
+      );
+    } else {
+      expect(mockAvailabilityTool.findEarliestAvailableSlot).not.toHaveBeenCalled();
+    }
   });
 });
     const result = await handleIncomingMessage({
