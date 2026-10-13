@@ -36,6 +36,27 @@ describe('Prompt Manager', () => {
     expect(prompt).toContain('Question: Great, what about Aetna?');
   });
 
+  it('enforces Arabic-only purity in the RAG prompt (no language mixing / auto-translation)', () => {
+    const question = 'أريد حجز تصوير بانوراما';
+    const prompt = buildPrompt(mockSettings, question, mockHistory, mockContext);
+
+    // The strict language-purity directive must be present in the prompt…
+    expect(prompt).toContain('LANGUAGE PURITY (mandatory)');
+    expect(prompt).toContain('NEVER mix languages in one reply');
+    expect(prompt).toContain('NEVER auto-translate');
+    // …and it must still coexist with the existing language instruction.
+    expect(prompt).toContain('You must respond in');
+  });
+
+  it('enforces Arabic-only purity in the fallback prompt too', () => {
+    const question = 'أريد حجز تصوير بانوراما';
+    const prompt = buildPrompt(mockSettings, question, [], []); // no context → fallback path
+
+    expect(prompt).toContain('LANGUAGE PURITY (mandatory)');
+    expect(prompt).toContain('NEVER mix languages in one reply');
+    expect(prompt).toContain('NEVER auto-translate');
+  });
+
   it('should build a fallback prompt when no context is provided', () => {
     const question = 'What are your hours?';
     const prompt = buildPrompt(mockSettings, question, [], []); // No history, no context
