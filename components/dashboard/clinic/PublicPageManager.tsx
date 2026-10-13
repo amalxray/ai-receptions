@@ -36,10 +36,13 @@ export function validatePublicContactValue(field: PublicContactField, value: str
       return /^https?:\/\//i.test(trimmed)
         ? null
         : 'يرجى إدخال رابط صحيح يبدأ بـ http:// أو https://';
-    case 'whatsapp':
-      return /^\+?[0-9\s-]{7,}$/.test(trimmed)
-        ? null
-        : 'يرجى إدخال رقم واتساب صحيح';
+    case 'whatsapp': {
+      // Accept a raw phone number (as before)…
+      if (/^\+?[0-9\s-]{7,}$/.test(trimmed)) return null;
+      // …or a full wa.me / api.whatsapp.com link ending in digits.
+      if (/^https?:\/\/(wa\.me|api\.whatsapp\.com)\/[0-9]+$/i.test(trimmed)) return null;
+      return 'يرجى إدخال رقم واتساب أو رابط wa.me صحيح';
+    }
     case 'facebook':
       return /^https?:\/\/(www\.)?facebook\.com\//i.test(trimmed)
         ? null
