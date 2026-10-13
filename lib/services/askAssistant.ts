@@ -23,6 +23,8 @@ import { generateWithFailover } from '@/lib/ai/resilience';
 import { logEvent } from '@/lib/server/logging';
 import { runNearbyClinics, getAskSettings } from '@/lib/services/askContent';
 import { classifyActivity } from '@/lib/services/askActivityIntent';
+import { readPublicProfileLogo } from '@/lib/services/askClinicPresentation';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrls } from '@/lib/vercel/tenantLinks';
 import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
@@ -42,6 +44,7 @@ export type SuggestedClinic = {
   google_maps_url: string | null;
   distance_km: number | null;
   booking_url: string;
+  logo?: string | null;
 };
 
 export type AskReply = {
@@ -69,6 +72,24 @@ async function nearbySuggestions(location: AskLocation, limit = 3, activityType:
     // the whole suggestion set.
     const chosen = filtered.slice(0, limit);
     const urls = await resolveTenantPublicUrls(chosen.map((r) => r.slug));
+    // The nearby RPC does not return the logo; read it by id (same JS re-read
+    // pattern used for coordinates) so /ask cards can show the real clinic
+    // logo instead of a generic activity emoji. Never blocks the reply.
+    const logoById = new Map<string, string | null>();
+    if (chosen.length > 0) {
+      try {
+        const { data: logoRows } = await supabaseAdmin
+          .from('clinics')
+          .select('id, settings')
+          .in('id', chosen.map((r) => r.id))
+          .is('deleted_at', null);
+        for (const row of logoRows ?? []) {
+          logoById.set(row.id, readPublicProfileLogo(row.settings));
+        }
+      } catch {
+        /* logo is optional — keep suggestions without it */
+      }
+    }
     return chosen.map((r) => ({
       id: r.id,
       name: r.name,
@@ -82,6 +103,7 @@ async function nearbySuggestions(location: AskLocation, limit = 3, activityType:
       google_maps_url: r.google_maps_url ?? null,
       distance_km: r.distance_km != null ? Number(r.distance_km) : null,
       booking_url: urls.get(r.slug) ?? clinicSpaceUrl(r.slug),
+      logo: logoById.get(r.id) ?? null,
     }));
   } catch {
     return [];

@@ -16,6 +16,17 @@ export function displayPublicClinicName(name: string, activityType?: string | nu
 /** Backwards-compatible name used by the /ask cards. */
 export const displayAskClinicName = displayPublicClinicName;
 
+/**
+ * Extract a clinic's public logo URL from its `settings` JSONB
+ * (canonical: settings.public_profile.logo — same field the owner upload
+ * writes to and the public /{slug} page reads). Returns null when unset.
+ * Pure helper shared by /ask surfaces; no DB access here.
+ */
+export function readPublicProfileLogo(settings: unknown): string | null {
+  const pp = (settings as { public_profile?: { logo?: unknown } } | null)?.public_profile;
+  return typeof pp?.logo === 'string' && /^https?:\/\//.test(pp.logo) ? pp.logo : null;
+}
+
 export type AskConversationMessage = { role: 'user' | 'assistant'; content: string };
 
 /** Collapse repeated patient reviews by either author or normalized text. */

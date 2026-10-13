@@ -18,6 +18,7 @@ export type SuggestedClinic = {
   google_maps_url: string | null;
   distance_km: number | null;
   booking_url: string;
+  logo?: string | null;
 };
 
 const TYPE_LABEL: Record<string, string> = {
