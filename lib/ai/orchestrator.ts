@@ -436,9 +436,6 @@ export async function handleIncomingMessage(opts: {
     // reuse the persisted slot. Failures degrade to a structured NOT_AVAILABLE
     // note — never "AI unavailable".
     let availabilityNote: string | null = null;
-    const availabilityTeam = ['imaging_center', 'imaging'].includes(
-      (clinicProfile?.activityType ?? '').toLowerCase(),
-    ) ? 'فريق التصوير' : 'فريق العيادة';
     // FIX-1 (Global by Default): the REAL slot is resolved as soon as the
     // SERVICE is known — the provider is OPTIONAL and auto-resolved below from
     // provider_services (first eligible provider). Requiring provider_id here
@@ -453,7 +450,6 @@ export async function handleIncomingMessage(opts: {
     const bookingSignal =
       intelligence.intent === 'appointment_booking' ||
       Boolean(intelligence.appointment?.requestedService) ||
-      Boolean(currentState?.booking_intent && currentState.recommended_service_id) ||
       Boolean(
         currentState?.recommended_service_id &&
         (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)
@@ -528,7 +524,7 @@ export async function handleIncomingMessage(opts: {
             });
           } else if (clinicLevel.reason === 'error') {
             availabilityNote =
-              `REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say availability must be verified with ${availabilityTeam}.`;
+              'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.';
           } else {
             availabilityNote =
               'REAL AVAILABILITY: no provider is currently scheduled for this service in the booking system. ' +
@@ -584,7 +580,7 @@ export async function handleIncomingMessage(opts: {
           availabilityNote = availability.reason === 'error'
             ? availability.message
               ? `REAL AVAILABILITY could not be checked. Tell the patient exactly: "${availability.message}". Do NOT invent or offer dates or times.`
-            : `REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say availability must be verified with ${availabilityTeam}.`
+              : 'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.'
             : `REAL AVAILABILITY check found no available slot for the recommended provider in the near future. Do NOT invent a date/time. Tell the patient that availability needs to be confirmed and offer to hand off to the clinic reception.`;
           logEvent('receptionist_real_slot_empty', {
             clinic_id: clinicId,

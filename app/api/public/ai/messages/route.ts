@@ -145,7 +145,7 @@ export async function POST(req: Request) {
       : hasCompleteBookingDetails && !metadata.handoff
         ? { ...safeAssistant, content: 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.' }
       : bookingDetailsPending && !receptionState.booking.patient_name?.trim()
-        ? { ...safeAssistant, content: 'ما الاسم الكامل الذي نُسجّل به الموعد؟' }
+        ? { ...safeAssistant, content: 'ما الاسم الكامل للمريض/ة؟' }
       : bookingDetailsPending && !receptionState.booking.phone?.trim()
         ? { ...safeAssistant, content: 'ما رقم الهاتف للتواصل؟' }
       : hasUnverifiedBookingClaim
@@ -242,7 +242,7 @@ export async function GET(req: Request) {
             : hasCompleteBookingDetails
               ? 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.'
               : !receptionState?.booking.patient_name?.trim()
-                ? 'ما الاسم الكامل الذي نُسجّل به الموعد؟'
+                ? 'ما الاسم الكامل للمريض/ة؟'
                 : 'ما رقم الهاتف للتواصل؟';
           break;
         }
