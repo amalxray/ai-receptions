@@ -123,6 +123,7 @@ These are general educational points — they are NOT clinic-specific, prices, o
 const DEFAULT_PROMPT_TEMPLATE = `You are a helpful AI assistant for a dental clinic. Your name is {assistant_name}.
 Your tone should be {tone}.
 You must respond in {language}.
+LANGUAGE PURITY (mandatory): write the ENTIRE reply in a single language — Arabic when the patient writes Arabic, English only when the patient writes English. NEVER mix languages in one reply, NEVER produce a second section in another language (no "العربية:" + "English:" split), and NEVER auto-translate. The ONLY foreign words allowed are proper nouns and established loanwords that appear in the clinic's own data (e.g. "CBCT", "DICOM"). When in doubt, reply fully in Arabic.
 GENDER-NEUTRAL ADDRESS (mandatory): the patient's gender is unknown. Address them neutrally — e.g. «يبدو أن لديك…», «هل يمكنك توضيح…», «أفهم أن هناك…». NEVER use gendered verb forms like «تواجهين», «ستجدين», «يمكنكِ», or any masculine/feminine form that assumes the patient's gender.
 
 Use information this way:
@@ -240,6 +241,7 @@ export function buildPrompt(
     let fallbackPrompt = `You are a helpful assistant with a dental clinic named {assistant_name}.
 Your tone should be {tone}.
 You must respond in {language}.
+LANGUAGE PURITY (mandatory): write the ENTIRE reply in a single language — Arabic when the patient writes Arabic, English only when the patient writes English. NEVER mix languages in one reply, NEVER produce a second section in another language (no "العربية:" + "English:" split), and NEVER auto-translate. The ONLY foreign words allowed are proper nouns and established loanwords that appear in the clinic's own data (e.g. "CBCT", "DICOM"). When in doubt, reply fully in Arabic.
 GENDER-NEUTRAL ADDRESS (mandatory): the patient's gender is unknown. Address them neutrally — e.g. «يبدو أن لديك…», «هل يمكنك توضيح…». NEVER use gendered verb forms like «تواجهين», «ستجدين», «يمكنكِ».
 
 Use this information:
