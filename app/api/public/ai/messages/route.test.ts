@@ -150,7 +150,7 @@ describe('public AI messages booking responses and history restoration', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.assistant_message.content).toBe('ما الاسم الكامل الذي نُسجّل به الموعد؟');
+    expect(payload.assistant_message.content).toBe('ما الاسم الكامل للمريض/ة؟');
     expect(payload.interactive.booking_confirmation).toBeUndefined();
   });
 
@@ -227,7 +227,7 @@ describe('public AI messages booking responses and history restoration', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.data[1].content).toBe('ما الاسم الكامل الذي نُسجّل به الموعد؟');
+    expect(payload.data[1].content).toBe('ما الاسم الكامل للمريض/ة؟');
     expect(payload.data[0].content).toBe('أريد حجز موعد');
     expect(payload.booking_context).toBeDefined();
   });

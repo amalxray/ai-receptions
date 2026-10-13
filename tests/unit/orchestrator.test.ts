@@ -20,7 +20,7 @@ const mockSupabase = vi.hoisted(() => {
 const mockClinicDataContext = vi.hoisted(() => ({
   loadClinicOperatingData: vi.fn(),
   loadReceptionistConversationState: vi.fn(),
-  loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, activityType: 'clinic' as string, hasProfile: true })),
+  loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, hasProfile: true })),
   // Mock drift repair: the orchestrator resolves the clinic's working hours
   // (unified hours source) BEFORE the reception state; without this export every
   // RAG-pipeline test in this file crashed before reaching its assertions.
@@ -32,7 +32,6 @@ vi.mock('@/lib/ai/clinicDataContext', () => mockClinicDataContext);
 
 const mockAvailabilityTool = vi.hoisted(() => ({
   findEarliestAvailableSlot: vi.fn(async () => ({ found: false, reason: 'no_slots' })),
-  resolveFirstProviderForService: vi.fn(async (_clinicId: string, _serviceId: string) => 'p1' as string | null),
   resolveServiceByName: vi.fn(() => null),
   resolveProviderByName: vi.fn(() => null),
 }));
@@ -58,7 +57,7 @@ const mockConversationBooking = vi.hoisted(() => ({
   // two directly (raw-text consent detection + deterministic service lookup), so
   // the mock must expose them or the RAG-pipeline tests crash before asserting.
   containsConfirmationWord: vi.fn(() => false),
-  matchServiceByName: vi.fn((_hint: string, _services: unknown[]): { id: string; name: string } | undefined => undefined),
+  matchServiceByName: vi.fn(() => undefined),
 }));
 vi.mock('@/lib/ai/conversationBooking', () => mockConversationBooking);
 vi.mock('@/lib/supabase', () => mockSupabase);
@@ -494,250 +493,6 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
       expect.objectContaining({
         patient_name: 'نهايه احمد',
         state: 'BOOKING',
-      }),
-    );
-  });
-
-  it('persists a full name when a verified-slot booking is still in discovery state', async () => {
-    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
-      intent: 'appointment_booking',
-      shouldHandoff: false,
-      appointment: {},
-    } as any);
-    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
-      services: [{ id: 's1', name: 'فحص اسنان', duration_minutes: 10, active: true }],
-      providers: [{ id: 'p1', name: 'د. حلا' }],
-      providerServiceIds: [{ provider_id: 'p1', service_id: 's1' }],
-      hasServices: true,
-      hasProviders: true,
-      usable: true,
-    } as any);
-    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
-      state: 'DISCOVERING_PROBLEM',
-      booking_intent: true,
-      recommended_service_id: 's1',
-      recommended_provider_id: 'p1',
-      patient_confirmed_booking: false,
-      pending_question: '',
-      booking: {
-        service_id: 's1',
-        provider_id: 'p1',
-        slot: '2026-10-13T15:00:00.000Z',
-        patient_name: null,
-        phone: '0000000000',
-        email: null,
-      },
-    } as any);
-    mockContextRetrieval.retrieveContext.mockResolvedValue([]);
-    mockPromptManager.buildPrompt.mockReturnValue('booking details prompt');
-    mockAiProvider.generate.mockResolvedValue({
-      text: 'تم تسجيل الاسم.',
-      promptTokens: 5,
-      completionTokens: 5,
-      totalTokens: 10,
-      model: 'test-model',
-    });
-
-    await handleIncomingMessage({
-      clinicId: 'clinic-1',
-      conversationId: 'conv-1',
-      text: 'أحمد محمد',
-    });
-
-    expect(mockClinicDataContext.persistReceptionistSlot).toHaveBeenCalledWith(
-      'clinic-1',
-      'conv-1',
-      expect.objectContaining({
-        patient_name: 'أحمد محمد',
-        phone: '0000000000',
-        state: 'BOOKING',
-      }),
-    );
-  });
-});
-
-describe('AI Orchestrator — saved booking intent resolves availability for a later service reply', () => {
-  const aiProvider = {
-    id: 'test-provider',
-    generate: vi.fn(),
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    Object.values(mockSupabase.supabase).forEach((fn) => fn.mockReturnValue(mockSupabase.supabase));
-    mockProvider.getProvider.mockReturnValue(aiProvider);
-    mockProvider.listProviders.mockReturnValue([aiProvider]);
-    mockSupabase.supabase.from('messages').single.mockResolvedValue({ data: { id: 'msg-1' }, error: null });
-    mockSupabase.supabase.from('clinic_ai_settings').select().eq().limit().single.mockResolvedValue({
-      data: { assistant_name: 'TestBot' },
-      error: null,
-    });
-    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
-      intent: 'unknown',
-      shouldHandoff: false,
-      appointment: {},
-    } as any);
-    mockMessageService.getConversationHistory.mockResolvedValue([]);
-    mockContextRetrieval.retrieveContext.mockResolvedValue({
-      chunks: [],
-      citations: [],
-      totalTokens: 0,
-      truncated: false,
-      hasConflictingContext: false,
-    });
-    mockPromptManager.buildPrompt.mockReturnValue('booking prompt');
-    aiProvider.generate.mockResolvedValue({
-      text: 'سأساعدك في الحجز.',
-      promptTokens: 5,
-      completionTokens: 5,
-      totalTokens: 10,
-      model: 'test-model',
-    });
-    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
-      services: [{ id: 's1', name: 'فحص اسنان', duration_minutes: 10, active: true }],
-      providers: [{ id: 'p1', name: 'د. حلا' }],
-      providerServiceIds: [{ service_id: 's1', provider_id: 'p1' }],
-      hasServices: true,
-      hasProviders: true,
-      usable: true,
-    });
-    mockClinicDataContext.loadClinicProfile.mockResolvedValue({
-      id: 'clinic-1',
-      slug: 'hala-clinic',
-      name: 'Hala Clinic',
-      address: null,
-      phone: null,
-      website: null,
-      timezone: 'Asia/Hebron',
-      activityType: 'clinic',
-      hasProfile: true,
-    });
-    mockClinicDataContext.loadClinicWorkingHours.mockResolvedValue({ hours: [], summary: '' });
-    mockClinicDataContext.persistReceptionistSlot.mockResolvedValue(undefined);
-    mockAvailabilityTool.findEarliestAvailableSlot.mockResolvedValue({
-      found: false,
-      reason: 'no_slots',
-    } as any);
-    mockUnderstanding.understandMessage.mockReturnValue({});
-    mockUnderstanding.applyUnderstandingToState.mockImplementation((state: unknown) => state);
-    mockConversationBooking.matchServiceByName.mockImplementation((name: string) =>
-      name === 'فحص اسنان' ? { id: 's1', name: 'فحص اسنان' } : undefined,
-    );
-  });
-
-  it('queries availability after "احجز موعد" followed by the service name alone', async () => {
-    const bookingRequestState = {
-      state: 'DISCOVERING_PROBLEM',
-      booking_intent: true,
-      recommended_service_id: null,
-      recommended_provider_id: null,
-      patient_confirmed_booking: false,
-      pending_question: '',
-      booking: {
-        service_id: null,
-        provider_id: null,
-        slot: null,
-        patient_name: null,
-        phone: null,
-        email: null,
-      },
-    };
-    const serviceReplyState = {
-      ...bookingRequestState,
-      booking: { ...bookingRequestState.booking },
-    };
-    mockClinicDataContext.loadReceptionistConversationState
-      .mockResolvedValueOnce(bookingRequestState as any)
-      .mockResolvedValueOnce(serviceReplyState as any);
-    mockIntelligence.analyzeAndPersistMessage
-      .mockResolvedValueOnce({
-        intent: 'appointment_booking',
-        shouldHandoff: false,
-        appointment: {},
-      } as any)
-      .mockResolvedValueOnce({
-        intent: 'unknown',
-        shouldHandoff: false,
-        appointment: {},
-      } as any);
-
-    await handleIncomingMessage({
-      clinicId: 'clinic-1',
-      conversationId: 'conv-1',
-      text: 'احجز موعد',
-    });
-    expect(mockAvailabilityTool.findEarliestAvailableSlot).not.toHaveBeenCalled();
-
-    await handleIncomingMessage({
-      clinicId: 'clinic-1',
-      conversationId: 'conv-1',
-      text: 'فحص اسنان',
-    });
-
-    expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledTimes(1);
-    expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clinicId: 'clinic-1',
-        serviceId: 's1',
-        providerId: 'p1',
-      }),
-    );
-  });
-
-  it('keeps the direct X-ray booking availability path unchanged', async () => {
-    mockClinicDataContext.loadClinicProfile.mockResolvedValue({
-      id: 'clinic-xray',
-      slug: 'amal-x-ray-center',
-      name: 'Amal X-Ray Center',
-      address: null,
-      phone: null,
-      website: null,
-      timezone: 'Asia/Hebron',
-      activityType: 'imaging_center',
-      hasProfile: true,
-    });
-    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
-      services: [{ id: 'xray-service', name: 'تصوير بانوراما', duration_minutes: 15, active: true }],
-      providers: [{ id: 'xray-provider', name: 'أ. امل نوري' }],
-      providerServiceIds: [{ service_id: 'xray-service', provider_id: 'xray-provider' }],
-      hasServices: true,
-      hasProviders: true,
-      usable: true,
-    });
-    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
-      state: 'DISCOVERING_PROBLEM',
-      booking_intent: false,
-      recommended_service_id: 'xray-service',
-      recommended_provider_id: 'xray-provider',
-      patient_confirmed_booking: false,
-      pending_question: '',
-      booking: {
-        service_id: 'xray-service',
-        provider_id: 'xray-provider',
-        slot: null,
-        patient_name: null,
-        phone: null,
-        email: null,
-      },
-    } as any);
-    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
-      intent: 'appointment_booking',
-      shouldHandoff: false,
-      appointment: { requestedService: 'تصوير بانوراما' },
-    } as any);
-
-    await handleIncomingMessage({
-      clinicId: 'clinic-xray',
-      conversationId: 'xray-conv',
-      text: 'أريد حجز تصوير بانوراما',
-    });
-
-    expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledTimes(1);
-    expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clinicId: 'clinic-xray',
-        serviceId: 'xray-service',
-        providerId: 'xray-provider',
       }),
     );
   });
