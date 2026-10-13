@@ -20,12 +20,12 @@ const mockSupabase = vi.hoisted(() => {
 const mockClinicDataContext = vi.hoisted(() => ({
   loadClinicOperatingData: vi.fn(),
   loadReceptionistConversationState: vi.fn(),
-  loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, hasProfile: true })),
+  loadClinicProfile: vi.fn(async () => ({ id: 'clinic-1', slug: '', name: 'Demo', address: null, phone: null, website: null, timezone: null, activityType: 'clinic', hasProfile: true })),
   // Mock drift repair: the orchestrator resolves the clinic's working hours
   // (unified hours source) BEFORE the reception state; without this export every
   // RAG-pipeline test in this file crashed before reaching its assertions.
   loadClinicWorkingHours: vi.fn(async () => ({ hours: [], summary: '' })),
-  persistReceptionistSlot: vi.fn(async () => {}),
+  persistReceptionistSlot: vi.fn(async (..._args: unknown[]) => {}),
   OPERATIVE_CONVERSATION_INTENTS: new Set(['appointment_booking','appointment_reschedule','appointment_cancellation','patient_complaint','dental_general_question','general_question','greeting','goodbye','human_handoff','unknown']),
 }));
 vi.mock('@/lib/ai/clinicDataContext', () => mockClinicDataContext);
@@ -140,6 +140,8 @@ describe('AI Orchestrator RAG Pipeline', () => {
     mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({ services: [], providers: [], providerServiceIds: [], hasServices: false, hasProviders: false, usable: false });
     mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue(null);
     mockConversationBooking.attemptConversationBooking.mockResolvedValue({ action: 'not_ready', state: 'INITIAL' });
+    mockUnderstanding.understandMessage.mockReturnValue({});
+    mockUnderstanding.applyUnderstandingToState.mockImplementation((state: unknown) => state);
   });
 
   it('should retrieve context, build a RAG prompt, and generate a response', async () => {
@@ -255,6 +257,23 @@ describe('AI Orchestrator RAG Pipeline', () => {
     mockConversationService.updateConversationState.mockResolvedValue({} as any);
     mockConversationService.getConversationById.mockResolvedValue({ id: 'conv-1', clinic_id: 'clinic-1', patient_id: 'patient-1' });
 
+    const result = await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: userQuery,
+    });
+
+    expect(mockContextRetrieval.retrieveContext).not.toHaveBeenCalled();
+    expect(mockPromptManager.buildPrompt).not.toHaveBeenCalled();
+    expect(mockAiProvider.generate).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
+    expect(result?.assistantMessage?.role).toBe('assistant');
+    expect(String(result?.assistantMessage?.content)).toContain('فريق العيادة');
+    expect(mockConversationService.updateConversationState).toHaveBeenCalledWith('conv-1', 'awaiting_staff', 'clinic-1');
+    expect(mockNotificationService.notifyStaffForHandoff).toHaveBeenCalledWith('clinic-1', 'conv-1');
+    expect(mockLogging.logEvent).toHaveBeenCalledWith('ai_handoff_triggered', expect.any(Object));
+  });
+
 describe('AI Orchestrator — empty Knowledge Base must not block a booking conversation', () => {
   it('proceeds to the LLM (receptionist) when KB is empty and the intent is operative', async () => {
     mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({ intent: 'appointment_booking', shouldHandoff: false, state: 'ai' } as any);
@@ -350,7 +369,6 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
       totalTokens: 10,
       model: 'test-model',
     });
-
     await handleIncomingMessage({
       clinicId: 'clinic-1',
       conversationId: 'conv-1',
@@ -370,26 +388,159 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
     );
   });
 });
-    const result = await handleIncomingMessage({
-      clinicId: 'clinic-1',
-      conversationId: 'conv-1',
-      text: userQuery,
+
+describe('AI Orchestrator — persisted clinic booking intent resolves availability', () => {
+  it.each([
+    ['clinic', true],
+    ['imaging_center', false],
+  ])('uses the persisted booking intent only for %s activity', async (activityType, shouldResolveAvailability) => {
+    const preferredTimeRange = { from: '15:00', to: '15:59' };
+    mockClinicDataContext.loadClinicProfile.mockResolvedValue({
+      id: 'clinic-1',
+      slug: 'test',
+      name: 'Test',
+      address: null,
+      phone: null,
+      website: null,
+      timezone: 'Asia/Hebron',
+      activityType,
+      hasProfile: true,
+    } as any);
+    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 'service-1', name: 'فحص أسنان', duration_minutes: 30, active: true }],
+      providers: [{ id: 'provider-1', name: 'د. حلا' }],
+      providerServiceIds: [{ service_id: 'service-1', provider_id: 'provider-1' }],
+      hasServices: true,
+      hasProviders: true,
+      usable: true,
+    } as any);
+    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
+      state: 'DISCOVERING_PROBLEM',
+      booking_intent: true,
+      recommended_service_id: 'service-1',
+      recommended_provider_id: 'provider-1',
+      preferred_date: '2026-10-13',
+      preferred_time_range: preferredTimeRange,
+      preferred_time_options: null,
+      patient_confirmed_booking: false,
+      pending_question: '',
+      booking: {
+        service_id: null,
+        provider_id: null,
+        slot: null,
+        patient_name: null,
+        phone: null,
+        email: null,
+      },
+    } as any);
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent: 'services_inquiry',
+      shouldHandoff: false,
+      appointment: {},
+    } as any);
+    mockAvailabilityTool.findEarliestAvailableSlot.mockResolvedValue({
+      found: false,
+      reason: 'no_slots',
+    } as any);
+    mockPromptManager.buildPrompt.mockReturnValue('booking follow-up prompt');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'سأتحقق من الموعد المطلوب.',
+      promptTokens: 5,
+      completionTokens: 5,
+      totalTokens: 10,
+      model: 'test-model',
     });
 
-    // 1. Verify AI response was NOT generated — but the patient ALWAYS gets
-    // a reply now: the persisted handoff acknowledgment (P0 fix).
-    expect(mockContextRetrieval.retrieveContext).not.toHaveBeenCalled();
-    expect(mockPromptManager.buildPrompt).not.toHaveBeenCalled();
-    expect(mockAiProvider.generate).not.toHaveBeenCalled();
-    expect(result).not.toBeNull();
-    expect(result?.assistantMessage?.role).toBe('assistant');
-    expect(String(result?.assistantMessage?.content)).toContain('فريق العيادة');
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'فحص أسنان',
+    });
 
-    // 2. Verify handoff actions were taken
-    expect(mockConversationService.updateConversationState).toHaveBeenCalledWith('conv-1', 'awaiting_staff', 'clinic-1');
-    expect(mockNotificationService.notifyStaffForHandoff).toHaveBeenCalledWith('clinic-1', 'conv-1');
-    expect(mockLogging.logEvent).toHaveBeenCalledWith('ai_handoff_triggered', expect.any(Object));
+    if (shouldResolveAvailability) {
+      expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clinicId: 'clinic-1',
+          providerId: 'provider-1',
+          serviceId: 'service-1',
+          preferredDate: '2026-10-13',
+          preferredTimeRange,
+        }),
+      );
+    } else {
+      expect(mockAvailabilityTool.findEarliestAvailableSlot).not.toHaveBeenCalled();
+    }
   });
+});
+
+describe('AI Orchestrator — clinic booking captures patient name before BOOKING state', () => {
+  it.each([
+    ['clinic', 'توفيق جلال'],
+    ['imaging_center', null],
+  ])('captures an unlabelled name for %s activity only', async (activityType, expectedName) => {
+    mockClinicDataContext.loadClinicProfile.mockResolvedValue({
+      id: 'clinic-1',
+      slug: 'test',
+      name: 'Test',
+      address: null,
+      phone: null,
+      website: null,
+      timezone: 'Asia/Hebron',
+      activityType,
+      hasProfile: true,
+    } as any);
+    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 'service-1', name: 'فحص أسنان', duration_minutes: 30, active: true }],
+      providers: [{ id: 'provider-1', name: 'د. حلا' }],
+      providerServiceIds: [{ service_id: 'service-1', provider_id: 'provider-1' }],
+      hasServices: true,
+      hasProviders: true,
+      usable: true,
+    } as any);
+    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
+      state: 'DISCOVERING_PROBLEM',
+      booking_intent: true,
+      recommended_service_id: 'service-1',
+      recommended_provider_id: 'provider-1',
+      patient_confirmed_booking: false,
+      pending_question: '',
+      booking: {
+        service_id: 'service-1',
+        provider_id: 'provider-1',
+        slot: '2026-10-13T13:00:00.000Z',
+        patient_name: null,
+        phone: null,
+        email: null,
+      },
+    } as any);
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent: 'unknown',
+      shouldHandoff: false,
+      appointment: {},
+    } as any);
+    mockPromptManager.buildPrompt.mockReturnValue('booking name prompt');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'ما رقم الهاتف للتواصل؟',
+      promptTokens: 5,
+      completionTokens: 5,
+      totalTokens: 10,
+      model: 'test-model',
+    });
+
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'توفيق جلال',
+    });
+
+    const persistedPatch = mockClinicDataContext.persistReceptionistSlot.mock.calls.at(-1)?.[2];
+    if (expectedName) {
+      expect(persistedPatch).toEqual(expect.objectContaining({ patient_name: expectedName }));
+    } else {
+      expect(persistedPatch).not.toHaveProperty('patient_name');
+    }
+  });
+});
 
   it('passes the configured threshold to retrieveContext and reaches the LLM when a grounded chunk exists', async () => {
     mockSupabase.supabase.from('clinic_ai_settings').select().eq().limit().single.mockResolvedValue({

@@ -451,6 +451,11 @@ export async function handleIncomingMessage(opts: {
       intelligence.intent === 'appointment_booking' ||
       Boolean(intelligence.appointment?.requestedService) ||
       Boolean(
+        clinicProfile?.activityType?.toLowerCase() === 'clinic' &&
+        currentState?.booking_intent &&
+        currentState.recommended_service_id
+      ) ||
+      Boolean(
         currentState?.recommended_service_id &&
         (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)
       );
@@ -647,8 +652,18 @@ export async function handleIncomingMessage(opts: {
       const appointment = intelligence.appointment;
       const bookingReplyName =
         !postTurnState.booking.patient_name &&
-        postTurnState.state === 'BOOKING' &&
-        postTurnState.booking.slot
+        postTurnState.booking.slot &&
+        (
+          postTurnState.state === 'BOOKING' ||
+          (
+            clinicProfile?.activityType?.toLowerCase() === 'clinic' &&
+            (
+              postTurnState.booking_intent ||
+              postTurnState.booking.service_id ||
+              postTurnState.recommended_service_id
+            )
+          )
+        )
           ? extractPatientNameFromBookingReply(text)
           : null;
       if (appointment?.patientName || bookingReplyName) {
