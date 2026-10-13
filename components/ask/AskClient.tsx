@@ -10,6 +10,7 @@ import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
+import { LetterReveal } from '@/components/landing/motion';
 import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
 
 /** Canonical public origin for structured data — MUST stay the official domain
@@ -72,13 +73,19 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
       {/* ═══ HERO ═══ */}
       <section style={{ order: sectionPosition('hero') }} className="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-4 pt-10">
+        {/* Animated playful background blobs */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -top-16 right-10 h-64 w-64 rounded-full bg-blue-400/25 blur-3xl animate-blob-drift" />
+          <div className="absolute top-32 -left-10 h-72 w-72 rounded-full bg-cyan-300/25 blur-3xl animate-float-slower" />
+          <div className="absolute bottom-0 right-1/4 h-56 w-56 rounded-full bg-indigo-300/20 blur-3xl animate-float-slow" />
+        </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl text-center">
           <BlurFade>
             <div className="animate-float flex justify-center text-5xl sm:text-6xl">{hero.logo ?? '🦷'}</div>
           </BlurFade>
           <BlurFade delay={0.15}>
             <h1 className="mt-4 text-3xl font-black leading-tight text-slate-900 sm:text-4xl md:text-5xl">
-              لا تنتظر على الهاتف.. احجز موعدك الذكي في 30 ثانية
+              <LetterReveal text="لا تنتظر على الهاتف.. احجز موعدك الذكي في 30 ثانية" />
             </h1>
           </BlurFade>
           <BlurFade delay={0.3}>
@@ -92,7 +99,9 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <BlurFade delay={0.45}>
             <div className="mt-7 flex justify-center">
               <Magnetic>
-                <ShimmerButton onClick={scrollToChat} className="bg-blue-600 px-9 py-4 text-lg hover:bg-blue-700" style={{ background: '#2563eb' }}>ابدأ الدردشة واحجز الآن 🚀</ShimmerButton>
+                <div className="rounded-xl shadow-glow-coral animate-glow-pulse">
+                  <ShimmerButton onClick={scrollToChat} className="bg-blue-600 px-9 py-4 text-lg hover:bg-blue-700" style={{ background: '#2563eb' }}>ابدأ الدردشة واحجز الآن 🚀</ShimmerButton>
+                </div>
               </Magnetic>
             </div>
           </BlurFade>
@@ -144,9 +153,9 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             {tips.slice(0, 3).map((t, i) => (
               <BlurFade key={String(t.id)} delay={i * 0.12} inView>
-                <div className="h-full rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-md">
-                  <p className="text-2xl">{String(t.icon ?? '💡')}</p>
-                  <p className="mt-2 font-bold text-slate-800">{String(t.title)}</p>
+                <div className="group h-full rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-glow hover:border-blue-200" style={{ animation: `float 3.2s ease-in-out infinite`, animationDelay: `${i * 0.4}s` }}>
+                  <p className="inline-block text-2xl transition-transform duration-300 group-hover:scale-125 group-hover:animate-bounce">{String(t.icon ?? '💡')}</p>
+                  <p className="mt-2 font-bold text-slate-800 transition-colors group-hover:text-blue-700">{String(t.title)}</p>
                   <p className="mt-1 line-clamp-3 text-sm text-slate-600">{String(t.content)}</p>
                 </div>
               </BlurFade>
@@ -209,9 +218,12 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <h2 className="text-center text-2xl font-black text-blue-800">❓ إجابات على أسئلتك</h2>
           <div className="mt-6 space-y-2">
             {faq.map((f) => (
-              <details key={String(f.id)} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                <summary className="cursor-pointer text-sm font-bold text-slate-800">{String(f.question)}</summary>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{String(f.answer)}</p>
+              <details key={String(f.id)} className="group rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition-colors duration-300 open:bg-blue-50/40 hover:border-blue-200 hover:bg-blue-50/30">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold text-slate-800">
+                  {String(f.question)}
+                  <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-100 text-blue-700 transition-transform duration-300 ease-out group-open:rotate-180">▾</span>
+                </summary>
+                <p className="mt-2 animate-fade-in text-sm leading-6 text-slate-600">{String(f.answer)}</p>
               </details>
             ))}
           </div>
