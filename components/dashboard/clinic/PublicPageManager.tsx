@@ -76,6 +76,7 @@ type PageConfig = {
   tagline?: string;
   about?: string;
   cover_url?: string;
+  logo?: string;
   show_phone: boolean;
   show_prices: boolean;
   show_providers: boolean;
@@ -185,6 +186,7 @@ export default function PublicPageManager() {
     tagline: '',
     about: '',
     cover_url: '',
+    logo: '',
     whatsapp: '',
     facebook: '',
     instagram: '',
@@ -210,6 +212,7 @@ export default function PublicPageManager() {
         tagline: data.tagline ?? '',
         about: data.about ?? '',
         cover_url: data.cover_url ?? '',
+        logo: data.logo ?? '',
         whatsapp: data.social_links?.whatsapp ?? '',
         facebook: data.social_links?.facebook ?? '',
         instagram: data.social_links?.instagram ?? '',
@@ -294,6 +297,7 @@ export default function PublicPageManager() {
       tagline: form.tagline.trim() || null,
       about: form.about.trim() || null,
       cover_url: form.cover_url.trim() || null,
+      logo: form.logo.trim() || null,
       social_links: {
         whatsapp: form.whatsapp.trim() || null,
         facebook: form.facebook.trim() || null,
@@ -508,6 +512,16 @@ export default function PublicPageManager() {
             value={form.cover_url}
             onChange={(url) => {
               setForm((current) => ({ ...current, cover_url: url }));
+            }}
+          />
+          <ImageUpload
+            label="شعار المركز (Logo)"
+            aspect="square"
+            title="شعار يظهر في رأس الصفحة العامة"
+            uploadEndpoint="/api/clinic/public-page/logo"
+            value={form.logo}
+            onChange={(url) => {
+              setForm((current) => ({ ...current, logo: url }));
             }}
           />
           <label className="block">

@@ -293,6 +293,7 @@ export type PublicProfileSettings = {
   tagline?: string;
   about?: string;
   cover_url?: string;
+  logo?: string;
   show_phone?: boolean;
   show_prices?: boolean;
   social_links?: SocialLinks;
@@ -388,6 +389,7 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
     tagline: typeof p.tagline === 'string' ? p.tagline : undefined,
     about: typeof p.about === 'string' ? p.about : undefined,
     cover_url: typeof p.cover_url === 'string' ? p.cover_url : undefined,
+    logo: typeof p.logo === 'string' ? p.logo : undefined,
     show_phone: p.show_phone === true,
     show_prices: p.show_prices === true,
     show_providers: p.show_providers !== false,
@@ -519,7 +521,7 @@ export async function updatePublicPageConfig(
 
   // Scalar/profile fields (with empty-string → delete so users can clear them).
   const scalarFields: (keyof PublicProfileSettings)[] = [
-    'description', 'tagline', 'about', 'cover_url',
+    'description', 'tagline', 'about', 'cover_url', 'logo',
     'show_phone', 'show_prices', 'show_providers', 'discovery_enabled',
   ];
   for (const key of scalarFields) {
