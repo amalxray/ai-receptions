@@ -3,6 +3,7 @@
 import React from 'react';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
+import { TiltCard } from '@/components/landing/motion';
 
 export type SuggestedClinic = {
   id: string;
@@ -33,11 +34,14 @@ export default function ClinicCard({ clinic }: { clinic: SuggestedClinic }) {
   const address = clinic.address?.trim();
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
+    <TiltCard className="group rounded-2xl border border-slate-100 bg-white p-4 shadow-sm hover:border-blue-200 hover:shadow-xl hover:shadow-blue-900/10">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="font-bold text-slate-800">{displayName}</p>
-          <p className="text-xs text-slate-600">{TYPE_LABEL[clinic.type] ?? clinic.type}{city ? ` · ${city}` : ''}</p>
+          <p className="font-bold text-slate-800 transition-colors group-hover:text-blue-700">{displayName}</p>
+          <p className="text-xs text-slate-600">
+            <span className="inline-block transition-transform duration-500 group-hover:rotate-12" aria-hidden="true">{(TYPE_LABEL[clinic.type] ?? clinic.type).split(' ')[0]}</span>
+            {' '}{(TYPE_LABEL[clinic.type] ?? clinic.type).split(' ').slice(1).join(' ')}{city ? ` · ${city}` : ''}
+          </p>
         </div>
         {clinic.distance_km != null && (
           <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-800">📍 {clinic.distance_km} كم</span>
@@ -49,6 +53,6 @@ export default function ClinicCard({ clinic }: { clinic: SuggestedClinic }) {
         {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="rounded-full bg-slate-100 px-4 py-1.5 text-xs text-slate-700 transition hover:bg-slate-200">🗺️ افتح الموقع</a>}
         {clinic.phone && <a href={`tel:${clinic.phone}`} dir="ltr" className="rounded-full bg-slate-100 px-4 py-1.5 text-xs text-slate-700 transition hover:bg-slate-200">📞 {clinic.phone}</a>}
       </div>
-    </div>
+    </TiltCard>
   );
 }

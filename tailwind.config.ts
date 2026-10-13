@@ -113,6 +113,8 @@ const config: Config = {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'pulse-coral': 'pulse-coral 2s ease-in-out infinite',
         'dot-pulse': 'dot-pulse 1.5s ease-in-out infinite',
+        wiggle: 'wiggle 0.8s ease-in-out infinite',
+        'glow-pulse': 'glow-pulse 2.5s ease-in-out infinite',
         'blob-drift': 'blob-drift 18s ease-in-out infinite',
         'num-float': 'num-float 4s ease-in-out infinite',
         'float-slow': 'float-slow 9s ease-in-out infinite',
@@ -131,6 +133,14 @@ const config: Config = {
         'dot-pulse': {
           '0%, 100%': { opacity: '0.3' },
           '50%': { opacity: '1' },
+        },
+        wiggle: {
+          '0%, 100%': { transform: 'rotate(-6deg)' },
+          '50%': { transform: 'rotate(6deg)' },
+        },
+        'glow-pulse': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(6, 182, 212, 0.5)' },
+          '50%': { boxShadow: '0 0 24px 6px rgba(6, 182, 212, 0)' },
         },
         'blob-drift': {
           '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
