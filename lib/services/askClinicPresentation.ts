@@ -1,7 +1,15 @@
-/** Replace technical clinic identifiers with an Arabic label in public surfaces. */
+/**
+ * Replace technical clinic identifiers with an Arabic label in public surfaces.
+ *
+ * A name is treated as a REAL name (shown verbatim) unless it is a pure slug:
+ * lowercase letters, digits and hyphens only — no spaces, no uppercase, no
+ * Arabic. This keeps genuine hyphenated brand names like "Amal X-Ray Center"
+ * visible while still masking auto-generated slugs like "amal-x-ray-center".
+ */
 export function displayPublicClinicName(name: string, activityType?: string | null): string {
   const trimmed = name.trim();
-  if (trimmed && !trimmed.includes('-') && !/^[a-z0-9\s]+$/i.test(trimmed)) return trimmed;
+  const isSlug = /^[a-z0-9-]+$/.test(trimmed);
+  if (trimmed && !isSlug) return trimmed;
   return activityType === 'imaging_center' ? 'مركز طبي' : 'عيادة شريكة';
 }
 

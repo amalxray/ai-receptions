@@ -5,9 +5,14 @@ import TestimonialsSection from '@/components/ask/TestimonialsSection';
 import { displayAskClinicName, dedupeAskTestimonials } from '@/lib/services/askClinicPresentation';
 
 describe('/ask presentation safeguards', () => {
-  it('replaces technical slugs and English hyphenated names with Arabic labels', () => {
+  it('shows real names verbatim but masks pure technical slugs with Arabic labels', () => {
+    // Real hyphenated brand name → shown as-is (regression: was wrongly masked).
+    expect(displayAskClinicName('Amal X-Ray Center', 'imaging_center')).toBe('Amal X-Ray Center');
+    // Pure lowercase slugs → masked placeholder.
+    expect(displayAskClinicName('amal-x-ray-center', 'imaging_center')).toBe('مركز طبي');
     expect(displayAskClinicName('ahmad-clinic', 'clinic')).toBe('عيادة شريكة');
-    expect(displayAskClinicName('Amal X-Ray Center', 'imaging_center')).toBe('مركز طبي');
+    expect(displayAskClinicName('hala-clinic', 'clinic')).toBe('عيادة شريكة');
+    // Arabic names always shown.
     expect(displayAskClinicName('مركز أمل للتصوير', 'imaging_center')).toBe('مركز أمل للتصوير');
   });
 
