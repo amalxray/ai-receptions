@@ -77,7 +77,7 @@ export default function PublicGalleryLightbox({
             >
               <div className="p-4">
                 {item.media_type === 'video' ? (
-                  <video src={item.public_url} controls className="h-auto w-full rounded-lg bg-black" />
+                  <video src={item.public_url} controls className="max-h-[80vh] w-auto object-contain mx-auto rounded-lg bg-black" />
                 ) : (
                   <MorphingDialogImage
                     src={item.public_url}
