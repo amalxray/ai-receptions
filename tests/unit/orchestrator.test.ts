@@ -497,6 +497,63 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
       }),
     );
   });
+
+  it('persists a full name when a verified-slot booking is still in discovery state', async () => {
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent: 'appointment_booking',
+      shouldHandoff: false,
+      appointment: {},
+    } as any);
+    mockClinicDataContext.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 's1', name: 'فحص اسنان', duration_minutes: 10, active: true }],
+      providers: [{ id: 'p1', name: 'د. حلا' }],
+      providerServiceIds: [{ provider_id: 'p1', service_id: 's1' }],
+      hasServices: true,
+      hasProviders: true,
+      usable: true,
+    } as any);
+    mockClinicDataContext.loadReceptionistConversationState.mockResolvedValue({
+      state: 'DISCOVERING_PROBLEM',
+      booking_intent: true,
+      recommended_service_id: 's1',
+      recommended_provider_id: 'p1',
+      patient_confirmed_booking: false,
+      pending_question: '',
+      booking: {
+        service_id: 's1',
+        provider_id: 'p1',
+        slot: '2026-10-13T15:00:00.000Z',
+        patient_name: null,
+        phone: '0000000000',
+        email: null,
+      },
+    } as any);
+    mockContextRetrieval.retrieveContext.mockResolvedValue([]);
+    mockPromptManager.buildPrompt.mockReturnValue('booking details prompt');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'تم تسجيل الاسم.',
+      promptTokens: 5,
+      completionTokens: 5,
+      totalTokens: 10,
+      model: 'test-model',
+    });
+
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'أحمد محمد',
+    });
+
+    expect(mockClinicDataContext.persistReceptionistSlot).toHaveBeenCalledWith(
+      'clinic-1',
+      'conv-1',
+      expect.objectContaining({
+        patient_name: 'أحمد محمد',
+        phone: '0000000000',
+        state: 'BOOKING',
+      }),
+    );
+  });
 });
 
 describe('AI Orchestrator — saved booking intent resolves availability for a later service reply', () => {
