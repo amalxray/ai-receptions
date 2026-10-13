@@ -345,6 +345,25 @@ describe('attemptConversationBooking', () => {
   });
 });
 
+  it('matches فحص أسنان with the catalog name فحص اسنان', () => {
+    const checkupService = { ...operatingData.services[0], id: 'svc-checkup', name: 'فحص اسنان' };
+    expect(matchServiceByName('فحص أسنان', [checkupService])?.id).toBe('svc-checkup');
+  });
+
+  it('matches فحص إسنان with the catalog name فحص اسنان', () => {
+    const checkupService = { ...operatingData.services[0], id: 'svc-checkup', name: 'فحص اسنان' };
+    expect(matchServiceByName('فحص إسنان', [checkupService])?.id).toBe('svc-checkup');
+  });
+
+  it('continues to match تصوير بانوراما unchanged', () => {
+    expect(matchServiceByName('تصوير بانوراما', operatingData.services)?.id).toBe('svc-panorama');
+  });
+
+  it('matches vocalized فَحْص أسنان with the catalog name فحص اسنان', () => {
+    const checkupService = { ...operatingData.services[0], id: 'svc-checkup', name: 'فحص اسنان' };
+    expect(matchServiceByName('فَحْص أسنان', [checkupService])?.id).toBe('svc-checkup');
+  });
+
   it('resolves the service the patient actually named ("بانوراما")', () => {
     expect(matchServiceByName('بانوراما', operatingData.services)?.id).toBe('svc-panorama');
     expect(matchServiceByName('تصوير بانوراما', operatingData.services)?.id).toBe('svc-panorama');
