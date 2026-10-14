@@ -522,6 +522,7 @@ export default function PublicPageManager() {
             aspect="square"
             title="شعار يظهر في رأس الصفحة العامة"
             uploadEndpoint="/api/clinic/public-page/logo"
+            convertToSquarePng
             value={form.logo}
             onChange={(url) => {
               setForm((current) => ({ ...current, logo: url }));
