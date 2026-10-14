@@ -86,13 +86,30 @@ export const EMPTY_OPERATING_DATA: ClinicOperatingData = {
  * outcome: the prompt section is simply omitted.
  */
 export async function loadClinicWorkingHours(clinicId: string, timezone?: string | null) {
+  const now = Date.now();
+  const cached = workingHoursCache.get(clinicId);
+  if (cached && cached.expires > now) return cached.data;
+
+  let data: Awaited<ReturnType<typeof loadClinicWorkingHoursUncached>>;
   try {
-    const hours = await getClinicHours(clinicId, { timezone });
-    return toClinicWorkingHoursData(hours);
-  } catch (err) {
-    logEvent('clinic_working_hours_exception', { clinic_id: clinicId, error: err instanceof Error ? err.message : String(err) }, 'error');
+    data = await loadClinicWorkingHoursUncached(clinicId, timezone);
+  } catch {
     return null;
   }
+  if (workingHoursCache.size >= OPERATING_DATA_MAX_ENTRIES) {
+    workingHoursCache.forEach((entry, key) => {
+      if (entry.expires <= now) workingHoursCache.delete(key);
+    });
+  }
+  workingHoursCache.set(clinicId, { data, expires: now + OPERATING_DATA_TTL_MS });
+  return data;
+}
+
+const workingHoursCache = new Map<string, { data: Awaited<ReturnType<typeof loadClinicWorkingHoursUncached>>; expires: number }>();
+
+async function loadClinicWorkingHoursUncached(clinicId: string, timezone?: string | null) {
+  const hours = await getClinicHours(clinicId, { timezone });
+  return toClinicWorkingHoursData(hours);
 }
 
 /** In-memory TTL cache for operating data. Services/providers change rarely,
@@ -127,9 +144,10 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
   return data;
 }
 
-/** Exported for tests: clear the operating-data cache. */
+/** Exported for tests: clear the operating-data + working-hours caches. */
 export function clearOperatingDataCache() {
   operatingDataCache.clear();
+  workingHoursCache.clear();
 }
 
 async function fetchOperatingData(clinicId: string): Promise<ClinicOperatingData> {
