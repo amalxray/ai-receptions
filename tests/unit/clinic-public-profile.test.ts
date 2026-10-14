@@ -115,6 +115,7 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
       'latitude',
       'longitude',
       'phone',
+      'google_maps_url',
       'services',
       'providers',
       'ads',
