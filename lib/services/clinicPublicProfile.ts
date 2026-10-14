@@ -21,6 +21,14 @@ import { readDisplaySettings, readTheme, type PublicDisplaySettings, type Public
  *   - description (optional public marketing text)
  */
 
+/** Extract the owner-managed public logo URL from a clinic's `settings` JSONB
+ *  (canonical: settings.public_profile.logo). Pure helper shared by the /{slug}
+ *  space, /ask and the PWA manifest so every surface reads ONE source. */
+export function readPublicProfileLogo(settings: unknown): string | null {
+  const pp = (settings as { public_profile?: { logo?: unknown } } | null)?.public_profile;
+  return typeof pp?.logo === 'string' && /^https?:\/\//.test(pp.logo) ? pp.logo : null;
+}
+
 export type PublicService = {
   name: string;
   description: string | null;
@@ -343,7 +351,7 @@ export async function getPublicClinicProfile(
     public_id: clinicRow.public_id ?? null,
     slug: clinicRow.slug,
     name: clinicRow.name,
-    logo: clinicRow.logo ?? (typeof pp.logo === 'string' ? pp.logo : null),
+    logo: clinicRow.logo ?? readPublicProfileLogo(settings),
     description,
     tagline,
     about,
