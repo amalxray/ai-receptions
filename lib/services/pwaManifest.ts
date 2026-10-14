@@ -47,6 +47,7 @@ import {
   readTheme,
   type PublicThemeSettings,
 } from '@/lib/services/clinicPublicConfig';
+import { readPublicProfileLogo } from '@/lib/services/clinicPublicProfile';
 import {
   isReservedSubdomain,
   isValidTenantSlug,
@@ -349,7 +350,11 @@ export async function resolvePwaBrand(
   return {
     slug: row.slug,
     name: cleanText(row.name) ?? PLATFORM_APP_NAME,
-    logo: isUsableBrandImage(row.logo) ? row.logo.trim() : null,
+    logo: (() => {
+      if (isUsableBrandImage(row.logo)) return row.logo.trim();
+      const fromSettings = readPublicProfileLogo(row.settings);
+      return fromSettings && isUsableBrandImage(fromSettings) ? fromSettings : null;
+    })(),
     description: readBrandDescription(row.settings),
     theme: readTheme(row.settings),
     activityType: normalizeActivityType(row.activity_type),
