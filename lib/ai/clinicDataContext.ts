@@ -95,7 +95,44 @@ export async function loadClinicWorkingHours(clinicId: string, timezone?: string
   }
 }
 
+/** In-memory TTL cache for operating data. Services/providers change rarely,
+ *  so a short TTL removes 5 DB round-trips (US↔EU) from every chat turn while
+ *  keeping data fresh. Bounded to avoid unbounded growth on many tenants. */
+const OPERATING_DATA_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const OPERATING_DATA_MAX_ENTRIES = 100;
+const operatingDataCache = new Map<string, { data: ClinicOperatingData; expires: number }>();
+
+function evictExpiredOperatingData(now: number) {
+  operatingDataCache.forEach((entry, key) => {
+    if (entry.expires <= now) operatingDataCache.delete(key);
+  });
+}
+
 export async function loadClinicOperatingData(clinicId: string): Promise<ClinicOperatingData> {
+  const now = Date.now();
+  const cached = operatingDataCache.get(clinicId);
+  if (cached && cached.expires > now) return cached.data;
+
+  const data = await fetchOperatingData(clinicId);
+  // Opportunistic eviction keeps the map bounded without a timer.
+  if (operatingDataCache.size >= OPERATING_DATA_MAX_ENTRIES) {
+    evictExpiredOperatingData(now);
+    // Still full (all fresh)? drop the oldest inserted entry (Map preserves order).
+    if (operatingDataCache.size >= OPERATING_DATA_MAX_ENTRIES) {
+      const oldestKey = operatingDataCache.keys().next().value;
+      if (oldestKey !== undefined) operatingDataCache.delete(oldestKey);
+    }
+  }
+  operatingDataCache.set(clinicId, { data, expires: now + OPERATING_DATA_TTL_MS });
+  return data;
+}
+
+/** Exported for tests: clear the operating-data cache. */
+export function clearOperatingDataCache() {
+  operatingDataCache.clear();
+}
+
+async function fetchOperatingData(clinicId: string): Promise<ClinicOperatingData> {
   try {
     const [servicesRes, providersRes, assignmentsRes, settingsRes, clinicRes] = await Promise.all([
       supabaseAdmin
