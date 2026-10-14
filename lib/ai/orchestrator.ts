@@ -330,9 +330,17 @@ export async function handleIncomingMessage(opts: {
     // from the patient's location or invented by the model. It is resolved
     // BEFORE the hours because its IANA timezone drives them (F2): the server
     // clock is UTC on Vercel while the clinic lives in Asia/Hebron (UTC+3).
-    const workingHours = await loadClinicWorkingHours(clinicId, clinicProfile.timezone);
-    const receptionState = await loadReceptionistConversationState(clinicId, conversationId);
-    const bookingPolicy = await getChatBookingPolicy(clinicId);
+    //
+    // PERF: workingHours needs clinicProfile.timezone (a real dependency), but
+    // receptionState and bookingPolicy depend only on clinicId/conversationId,
+    // so all three run concurrently instead of three sequential DB round-trips
+    // across the US↔EU hop. The booking flow is unchanged — same values, just
+    // fetched in parallel.
+    const [workingHours, receptionState, bookingPolicy] = await Promise.all([
+      loadClinicWorkingHours(clinicId, clinicProfile.timezone),
+      loadReceptionistConversationState(clinicId, conversationId),
+      getChatBookingPolicy(clinicId),
+    ]);
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
