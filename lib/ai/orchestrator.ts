@@ -728,10 +728,27 @@ export async function handleIncomingMessage(opts: {
     // Retrieve relevant context from the knowledge base.
     // retrieveContext may return either a legacy array of RetrievalResult
     // (backward-compatible callers) or a full AssembledContext object.
+    //
+    // PERF: greetings/goodbyes need no clinic knowledge, and RAG (embedding +
+    // vector search across the US↔EU hop) is the single biggest cost per turn.
+    // Skip it for those intents ONLY — every other intent (booking, pricing,
+    // services, questions, complaints…) still runs full RAG. `intelligence.intent`
+    // comes from the cheap fast-path classifier computed earlier, so this never
+    // touches the booking flow. Falls through to an empty context, which the
+    // hallucination guard below already handles for greeting/goodbye.
     const configuredConfidenceThreshold = Number(
       settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD
     );
-    const retrieved = await retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold);
+    const skipRagForSmallTalk = intelligence.intent === 'greeting' || intelligence.intent === 'goodbye';
+    const retrieved = skipRagForSmallTalk
+      ? ({
+          chunks: [],
+          citations: [],
+          totalTokens: 0,
+          truncated: false,
+          hasConflictingContext: false,
+        } as AssembledContext)
+      : await retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold);
     // When the active provider has no embedding support (e.g. local Ollama),
     // keyword-only retrieval scores are naturally lower, so lower the
     // effective threshold to match contextRetrieval's behavior.
