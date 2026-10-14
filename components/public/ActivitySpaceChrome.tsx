@@ -8,6 +8,7 @@ import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { ShareSection } from '@/components/public/ShareSection';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
+import ImageCarousel from '@/components/public/ImageCarousel';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
 import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
@@ -539,35 +540,7 @@ export function ActivitySpaceChrome({
                   <p className="mt-1 text-sm text-slate-500">لمحات من بيئة المركز وأجهزتنا الحديثة</p>
                 </div>
 
-                <div className="relative w-full overflow-hidden">
-                  <div
-                    dir="ltr"
-                    className="flex w-max animate-marquee py-4 hover:[animation-play-state:paused]"
-                  >
-                    {[0, 1].map((setIndex) => (
-                      <div
-                        key={`gallery-set-${setIndex}`}
-                        aria-hidden={setIndex === 1}
-                        className="flex w-max shrink-0 gap-4 pr-4"
-                      >
-                        {galleryImages.map((img, i) => (
-                          <div
-                            key={`${setIndex === 0 ? 'original' : 'duplicate'}-${img.id || i}`}
-                            className="relative z-10 h-[220px] w-[300px] flex-none cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg transition-all duration-400 ease-out hover:z-20 hover:-translate-y-2 hover:scale-110 hover:shadow-2xl md:h-[260px] md:w-[400px]"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={img.public_url}
-                              alt={img.alt_text || img.title || 'صورة من المعرض'}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ImageCarousel media={galleryImages} />
               </section>
             )}
           </div>
