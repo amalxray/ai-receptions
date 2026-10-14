@@ -175,7 +175,7 @@ export function readBrandDescription(settings: unknown): string | null {
 export function manifestIcons(logo?: string | null): PwaManifestIcon[] {
   const icons: PwaManifestIcon[] = [];
   if (isUsableBrandImage(logo)) {
-    icons.push({ src: String(logo).trim(), sizes: 'any', purpose: 'any' });
+    icons.push({ src: String(logo).trim(), sizes: 'any', purpose: 'any maskable' });
   }
   icons.push(
     { src: PLATFORM_ICON_192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },

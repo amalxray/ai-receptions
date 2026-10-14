@@ -107,7 +107,7 @@ describe('manifestIcons', () => {
 
   it('declares the clinic logo first, honestly sized, without cropping it', () => {
     const icons = manifestIcons('https://cdn.example.com/logo.png');
-    expect(icons[0]).toEqual({ src: 'https://cdn.example.com/logo.png', sizes: 'any', purpose: 'any' });
+    expect(icons[0]).toEqual({ src: 'https://cdn.example.com/logo.png', sizes: 'any', purpose: 'any maskable' });
     expect(icons).toHaveLength(3);
   });
 

@@ -12,6 +12,51 @@ interface Props {
   title?: string;
   /** Optional tenant-scoped upload API; defaults to the public media gallery. */
   uploadEndpoint?: string;
+  /**
+   * Convert the picked image to a square PNG (512×512, center-cropped) in the
+   * browser before upload. Used by the LOGO uploader so the PWA apple-touch
+   * icon (which requires PNG) uses the clinic logo. Cover/other images leave
+   * this off (they keep the original format). Falls back to the original file
+   * if canvas conversion is unavailable.
+   */
+  convertToSquarePng?: boolean;
+}
+
+/**
+ * Center-crop an image to a square and re-encode it as PNG at `size`×`size`
+ * using a canvas. Returns a new PNG File, or null if the browser cannot do it
+ * (caller then uploads the original file unchanged).
+ */
+async function toSquarePng(file: File, size = 512): Promise<File | null> {
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('image decode failed'));
+      image.src = dataUrl;
+    });
+    const side = Math.min(img.width, img.height) || size;
+    const sx = (img.width - side) / 2;
+    const sy = (img.height - side) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) return null;
+    const base = (file.name || 'logo').replace(/\.[^.]+$/, '');
+    return new File([blob], `${base}.png`, { type: 'image/png' });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -19,7 +64,7 @@ interface Props {
  * guarded tenant-scoped upload API, then reports its persisted public URL.
  * Replaces raw "https://…" URL text inputs so owners never paste links.
  */
-export default function ImageUpload({ value, onChange, label, aspect = 'square', title, uploadEndpoint = '/api/clinic/public-media' }: Props) {
+export default function ImageUpload({ value, onChange, label, aspect = 'square', title, uploadEndpoint = '/api/clinic/public-media', convertToSquarePng = false }: Props) {
   const { clinicId, authHeaders } = useClinicContext();
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(value ?? null);
@@ -38,9 +83,17 @@ export default function ImageUpload({ value, onChange, label, aspect = 'square',
     setUploading(true);
     setError(null);
     try {
+      // Logo uploads are converted to a square PNG so the PWA apple-touch icon
+      // (PNG-only on iOS) uses the clinic logo. Any failure falls back to the
+      // original file so the upload never blocks.
+      let fileToUpload = file;
+      if (convertToSquarePng) {
+        const png = await toSquarePng(file, 512);
+        if (png) fileToUpload = png;
+      }
       const headers = await authHeaders();
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', fileToUpload);
       if (title) formData.append('title', title);
       const res = await fetch(`${uploadEndpoint}?clinic_id=${encodeURIComponent(clinicId)}`, {
         method: 'POST',
