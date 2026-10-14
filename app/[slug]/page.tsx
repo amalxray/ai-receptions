@@ -23,11 +23,7 @@ import InstallPWA from '@/components/pwa/InstallPWA';
  * Domain catalogs (imaging_services/lab_services) are additive & tenant-scoped.
  */
 
-export const dynamic = 'force-dynamic';
-/** Live content guarantee: the space service reads owner-managed news/media/
- *  content via supabase-js (fetch under the hood) — force-no-store disables the
- *  Next.js Data Cache so every /{slug} request reflects the DB as of NOW. */
-export const fetchCache = 'force-no-store';
+export const revalidate = 60;
 
 export type ActivitySpacePageProps = { params: { slug: string } };
 
