@@ -92,6 +92,44 @@ Examples to guide you:
 Message:`;
 
 /**
+ * Robustly extract a JSON object from an LLM response.
+ *
+ * The classifier asks the model for a single JSON object, but real models wrap
+ * it in ```json fences, add prose, or emit a trailing comma — any of which made
+ * a bare `JSON.parse` throw (production logs showed "Expected ',' or '}' …").
+ * This isolates the outermost `{...}` and, on a parse failure, retries after
+ * stripping trailing commas / smart quotes. Returns the parsed object or null
+ * (the caller then treats it exactly like the old parse failure → fast-path).
+ */
+function extractJson(text: string): Record<string, unknown> | null {
+  // 1. Strip markdown fences (```json ... ``` or ``` ... ```).
+  let clean = text.replace(/```(?:json)?/gi, '').trim();
+
+  // 2. Isolate the outermost JSON object (handles leading/trailing prose).
+  const braceMatch = clean.match(/\{[\s\S]*\}/);
+  if (braceMatch) clean = braceMatch[0];
+
+  // 3. First attempt: parse as-is.
+  try {
+    return JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    /* fall through to repair */
+  }
+
+  // 4. Repair common slips: trailing commas, and curly quotes the model
+  //    sometimes emits inside string values, then retry once.
+  const repaired = clean
+    .replace(/,\s*([}\]])/g, '$1')          // trailing commas before } or ]
+    .replace(/[“”]/g, '"')                   // smart double quotes → "
+    .replace(/[‘’]/g, "'");                  // smart single quotes → '
+  try {
+    return JSON.parse(repaired) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Primary semantic intent classifier.
  *
  * Uses the LLM when available. Falls back to keyword rules only if:
@@ -121,25 +159,14 @@ export async function classifyIntentSemantic(text: string): Promise<SemanticInte
 
     const took = Date.now() - start;
 
-    // Parse the JSON from the model response
+    // Robustly extract the JSON object (tolerates ```json fences, surrounding
+    // prose, trailing commas and smart quotes — see extractJson).
     const content = result.text.trim();
-    // Find the JSON object (model may wrap it in fences or prose)
-    let jsonStr = content;
-    const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) jsonStr = fenceMatch[1].trim();
-    else {
-      const braceStart = content.indexOf('{');
-      const braceEnd = content.lastIndexOf('}');
-      if (braceStart >= 0 && braceEnd > braceStart) {
-        jsonStr = content.slice(braceStart, braceEnd + 1);
-      }
-    }
-
-    const parsed = JSON.parse(jsonStr) as Partial<SemanticIntentResult>;
+    const parsed = extractJson(content) as Partial<SemanticIntentResult> | null;
     // The model returns LOWERCASE intent values per the prompt. Validate against
     // the value set — not the uppercase keys.
-    if (!parsed.intent || typeof parsed.intent !== 'string' || !VALID_INTENT_VALUES.has(parsed.intent)) {
-      logEvent('intent_classifier_invalid_json', { took, text, intent: parsed.intent, raw: content.slice(0, 300) }, 'error');
+    if (!parsed || !parsed.intent || typeof parsed.intent !== 'string' || !VALID_INTENT_VALUES.has(parsed.intent)) {
+      logEvent('intent_classifier_invalid_json', { took, text, intent: parsed?.intent, raw: content.slice(0, 300) }, 'error');
       return null;
     }
 
