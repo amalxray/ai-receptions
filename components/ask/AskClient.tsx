@@ -39,7 +39,7 @@ const QUICK_CARDS = [
   { text: 'تنظيف أسنان', emoji: '✨' },
   { text: 'تقويم أسنان', emoji: '😁' },
   { text: 'زراعة أسنان', emoji: '🦷' },
-  { text: 'بانوراما', emoji: '🩻' },
+  { text: 'بانوراما', emoji: '🦷' },
   { text: 'حالة طارئة', emoji: '🚨' },
 ];
 

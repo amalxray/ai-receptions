@@ -2,7 +2,19 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import TestimonialsSection from '@/components/ask/TestimonialsSection';
-import { displayAskClinicName, dedupeAskTestimonials } from '@/lib/services/askClinicPresentation';
+import { displayAskClinicName, readPublicProfileLogo, dedupeAskTestimonials } from '@/lib/services/askClinicPresentation';
+
+describe('readPublicProfileLogo', () => {
+  it('reads settings.public_profile.logo when it is an http(s) URL', () => {
+    expect(readPublicProfileLogo({ public_profile: { logo: 'https://x.supabase.co/logo.jpg' } })).toBe('https://x.supabase.co/logo.jpg');
+  });
+  it('returns null for missing / non-URL / non-string logos', () => {
+    expect(readPublicProfileLogo({ public_profile: {} })).toBeNull();
+    expect(readPublicProfileLogo({ public_profile: { logo: 'not-a-url' } })).toBeNull();
+    expect(readPublicProfileLogo({})).toBeNull();
+    expect(readPublicProfileLogo(null)).toBeNull();
+  });
+});
 
 describe('/ask presentation safeguards', () => {
   it('shows real names verbatim but masks pure technical slugs with Arabic labels', () => {

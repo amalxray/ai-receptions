@@ -15,7 +15,7 @@ const LocationPicker = dynamic(() => import('./LocationPicker'), {
   loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />,
 });
 
-type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean; bookingUrl?: string };
+type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean; bookingUrl?: string; logoUrl?: string | null };
 
 const STORE_KEY = 'patient_location';
 
@@ -68,7 +68,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       `🔗 الحجز: ${clinic.booking_url}`,
     ].filter(Boolean).join('\n');
 
-    setMessages((m) => [...m, { role: 'user', content: `${num}` }, { role: 'assistant', content: details, bookingUrl: clinic.booking_url }]);
+    setMessages((m) => [...m, { role: 'user', content: `${num}` }, { role: 'assistant', content: details, bookingUrl: clinic.booking_url, logoUrl: clinic.logo ?? null }]);
   };
 
   const send = async (text: string, locOverride?: PatientLocation | null) => {
@@ -142,6 +142,10 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
               transition={{ type: 'spring', stiffness: 320, damping: 24 }}
               className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
             >
+              {m.role === 'assistant' && m.logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.logoUrl} alt="" aria-hidden="true" className="mb-2 h-12 w-12 rounded-xl border border-slate-200 object-cover" />
+              )}
               <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white shadow-glow-coral' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
                 {m.content}
               </div>
@@ -198,6 +202,16 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
                </span>
                {c.distance_km != null && (
                  <span className="text-[10px] font-medium text-slate-500">{c.distance_km} كم</span>
+               )}
+             </div>
+             <div className="mb-2 flex items-center gap-2">
+               {c.logo ? (
+                 // eslint-disable-next-line @next/next/no-img-element
+                 <img src={c.logo} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 object-cover" />
+               ) : (
+                 <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">
+                   {c.type === 'imaging_center' ? '📷' : c.type === 'dental_lab' ? '🦷' : '🏥'}
+                 </span>
                )}
              </div>
              <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">

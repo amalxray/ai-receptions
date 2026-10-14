@@ -15,6 +15,8 @@ export type PartnerClinic = {
   google_maps_url?: string | null;
   activity_type: string | null;
   distance_km?: number | null;
+  /** Owner-managed public logo (settings.public_profile.logo); null → emoji fallback. */
+  logo?: string | null;
   /**
    * Canonical tenant subdomain URL (`https://{slug}.dentairec.com`), built
    * server-side by the /ask data loader. Absolute on purpose: the legacy apex
@@ -43,7 +45,14 @@ export function DoctorCard({ clinic }: { clinic: PartnerClinic }) {
   return (
     <div className="doctor-card">
       {clinic.distance_km != null && <span className="doctor-distance">📍 {clinic.distance_km} كم</span>}
-      <div className="doctor-image">{TYPE_EMOJI[clinic.activity_type ?? 'clinic'] ?? '🏥'}</div>
+      <div className="doctor-image">
+        {clinic.logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={clinic.logo} alt={displayName} className="h-full w-full object-cover" />
+        ) : (
+          TYPE_EMOJI[clinic.activity_type ?? 'clinic'] ?? '🏥'
+        )}
+      </div>
       <div className="doctor-info">
         <span>{displayName}</span>
         <p>{TYPE_LABEL[clinic.activity_type ?? 'clinic'] ?? ''}{city ? ` — ${city}` : ''}</p>
