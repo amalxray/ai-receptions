@@ -197,6 +197,25 @@ const EXACT_HANDOFF = unicodePhrasePattern('بدي احكي مع موظفة|بد
 const EXACT_GREETING = new RegExp(`^${NO_LETTER_BEFORE}(مرحبا|مرحبة|اهلا|أهلا|اهلين|أهلين|صباح الخير|مساء الخير|مساء النور|هاي|هلا|سلام|hello|hi|hey)${NO_LETTER_AFTER}[\\s،,.!؟?:؛~]*$`, 'iu');
 const EXACT_GOODBYE = new RegExp(`^${NO_LETTER_BEFORE}(شكرا|شكراً|يسلمو|يسلموو|مع السلامة|باي|بايباي|bye|goodbye|thanks|thank you)${NO_LETTER_AFTER}[\\s،,.!؟?:؛~]*$`, 'iu');
 
+// Leading greeting: a greeting word at the START, optionally followed by SHORT
+// courtesy/reciprocal words ONLY ("كيفك", "كيف الحال", "شو في", "مرحبا كيفك",
+// "شكراً كتير") and/or trailing punctuation ("كيفك؟", "مرحبا!"). A trailing
+// booking/question/booking-verb/word immediately ends the fast-path (returns
+// null → the LLM classifies it), so "مرحبا بدي أحجز" and "السلام عليكم بدي
+// أسأل" are NEVER short-circuited. The leading "[،,.!؟?:؛~]" alternative accepts
+// punctuation attached directly to the word with no space (the whitespace-required
+// courtesy branch alone could never consume "كيفك؟"). Keeps greetings off the
+// expensive LLM intent call without ever mis-reading a real request.
+const LEADING_GREETING = new RegExp(
+  `^${NO_LETTER_BEFORE}(?:السلام عليكم|سلام عليكم|مرحبا|مرحبة|اهلا|أهلا|أهلاً|اهلين|أهلين|صباح الخير|مساء الخير|مساء النور|هاي|هلا|hello|hi|hey|كيفك|كيف حالك|كيف الحال)`
+  + `(?:[،,.!؟?:؛~]|\\s+(?:عليكم|وعليكم السلام|كيفك|كيفك؟|كيف حالك|كيف الحال|شو في|وش في|أخبارك|عامل|شو أخبارك|كيف|there|شو)[\\s،,.!؟?:؛~]*)*$`,  'iu',
+);
+const LEADING_GOODBYE = new RegExp(
+  `^${NO_LETTER_BEFORE}(?:شكرا|شكراً|يسلمو|يسلموو|مع السلامة|باي|بايباي|thank you|thanks|bye|goodbye)`
+  + `(?:[،,.!؟?:؛~]|\\s+(?:كتير|كثير|جزيلا|جزيلاً|لك|لكم|حبيبي|يعطيك العافية)[\\s،,.!؟?:؛~]*)*$`,
+  'iu',
+);
+
 /**
  * STEP 12A-FIX — explicit service desire extraction (deterministic, no LLM).
  *
@@ -256,6 +275,10 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
   if (EXACT_HANDOFF.test(t)) return { intent: SEMANTIC_INTENTS.HUMAN_HANDOFF, confidence: 0.95, entities: {} };
   if (EXACT_GREETING.test(t)) return { intent: SEMANTIC_INTENTS.GREETING, confidence: 0.9, entities: {} };
   if (EXACT_GOODBYE.test(t)) return { intent: SEMANTIC_INTENTS.GOODBYE, confidence: 0.9, entities: {} };
+  // Leading greeting/goodbye ("مرحبا كيفك", "شكراً كتير") — safe because a
+  // trailing booking/question word falls through to the LLM (see LEADING_*).
+  if (LEADING_GREETING.test(t)) return { intent: SEMANTIC_INTENTS.GREETING, confidence: 0.85, entities: {} };
+  if (LEADING_GOODBYE.test(t)) return { intent: SEMANTIC_INTENTS.GOODBYE, confidence: 0.85, entities: {} };
 
   return null;
 }
@@ -276,6 +299,18 @@ export async function classifyIntent(text: string): Promise<SemanticIntentResult
   // 0. Emergency safety signals — always deterministic and first.
   if (EXACT_EMERGENCY.test(text.trim())) {
     return { intent: SEMANTIC_INTENTS.URGENT_SIGNAL, confidence: 0.98, entities: { urgency: 'critical' } };
+  }
+
+  // 0b. Small-talk (greeting/goodbye) — resolve deterministically BEFORE the
+  // LLM. These are unambiguous courtesy phrases (see LEADING_* which reject a
+  // trailing booking/question word), so the extra LLM intent call is pure
+  // latency with no accuracy gain. Every other intent still goes to the LLM.
+  const fastSmallTalk = classifyIntentFastPath(text);
+  if (
+    fastSmallTalk &&
+    (fastSmallTalk.intent === SEMANTIC_INTENTS.GREETING || fastSmallTalk.intent === SEMANTIC_INTENTS.GOODBYE)
+  ) {
+    return fastSmallTalk;
   }
 
   // 1. Primary semantic (LLM).
