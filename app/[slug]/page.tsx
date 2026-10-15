@@ -4,6 +4,12 @@ import { getActivityPublicSpace, type ActivityPublicSpace } from '@/lib/services
 import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import { requestCache } from '@/lib/server/requestCache';
 import { buildClinicSchema, sanitizePublicSocialLinks } from '@/lib/services/doctorJsonLd';
+import {
+  buildClinicReviewsJsonLd,
+  getClinicReviewsForPublic,
+  getClinicReviewsStats,
+} from '@/lib/services/reviewsService';
+import ReviewsSection from '@/components/public/ReviewsSection';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
@@ -34,6 +40,18 @@ export type ActivitySpacePageProps = { params: { slug: string } };
  * is `force-no-store`, so nothing else dedupes it).
  */
 const loadSpace = requestCache(getActivityPublicSpace);
+
+/**
+ * PHASE 2 — reviews (stats + latest items) memoized for ONE request; the
+ * service itself keeps a 5-min TTL cache, so ISR (revalidate=60) stays cheap.
+ */
+const loadReviews = requestCache(async (clinicId: string) => {
+  const [stats, items] = await Promise.all([
+    getClinicReviewsStats(clinicId),
+    getClinicReviewsForPublic(clinicId),
+  ]);
+  return { stats, items };
+});
 
 export async function generateMetadata({ params }: ActivitySpacePageProps): Promise<Metadata> {
   const space = await loadSpace(params.slug);
@@ -82,8 +100,13 @@ export async function generateViewport({ params }: ActivitySpacePageProps): Prom
 }
 
 /** AEO/GEO — per-tenant structured data: MedicalClinic (clinic / imaging
- *  center) or MedicalBusiness (dental lab), built ONLY from public fields. */
-function buildSpaceJsonLd(space: ActivityPublicSpace) {
+ *  center) or MedicalBusiness (dental lab), built ONLY from public fields.
+ *  PHASE 2 — when the clinic reached the review threshold its AggregateRating
+ *  and latest reviews are merged in (null below threshold → nothing added). */
+function buildSpaceJsonLd(
+  space: ActivityPublicSpace,
+  reviews: Awaited<ReturnType<typeof loadReviews>> | null
+) {
   const shared = {
     name: space.name,
     pageUrl: space.pageUrl,
@@ -117,6 +140,16 @@ function buildSpaceJsonLd(space: ActivityPublicSpace) {
     schema['@type'] = 'MedicalBusiness';
   }
 
+  // PHASE 2 — AggregateRating + review nodes (null below the ≥5 threshold).
+  if (reviews) {
+    const reviewsLd = buildClinicReviewsJsonLd({
+      clinic: { name: space.name, url: space.pageUrl },
+      stats: reviews.stats,
+      items: reviews.items,
+    });
+    if (reviewsLd) Object.assign(schema, reviewsLd);
+  }
+
   return JSON.stringify(schema).replace(/</g, '\u003c');
 }
 
@@ -125,12 +158,17 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   if (!space) {
     notFound();
   }
-  const jsonLd = buildSpaceJsonLd(space);
+  const reviews = await loadReviews(space.clinicId);
+  const jsonLd = buildSpaceJsonLd(space, reviews);
   const schemaScript = (
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: jsonLd }}
     />
+  );
+  // PHASE 2 — patient reviews block under the space (all activity types).
+  const reviewsSection = (
+    <ReviewsSection clinicName={space.name} stats={reviews.stats} items={reviews.items} />
   );
   // PWA — every activity space renders the same self-hiding install banner.
   switch (space.activityType) {
@@ -139,6 +177,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ImagingPublicSpace space={space} />
+          {reviewsSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -147,6 +186,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <DentalLabPublicSpace space={space} />
+          {reviewsSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -155,6 +195,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={space} />
+          {reviewsSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
