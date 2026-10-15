@@ -449,12 +449,14 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           {clinicName && <p className="mt-1 text-xs text-slate-500">{clinicName}</p>}
         </div>
         <div className="flex items-center gap-2">
+          {/* // TODO: voice UI hidden until iPhone Safari issue resolved
+              // See PR #83, PR #82
           <VoiceToggle
             enabled={ttsEnabled}
             isSpeaking={isSpeaking}
             supported={voiceSupport.synthesis}
             onToggle={handleTtsToggle}
-          />
+          /> */}
           {/* New Conversation: full isolation from the previous session. */}
           {!isLoadingHistory && (
             <button
@@ -691,13 +693,15 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             disabled={bookingCompleted}
             className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:bg-white focus:ring-4 focus:ring-teal-500/10"
           />
+          {/* // TODO: voice UI hidden until iPhone Safari issue resolved
+              // See PR #83, PR #82
           <VoiceButton
             isListening={recognition.isListening}
             hasNewTranscript={hasNewTranscript}
             supported={voiceSupport.recognition}
             onToggle={recognition.toggle}
             disabled={bookingCompleted || isSubmitting}
-          />
+          /> */}
           <button
             type="submit"
             disabled={bookingCompleted || isSubmitting || !draft.trim()}
