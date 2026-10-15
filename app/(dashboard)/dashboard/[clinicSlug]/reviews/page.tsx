@@ -186,7 +186,8 @@ export default function ReviewsInboxPage() {
       });
       if (q) params.set('search', q);
       if (s) params.set('rating', String(s));
-      const res = await fetch(`/api/clinic/reviews?${params}`, { headers: authHeaders });
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/reviews?${params}`, { headers });
       if (!res.ok) throw new Error('فشل تحميل التقييمات');
       const body = await res.json();
       setItems(body.data?.items ?? []);
@@ -218,7 +219,8 @@ export default function ReviewsInboxPage() {
     setActing(id);
     try {
       const url = action === 'delete' ? `/api/clinic/reviews/${id}` : `/api/clinic/reviews/${id}/${action}`;
-      const res = await fetch(url, { method: action === 'delete' ? 'DELETE' : 'POST', headers: authHeaders });
+      const headers = await authHeaders();
+      const res = await fetch(url, { method: action === 'delete' ? 'DELETE' : 'POST', headers });
       if (!res.ok) throw new Error('فشل الإجراء');
       await load(clinicId, filter, debouncedSearch, star, page);
     } catch (e) {
