@@ -56,7 +56,7 @@ async function resolveOwnerEmails(clinicId: string): Promise<string[]> {
         // One unresolvable user must not block the others.
       }
     }
-    return [...new Set(emails)];
+    return Array.from(new Set(emails));
   } catch (err) {
     logEvent('review_notify_owners_lookup_failed', {
       clinic_id: clinicId,
