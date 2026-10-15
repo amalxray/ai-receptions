@@ -50,6 +50,8 @@ export function buildClinicSchema(input: {
   city?: string | null;
   area?: string | null;
   address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   socialLinks?: Record<string, string | undefined> | null;
   services?: Array<{ name: string; description?: string | null; duration_minutes?: number | null; price?: number | null; price_min?: number | null; price_max?: number | null }> | null;
   openingHours?: Array<{ weekday: number; start_time: string; end_time: string }> | null;
@@ -74,6 +76,10 @@ export function buildClinicSchema(input: {
     ...(input.logo ? { image: input.logo } : {}),
     ...(input.phone ? { telephone: input.phone } : {}),
     ...(address ? { address } : {}),
+    // Phase 5 — geo coordinates for local search (LocalBusiness.geo).
+    ...(input.latitude != null && input.longitude != null
+      ? { geo: { '@type': 'GeoCoordinates', latitude: input.latitude, longitude: input.longitude } }
+      : {}),
     ...(links.length > 0 ? { sameAs: links } : {}),
     ...(input.openingHours && input.openingHours.length > 0
       ? { openingHoursSpecification: buildOpeningHoursSchema(input.openingHours) }

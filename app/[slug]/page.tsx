@@ -84,6 +84,15 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
       type: 'website',
       url: canonical,
       siteName: space.name,
+      // Phase 5 — per-clinic OG image (logo) + locale for social previews.
+      ...(space.logo ? { images: [{ url: space.logo, alt: space.name }] } : {}),
+      locale: 'ar_PS',
+    },
+    twitter: {
+      card: 'summary',
+      title: space.name,
+      description,
+      ...(space.logo ? { images: [space.logo] } : {}),
     },
   };
 }
