@@ -262,9 +262,9 @@ export default function ReviewsInboxPage() {
         )}
         <div className="mt-4 space-y-3">
           {loading ? (
-            <Skeleton />
+            <Skeleton className="h-60" />
           ) : items.length === 0 ? (
-            <EmptyState title="لا توجد تقييمات" hint="لا توجد تقييمات مطابقة للفلتر الحالي." />
+            <EmptyState title="لا توجد تقييمات" description="لا توجد تقييمات مطابقة للفلتر الحالي." />
           ) : (
             items.map((r) => <ReviewCard key={r.id} r={r} acting={acting} onAct={act} />)
           )}
