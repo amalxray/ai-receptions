@@ -190,22 +190,35 @@ export const getClinicReviewsStats = requestCache(async (clinicId: string): Prom
 export const getClinicReviewsForPublic = requestCache(async (clinicId: string): Promise<PublicReviewItem[]> => {
   const cached = readCache(itemsCache, clinicId);
   if (cached) return cached;
+  const { items } = await getClinicReviewsPage(clinicId, 0, PUBLIC_REVIEWS_LIMIT);
+  writeCache(itemsCache, clinicId, items);
+  return items;
+});
+
+/**
+ * Phase 3b — paginated published reviews for /{slug}/reviews.
+ * Same filters/ordering as getClinicReviewsForPublic, offset-based.
+ */
+export async function getClinicReviewsPage(
+  clinicId: string,
+  offset: number,
+  limit: number
+): Promise<{ items: PublicReviewItem[]; total: number }> {
   try {
-    const { data, error } = await supabaseAdmin
+    const { data, error, count } = await supabaseAdmin
       .from('clinic_reviews')
-      .select('id, rating, author_name, comment, is_verified, created_at')
+      .select('id, rating, author_name, comment, is_verified, created_at', { count: 'exact' })
       .eq('clinic_id', clinicId)
       .eq('is_published', true)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
-      .limit(PUBLIC_REVIEWS_LIMIT);
-    const value = ((!error && data) || []) as PublicReviewItem[];
-    writeCache(itemsCache, clinicId, value);
-    return value;
+      .range(offset, offset + limit - 1);
+    if (error) return { items: [], total: 0 };
+    return { items: ((data ?? []) as PublicReviewItem[]), total: count ?? 0 };
   } catch {
-    return [];
+    return { items: [], total: 0 };
   }
-});
+}
 
 /**
  * ONE query for every published review on the platform, grouped per clinic —
