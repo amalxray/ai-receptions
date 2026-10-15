@@ -117,6 +117,11 @@ describe('tenant path rewrite', () => {
     expect(tenantPathRewrite('hala-clinic', '/')).toBe('/hala-clinic');
   });
 
+  it('maps tenant-scoped /reviews to the tenant reviews page', () => {
+    // Phase 3b/5: /{slug}/reviews exists, so the tenant host must rewrite it.
+    expect(tenantPathRewrite('hala-clinic', '/reviews')).toBe('/hala-clinic/reviews');
+  });
+
   it('leaves platform routes untouched so patient journeys keep working', () => {
     // Regression: the clinic space renders its booking CTA as the RELATIVE
     // `/book?slug=…`. Prefixing it produced `/{slug}/book` (no such route), so
