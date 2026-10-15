@@ -24,6 +24,19 @@ async function resolveClinicId(slug: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
+async function resolveClinicName(clinicId: string, fallbackSlug: string): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('clinics')
+      .select('name')
+      .eq('id', clinicId)
+      .maybeSingle();
+    return data?.name ?? fallbackSlug;
+  } catch {
+    return fallbackSlug;
+  }
+}
+
 function clientIp(req: Request): string {
   const fwd = req.headers.get('x-forwarded-for');
   if (fwd) return fwd.split(',')[0].trim();
@@ -100,6 +113,28 @@ export async function POST(req: Request) {
       const { getAppBaseUrl } = await import('@/lib/communications/links');
       const base = getAppBaseUrl();
       void pingIndexNow([`${base}/${input.clinic_slug}/reviews`]);
+    }
+
+    // Phase 4c — new-review notification (in-app bell + owner email).
+    // Fire-and-forget: never delays the response, never breaks the flow.
+    {
+      const { notifyNewReview } = await import('@/lib/services/reviewNotifications');
+      const clinicName = await resolveClinicName(clinicId, input.clinic_slug);
+      void notifyNewReview({
+        clinicId,
+        clinicSlug: input.clinic_slug,
+        clinicName,
+        reviewId: data.id,
+        rating: input.rating,
+        authorName: input.author_name,
+        comment: comment || null,
+      }).catch((err) => {
+        logEvent('review_notify_failed', {
+          clinic_id: clinicId,
+          review_id: data.id,
+          error: err instanceof Error ? err.message : String(err),
+        }, 'warn');
+      });
     }
 
     return NextResponse.json(
