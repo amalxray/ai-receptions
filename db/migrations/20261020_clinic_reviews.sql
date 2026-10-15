@@ -87,6 +87,9 @@ end $$;
 revoke all on clinic_reviews from anon, authenticated;
 grant select on clinic_reviews to anon, authenticated;
 
+-- Lesson D10: ALWAYS grant service_role on new tables
+grant all on table clinic_reviews to service_role;
+
 -- ============================================================================
 -- Reversible
 -- ============================================================================
