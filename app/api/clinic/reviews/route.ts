@@ -77,13 +77,13 @@ export async function GET(req: Request) {
       .eq('clinic_id', clinicId)
       .is('deleted_at', null);
 
-    const rows = all ?? [];
+    const rows: Array<{ rating: number | string; is_published: boolean; rejected_at: string | null; flagged_medical: boolean }> = all ?? [];
     const pub = rows.filter((r) => r.is_published);
     const stats = {
       total: rows.length,
       published: pub.length,
       pending: rows.filter((r) => !r.is_published && !r.rejected_at).length,
-      rejected: rows.filter((r) => r.rejected_at).length,
+      rejected: rows.filter((r) => Boolean(r.rejected_at)).length,
       average: pub.length ? Math.round((pub.reduce((a, b) => a + Number(b.rating), 0) / pub.length) * 100) / 100 : 0,
     };
 
