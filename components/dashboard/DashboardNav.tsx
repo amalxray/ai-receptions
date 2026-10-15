@@ -44,6 +44,7 @@ const BASE_NAV: NavModule[] = [
   { module: 'services', label: 'الخدمات' },
   { module: 'team', label: 'إدارة الفريق' },
   { module: 'conversations', label: 'محادثات الذكاء الاصطناعي' },
+  { module: 'reviews', label: 'التقييمات', icon: '⭐' },
   { module: 'messages', label: 'الرسائل' },
   { module: 'notifications', label: 'الإشعارات' },
   { module: 'leads', label: 'العملاء المحتملون' },
