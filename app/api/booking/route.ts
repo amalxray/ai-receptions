@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
+import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
+import { bookAppointment } from '@/lib/services/googleCalendarBooking';
+import { clinicLocalToInstant } from '@/lib/services/clinicClock';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
@@ -61,6 +65,57 @@ export async function POST(req: Request) {
       durationMinutes: duration_minutes,
       conversationId: conversation_id ?? null,
     });
+
+    // ── Google Calendar sync (Form parity with the chat path) ──
+    // Mirrors conversationBooking: NO `timeZone` on purpose (legacy wall-clock
+    // contract) and appointment_time is the TRUE clinic-local instant.
+    // Connected → attach the event to the just-created row; ANY failure rolls
+    // the row back (bookAppointment itself also guards double-booking against
+    // Google busy). Disconnected → DB-only, exactly as before (no rollback).
+    const policy = await getChatBookingPolicy(clinic_id);
+    if (policy.createGoogleCalendarEvent) {
+      try {
+        await bookAppointment({
+          appointment_id: appointment.id,
+          clinic_id,
+          provider_id,
+          appointment_time: clinicLocalToInstant(date, time, 'Asia/Jerusalem').toISOString(),
+          patient_name,
+          patient_phone: phone,
+          service,
+          duration_minutes,
+          // لا timeZone — mirror conversationBooking contract
+        });
+      } catch (err) {
+        const syncError = err instanceof Error ? err.message : String(err);
+        logEvent(
+          'booking_google_sync_failed',
+          { clinic_id, provider_id, appointment_id: appointment.id, date, time, error: syncError },
+          'error',
+        );
+        // Rollback: soft-delete the just-created row so no half-booked
+        // appointment ever survives — the patient simply retries.
+        try {
+          const { error: rollbackError } = await supabaseAdmin
+            .from('appointments')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', appointment.id);
+          if (rollbackError) {
+            logEvent('booking_google_sync_rollback_failed', { appointment_id: appointment.id, error: rollbackError.message }, 'error');
+          }
+        } catch (rollbackErr) {
+          logEvent(
+            'booking_google_sync_rollback_failed',
+            { appointment_id: appointment.id, error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr) },
+            'error',
+          );
+        }
+        return NextResponse.json(
+          { error: 'تعذّر تأكيد الحجز. يرجى المحاولة مرة أخرى.' },
+          { status: 409 },
+        );
+      }
+    }
 
     logEvent('booking_created', { clinic_id: clinic_id, provider_id: provider_id, appointment_id: appointment.id });
 
