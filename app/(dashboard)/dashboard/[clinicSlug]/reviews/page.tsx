@@ -100,11 +100,11 @@ function ReviewCard({ r, acting, onAct }: {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-800">{r.author_name}</span>
-          {r.is_verified && <StatusPill tone="success" label="موثّق" />}
-          {r.flagged_medical && <StatusPill tone="warning" label={r.flag_reason ?? 'مُعلَّم طبي'} />}
-          {!r.is_published && !r.rejected_at && <StatusPill tone="warning" label="جديد" />}
-          {r.is_published && <StatusPill tone="success" label="منشور" />}
-          {r.rejected_at && <StatusPill tone="danger" label="مرفوض" />}
+          {r.is_verified && <StatusPill tone="success">موثّق</StatusPill>}
+          {r.flagged_medical && <StatusPill tone="warning">{r.flag_reason ?? 'مُعلَّم طبي'}</StatusPill>}
+          {!r.is_published && !r.rejected_at && <StatusPill tone="warning">جديد</StatusPill>}
+          {r.is_published && <StatusPill tone="success">منشور</StatusPill>}
+          {r.rejected_at && <StatusPill tone="danger">مرفوض</StatusPill>}
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <Stars rating={r.rating} />
