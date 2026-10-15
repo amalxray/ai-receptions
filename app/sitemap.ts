@@ -77,10 +77,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const registeredHosts = await readVercelProjectDomainNames();
   for (const space of spaces) {
     if (!isSubdomainIn(registeredHosts, space.slug)) continue;
+    const spaceUrl = clinicSpaceUrl(space.slug);
     entries.push({
-      url: clinicSpaceUrl(space.slug),
+      url: spaceUrl,
       changeFrequency: 'monthly',
       priority: 0.8,
+    });
+    // Phase 5 — public reviews page per active clinic.
+    entries.push({
+      url: `${spaceUrl}/reviews`,
+      changeFrequency: 'weekly',
+      priority: 0.7,
     });
   }
 

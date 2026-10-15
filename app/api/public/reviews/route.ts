@@ -93,6 +93,15 @@ export async function POST(req: Request) {
       pii_masked: piiMasked,
       published: isPublished,
     });
+
+    // Phase 5 — IndexNow ping on publish (fire-and-forget, never blocks).
+    if (isPublished) {
+      const { pingIndexNow } = await import('@/lib/services/indexNow');
+      const { getAppBaseUrl } = await import('@/lib/communications/links');
+      const base = getAppBaseUrl();
+      void pingIndexNow([`${base}/${input.clinic_slug}/reviews`]);
+    }
+
     return NextResponse.json(
       { data: { review_id: data.id, is_published: isPublished, flagged_medical: filter.flagged } },
       { status: 201 },

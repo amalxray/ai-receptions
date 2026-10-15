@@ -27,8 +27,10 @@
 
 ## تقييمات المرضى (Patient Reviews)
 - كل عيادة تعرض تقييمات مرضها المنشورة على صفحتها العامة (https://www.dentairec.com/{slug})
+- صفحة التقييمات الكاملة: https://www.dentairec.com/{slug}/reviews (ترقيم 20/صفحة، نموذج تقييم عام source=public)
 - يظهر Schema.org AggregateRating عند توفر 5 تقييمات أو أكثر للعيادة الواحدة (و20 للمنصة)
 - API عام للتفاصيل: https://www.dentairec.com/api/public/reviews?clinic={slug} (JSON، تقييمات منشورة فقط، ترقيم limit/offset)
+- RSS Feed لآخر 20 تقييم: https://www.dentairec.com/api/public/reviews/rss (XML)
 - التقييمات التي تحتوي لغة طبية أو أرقام هواتف تُراجع يدوياً قبل النشر
 
 ## ملاحظات للـ AI
