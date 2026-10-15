@@ -152,21 +152,24 @@ export function tenantSlugFromHostname(hostname: string): string | null {
 /**
  * Computes the tenant rewrite target for a host label + path.
  *
- * ONLY the tenant root maps to the tenant public space (`/` → `/{slug}`).
- * Every other path keeps its own meaning and is handled by the platform router
- * — `/book`, `/discover`, `/ask`, `/dashboard`, `/api/*`, crawler files
- * (`/robots.txt`), static assets…
+ * Tenant-scoped paths map to the tenant space (`/` → `/{slug}`,
+ * `/reviews` → `/{slug}/reviews`). Every other path keeps its own meaning
+ * and is handled by the platform router — `/book`, `/discover`, `/ask`,
+ * `/dashboard`, `/api/*`, crawler files (`/robots.txt`), static assets…
  *
  * Why not prefix other paths with the slug: those nested routes do not exist,
  * so prefixing produced guaranteed 404s. Concretely, the clinic public space
  * renders its booking CTA as a RELATIVE `/book?slug=…`; on a tenant host that
  * was rewritten to `/{slug}/book` and every patient landing on the subdomain
- * hit a 404 when trying to book. Leaving non-root paths untouched also keeps
+ * hit a 404 when trying to book. Leaving non-tenant paths untouched also keeps
  * crawler/static surfaces (`/robots.txt`, `/llms.txt`, `/sitemap.xml`) and the
  * deep-link routes (`/c/{slug}`, `/d/{slug}`) working on tenant hosts.
  */
+const TENANT_SCOPED_PATHS = new Set(['/', '/reviews']);
+
 export function tenantPathRewrite(slug: string, pathname: string): string | null {
-  return pathname === '/' ? `/${slug}` : null;
+  if (!TENANT_SCOPED_PATHS.has(pathname)) return null;
+  return pathname === '/' ? `/${slug}` : `/${slug}${pathname}`;
 }
 
 /**
