@@ -19,11 +19,14 @@ import { ChatPersonaAvatar } from '@/components/chat/ChatPersona';
  */
 export default function FloatingChatWidget({
   clinicId,
+  clinicSlug = null,
   clinicName,
   externalOpenSignal,
   activityType = null,
 }: {
   clinicId: string;
+  /** Phase 3a — clinic slug for the post-booking review prompt (clinicId is a UUID). */
+  clinicSlug?: string | null;
   clinicName?: string | null;
   /** When this counter changes to a value > 0 the panel opens programmatically. */
   externalOpenSignal?: number;
@@ -145,7 +148,7 @@ export default function FloatingChatWidget({
               {/* Chat body — voice (V2) on tenant hosts only; apex/www keep the original. */}
               <div className="min-h-0 flex-1">
                 {isTenant ? (
-                  <ChatInterfaceV2 clinicId={clinicId} activityType={activityType} embedded />
+                  <ChatInterfaceV2 clinicId={clinicId} clinicSlug={clinicSlug} activityType={activityType} embedded />
                 ) : (
                   <ChatInterface clinicId={clinicId} activityType={activityType} embedded />
                 )}

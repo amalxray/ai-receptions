@@ -7,6 +7,7 @@ import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
 import VoiceButton from './VoiceButton';
 import VoiceToggle from './VoiceToggle';
+import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 import { useSpeechRecognition, useSpeechSynthesis, useTtsPreference, isRecognitionSupported, isSynthesisSupported } from '@/hooks/useVoice';
 
 type ChatMessage = {
@@ -33,6 +34,8 @@ type Props = {
    * anonymous visitors to hit the session-protected route → 401 everywhere).
    * Public chat pages/widgets leave the default 'public'.
    */
+  /** Optional clinic slug for the post-booking review prompt (Phase 3a). */
+  clinicSlug?: string | null;
 };
 
 const STORAGE_KEY_PREFIX = 'dentalai_chat_conv_';
@@ -65,7 +68,7 @@ function suggestedQuestionsFor(activity?: string | null): string[] {
   return ACTIVITY_QUESTIONS[activity ?? 'clinic'] ?? ACTIVITY_QUESTIONS.clinic;
 }
 
-export default function ChatInterfaceV2({ clinicId = '', initialConversationId = null, embedded = false, activityType = null }: Props) {
+export default function ChatInterfaceV2({ clinicId = '', initialConversationId = null, embedded = false, activityType = null, clinicSlug = null }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
@@ -78,6 +81,9 @@ export default function ChatInterfaceV2({ clinicId = '', initialConversationId =
   const [showSuggested, setShowSuggested] = useState(true);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [bookingCompleted, setBookingCompleted] = useState(false);
+  // Phase 3a — post-booking review prompt (display only; send/voice/booking untouched).
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const reviewPromptShownRef = useRef(false);
   const [editingBooking, setEditingBooking] = useState(false);
   const [bookingDraft, setBookingDraft] = useState<BookingConfirmationData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -220,6 +226,26 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       localStorage.setItem(storageKey, conversationId);
     }
   }, [conversationId, storageKey]);
+
+  // Phase 3a — show the review prompt once after booking completes.
+  // Strict guard: per-conversation sessionStorage flag + in-memory ref.
+  // Fail-silent when no clinicSlug is available (uuid-only hosts).
+  // Send logic, voice, and booking flow are untouched.
+  useEffect(() => {
+    if (!bookingCompleted || reviewPromptShownRef.current || !conversationId) return;
+    const slug = clinicSlug ?? (!isUuid ? clinicId : null);
+    if (!slug) return;
+    let key: string | null = null;
+    try {
+      key = `review_prompt_${conversationId}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // sessionStorage unavailable — still show once per mount via ref.
+    }
+    reviewPromptShownRef.current = true;
+    setShowReviewModal(true);
+  }, [bookingCompleted, conversationId, clinicId, clinicSlug, isUuid]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement> | null, overrideText?: string) {
     if (event) event.preventDefault();
@@ -716,6 +742,13 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           </p>
         )}
       </form>
+      {/* Phase 3a — post-booking review prompt (display only). */}
+      <ReviewPromptModal
+        open={showReviewModal}
+        clinicSlug={clinicSlug ?? (!isUuid ? clinicId : null)}
+        source="chat"
+        onClose={() => setShowReviewModal(false)}
+      />
     </div>
   );
 }
