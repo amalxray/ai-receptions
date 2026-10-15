@@ -7,6 +7,7 @@ import { Suspense } from 'react';
 import { format12h } from '@/lib/time/format';
 import { DatePicker } from '@/components/booking/DatePicker';
 import { formatArabicDate, monthKey, startOfDay, toISODate } from '@/lib/booking/calendar';
+import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 
 type Service = { id: string; name: string; description: string | null; duration_minutes: number; price: number | null };
 type Provider = { id: string; name: string; title: string | null };
@@ -57,6 +58,8 @@ function BookingForm() {
   const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [lifecycleLoading, setLifecycleLoading] = useState<'confirm' | 'cancel' | null>(null);
+  // Phase 3a — post-booking review prompt (display only; booking logic untouched).
+  const [showReviewModal, setShowReviewModal] = useState(false);
   // Step 3 calendar: the visible month (controlled) + the days the provider
   // cannot work on, fetched per month from /api/booking/calendar.
   const [calendarMonth, setCalendarMonth] = useState('');
@@ -411,6 +414,8 @@ function BookingForm() {
         booking_token: body.data.booking_token,
       });
       setStep('success');
+      // Phase 3a — prompt for a review once per successful booking.
+      setShowReviewModal(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ أثناء الحجز. يرجى المحاولة لاحقًا.');
     } finally {
@@ -638,6 +643,17 @@ function BookingForm() {
                   العودة إلى صفحة العيادة
                 </Link>
               </p>
+
+              {/* Phase 3a — post-booking review prompt (display only). */}
+              {clinic.status === 'ready' && (
+                <ReviewPromptModal
+                  open={showReviewModal}
+                  clinicSlug={clinic.clinic.slug}
+                  source="form"
+                  patientName={patientInfo.name}
+                  onClose={() => setShowReviewModal(false)}
+                />
+              )}
             </div>
           ) : clinic.status === 'ready' ? (
             <>

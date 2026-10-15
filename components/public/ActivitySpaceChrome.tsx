@@ -716,7 +716,7 @@ export function ActivitySpaceChrome({
         </footer>
       </main>
 
-      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
+      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicSlug={space.slug} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
 
     </div>
   );
