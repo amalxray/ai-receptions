@@ -5,6 +5,9 @@ import { freshConversationState, conversationStorageKeysToPurge } from '@/lib/ch
 import type { BookingConfirmationData, ChatInteractive } from '@/lib/ai/chatInteractive';
 import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
+import VoiceButton from './VoiceButton';
+import VoiceToggle from './VoiceToggle';
+import { useSpeechRecognition, useSpeechSynthesis, useTtsPreference, isRecognitionSupported, isSynthesisSupported } from '@/hooks/useVoice';
 
 type ChatMessage = {
   id?: string;
@@ -80,6 +83,34 @@ export default function ChatInterface({ clinicId = '', initialConversationId = n
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string | null>(null);
 
+  // ── الحجز الصوتي: Web Speech API (UI فقط — لا تغيير في API/orchestrator) ──
+  const { enabled: ttsEnabled, toggle: toggleTts } = useTtsPreference();
+  const { speak: speakTts, stop: stopTts, isSpeaking } = useSpeechSynthesis();
+  const [hasNewTranscript, setHasNewTranscript] = useState(false);
+  // دعم المتصفح يُكتشف بعد mount فقط (تجنّب hydration mismatch)
+  const [voiceSupport, setVoiceSupport] = useState({ recognition: false, synthesis: false });
+  useEffect(() => {
+    setVoiceSupport({ recognition: isRecognitionSupported(), synthesis: isSynthesisSupported() });
+  }, []);
+  const recognition = useSpeechRecognition({
+    // التعديل 1: لا إرسال تلقائي — النص يذهب للمسودة فقط، والمريض يضغط "إرسال".
+    onResult: (text) => {
+      setDraft(text);
+      setHasNewTranscript(true);
+    },
+  });
+
+  /** التعديل 2: تفعيل الصوت يبدأ فوراً بآخر رد للمريض. */
+  function handleTtsToggle() {
+    if (!ttsEnabled) {
+      const lastAssistant = [...messages]
+        .reverse()
+        .find((message) => message.role === 'assistant' && message.text.trim());
+      if (lastAssistant) speakTts(lastAssistant.text);
+    }
+    toggleTts();
+  }
+
   const isUuid = /^[0-9a-fA-F-]{36}$/.test(clinicId);
 const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
   const storageKey = `${STORAGE_KEY_PREFIX}${clinicId}`;
@@ -88,6 +119,15 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isSubmitting]);
+
+  // Accessibility: Esc = إيقاف قراءة الصوت فوراً
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') stopTts();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [stopTts]);
 
   // Load clinic info + welcome message
   useEffect(() => {
@@ -206,6 +246,8 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       return;
     }
     lastSentRef.current = trimmed;
+    stopTts(); // إيقاف قراءة الرد السابق عند رسالة جديدة
+    setHasNewTranscript(false);
 
     setMessages((current) => [...current, { role: 'user', text: trimmed }]);
     setDraft('');
@@ -278,6 +320,8 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         ...current,
         { role: 'assistant', text: assistantText, interactive: serverInteractive ?? undefined },
       ]);
+      // قراءة الرد بصوت (إذا كان TTS مفعّلاً — الافتراضي OFF)
+      if (ttsEnabled) speakTts(assistantText);
     } catch (err) {
       // Network-level failure (offline / server unreachable) — DISTINCT from
       // "assistant unavailable": the browser itself could not complete the
@@ -404,19 +448,27 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           </p>
           {clinicName && <p className="mt-1 text-xs text-slate-500">{clinicName}</p>}
         </div>
-        {/* New Conversation: full isolation from the previous session. */}
-        {!isLoadingHistory && (
-          <button
-            type="button"
-            onClick={startNewConversation}
-            disabled={isSubmitting}
-            aria-label="بدء محادثة جديدة"
-            title="ابدأ محادثة جديدة — المحادثة الحالية تبقى محفوظة في السجل"
-            className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-800 transition hover:border-teal-400 hover:bg-teal-100 disabled:opacity-50"
-          >
-            + محادثة جديدة
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <VoiceToggle
+            enabled={ttsEnabled}
+            isSpeaking={isSpeaking}
+            supported={voiceSupport.synthesis}
+            onToggle={handleTtsToggle}
+          />
+          {/* New Conversation: full isolation from the previous session. */}
+          {!isLoadingHistory && (
+            <button
+              type="button"
+              onClick={startNewConversation}
+              disabled={isSubmitting}
+              aria-label="بدء محادثة جديدة"
+              title="ابدأ محادثة جديدة — المحادثة الحالية تبقى محفوظة في السجل"
+              className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-800 transition hover:border-teal-400 hover:bg-teal-100 disabled:opacity-50"
+            >
+              + محادثة جديدة
+            </button>
+          )}
+        </div>
       </div>
 
       {!embedded && (
@@ -440,7 +492,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         </div>
       )}
 
-      <div className="flex-1 space-y-5 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_rgba(236,254,255,0.75),_transparent_68%)] px-4 py-5 sm:px-7 sm:py-7">
+      <div
+        aria-live="polite"
+        aria-relevant="additions"
+        className="flex-1 space-y-5 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_rgba(236,254,255,0.75),_transparent_68%)] px-4 py-5 sm:px-7 sm:py-7"
+      >
         {statusMessage ? (
           <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{statusMessage}</div>
         ) : null}
@@ -625,12 +681,22 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           <input
             type="text"
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setHasNewTranscript(false);
+            }}
             placeholder={bookingCompleted ? 'اكتمل الحجز — ابدأ محادثة جديدة لطلب آخر' : 'اكتب رسالة...'}
             maxLength={MAX_MESSAGE_LENGTH}
             aria-label="رسالة"
             disabled={bookingCompleted}
             className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:bg-white focus:ring-4 focus:ring-teal-500/10"
+          />
+          <VoiceButton
+            isListening={recognition.isListening}
+            hasNewTranscript={hasNewTranscript}
+            supported={voiceSupport.recognition}
+            onToggle={recognition.toggle}
+            disabled={bookingCompleted || isSubmitting}
           />
           <button
             type="submit"
@@ -640,6 +706,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             {isSubmitting ? 'جارٍ الإرسال...' : 'إرسال'}
           </button>
         </div>
+        {recognition.error && (
+          <p role="alert" className="mt-2 text-xs font-semibold text-red-600">
+            {recognition.error}
+          </p>
+        )}
       </form>
     </div>
   );
