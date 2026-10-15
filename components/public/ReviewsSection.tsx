@@ -1,3 +1,4 @@
+import React from 'react';
 import type { PublicReviewItem, ReviewStats } from '@/lib/services/reviewsService';
 
 /**
@@ -48,10 +49,16 @@ export default function ReviewsSection({
   clinicName,
   stats,
   items,
+  viewAllHref,
+  hideViewAll = false,
 }: {
   clinicName: string;
   stats: ReviewStats;
   items: PublicReviewItem[];
+  /** Phase 3b — link to /{slug}/reviews. Shown only when total > 5. */
+  viewAllHref?: string;
+  /** Phase 3b — the full page reuses this section; it hides its own link. */
+  hideViewAll?: boolean;
 }) {
   if (!stats || stats.total === 0) return null;
 
@@ -128,6 +135,17 @@ export default function ReviewsSection({
               </li>
             ))}
           </ul>
+        )}
+        {/* Phase 3b — link to the full reviews page (only when more than shown). */}
+        {!hideViewAll && viewAllHref && stats.total > 5 && (
+          <div className="mt-6 text-center">
+            <a
+              href={viewAllHref}
+              className="inline-block rounded-full border border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-700 hover:border-amber-400 hover:bg-amber-50"
+            >
+              عرض كل التقييمات ({stats.total})
+            </a>
+          </div>
         )}
       </div>
     </section>
