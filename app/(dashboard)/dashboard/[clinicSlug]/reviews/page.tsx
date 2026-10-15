@@ -100,11 +100,11 @@ function ReviewCard({ r, acting, onAct }: {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-800">{r.author_name}</span>
-          {r.is_verified && <StatusPill tone="success" label="موثّق" />}
-          {r.flagged_medical && <StatusPill tone="warning" label={r.flag_reason ?? 'مُعلَّم طبي'} />}
-          {!r.is_published && !r.rejected_at && <StatusPill tone="warning" label="جديد" />}
-          {r.is_published && <StatusPill tone="success" label="منشور" />}
-          {r.rejected_at && <StatusPill tone="danger" label="مرفوض" />}
+          {r.is_verified && <StatusPill tone="success">موثّق</StatusPill>}
+          {r.flagged_medical && <StatusPill tone="warning">{r.flag_reason ?? 'مُعلَّم طبي'}</StatusPill>}
+          {!r.is_published && !r.rejected_at && <StatusPill tone="warning">جديد</StatusPill>}
+          {r.is_published && <StatusPill tone="success">منشور</StatusPill>}
+          {r.rejected_at && <StatusPill tone="danger">مرفوض</StatusPill>}
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <Stars rating={r.rating} />
@@ -186,7 +186,8 @@ export default function ReviewsInboxPage() {
       });
       if (q) params.set('search', q);
       if (s) params.set('rating', String(s));
-      const res = await fetch(`/api/clinic/reviews?${params}`, { headers: authHeaders });
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/reviews?${params}`, { headers });
       if (!res.ok) throw new Error('فشل تحميل التقييمات');
       const body = await res.json();
       setItems(body.data?.items ?? []);
@@ -218,7 +219,8 @@ export default function ReviewsInboxPage() {
     setActing(id);
     try {
       const url = action === 'delete' ? `/api/clinic/reviews/${id}` : `/api/clinic/reviews/${id}/${action}`;
-      const res = await fetch(url, { method: action === 'delete' ? 'DELETE' : 'POST', headers: authHeaders });
+      const headers = await authHeaders();
+      const res = await fetch(url, { method: action === 'delete' ? 'DELETE' : 'POST', headers });
       if (!res.ok) throw new Error('فشل الإجراء');
       await load(clinicId, filter, debouncedSearch, star, page);
     } catch (e) {
@@ -260,9 +262,9 @@ export default function ReviewsInboxPage() {
         )}
         <div className="mt-4 space-y-3">
           {loading ? (
-            <Skeleton />
+            <Skeleton className="h-60" />
           ) : items.length === 0 ? (
-            <EmptyState title="لا توجد تقييمات" hint="لا توجد تقييمات مطابقة للفلتر الحالي." />
+            <EmptyState title="لا توجد تقييمات" description="لا توجد تقييمات مطابقة للفلتر الحالي." />
           ) : (
             items.map((r) => <ReviewCard key={r.id} r={r} acting={acting} onAct={act} />)
           )}
