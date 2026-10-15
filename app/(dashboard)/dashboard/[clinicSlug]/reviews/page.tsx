@@ -122,6 +122,16 @@ function ReviewCard({ r, acting, onAct }: {
             نشر
           </button>
         )}
+        {/* Phase 4c — "إلغاء نشر" للمحتوى المنشور (إخفاء نظيف، يبقى في DB).
+            "رفض" يبقى منفصلاً للحالات المسيئة (سجل تدقيق عبر rejected_at). */}
+        {r.is_published && (
+          <button
+            onClick={() => onAct(r.id, 'reject')} disabled={acting === r.id}
+            className="rounded-full border border-slate-300 px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            إلغاء نشر
+          </button>
+        )}
         {!r.rejected_at && (
           <button
             onClick={() => onAct(r.id, 'reject')} disabled={acting === r.id}
