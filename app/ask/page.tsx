@@ -3,6 +3,7 @@ import AskClient from '@/components/ask/AskClient';
 import InstallPWA from '@/components/pwa/InstallPWA';
 import { getAskPageData } from '@/lib/services/askPageData';
 import { getAppBaseUrl } from '@/lib/communications/links';
+import { buildAskReviewsJsonLd, getAllReviewSummaries } from '@/lib/services/reviewsService';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -38,8 +39,27 @@ export default async function AskPage() {
   const on = (k: string) => sections[k] !== false;
   const published = (articles as Array<Record<string, unknown>>).filter((a) => a.slug);
 
+  // PHASE 2 — one grouped query for every published review (TTL-cached), then
+  // ItemList per qualifying clinic (≥5) + Organization aggregate (≥20). Null →
+  // no script emitted (below threshold = no schema, by decision).
+  const reviewSummaries = await getAllReviewSummaries();
+  const reviewsJsonLd = buildAskReviewsJsonLd({
+    siteUrl: getAppBaseUrl(),
+    clinics: clinics.map((c) => ({ name: c.name, url: c.booking_url })),
+    summaries: clinics.map((c) => reviewSummaries.byClinic.get(c.id) ?? null),
+    platform: reviewSummaries.platform,
+  });
+
   return (
     <>
+      {reviewsJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(reviewsJsonLd).replace(/</g, '\\u003c'),
+          }}
+        />
+      )}
       <AskClient settings={settings} tips={tips} articles={articles} stories={stories} faq={faq} clinics={clinics} gallery={gallery} stats={stats} />
       {/* PWA — bottom install banner; hidden when installed/dismissed (see usePWAInstall). */}
       <InstallPWA variant="floating" />
