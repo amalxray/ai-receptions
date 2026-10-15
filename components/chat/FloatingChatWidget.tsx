@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ChatInterface from '@/components/chat/ChatInterface';
+import ChatInterfaceV2 from '@/components/chat/ChatInterfaceV2';
 import { ChatPersonaAvatar } from '@/components/chat/ChatPersona';
 
 /**
@@ -30,6 +31,20 @@ export default function FloatingChatWidget({
   activityType?: string | null;
 }) {
   const [open, setOpen] = useState(false);
+
+  // ── Voice (Web Speech API) is TENANT-ONLY (mirrors app/chat/page.tsx) ──
+  // SSR/first paint assumes main (false) to avoid hydration mismatch; the
+  // effect decides right after mount — the panel (and therefore ChatInterface)
+  // only mounts on open, so the correct component renders on first paint.
+  const [isTenant, setIsTenant] = useState(false);
+
+  useEffect(() => {
+    const host = window.location.host.split(':')[0]; // strip :3001 in dev
+    setIsTenant(
+      /^(?!www\.)[^.]+\.dentairec\.com$/.test(host) ||
+        /^[^.]+\.localhost$/.test(host),
+    );
+  }, []);
 
   // Honor an external "open chat" signal (e.g. a CTA on the public page).
   useEffect(() => {
@@ -127,9 +142,13 @@ export default function FloatingChatWidget({
                 </button>
               </div>
 
-              {/* Chat body */}
+              {/* Chat body — voice (V2) on tenant hosts only; apex/www keep the original. */}
               <div className="min-h-0 flex-1">
-                <ChatInterface clinicId={clinicId} activityType={activityType} embedded />
+                {isTenant ? (
+                  <ChatInterfaceV2 clinicId={clinicId} activityType={activityType} embedded />
+                ) : (
+                  <ChatInterface clinicId={clinicId} activityType={activityType} embedded />
+                )}
               </div>
             </div>
           </motion.div>
