@@ -1,4 +1,4 @@
-import type { PublicContactField } from './types';
+import type { PublicContactField } from './shared/types';
 
 /** Contact constants + validator (moved verbatim from PublicPageManager). */
 
