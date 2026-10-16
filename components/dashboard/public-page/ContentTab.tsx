@@ -25,10 +25,10 @@ export default function ContentTab({ config, form, setForm, update, toggleSectio
         <div className="grid gap-4 sm:grid-cols-2">
           {SOCIAL_FIELD_KEYS.map((key) => {
             const error = validatePublicContactValue(key, form[key]);
-            const baseClass = `w-full rounded-lg border bg-white px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${error ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-300 text-slate-700 hover:border-slate-400'}`;
+            const baseClass = `w-full rounded-lg border bg-slate-950 px-3 py-2 text-sm text-slate-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus:border-cyan-500/50 ${error ? 'border-red-300 bg-red-900/20 text-red-400' : 'border-slate-700 hover:border-slate-600'}`;
             return (
               <label key={key} className="block">
-                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-400">
                   <span aria-hidden="true">{SOCIAL_ICONS[key]}</span>
                   {SOCIAL_LABELS[key]}
                 </span>
