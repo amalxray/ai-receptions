@@ -38,7 +38,7 @@ describe('Phase 5 SEO/AEO', () => {
   it('هـ) llms.txt documents /reviews + RSS', async () => {
     const fs = await import('fs');
     const txt = fs.readFileSync('public/llms.txt', 'utf8');
-    expect(txt).toContain('/{slug}/reviews');
+    expect(txt).toContain('.dentairec.com/reviews');
     expect(txt).toContain('/api/public/reviews/rss');
   });
 

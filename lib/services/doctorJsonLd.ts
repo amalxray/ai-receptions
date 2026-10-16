@@ -44,6 +44,7 @@ export function sanitizePublicSocialLinks(
 export function buildClinicSchema(input: {
   name: string;
   pageUrl?: string | null;
+  slug?: string | null;
   description?: string | null;
   logo?: string | null;
   phone?: string | null;
@@ -81,36 +82,70 @@ export function buildClinicSchema(input: {
       ? { geo: { '@type': 'GeoCoordinates', latitude: input.latitude, longitude: input.longitude } }
       : {}),
     ...(links.length > 0 ? { sameAs: links } : {}),
+    // AEO — platform relation: every tenant space is part of AI-Receptions
+    // (سنّي · Dentairec). Static — no DB, no PII.
+    isPartOf: {
+      '@type': 'WebSite',
+      name: 'AI-Receptions',
+      alternateName: ['سنّي', 'Dentairec'],
+      url: 'https://www.dentairec.com',
+    },
+    // AEO — booking action so answer engines can surface "احجز موعد".
+    ...(input.slug
+      ? {
+          potentialAction: {
+            '@type': 'ReserveAction',
+            target: {
+              '@type': 'EntryPoint',
+              urlTemplate: `https://${input.slug}.dentairec.com/book`,
+              actionPlatform: 'http://schema.org/DesktopWebPlatform',
+            },
+            result: { '@type': 'Reservation', name: 'حجز موعد' },
+          },
+        }
+      : {}),
     ...(input.openingHours && input.openingHours.length > 0
       ? { openingHoursSpecification: buildOpeningHoursSchema(input.openingHours) }
       : {}),
     ...(input.services && input.services.length > 0
-      ? { makesOffer: input.services.map((service) => ({
-          '@type': 'Offer',
-          itemOffered: {
-            '@type': 'Service',
-            name: service.name,
-            ...(service.description ? { description: service.description } : {}),
-            ...(service.duration_minutes != null ? { duration: `PT${service.duration_minutes}M` } : {}),
-            ...(service.price != null || service.price_min != null || service.price_max != null
-              ? {
-                  offers: {
-                    '@type': 'Offer',
-                    priceCurrency: 'ILS',
-                    ...(service.price != null ? { price: String(service.price) } : {}),
-                    ...(service.price_min != null || service.price_max != null
-                      ? { priceSpecification: {
-                          '@type': 'UnitPriceSpecification',
-                          ...(service.price_min != null ? { minPrice: String(service.price_min) } : {}),
-                          ...(service.price_max != null ? { maxPrice: String(service.price_max) } : {}),
-                          priceCurrency: 'ILS',
-                        } }
-                      : {}),
-                  },
-                }
-              : {}),
+      ? {
+          makesOffer: input.services.map((service) => ({
+            '@type': 'Offer',
+            itemOffered: {
+              '@type': 'Service',
+              name: service.name,
+              ...(service.description ? { description: service.description } : {}),
+              ...(service.duration_minutes != null ? { duration: `PT${service.duration_minutes}M` } : {}),
+              ...(service.price != null || service.price_min != null || service.price_max != null
+                ? {
+                    offers: {
+                      '@type': 'Offer',
+                      priceCurrency: 'ILS',
+                      ...(service.price != null ? { price: String(service.price) } : {}),
+                      ...(service.price_min != null || service.price_max != null
+                        ? { priceSpecification: {
+                            '@type': 'UnitPriceSpecification',
+                            ...(service.price_min != null ? { minPrice: String(service.price_min) } : {}),
+                            ...(service.price_max != null ? { maxPrice: String(service.price_max) } : {}),
+                            priceCurrency: 'ILS',
+                          } }
+                        : {}),
+                    },
+                  }
+                : {}),
+            },
+          })),
+          // AEO — OfferCatalog mirrors makesOffer so answer engines can list services.
+          hasOfferCatalog: {
+            '@type': 'OfferCatalog',
+            name: `خدمات ${input.name}`,
+            itemListElement: input.services.map((service, i) => ({
+              '@type': 'Offer',
+              position: i + 1,
+              itemOffered: { '@type': 'Service', name: service.name },
+            })),
           },
-        })) }
+        }
       : {}),
     areaServed: { '@type': 'AdministrativeArea', name: 'فلسطين' },
     knowsLanguage: ['ar', 'en'],

@@ -119,6 +119,7 @@ function buildSpaceJsonLd(
   const shared = {
     name: space.name,
     pageUrl: space.pageUrl,
+    slug: space.slug,
     description: space.description,
     tagline: space.tagline,
     logo: space.logo,
