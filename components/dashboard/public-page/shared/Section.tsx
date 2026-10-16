@@ -1,5 +1,3 @@
-import type React from 'react';
-
 import React from 'react';
 
 /** Section card (moved verbatim from PublicPageManager). */
