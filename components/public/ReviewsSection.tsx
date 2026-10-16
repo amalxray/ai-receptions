@@ -1,5 +1,6 @@
 import React from 'react';
 import type { PublicReviewItem, ReviewStats } from '@/lib/services/reviewsService';
+import ReviewsPageClient from '@/app/[slug]/reviews/ReviewsPageClient';
 
 /**
  * PHASE 2 — patient reviews block for public tenant pages (server component).
@@ -47,12 +48,15 @@ function DistributionRow({ stars, count, total }: { stars: number; count: number
 
 export default function ReviewsSection({
   clinicName,
+  clinicSlug,
   stats,
   items,
   viewAllHref,
   hideViewAll = false,
 }: {
   clinicName: string;
+  /** Tenant slug for the permanent review form (source='public'). Missing → button hidden (fail-silent). */
+  clinicSlug?: string | null;
   stats: ReviewStats;
   items: PublicReviewItem[];
   /** Phase 3b — link to /{slug}/reviews. Shown only when total > 5. */
@@ -60,7 +64,7 @@ export default function ReviewsSection({
   /** Phase 3b — the full page reuses this section; it hides its own link. */
   hideViewAll?: boolean;
 }) {
-  if (!stats || stats.total === 0) return null;
+  const hasReviews = stats && stats.total > 0;
 
   return (
     <section
@@ -68,11 +72,20 @@ export default function ReviewsSection({
       className="border-t border-slate-200 bg-white px-4 py-12 sm:px-6 lg:px-8"
     >
       <div className="mx-auto max-w-5xl">
-        <h2 id="reviews-heading" className="text-2xl font-bold text-slate-900">
-          تقييمات المرضى — {clinicName}
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 id="reviews-heading" className="text-2xl font-bold text-slate-900">
+            تقييمات المرضى — {clinicName}
+          </h2>
+          {clinicSlug ? <ReviewsPageClient clinicSlug={clinicSlug} /> : null}
+        </div>
 
-        <div className="mt-6 grid gap-8 sm:grid-cols-[auto,1fr] sm:items-start">
+        {!hasReviews ? (
+          <p className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            لا توجد تقييمات منشورة بعد — كن أول من يقيّم.
+          </p>
+        ) : (
+          <>
+            <div className="mt-6 grid gap-8 sm:grid-cols-[auto,1fr] sm:items-start">
           {/* Average */}
           <div className="flex flex-col items-center rounded-3xl border border-slate-200 bg-slate-50 px-8 py-6 text-center">
             <span className="text-5xl font-extrabold tabular-nums text-slate-900" dir="ltr">
@@ -146,6 +159,8 @@ export default function ReviewsSection({
               عرض كل التقييمات ({stats.total})
             </a>
           </div>
+        )}
+          </>
         )}
       </div>
     </section>

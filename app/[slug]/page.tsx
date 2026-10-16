@@ -179,7 +179,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   // PHASE 2 — patient reviews block under the space (all activity types).
   // Phase 3b — viewAllHref links to /{slug}/reviews when total > 5.
   const reviewsSection = (
-    <ReviewsSection clinicName={space.name} stats={reviews.stats} items={reviews.items} viewAllHref={`/${params.slug}/reviews`} />
+    <ReviewsSection clinicName={space.name} clinicSlug={params.slug} stats={reviews.stats} items={reviews.items} viewAllHref={`/${params.slug}/reviews`} />
   );
   // PWA — every activity space renders the same self-hiding install banner.
   switch (space.activityType) {
