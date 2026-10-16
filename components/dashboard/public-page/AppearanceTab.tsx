@@ -22,6 +22,12 @@ const SIZE_OPTS = [
   { value: 'large', label: 'كبير' },
 ] as const;
 
+const GALLERY_SPACING_OPTS = [
+  { value: 'compact', label: 'مضغوط' },
+  { value: 'normal', label: 'عادي' },
+  { value: 'roomy', label: 'واسع' },
+] as const;
+
 const SIZE_ROWS = [
   ['body_text', 'حجم النص'],
   ['heading', 'حجم العناوين'],
@@ -44,7 +50,7 @@ export default function AppearanceTab({ config, update, load }: Props) {
               groupId={`size-${key}`}
               label={label}
               value={config.display?.[key] ?? (key === 'gallery_spacing' ? 'normal' : 'medium')}
-              options={[...SIZE_OPTS]}
+              options={key === 'gallery_spacing' ? [...GALLERY_SPACING_OPTS] : [...SIZE_OPTS]}
               onChange={(v) => void update({ display: { [key]: v } })}
             />
           ))}
