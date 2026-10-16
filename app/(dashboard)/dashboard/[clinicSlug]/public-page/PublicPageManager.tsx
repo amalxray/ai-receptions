@@ -16,8 +16,7 @@ const INFO_INIT: InfoFormState = {
   description: '', tagline: '', about: '', cover_url: '', logo: '',
   show_providers: true, discovery_enabled: false,
 };
-const FORM_INIT: Record<PublicContactField, string> = {
-  description: '', tagline: '', about: '', cover_url: '', logo: '',
+const CONTACT_INIT: Record<PublicContactField, string> = {
   whatsapp: '', facebook: '', instagram: '', website: '', email: '',
 };
 
@@ -32,7 +31,7 @@ export default function PublicPageManager() {
   const [provisioning, setProvisioning] = useState(false);
   const [tab, setTab] = useState<PublicPageTabKey>('identity');
   const [infoForm, setInfoForm] = useState<InfoFormState>(INFO_INIT);
-  const [form, setForm] = useState(FORM_INIT);
+  const [contactForm, setContactForm] = useState(CONTACT_INIT);
 
   const load = useCallback(async () => {
     if (!clinicId) {
@@ -59,9 +58,7 @@ export default function PublicPageManager() {
         cover_url: data.cover_url ?? '', logo: data.logo ?? '',
         show_providers: data.show_providers, discovery_enabled: data.discovery_enabled,
       });
-      setForm({
-        description: data.description ?? '', tagline: data.tagline ?? '', about: data.about ?? '',
-        cover_url: data.cover_url ?? '', logo: data.logo ?? '',
+      setContactForm({
         whatsapp: data.social_links?.whatsapp ?? '', facebook: data.social_links?.facebook ?? '',
         instagram: data.social_links?.instagram ?? '', website: data.social_links?.website ?? '',
         email: data.email ?? data.social_links?.email ?? '',
@@ -103,23 +100,23 @@ export default function PublicPageManager() {
   );
 
   const saveInfo = () => {
-    const invalidField = SOCIAL_FIELD_KEYS.find((key) => validatePublicContactValue(key, form[key]) !== null);
+    const invalidField = SOCIAL_FIELD_KEYS.find((key) => validatePublicContactValue(key, contactForm[key]) !== null);
     if (invalidField) {
       setError('يرجى تصحيح بيانات التواصل قبل الحفظ');
       return;
     }
     void update({
-      description: form.description.trim() || null,
-      tagline: form.tagline.trim() || null,
-      about: form.about.trim() || null,
-      cover_url: form.cover_url.trim() || null,
-      logo: form.logo.trim() || null,
+      description: infoForm.description.trim() || null,
+      tagline: infoForm.tagline.trim() || null,
+      about: infoForm.about.trim() || null,
+      cover_url: infoForm.cover_url.trim() || null,
+      logo: infoForm.logo.trim() || null,
       social_links: {
-        whatsapp: form.whatsapp.trim() || null,
-        facebook: form.facebook.trim() || null,
-        instagram: form.instagram.trim() || null,
-        website: form.website.trim() || null,
-        email: form.email.trim() || null,
+        whatsapp: contactForm.whatsapp.trim() || null,
+        facebook: contactForm.facebook.trim() || null,
+        instagram: contactForm.instagram.trim() || null,
+        website: contactForm.website.trim() || null,
+        email: contactForm.email.trim() || null,
       },
     }).then((saved) => {
       if (saved) void load();
@@ -238,7 +235,7 @@ export default function PublicPageManager() {
         )}
         {tab === 'appearance' && <AppearanceTab config={config} update={update} load={load} />}
         {tab === 'content' && (
-          <ContentTab config={config} form={form} setForm={setForm} update={update}
+          <ContentTab config={config} form={contactForm} setForm={setContactForm} update={update}
             toggleSection={toggleSection} toggleService={toggleService} toggleProvider={toggleProvider} />
         )}
       </div>
