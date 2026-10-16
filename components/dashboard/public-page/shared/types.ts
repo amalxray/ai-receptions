@@ -1,5 +1,3 @@
-import type React from 'react';
-
 /** Shared domain types for the public-page dashboard (moved verbatim). */
 
 export type PublicServiceItem = { id: string; name: string };
