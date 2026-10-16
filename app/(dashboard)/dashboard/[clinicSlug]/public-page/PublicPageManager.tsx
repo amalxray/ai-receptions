@@ -71,6 +71,8 @@ export default function PublicPageManager() {
     }
   }, [clinicId, authHeaders]);
 
+  useEffect(() => { void load(); }, [load]);
+
   const update = useCallback(
     async (patch: UpdatePatch) => {
       if (!clinicId) return false;
