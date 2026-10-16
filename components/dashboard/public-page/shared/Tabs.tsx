@@ -45,8 +45,8 @@ export function Tabs({ active, onChange }: { active: PublicPageTabKey; onChange:
             tabIndex={isActive ? 0 : -1}
             onClick={() => onChange(tab.key)}
             className={isActive
-              ? 'rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950'
-              : 'rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800/70'}
+              ? 'rounded-xl bg-gradient-to-l from-cyan-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 ring-1 ring-cyan-400/40'
+              : 'rounded-xl px-4 py-2 text-sm text-slate-300 transition-all hover:bg-white/10'}
           >
             {tab.label}
           </button>

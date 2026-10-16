@@ -25,36 +25,36 @@ export default function IdentityTab({ config, form, setForm, contactError, savin
       <Section title="الهوية والنبذة" subtitle="الاسم والشعار والنبذة تظهر في الصفحة العامة.">
         <div className="grid gap-4">
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">نبذة قصيرة</span>
+            <span className="mb-1 block text-sm font-medium text-slate-400">نبذة قصيرة</span>
             <input
               type="text"
               value={form.tagline}
               onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
               maxLength={300}
               placeholder="مثال: مركز تصوير متخصص بأسنان الأطفال"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/40"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">الوصف</span>
+            <span className="mb-1 block text-sm font-medium text-slate-400">الوصف</span>
             <textarea
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               maxLength={3000}
               rows={3}
               placeholder="نبذة عن العيادة وخدماتها..."
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/40"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">من نحن (تفصيلي)</span>
+            <span className="mb-1 block text-sm font-medium text-slate-400">من نحن (تفصيلي)</span>
             <textarea
               value={form.about}
               onChange={(e) => setForm((f) => ({ ...f, about: e.target.value }))}
               maxLength={6000}
               rows={4}
               placeholder="نص تفصيلي يظهر في قسم «من نحن»..."
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/40"
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -81,7 +81,7 @@ export default function IdentityTab({ config, form, setForm, contactError, savin
               onChange={(v) => setForm((f) => ({ ...f, show_providers: v }))}
               label="إظهار مقدمي الخدمة"
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-400">
               ملاحظة: إخفاء مقدمي الخدمة من الصفحة العامة لا يمنع الحجز لديهم.
             </p>
           </div>
@@ -91,7 +91,7 @@ export default function IdentityTab({ config, form, setForm, contactError, savin
               onChange={(v) => setForm((f) => ({ ...f, discovery_enabled: v }))}
               label="السماح باكتشاف العيادة في البحث العام"
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-400">
               عند التفعيل، قد تظهر عيادتك في نتائج البحث والاكتشاف العام.
             </p>
           </div>
@@ -101,7 +101,7 @@ export default function IdentityTab({ config, form, setForm, contactError, savin
               type="button"
               onClick={onSaveInfo}
               disabled={saving}
-              className="rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+              className="rounded-full bg-gradient-to-l from-cyan-500 to-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-950 transition-all hover:shadow-[0_0_20px_rgba(34,211,238,0.45)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
             >
               {saving ? 'جارٍ الحفظ...' : 'حفظ الهوية'}
             </button>
