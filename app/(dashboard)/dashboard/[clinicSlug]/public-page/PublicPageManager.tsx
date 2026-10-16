@@ -206,7 +206,7 @@ export default function PublicPageManager() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-6">
           <p className="text-sm text-red-700" role="alert">{error}</p>
           <button type="button" onClick={() => void load()} disabled={loading} aria-busy={loading}
-            className="mt-3 rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
+            className="mt-3 rounded-full bg-gradient-to-l from-cyan-500 to-emerald-500 px-5 py-2 text-sm font-semibold text-slate-950 transition-all hover:shadow-[0_0_20px_rgba(34,211,238,0.45)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50">
             {loading ? 'جارٍ التحميل...' : 'إعادة التحميل'}
           </button>
         </div>

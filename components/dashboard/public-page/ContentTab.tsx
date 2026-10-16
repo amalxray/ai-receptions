@@ -25,10 +25,10 @@ export default function ContentTab({ config, form, setForm, update, toggleSectio
         <div className="grid gap-4 sm:grid-cols-2">
           {SOCIAL_FIELD_KEYS.map((key) => {
             const error = validatePublicContactValue(key, form[key]);
-            const baseClass = `w-full rounded-lg border bg-white px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${error ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-300 text-slate-700 hover:border-slate-400'}`;
+            const baseClass = `w-full rounded-lg border bg-slate-950 px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 ${error ? 'border-red-500/50 bg-red-950/30 text-red-200' : 'border-slate-700 text-slate-100 hover:border-slate-600'}`;
             return (
               <label key={key} className="block">
-                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-400">
                   <span aria-hidden="true">{SOCIAL_ICONS[key]}</span>
                   {SOCIAL_LABELS[key]}
                 </span>
@@ -67,7 +67,7 @@ export default function ContentTab({ config, form, setForm, update, toggleSectio
 
       <Section title="الخدمات" subtitle="اختر الخدمات التي تظهر في الصفحة العامة. الإخفاء لا يؤثر على الحجز.">
         {config.services.length === 0 ? (
-          <p className="text-sm text-slate-500">لا توجد خدمات نشطة بعد. أضف خدمات من صفحة «الخدمات».</p>
+          <p className="text-sm text-slate-400">لا توجد خدمات نشطة بعد. أضف خدمات من صفحة «الخدمات».</p>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
             {config.services.map((s) => (
@@ -79,7 +79,7 @@ export default function ContentTab({ config, form, setForm, update, toggleSectio
 
       <Section title="مقدمو الخدمة" subtitle="اختر من يظهر في الصفحة العامة. لا يؤثر على تخصيص الحجز.">
         {config.providers.length === 0 ? (
-          <p className="text-sm text-slate-500">لا يوجد مقدمو خدمة بعد. أضفهم من صفحة «مقدمو الخدمة».</p>
+          <p className="text-sm text-slate-400">لا يوجد مقدمو خدمة بعد. أضفهم من صفحة «مقدمو الخدمة».</p>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
             {config.providers.map((p) => (
