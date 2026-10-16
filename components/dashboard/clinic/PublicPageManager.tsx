@@ -408,7 +408,9 @@ export default function PublicPageManager() {
     }
   };
 
-  if (loading) return <Skeleton className="h-64 w-full" />;
+  // Fix: never show the empty state while either loader is still running
+  // (clinic context OR page config) — that race caused the "لا توجد بيانات" flash.
+  if (loading || clinicLoading || !clinicId) return <Skeleton className="h-64 w-full" />;
 
   if (!isConfigured && !checkFailed) {
     return <p className="text-sm text-slate-500">تعذر التحقق من الإعدادات — حاول مرة أخرى لاحقًا.</p>;
