@@ -217,11 +217,12 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
   }, [clinicId, isAdmin, authHeaders]);
 
   useEffect(() => {
+    if (!clinicId) return;
     let alive = true;
     (async () => {
       try {
         const headers = await authHeaders();
-        const res = await fetch('/api/clinic/subscription', { headers });
+        const res = await fetch(`/api/clinic/subscription?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
         if (!res.ok) return; // fail open — 402 enforcement lives server-side
         const json = await res.json().catch(() => null);
         const pid = json?.data?.entitlements?.planId;
@@ -233,7 +234,7 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
     return () => {
       alive = false;
     };
-  }, [authHeaders]);
+  }, [clinicId, authHeaders]);
 
   const lockedFeatures = useMemo(
     () => (planId === undefined ? new Set<FeatureKey>() : new Set(getLockedFeatures(planId))),
