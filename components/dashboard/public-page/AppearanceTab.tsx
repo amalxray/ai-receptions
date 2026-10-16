@@ -3,10 +3,24 @@
 import React from 'react';
 
 import Section from './shared/Section';
+import Segmented from './shared/Segmented';
+import Preview from './shared/Preview';
 import PublicMediaManager from '@/components/dashboard/clinic/PublicMediaManager';
 import type { PageConfig, UpdateFn, ReloadFn } from './shared/types';
 
 type Props = { config: PageConfig; update: UpdateFn; load: ReloadFn };
+
+export const SIZE_LABELS: Record<string, string> = {
+  small: 'صغير',
+  medium: 'متوسط',
+  large: 'كبير',
+};
+
+const SIZE_OPTS = [
+  { value: 'small', label: 'صغير' },
+  { value: 'medium', label: 'متوسط' },
+  { value: 'large', label: 'كبير' },
+] as const;
 
 const SIZE_ROWS = [
   ['body_text', 'حجم النص'],
@@ -22,23 +36,22 @@ export default function AppearanceTab({ config, update, load }: Props) {
   return (
     <div className="space-y-4">
       <Section title="مقاسات العرض" subtitle="تحكم في حجم النصوص والصور والفيديو في صفحتك العامة. القيم محدودة وآمنة ولا تؤثر على البنية.">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <div className="grid content-start gap-4 sm:grid-cols-2">
           {SIZE_ROWS.map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-              <select
-                value={config.display?.[key] ?? (key === 'gallery_spacing' ? 'normal' : 'medium')}
-                onChange={(e) => void update({ display: { [key]: e.target.value } }).then(() => load())}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              >
-                {(['small', 'medium', 'large'] as const).map((v) => (
-                  <option key={v} value={v}>
-                    {v === 'small' ? 'صغير' : v === 'large' ? 'كبير' : 'متوسط'}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Segmented
+              key={key}
+              groupId={`size-${key}`}
+              label={label}
+              value={config.display?.[key] ?? (key === 'gallery_spacing' ? 'normal' : 'medium')}
+              options={[...SIZE_OPTS]}
+              onChange={(v) => void update({ display: { [key]: v } }).then(() => load())}
+            />
           ))}
+          </div>
+          <div className="lg:sticky lg:top-4 lg:self-start">
+            <Preview display={config.display} />
+          </div>
         </div>
       </Section>
       <AppearanceCoverNews config={config} update={update} />
@@ -47,83 +60,104 @@ export default function AppearanceTab({ config, update, load }: Props) {
   );
 }
 
+const COVER_HEIGHT_OPTS = [
+  { value: 400, label: 'قصير', hint: '400' },
+  { value: 600, label: 'متوسط', hint: '600' },
+  { value: 790, label: 'طويل', hint: '790' },
+  { value: 800, label: 'طويل جدًا', hint: '800' },
+] as const;
+
+const COVER_BLUR_OPTS = [
+  { value: 0, label: 'واضح', hint: '0' },
+  { value: 5, label: 'ناعم', hint: '5' },
+  { value: 10, label: 'ضبابي', hint: '10' },
+  { value: 20, label: 'ضبابي جدًا', hint: '20' },
+] as const;
+
+const OFFSET_Y_OPTS = [
+  { value: 0, label: 'أعلى', hint: '0%' },
+  { value: 50, label: 'وسط', hint: '50%' },
+  { value: 100, label: 'أسفل', hint: '100%' },
+] as const;
+
 function AppearanceCoverNews({ config, update }: { config: PageConfig; update: UpdateFn }) {
   return (
     <Section title="الغلاف وشريط الأخبار" subtitle="وضوح صورة الغلاف وموقعها وإزاحتها، وحجم شريط الأخبار وخطه — تطبيق فوري على الصفحة العامة.">
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">
-            ارتفاع الغلاف — {config.display?.cover_height ?? 384}px
-          </span>
-          <input type="range" min={200} max={800} step={10}
+        <div className="sm:col-span-2">
+          <Segmented
+            groupId="cover-height"
+            label={`ارتفاع الغلاف — ${config.display?.cover_height ?? 384}px`}
             value={config.display?.cover_height ?? 384}
-            onChange={(e) => void update({ display: { cover_height: Number(e.target.value) } })}
-            className="w-full accent-cyan-600" />
-          <span className="text-xs text-slate-500">من 200 إلى 800 بكسل</span>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">طريقة عرض الغلاف</span>
-          <select value={config.display?.cover_fit ?? 'cover'}
-            onChange={(e) => void update({ display: { cover_fit: e.target.value } })}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="cover">قص (يملأ المساحة)</option>
-            <option value="contain">كامل (تظهر الصورة كاملة)</option>
-          </select>
-        </label>
-        <label className="block sm:col-span-2">
-          <span className="mb-1 block text-sm font-medium text-slate-700">
-            وضوح صورة الغلاف — {config.display?.cover_blur ?? 0}px (0 = واضحة تماماً)
-          </span>
-          <input type="range" min={0} max={20} step={1}
+            options={[...COVER_HEIGHT_OPTS]}
+            onChange={(v) => void update({ display: { cover_height: v } })}
+          />
+        </div>
+        <Segmented
+          groupId="cover-fit"
+          label="طريقة عرض الغلاف"
+          value={config.display?.cover_fit ?? 'cover'}
+          options={[
+            { value: 'cover', label: 'قص (يملأ المساحة)' },
+            { value: 'contain', label: 'كامل (تظهر الصورة كاملة)' },
+          ]}
+          onChange={(v) => void update({ display: { cover_fit: v } })}
+        />
+        <div className="sm:col-span-2">
+          <Segmented
+            groupId="cover-blur"
+            label={`وضوح صورة الغلاف — ${config.display?.cover_blur ?? 0}px (0 = واضحة تمامًا)`}
             value={config.display?.cover_blur ?? 0}
-            onChange={(e) => void update({ display: { cover_blur: Number(e.target.value) } })}
-            className="w-full accent-cyan-600" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">موقع صورة الغلاف</span>
-          <select value={config.display?.cover_position ?? 'center'}
-            onChange={(e) => void update({ display: { cover_position: e.target.value } })}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="center">وسط</option>
-            <option value="top">أعلى</option>
-            <option value="bottom">أسفل</option>
-            <option value="left">يسار</option>
-            <option value="right">يمين</option>
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">
-            إزاحة عمودية (%) — {config.display?.cover_offset_y ?? 50}%
-          </span>
-          <input type="range" min={0} max={100} step={5}
-            value={config.display?.cover_offset_y ?? 50}
-            onChange={(e) => void update({ display: { cover_offset_y: Number(e.target.value) } })}
-            className="w-full accent-cyan-600" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">حجم شريط الأخبار</span>
-          <select value={config.display?.news_height ?? 'md'}
-            onChange={(e) => void update({ display: { news_height: e.target.value } })}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="xs">صغير جداً</option>
-            <option value="sm">صغير</option>
-            <option value="md">متوسط</option>
-            <option value="lg">كبير</option>
-            <option value="xl">كبير جداً</option>
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">حجم خط شريط الأخبار</span>
-          <select value={config.display?.news_font ?? 'base'}
-            onChange={(e) => void update({ display: { news_font: e.target.value } })}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="sm">صغير</option>
-            <option value="base">عادي</option>
-            <option value="lg">كبير</option>
-            <option value="xl">كبير جداً</option>
-            <option value="2xl">ضخم</option>
-          </select>
-        </label>
+            options={[...COVER_BLUR_OPTS]}
+            onChange={(v) => void update({ display: { cover_blur: v } })}
+          />
+        </div>
+        <Segmented
+          groupId="cover-position"
+          label="موقع صورة الغلاف"
+          value={config.display?.cover_position ?? 'center'}
+          options={[
+            { value: 'center', label: 'وسط' },
+            { value: 'top', label: 'أعلى' },
+            { value: 'bottom', label: 'أسفل' },
+            { value: 'left', label: 'يسار' },
+            { value: 'right', label: 'يمين' },
+          ]}
+          onChange={(v) => void update({ display: { cover_position: v } })}
+        />
+        <Segmented
+          groupId="cover-offset"
+          label={`إزاحة عمودية — ${config.display?.cover_offset_y ?? 50}%`}
+          value={config.display?.cover_offset_y ?? 50}
+          options={[...OFFSET_Y_OPTS]}
+          onChange={(v) => void update({ display: { cover_offset_y: v } })}
+        />
+        <Segmented
+          groupId="news-height"
+          label="حجم شريط الأخبار"
+          value={config.display?.news_height ?? 'md'}
+          options={[
+            { value: 'xs', label: 'صغير جدًا' },
+            { value: 'sm', label: 'صغير' },
+            { value: 'md', label: 'متوسط' },
+            { value: 'lg', label: 'كبير' },
+            { value: 'xl', label: 'كبير جدًا' },
+          ]}
+          onChange={(v) => void update({ display: { news_height: v } })}
+        />
+        <Segmented
+          groupId="news-font"
+          label="حجم خط شريط الأخبار"
+          value={config.display?.news_font ?? 'base'}
+          options={[
+            { value: 'sm', label: 'صغير' },
+            { value: 'base', label: 'عادي' },
+            { value: 'lg', label: 'كبير' },
+            { value: 'xl', label: 'كبير جدًا' },
+            { value: '2xl', label: 'ضخم' },
+          ]}
+          onChange={(v) => void update({ display: { news_font: v } })}
+        />
       </div>
     </Section>
   );
