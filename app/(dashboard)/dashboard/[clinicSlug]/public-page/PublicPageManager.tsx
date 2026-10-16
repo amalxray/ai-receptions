@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import Skeleton from '@/components/ui/Skeleton';
+import { toast } from '@/components/ui/Toast';
 import { Tabs, type PublicPageTabKey } from '@/components/dashboard/public-page/shared/Tabs';
 import ShareTab from '@/components/dashboard/public-page/ShareTab';
 import IdentityTab from '@/components/dashboard/public-page/IdentityTab';
@@ -89,10 +90,10 @@ export default function PublicPageManager() {
         const body = (await res.json().catch(() => null)) as { data?: PageConfig; error?: string } | null;
         if (!res.ok) throw new Error(body?.error ?? `فشل الحفظ (${res.status})`);
         if (body?.data) setConfig(body.data);
-        setSuccess('تم حفظ التغييرات بنجاح');
+        toast.success('تم حفظ التغييرات بنجاح');
         return true;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'تعذر حفظ التغييرات');
+        toast.error(e instanceof Error ? e.message : 'تعذر حفظ التغييرات');
         return false;
       } finally {
         setSaving(false);
@@ -104,7 +105,7 @@ export default function PublicPageManager() {
   const saveInfo = () => {
     const invalidField = SOCIAL_FIELD_KEYS.find((key) => validatePublicContactValue(key, contactForm[key]) !== null);
     if (invalidField) {
-      setError('يرجى تصحيح بيانات التواصل قبل الحفظ');
+      toast.error('يرجى تصحيح بيانات التواصل قبل الحفظ');
       return;
     }
     void update({
@@ -155,9 +156,9 @@ export default function PublicPageManager() {
       a.download = `clinic-qr-${config.slug}.svg`;
       a.click();
       URL.revokeObjectURL(url);
-      setSuccess('تم تنزيل رمز QR');
+      toast.success('تم تنزيل رمز QR');
     } catch {
-      setError('تعذر تنزيل رمز QR');
+      toast.error('تعذر تنزيل رمز QR');
     }
   };
 
@@ -165,9 +166,9 @@ export default function PublicPageManager() {
     if (!config) return;
     try {
       await navigator.clipboard.writeText(config.canonicalUrl);
-      setSuccess('تم نسخ رابط الصفحة العامة');
+      toast.success('تم نسخ رابط الصفحة العامة');
     } catch {
-      setError('تعذر نسخ الرابط');
+      toast.error('تعذر نسخ الرابط');
     }
   };
 
@@ -185,9 +186,9 @@ export default function PublicPageManager() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error || body?.detail || `تعذر تجهيز النطاق (${res.status})`);
-      setSuccess(body?.alreadyExisted ? 'النطاق مسجّل ومجهّز بالفعل.' : 'تم تجهيز النطاق.');
+      toast.success(body?.alreadyExisted ? 'النطاق مسجّل ومجهّز بالفعل.' : 'تم تجهيز النطاق.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذر تجهيز النطاق');
+      toast.error(e instanceof Error ? e.message : 'تعذر تجهيز النطاق');
     } finally {
       await load();
       setProvisioning(false);
@@ -222,8 +223,7 @@ export default function PublicPageManager() {
 
   return (
     <div className="space-y-5">
-      {error ? <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p> : null}
-      {success ? <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700" role="status">{success}</p> : null}
+      {/* النتائج (حفظ/نسخ/تنزيل/نطاق) تُعرض عبر التنبيهات العالمية (components/ui/Toast) بدلاً من <p> مضمنة */}
       <Tabs active={tab} onChange={setTab} />
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'share' && (

@@ -45,7 +45,7 @@ export default function AppearanceTab({ config, update, load }: Props) {
               label={label}
               value={config.display?.[key] ?? (key === 'gallery_spacing' ? 'normal' : 'medium')}
               options={[...SIZE_OPTS]}
-              onChange={(v) => void update({ display: { [key]: v } }).then(() => load())}
+              onChange={(v) => void update({ display: { [key]: v } })}
             />
           ))}
           </div>
