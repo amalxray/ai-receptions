@@ -198,7 +198,13 @@ export default function PublicPageManager() {
   });
 
   const load = useCallback(async () => {
-    if (!clinicId) return;
+    if (!clinicId) {
+      setError('تعذّر تحميل بيانات الصفحة — تحقق من تسجيل الدخول/العضوية.');
+      setLoading(false);
+      return;
+    }
+    setError(null);
+    setLoading(true);
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(clinicId)}`, {
@@ -206,7 +212,10 @@ export default function PublicPageManager() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? `Failed to load (${res.status})`);
+        if (res.status === 401) throw new Error('انتهت الجلسة — سجّل الدخول مجددًا.');
+        if (res.status === 403) throw new Error('لا تملك عضوية في هذه العيادة.');
+        if (res.status === 404) throw new Error('العيادة غير موجودة.');
+        throw new Error(body?.error ?? `تعذّر التحميل (${res.status})`);
       }
       const { data } = (await res.json()) as { data: PageConfig };
       setConfig(data);
@@ -227,7 +236,8 @@ export default function PublicPageManager() {
       });
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'تعذر تحميل إعدادات الصفحة العامة');
+      setError(e instanceof Error ? e.message : 'تعذّر الاتصال بالخادم — حاول مجددًا.');
+      setLoading(false);
     } finally {
       setLoading(false);
     }
@@ -417,9 +427,25 @@ export default function PublicPageManager() {
   }
 
   if (!config) {
+    if (error) {
+      return (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6">
+          <p className="text-sm text-red-700" role="alert">{error}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            aria-busy={loading}
+            className="mt-3 rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {loading ? 'جارٍ التحميل...' : 'إعادة التحميل'}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6">
-        <p className="text-sm text-slate-600">{error ?? 'لا توجد بيانات للصفحة العامة.'}</p>
+        <p className="text-sm text-slate-600">لا توجد بيانات للصفحة العامة.</p>
       </div>
     );
   }
