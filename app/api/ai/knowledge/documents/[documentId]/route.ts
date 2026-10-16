@@ -42,12 +42,12 @@ export async function DELETE(request: Request) {
   );
 
   try {
-    const { data: { session } } = await serverClient.auth.getSession();
-    if (!session) {
+    const { data: { user } } = await serverClient.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const clinicId = await getActiveClinicId(session.user.id, serverClient);
+    const clinicId = await getActiveClinicId(user.id, serverClient);
     if (!clinicId) {
       return NextResponse.json({ error: 'No active clinic found.' }, { status: 401 });
     }
@@ -97,12 +97,12 @@ export async function POST(request: Request) {
   );
 
   try {
-    const { data: { session } } = await serverClient.auth.getSession();
-    if (!session) {
+    const { data: { user } } = await serverClient.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const clinicId = await getActiveClinicId(session.user.id, serverClient);
+    const clinicId = await getActiveClinicId(user.id, serverClient);
     if (!clinicId) {
       return NextResponse.json({ error: 'No active clinic found.' }, { status: 401 });
     }

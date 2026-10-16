@@ -35,8 +35,8 @@ export async function GET(req: Request) {
       },
     });
 
-    const { data: { session }, error: sessionError } = await serverClient.auth.getSession();
-    if (sessionError || !session) {
+    const { data: { user }, error: userError } = await serverClient.auth.getUser();
+    if (userError || !user) {
       return NextResponse.json({ error: 'يرجى تسجيل الدخول.' }, { status: 401 });
     }
 
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
       .from('clinic_users')
       .select('role')
       .eq('clinic_id', clinicId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .is('deleted_at', null)
       .limit(1)
       .maybeSingle();
