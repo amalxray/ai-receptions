@@ -19,6 +19,8 @@ import CompareEditor from '@/components/admin/editors/CompareEditor';
 import GallerySettingsEditor, { type GallerySettingsContent } from '@/components/admin/editors/GallerySettingsEditor';
 import FinalCtaEditor from '@/components/admin/editors/FinalCtaEditor';
 import FooterEditor from '@/components/admin/editors/FooterEditor';
+import SiteIdentityEditor from '@/components/admin/editors/SiteIdentityEditor';
+import type { SiteIdentityContent } from '@/components/admin/editors/SiteIdentityEditor';
 
 export type LandingPageSection = {
   section_key: string;
@@ -59,6 +61,9 @@ function SortableSectionCard({ section, isSelected, onSelect, onToggleVisibility
           </label>
           {section.section_key === 'gallery' && (
             <a href="/admin/gallery" className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-violet-400 hover:text-violet-300">✏️ تحرير</a>
+          )}
+          {section.section_key === 'site_identity' && (
+            <a href="/admin/site-identity" className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-violet-400 hover:text-violet-300">M-bM-^@M-^EM-XM-*M-XM--M-XM-1M-YM-^JM-XM-1</a>
           )}
           <button type="button" aria-label={`اسحب لترتيب ${section.label}`} className="touch-none cursor-grab rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 active:cursor-grabbing" {...attributes} {...listeners}>
             Drag
@@ -259,7 +264,10 @@ export default function LandingPageBuilder() {
       {selectedSection?.section_key === 'seo' && (
         <LandingSeoEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('seo', content)} />
       )}
-      {selectedSection && !['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'gallery', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo'].includes(selectedSection.section_key) && (
+      {selectedSection?.section_key === 'site_identity' && (
+        <SiteIdentityEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: SiteIdentityContent) => handleSectionSaved('site_identity', content as unknown as Record<string, unknown>)} />
+      )}
+      {selectedSection && !['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'gallery', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo', 'site_identity'].includes(selectedSection.section_key) && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSectionKey(null); }}>
           <section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900">{selectedSection.label}</h3>

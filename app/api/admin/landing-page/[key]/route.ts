@@ -3,11 +3,11 @@ import { revalidatePath } from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { getLandingSection, upsertLandingSection } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
-import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColorsContentSchema, landingSeoContentSchema, pricingContentSchema, testimonialsContentSchema, urgencyBarContentSchema } from '@/lib/landing/hero-schema';
+import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColorsContentSchema, landingSeoContentSchema, pricingContentSchema, siteIdentityContentSchema, testimonialsContentSchema, urgencyBarContentSchema } from '@/lib/landing/hero-schema';
 
 const ALLOWED_KEYS = new Set([
   'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
-  'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'footer', 'urgency_bar', 'seo', 'colors',
+  'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'footer', 'urgency_bar', 'seo', 'colors', 'site_identity',
 ]);
 
 /** GET /api/admin/landing-page/[key] — one section (null content = static default). */
@@ -51,6 +51,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       urgency_bar: urgencyBarContentSchema,
       colors: landingColorsContentSchema,
       seo: landingSeoContentSchema,
+      site_identity: siteIdentityContentSchema,
     } as const;
     const schema = contentSchemas[key as keyof typeof contentSchemas];
     if (schema) {

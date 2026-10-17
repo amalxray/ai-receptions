@@ -4,6 +4,7 @@ import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import './globals.css';
+import FaviconUpdater from '@/components/admin/editors/FaviconUpdater';
 
 const tajawal = Tajawal({
   subsets: ['arabic'],
@@ -96,8 +97,12 @@ function OrganizationJsonLd() {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ar" dir="rtl" className={`${tajawal.variable} ${ibmPlexArabic.variable} ${ibmPlexMono.variable}`}>
+      <head>
+        <link id="dynamic-favicon" rel="icon" href="/icons/icon-32.png" />
+      </head>
       <body>
         <OrganizationJsonLd />
+        <FaviconUpdater />
         {children}
         {/* PWA - stash `beforeinstallprompt` the moment Chrome fires it. The event
             is never replayed, and the install button lives in a client component

@@ -38,6 +38,7 @@ export const LANDING_SECTION_KEYS = [
   'urgency_bar',
   'seo',
   'colors',
+  'site_identity',
 ] as const;
 export type LandingSectionKey = (typeof LANDING_SECTION_KEYS)[number];
 
@@ -75,6 +76,7 @@ const ARABIC_LABELS: Record<string, string> = {
   urgency_bar: 'شريط العرض العاجل',
   seo: 'إعدادات SEO',
   colors: 'ألوان CTA',
+  site_identity: 'هوية المنصة',
 };
 
 export function landingSectionLabel(key: string): string {
