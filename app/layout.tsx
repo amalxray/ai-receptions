@@ -3,8 +3,8 @@ import { Tajawal, IBM_Plex_Sans_Arabic, IBM_Plex_Mono } from 'next/font/google';
 import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
-import { getLandingSection } from '@/lib/services/landingContent';
 import './globals.css';
+import FaviconUpdater from '@/components/admin/editors/FaviconUpdater';
 
 const tajawal = Tajawal({
   subsets: ['arabic'],
@@ -27,40 +27,24 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: 'swap',
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const metadataBase = new URL(getAppBaseUrl());
-
-  // Read favicon override from CMS (site_identity section) with fallback to static icons
-  let faviconUrl: string | undefined;
-  try {
-    const row = await getLandingSection('site_identity');
-    const content = row?.content as Record<string, unknown> | undefined;
-    const url = content?.faviconUrl;
-    if (typeof url === 'string' && url.trim().length > 0) {
-      faviconUrl = url.trim();
-    }
-  } catch {
-    // DB unavailable → fall back to static icons below
-  }
-
-  return {
-    metadataBase,
-    title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
-    description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
-    // Bing Webmaster verification → renders <meta name="msvalidate.01" content="…">
-    // PWA - installable app: web manifest, iOS standalone meta and icons.
-    manifest: '/manifest.json',
-    applicationName: 'AI-Receptions',
-    appleWebApp: { capable: true, title: 'AI-Receptions', statusBarStyle: 'default' },
-    icons: {
-      icon: [
-        { url: faviconUrl ?? '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
-        { url: '/icons/icon-64.png', sizes: '64x64', type: 'image/png' },
-        { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-      ],
-      apple: [{ url: faviconUrl ?? '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
-    },
+export const metadata: Metadata = {
+  metadataBase: new URL(getAppBaseUrl()),
+  title: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
+  description: 'نظام استقبال ذكي لعيادات الأسنان مع محادثة AI، حجز 24/7، وأمان كامل.',
+  // Bing Webmaster verification → renders <meta name="msvalidate.01" content="…">
+  // PWA - installable app: web manifest, iOS standalone meta and icons.
+  manifest: '/manifest.json',
+  applicationName: 'AI-Receptions',
+  appleWebApp: { capable: true, title: 'AI-Receptions', statusBarStyle: 'default' },
+  icons: {
+    icon: [
+      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/icon-64.png', sizes: '64x64', type: 'image/png' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   openGraph: {
     images: [
       {
@@ -113,8 +97,12 @@ function OrganizationJsonLd() {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ar" dir="rtl" className={`${tajawal.variable} ${ibmPlexArabic.variable} ${ibmPlexMono.variable}`}>
+      <head>
+        <link id="dynamic-favicon" rel="icon" href="/icons/icon-32.png" />
+      </head>
       <body>
         <OrganizationJsonLd />
+        <FaviconUpdater />
         {children}
         {/* PWA - stash `beforeinstallprompt` the moment Chrome fires it. The event
             is never replayed, and the install button lives in a client component
