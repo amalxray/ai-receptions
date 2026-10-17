@@ -131,10 +131,12 @@ export default function HeroEditor({ initialContent, onClose, onSaved, onImageSa
               </div>
             )}
             {textField('headline1', 'العنوان الرئيسي')}
+            {textField('headlineColor', 'لون العنوان الرئيسي (اختياري)')}
             {textField('headline2', 'العنوان الفرعي')}
             {textField('headline2Color', 'لون العنوان الفرعي (اختياري)')}
             {textField('paragraph', 'النص التمهيدي', { multiline: true })}
             {textField('description', 'الوصف', { multiline: true })}
+            {textField('descriptionColor', 'لون الوصف (اختياري)')}
 
             <div className="grid gap-4 sm:grid-cols-2">
               {textField('ctaPrimary', 'نص الزر الأول')}

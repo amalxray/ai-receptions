@@ -16,10 +16,12 @@ import { landingCopy } from '@/lib/landing/landing-copy';
 
 export type HeroContent = {
   headline1: string;
+  headlineColor?: string;
   headline2: string;
   headline2Color?: string;
   paragraph: string;
   description: string;
+  descriptionColor?: string;
   ctaPrimary: string;
   ctaPrimaryHref: string;
   ctaSecondary: string;
@@ -67,7 +69,9 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
     ...content,
     stats: content?.stats ?? copy.hero?.stats ?? landingCopy.hero.stats,
   };
-  const paragraphHighlightIndex = heroContent.paragraph.indexOf('مريض');
+  const standalonePatientMatch = heroContent.paragraph.match(/(^|[\s.,…:؛!?()«»"'-])(مريض)(?=[\s.,…:؛!?()«»"'-]|$)/u);
+  const paragraphMatch = standalonePatientMatch ? { index: (standalonePatientMatch.index ?? 0) + standalonePatientMatch[1].length } : heroContent.paragraph.match(/مريض/u);
+  const paragraphHighlightIndex = paragraphMatch && paragraphMatch.index !== undefined ? paragraphMatch.index : -1;
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] });
   const blobY = useTransform(scrollYProgress, [0, 1], [48, -48]);
@@ -153,7 +157,13 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
             <TextShimmer duration={2.4} className="text-xs font-semibold text-slate-700">موظفة استقبال ذكية — ترد وتحجز 24/7</TextShimmer>
           </motion.div>
 
-          <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]">
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7 }}
+            className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]"
+            style={heroContent.headlineColor?.trim() ? { color: heroContent.headlineColor.trim() } : { color: '#0F172A' }}
+          >
             <TextReveal text={heroContent.headline1} duration={0.7} delay={0.2} />
             <br />
             <span
@@ -177,6 +187,7 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
             animate={{ opacity: 1 }}
             transition={{ delay: 1.6, duration: 0.6 }}
             className="mx-auto mt-5 max-w-lg text-lg leading-8 text-slate-600 lg:mx-0"
+            style={heroContent.descriptionColor?.trim() ? { color: heroContent.descriptionColor.trim() } : { color: '#64748B' }}
           >
             {heroContent.description}
           </motion.p>
