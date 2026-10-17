@@ -141,4 +141,5 @@ export const gallerySettingsContentSchema = z.object({
   gallerySizePx: z.number().int().min(200).max(1200).default(400),
   gallerySpeed: z.enum(['slow', 'normal', 'fast']).default('normal'),
   galleryFit: z.enum(['contain', 'cover']).default('contain'),
+  size: z.enum(['small', 'medium', 'large']).default('large'),
 }).strict();

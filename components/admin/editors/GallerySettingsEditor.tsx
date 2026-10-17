@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 export type GallerySettingsContent = {
   gallerySizePx: number;
+  size: 'small' | 'medium' | 'large';
   gallerySpeed: 'slow' | 'normal' | 'fast';
   galleryFit: 'contain' | 'cover';
 };
@@ -16,9 +17,16 @@ type GallerySettingsEditorProps = {
 
 const DEFAULTS: GallerySettingsContent = {
   gallerySizePx: 400,
+  size: 'large',
   gallerySpeed: 'normal',
   galleryFit: 'contain',
 };
+
+const SIZE_OPTIONS: Array<{ value: GallerySettingsContent['size']; label: string }> = [
+  { value: 'small', label: 'صغير' },
+  { value: 'medium', label: 'متوسط' },
+  { value: 'large', label: 'كبير' },
+];
 
 const SPEED_OPTIONS: Array<{ value: GallerySettingsContent['gallerySpeed']; label: string }> = [
   { value: 'slow', label: 'بطيء' },
@@ -54,17 +62,11 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
 }
 
 function normalize(content: Record<string, unknown> | null): GallerySettingsContent {
-  const gallerySizePx =
-    typeof content?.gallerySizePx === 'number' &&
-    Number.isFinite(content.gallerySizePx) &&
-    content.gallerySizePx >= 200 &&
-    content.gallerySizePx <= 1200
-      ? Math.round(content.gallerySizePx)
-      : 400;
-  const gallerySpeed =
-    content?.gallerySpeed === 'slow' || content?.gallerySpeed === 'fast' ? content.gallerySpeed : 'normal';
+  const gallerySizePx = typeof content?.gallerySizePx === 'number' && Number.isFinite(content.gallerySizePx) && content.gallerySizePx >= 200 && content.gallerySizePx <= 1200 ? Math.round(content.gallerySizePx) : 400;
+  const gallerySpeed = content?.gallerySpeed === 'slow' || content?.gallerySpeed === 'fast' ? content.gallerySpeed : 'normal';
   const galleryFit = content?.galleryFit === 'cover' ? 'cover' : 'contain';
-  return { gallerySizePx, gallerySpeed, galleryFit };
+  const size = content?.size === 'small' || content?.size === 'large' ? content.size : 'large';
+  return { gallerySizePx, gallerySpeed, galleryFit, size };
 }
 
 export default function GallerySettingsEditor({ initialContent, onClose, onSaved }: GallerySettingsEditorProps) {
@@ -98,6 +100,7 @@ export default function GallerySettingsEditor({ initialContent, onClose, onSaved
         <h3 className="text-lg font-bold text-slate-900">🖼️ إعدادات معرض الصور</h3>
         <p className="mt-1 text-sm text-slate-600">تتحكم في حجم البطاقات وسرعة التنقل ونمط عرض الصور.</p>
         <div className="mt-5 space-y-5">
+        <div className="mt-5 space-y-5">
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">حجم الصورة (بكسل)</label>
             <div className="flex items-end gap-3">
@@ -122,8 +125,12 @@ export default function GallerySettingsEditor({ initialContent, onClose, onSaved
               معاينة
             </div>
           </div>
+          <Segmented label="حجم المعرض" value={draft.size} options={SIZE_OPTIONS} onChange={(size) => setDraft((current) => ({ ...current, size }))} />
           <Segmented label="سرعة التنقل" value={draft.gallerySpeed} options={SPEED_OPTIONS} onChange={(speed) => setDraft((current) => ({ ...current, gallerySpeed: speed }))} />
           <Segmented label="نمط العرض" value={draft.galleryFit} options={FIT_OPTIONS} onChange={(fit) => setDraft((current) => ({ ...current, galleryFit: fit }))} />
+          <a href="/admin/gallery" className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700 hover:text-violet-600">إدارة الصور والفيديو ←</a>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
           <a href="/admin/gallery" className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700 hover:text-violet-600">إدارة الصور والفيديو ←</a>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>

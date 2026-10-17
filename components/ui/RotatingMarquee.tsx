@@ -16,6 +16,7 @@ export type RotatingMarqueeItem = {
 export type RotatingMarqueeDisplay = {
   /** Preferred card size in pixels (applied to the wrapper). */
   gallerySizePx?: number;
+  size?: 'small' | 'medium' | 'large';
   speed?: 'slow' | 'normal' | 'fast';
   fit?: 'contain' | 'cover';
 };
@@ -84,13 +85,32 @@ export default function RotatingMarquee({
   display = {},
 }: RotatingMarqueeProps) {
   const isLight = variant === 'light';
+<<<<<<< HEAD
   const { gallerySizePx = 400, speed = 'normal', fit = 'contain' } = display;
+=======
+  const { size = 'medium', speed = 'normal', fit = 'contain' } = display;
+>>>>>>> origin/main
   const uniqueItems = Array.from(
     new Map(items.map((item) => [item.id || item.title || item.image || item.video || item.subtitle, item])).values(),
   );
   // Duplicate the unique sequence once so the CSS track loops seamlessly after a full pass.
   const list = [...uniqueItems, ...uniqueItems];
 
+<<<<<<< HEAD
+=======
+  const sizeClasses = {
+    small: 'w-48 sm:w-56',
+    medium: 'w-56 sm:w-64',
+    large: 'w-72 sm:w-80',
+  }[size];
+
+  const heightClasses = {
+    small: 'h-24 sm:h-28',
+    medium: 'h-36 sm:h-40',
+    large: 'h-44 sm:h-48',
+  }[size];
+
+>>>>>>> origin/main
   const speedDuration = {
     slow: '[animation-duration:150s]',
     normal: '[animation-duration:90s]',
@@ -139,8 +159,12 @@ export default function RotatingMarquee({
                 data-marquee-card
                 onPointerMove={handlePointerMove}
                 onPointerLeave={handlePointerLeave}
+<<<<<<< HEAD
                 style={{ width: gallerySizePx, height: gallerySizePx }}
                 className={`group relative shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
+=======
+                className={`group relative shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl ${sizeClasses} ${heightClasses} ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
+>>>>>>> origin/main
               >
                 <div className={`group relative overflow-hidden rounded-xl ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
                   {item.video ? (
