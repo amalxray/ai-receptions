@@ -74,7 +74,7 @@ function LandingFooter() {
   );
 }
 
-export default function LandingPage({ galleryImages = [], sectionOrder = DEFAULT_SECTION_ORDER }: LandingPageProps) {
+export default function LandingPage({ galleryImages = [], galleryVideos = [], sectionOrder = DEFAULT_SECTION_ORDER }: LandingPageProps) {
   const copy = useLandingCopy();
   const orderedSections = sectionOrder.length ? sectionOrder : DEFAULT_SECTION_ORDER;
 
