@@ -252,7 +252,7 @@ export default function LandingPageBuilder() {
       {selectedSection?.section_key === 'seo' && (
         <LandingSeoEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('seo', content)} />
       )}
-      {selectedSection && !['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo'].includes(selectedSection.section_key) && (
+      {selectedSection && !['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'gallery', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo'].includes(selectedSection.section_key) && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSectionKey(null); }}>
           <section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900">{selectedSection.label}</h3>

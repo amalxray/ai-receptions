@@ -24,7 +24,7 @@ type LandingPageProps = {
   sectionOrder?: string[];
 };
 
-const DEFAULT_SECTION_ORDER = ['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'pricing', 'testimonials', 'cta', 'footer'];
+const DEFAULT_SECTION_ORDER = ['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'footer'];
 
 function SocialProof() {
   return (
@@ -86,6 +86,13 @@ export default function LandingPage({ galleryImages = [], sectionOrder = DEFAULT
     faq: <FAQSection key="faq" />,
     pricing: <PricingSection key="pricing" />,
     testimonials: <TestimonialsSection key="testimonials" />,
+    gallery: (
+      <RotatingMarquee
+        key="gallery"
+        variant="light"
+        items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined}
+      />
+    ),
     cta: <FinalCTASection key="cta" />,
     footer: <LandingFooter key="footer" />,
   };
@@ -101,7 +108,6 @@ export default function LandingPage({ galleryImages = [], sectionOrder = DEFAULT
             <div key={key}>{sectionMap[key]}</div>
           ))}
 
-        <RotatingMarquee variant="light" items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined} />
         <ResultsSection />
         <Imaging />
         <ClinicAds />
