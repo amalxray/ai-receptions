@@ -39,7 +39,7 @@ function SocialProof() {
             </p>
           </div>
           <a
-            href="https://amal-x-ray-center.dentairec.com/"
+            href="https://amal-x-ray-center.dentairec.com"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-teal-400 to-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-teal-500/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-teal-400/30"
