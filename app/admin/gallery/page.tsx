@@ -465,7 +465,7 @@ export default function AdminGalleryPage() {
             <h3 className="text-sm font-semibold text-white">✏️ تعديل الصورة</h3>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {editing?.media_type === 'video' ? (
-              <video src={editUrl} alt="" loop muted playsInline className="mt-3 h-32 w-full rounded-xl object-contain" />
+              <video src={editUrl} loop muted playsInline className="mt-3 h-32 w-full rounded-xl object-contain" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={editUrl} alt="" className="mt-3 h-32 w-full rounded-xl object-contain" />
