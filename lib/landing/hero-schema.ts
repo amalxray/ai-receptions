@@ -143,3 +143,7 @@ export const gallerySettingsContentSchema = z.object({
   galleryFit: z.enum(['contain', 'cover']).default('contain'),
   size: z.enum(['small', 'medium', 'large']).default('large'),
 }).strict();
+
+export const siteIdentityContentSchema = z.object({
+  faviconUrl: safeMediaUrl.optional().default(''),
+}).strict();
