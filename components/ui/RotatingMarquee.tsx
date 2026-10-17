@@ -10,6 +10,13 @@ export type RotatingMarqueeItem = {
   chip: string;
   image?: string;
   imageAlt?: string;
+  video?: string;
+};
+
+export type RotatingMarqueeDisplay = {
+  size?: 'small' | 'medium' | 'large';
+  speed?: 'slow' | 'normal' | 'fast';
+  fit?: 'contain' | 'cover';
 };
 
 type RotatingMarqueeProps = {
@@ -17,6 +24,7 @@ type RotatingMarqueeProps = {
   className?: string;
   title?: string;
   variant?: 'dark' | 'light';
+  display?: RotatingMarqueeDisplay;
 };
 
 const defaultItems: RotatingMarqueeItem[] = [
@@ -72,13 +80,35 @@ export default function RotatingMarquee({
   className = '',
   title = 'قصص عياداتنا في حركة مستمرة',
   variant = 'dark',
+  display = {},
 }: RotatingMarqueeProps) {
   const isLight = variant === 'light';
+  const { size = 'medium', speed = 'normal', fit = 'contain' } = display;
   const uniqueItems = Array.from(
-    new Map(items.map((item) => [item.id || item.title || item.image || item.subtitle, item])).values(),
+    new Map(items.map((item) => [item.id || item.title || item.image || item.video || item.subtitle, item])).values(),
   );
   // Duplicate the unique sequence once so the CSS track loops seamlessly after a full pass.
   const list = [...uniqueItems, ...uniqueItems];
+
+  const sizeClasses = {
+    small: 'w-48 sm:w-56',
+    medium: 'w-56 sm:w-64',
+    large: 'w-72 sm:w-80',
+  }[size];
+
+  const heightClasses = {
+    small: 'h-24 sm:h-28',
+    medium: 'h-36 sm:h-40',
+    large: 'h-44 sm:h-48',
+  }[size];
+
+  const speedDuration = {
+    slow: '[animation-duration:150s]',
+    normal: '[animation-duration:90s]',
+    fast: '[animation-duration:45s]',
+  }[speed];
+
+  const objectFit = fit === 'cover' ? 'object-cover' : 'object-contain';
 
   return (
     <section className={`relative overflow-hidden ${isLight ? 'bg-[#FAFBFC]' : ''} ${className}`}>
@@ -97,7 +127,9 @@ export default function RotatingMarquee({
       </div>
 
       <div dir="ltr" className="group relative mx-auto w-full max-w-6xl overflow-hidden px-4">
-        <div className="flex w-max items-center gap-4 py-3 animate-ticker [animation-duration:90s] motion-reduce:animate-none group-hover:[animation-play-state:paused]">
+        <div
+          className={`flex w-max items-center gap-4 py-3 animate-ticker ${speedDuration} motion-reduce:animate-none group-hover:[animation-play-state:paused]`}
+        >
           {list.map((item, index) => {
             const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
               const bounds = event.currentTarget.getBoundingClientRect();
@@ -118,20 +150,30 @@ export default function RotatingMarquee({
                 data-marquee-card
                 onPointerMove={handlePointerMove}
                 onPointerLeave={handlePointerLeave}
-                className={`group relative w-56 shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl sm:w-64 ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
+                className={`group relative shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl ${sizeClasses} ${heightClasses} ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
               >
-                <div className={`group relative h-36 overflow-hidden rounded-xl sm:h-40 ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
-                  {item.image ? (
+                <div className={`group relative overflow-hidden rounded-xl ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
+                  {item.video ? (
+                    <video
+                      src={item.video}
+                      loop
+                      muted
+                      playsInline
+                      className={`h-full w-full rounded-lg ${objectFit} transition-transform duration-500 group-hover:scale-105`}
+                    />
+                  ) : item.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={item.image}
                       alt={item.imageAlt ?? item.title}
                       loading="lazy"
-                      className="h-full w-full rounded-lg object-cover transition-transform duration-500 group-hover:scale-105"
+                      className={`h-full w-full rounded-lg ${objectFit} transition-transform duration-500 group-hover:scale-105`}
                     />
                   ) : null}
-                  {!item.image && <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />}
-                  {item.image && (
+                  {!item.image && !item.video && (
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_35%)]" />
+                  )}
+                  {(item.image || item.video) && (
                     <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                       {item.chip || 'معرض'}
                     </span>
