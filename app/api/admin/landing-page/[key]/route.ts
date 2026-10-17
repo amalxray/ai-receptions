@@ -7,7 +7,7 @@ import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColo
 
 const ALLOWED_KEYS = new Set([
   'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
-  'faq', 'pricing', 'testimonials', 'cta', 'footer', 'urgency_bar', 'seo', 'colors',
+  'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'footer', 'urgency_bar', 'seo', 'colors',
 ]);
 
 /** GET /api/admin/landing-page/[key] — one section (null content = static default). */
