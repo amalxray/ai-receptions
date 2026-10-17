@@ -136,3 +136,9 @@ export const landingSeoContentSchema = z.object({
   description: nonEmptyText(320),
   og_image: safeMediaUrl,
 }).strict();
+
+export const gallerySettingsContentSchema = z.object({
+  size: z.enum(['small', 'medium', 'large']).default('medium'),
+  speed: z.enum(['slow', 'normal', 'fast']).default('normal'),
+  fit: z.enum(['contain', 'cover']).default('contain'),
+}).strict();

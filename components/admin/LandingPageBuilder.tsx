@@ -16,6 +16,7 @@ import LandingSeoEditor from '@/components/admin/editors/LandingSeoEditor';
 import ForDoctorsEditor from '@/components/admin/editors/ForDoctorsEditor';
 import HowItWorksEditor from '@/components/admin/editors/HowItWorksEditor';
 import CompareEditor from '@/components/admin/editors/CompareEditor';
+import GallerySettingsEditor, { type GallerySettingsContent } from '@/components/admin/editors/GallerySettingsEditor';
 import FinalCtaEditor from '@/components/admin/editors/FinalCtaEditor';
 import FooterEditor from '@/components/admin/editors/FooterEditor';
 
@@ -56,6 +57,9 @@ function SortableSectionCard({ section, isSelected, onSelect, onToggleVisibility
             <input type="checkbox" checked={section.is_visible} onChange={(event) => onToggleVisibility(section.section_key, event.target.checked)} className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 accent-violet-500" />
             مرئي
           </label>
+          {section.section_key === 'gallery' && (
+            <a href="/admin/gallery" className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-violet-400 hover:text-violet-300">✏️ تحرير</a>
+          )}
           <button type="button" aria-label={`اسحب لترتيب ${section.label}`} className="touch-none cursor-grab rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 active:cursor-grabbing" {...attributes} {...listeners}>
             Drag
           </button>
@@ -227,6 +231,9 @@ export default function LandingPageBuilder() {
       )}
       {selectedSection?.section_key === 'compare' && (
         <CompareEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('compare', content)} />
+      )}
+      {selectedSection?.section_key === 'gallery' && (
+        <GallerySettingsEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: GallerySettingsContent) => handleSectionSaved('gallery', content as unknown as Record<string, unknown>)} />
       )}
       {selectedSection?.section_key === 'faq' && (
         <FAQEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('faq', content)} />
