@@ -66,14 +66,8 @@ export default function Navbar() {
     >
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3">
-          <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-landing-indigo to-landing-violet shadow-landing-btn">
-            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-landing-cyan animate-pulse" />
-            <span className="text-lg font-black text-white">A</span>
-          </span>
-          <span className="font-heading text-lg font-extrabold tracking-tight text-slate-900">
-            AI-Receptions
-          </span>
+        <Link href="/" className="flex items-center gap-2">
+          <img src="/brand/ai-receptionist.png" alt="AI-Receptions" className="h-10 w-10 rounded-full object-cover" />
         </Link>
 
         {/* Desktop links */}

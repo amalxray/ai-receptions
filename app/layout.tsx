@@ -37,10 +37,22 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: 'AI-Receptions', statusBarStyle: 'default' },
   icons: {
     icon: [
+      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/icon-64.png', sizes: '64x64', type: 'image/png' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  openGraph: {
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'AI-Receptions — موظفة الاستقبال الرقمية لعيادتك',
+      },
+    ],
   },
   formatDetection: { telephone: false },
   verification: {
