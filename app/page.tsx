@@ -28,15 +28,24 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Home() {
-  const [copy, { data: galleryImages }, sectionOrder] = await Promise.all([
+  const [copy, { data: galleryRows }, sectionOrder] = await Promise.all([
     getLandingPageContent(),
-    supabaseAdmin.from('platform_gallery').select('id, title, image_url, category').eq('scope', 'main_site').eq('is_active', true).order('sort_order', { ascending: true }).limit(12),
+    supabaseAdmin
+      .from('platform_gallery')
+      .select('id, title, image_url, video_url, category, media_type')
+      .eq('scope', 'main_site')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .limit(12),
     getLandingPageOrder(),
   ]);
 
+  const galleryImages = (galleryRows ?? []).filter((it) => (it.media_type ?? 'image') === 'image' && it.image_url);
+  const galleryVideos = (galleryRows ?? []).filter((it) => it.media_type === 'video' && it.video_url);
+
   return (
     <LandingContentProvider copy={copy}>
-      <LandingPage galleryImages={galleryImages ?? []} sectionOrder={sectionOrder} />
+      <LandingPage galleryImages={galleryImages} galleryVideos={galleryVideos} sectionOrder={sectionOrder} />
     </LandingContentProvider>
   );
 }

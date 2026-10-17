@@ -138,7 +138,7 @@ export const landingSeoContentSchema = z.object({
 }).strict();
 
 export const gallerySettingsContentSchema = z.object({
-  size: z.enum(['small', 'medium', 'large']).default('medium'),
-  speed: z.enum(['slow', 'normal', 'fast']).default('normal'),
-  fit: z.enum(['contain', 'cover']).default('contain'),
+  gallerySizePx: z.number().int().min(200).max(1200).default(400),
+  gallerySpeed: z.enum(['slow', 'normal', 'fast']).default('normal'),
+  galleryFit: z.enum(['contain', 'cover']).default('contain'),
 }).strict();
