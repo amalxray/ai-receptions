@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BlurFade } from '@/components/ui/blur-fade';
@@ -60,9 +61,11 @@ export default function HowItWorksSection() {
 
         <BlurFade delay={0.6} inView>
           <div className="mt-16 flex justify-center">
-            <Magnetic>
+              <Link href="/register">
+                <Magnetic>
               <ShimmerButton className="px-8 py-4 text-lg">ابدأ الآن مجاناً 🚀</ShimmerButton>
-            </Magnetic>
+                </Magnetic>
+              </Link>
           </div>
         </BlurFade>
       </div>
