@@ -21,6 +21,7 @@ import RotatingMarquee from '@/components/ui/RotatingMarquee';
 
 type LandingPageProps = {
   galleryImages?: Array<{ id: string; title: string; image_url: string; category: string | null }>;
+  galleryVideos?: Array<{ id: string; title: string; video_url: string; category: string | null }>;
   sectionOrder?: string[];
 };
 
@@ -73,7 +74,7 @@ function LandingFooter() {
   );
 }
 
-export default function LandingPage({ galleryImages = [], sectionOrder = DEFAULT_SECTION_ORDER }: LandingPageProps) {
+export default function LandingPage({ galleryImages = [], galleryVideos = [], sectionOrder = DEFAULT_SECTION_ORDER }: LandingPageProps) {
   const copy = useLandingCopy();
   const orderedSections = sectionOrder.length ? sectionOrder : DEFAULT_SECTION_ORDER;
 
@@ -87,12 +88,24 @@ export default function LandingPage({ galleryImages = [], sectionOrder = DEFAULT
     pricing: <PricingSection key="pricing" />,
     testimonials: <TestimonialsSection key="testimonials" />,
     gallery: (
-      <RotatingMarquee
-        key="gallery"
-        variant="light"
-        display={(copy as any).gallery ?? {}}
-        items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined}
-      />
+      <>
+        <RotatingMarquee
+          key="gallery-images"
+          variant="light"
+          title="معرض الصور"
+          display={(copy as any).gallery ?? {}}
+          items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined}
+        />
+        {galleryVideos.length ? (
+          <RotatingMarquee
+            key="gallery-videos"
+            variant="light"
+            title="معرض الفيديو"
+            display={(copy as any).gallery ?? {}}
+            items={galleryVideos.map((video) => ({ id: video.id, title: video.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: video.category ?? '', video: video.video_url, imageAlt: video.title }))}
+          />
+        ) : null}
+      </>
     ),
     cta: <FinalCTASection key="cta" />,
     footer: <LandingFooter key="footer" />,

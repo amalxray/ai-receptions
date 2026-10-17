@@ -25,11 +25,13 @@ type GalleryItem = {
   title: string;
   description: string | null;
   image_url: string;
+  video_url?: string | null;
   category: string | null;
   tags: string[] | null;
   scope?: 'main_site' | 'ask_page';
   sort_order: number;
   is_active: boolean;
+  media_type: 'image' | 'video';
   created_at: string;
 };
 
@@ -78,8 +80,12 @@ function SortableGalleryCard({
             className="h-5 w-5 cursor-pointer rounded accent-violet-500"
           />
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={item.image_url} alt={item.title} loading="lazy" className="h-40 w-full object-cover" />
+        {item.video_url ? (
+          <video src={item.video_url} loop muted playsInline className="h-40 w-full object-contain" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.image_url} alt={item.title} loading="lazy" className="h-40 w-full object-contain" />
+        )}
       </div>
       <div className="p-3">
         <p className="truncate text-sm font-semibold text-slate-100">{item.title}</p>
@@ -106,6 +112,7 @@ export default function AdminGalleryPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
+  const [tab, setTab] = useState<'images' | 'videos'>('images');
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
 
@@ -115,6 +122,7 @@ export default function AdminGalleryPage() {
   const [editTags, setEditTags] = useState('');
   const [editActive, setEditActive] = useState(true);
   const [editUrl, setEditUrl] = useState('');
+  const [editVideoUrl, setEditVideoUrl] = useState('');
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -163,6 +171,42 @@ export default function AdminGalleryPage() {
     }
   };
 
+  const uploadVideo = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const up = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+      const upJson = await up.json();
+      if (!up.ok) throw new Error(upJson.error ?? 'فشل رفع الفيديو');
+      const title = (file.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ') || 'فيديو').slice(0, 80);
+      const res = await fetch('/api/admin/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          video_url: upJson.data.url,
+          media_type: 'video',
+          category: null,
+          tags: [],
+          scope: 'main_site',
+          sort_order: items.length,
+          is_active: true,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'فشل الحفظ');
+      setNotice('✓ أُضيف الفيديو');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل الرفع');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const applyEdit = async () => {
     if (!editing) return;
     setBusy(true);
@@ -176,6 +220,7 @@ export default function AdminGalleryPage() {
           tags: editTags.split(/[،,]/).map((t) => t.trim()).filter(Boolean),
           is_active: editActive,
           image_url: editUrl.trim() || editing.image_url,
+          video_url: editVideoUrl.trim() || editing.video_url || null,
           scope: editing.scope ?? 'main_site',
         }),
       });
@@ -272,6 +317,7 @@ export default function AdminGalleryPage() {
     const q = query.trim().toLowerCase();
     return items
       .filter((it) => !category || (it.category ?? '') === category)
+      .filter((it) => tab === 'images' ? (it.media_type ?? 'image') === 'image' : (it.media_type ?? 'image') === 'video')
       .filter((it) => !q || it.title.toLowerCase().includes(q) || (it.category ?? '').toLowerCase().includes(q) || (it.tags ?? []).join(' ').toLowerCase().includes(q))
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   }, [items, query, category]);
@@ -279,22 +325,55 @@ export default function AdminGalleryPage() {
   return (
     <div className="rounded-[2rem] border border-slate-800 bg-slate-900/90 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-white">🖼️ معرض الصور</h2>
-          <p className="mt-1 text-sm text-slate-400">صور المنصة — تُستخدم في المقالات وصفحة /ask.</p>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-white">
+              {tab === 'images' ? '🖼️ معرض الصور' : '🎬 معرض الفيديو'}
+            </h2>
+          </div>
+          <div className="inline-flex rounded-full border border-slate-700 bg-slate-950/50">
+            <button
+              type="button"
+              onClick={() => setTab('images')}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-l-full transition ${tab === 'images' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              صور
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('videos')}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-r-full transition ${tab === 'videos' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              فيديو
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-slate-400">
+            {tab === 'images'
+              ? 'صور المنصة — تُستخدم في المقالات وصفحة /ask.'
+              : 'فيديوهات المنصة — تُعرض في معرض الصفحة الرئيسية.'}
+          </p>
         </div>
-        <label
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) void uploadAndCreate(f); }}
-          className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold transition ${dragging ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-400' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'}`}
-        >
-          <input
-            type="file" accept="image/*" multiple className="hidden"
-            onChange={(e) => { const fs = Array.from(e.target.files ?? []); void Promise.all(fs.map((f) => uploadAndCreate(f))); e.target.value = ''; }}
-          />
-          {dragging ? 'أفلت الصورة هنا' : `➕ رفع صورة${busy ? '...' : ''}`}
-        </label>
+        <div className="flex items-center gap-2">
+          <label
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) void (tab === 'images' ? uploadAndCreate(f) : uploadVideo(f)); }}
+            className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold transition ${dragging ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-400' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'}`}
+          >
+            <input
+              type="file"
+              accept={tab === 'images' ? 'image/*' : 'video/mp4,video/webm,video/*'}
+              multiple={tab === 'images'}
+              className="hidden"
+              onChange={(e) => {
+                const fs = Array.from(e.target.files ?? []);
+                void Promise.all(fs.map((f) => (tab === 'images' ? uploadAndCreate(f) : uploadVideo(f))));
+                e.target.value = '';
+              }}
+            />
+            {dragging ? 'أفلت الملف هنا' : `➕ رفع ${tab === 'images' ? 'صورة' : 'فيديو'}${busy ? '...' : ''}`}
+          </label>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -370,6 +449,7 @@ export default function AdminGalleryPage() {
                     setEditTags((item.tags ?? []).join('، '));
                     setEditActive(item.is_active);
                     setEditUrl(item.image_url);
+                    setEditVideoUrl(item.video_url ?? '');
                   }}
                   onRemove={(id) => void remove(id)}
                 />
@@ -384,10 +464,24 @@ export default function AdminGalleryPage() {
           <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-white">✏️ تعديل الصورة</h3>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={editUrl} alt="" className="mt-3 h-32 w-full rounded-xl object-cover" />
+            {editing?.media_type === 'video' ? (
+              <video src={editUrl} loop muted playsInline className="mt-3 h-32 w-full rounded-xl object-contain" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={editUrl} alt="" className="mt-3 h-32 w-full rounded-xl object-contain" />
+            )}
             <div className="mt-3 space-y-2">
               <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="العنوان" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" />
               <input value={editUrl} onChange={(e) => setEditUrl(e.target.value)} dir="ltr" placeholder="رابط الصورة" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" />
+              {editing?.media_type === 'video' && (
+                <input
+                  value={editVideoUrl}
+                  onChange={(e) => setEditVideoUrl(e.target.value)}
+                  dir="ltr"
+                  placeholder="رابط الفيديو (mp4/webm)"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                />
+              )}
               <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100">
                 {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c === '' ? 'بدون تصنيف' : c}</option>)}
               </select>

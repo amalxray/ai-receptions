@@ -8,13 +8,18 @@ const scopeSchema = z.enum(['main_site', 'ask_page']);
 const schema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(1000).optional().nullable(),
-  image_url: z.string().min(1).max(1000),
+  image_url: z.string().min(1).max(1000).optional().nullable(),
+  video_url: z.string().url().optional().nullable(),
   category: z.string().max(60).optional().nullable(),
   tags: z.array(z.string().max(40)).optional().nullable(),
   scope: scopeSchema.default('main_site'),
   sort_order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
-});
+  media_type: z.enum(['image', 'video']).default('image'),
+}).refine((data) => {
+  if (data.media_type === 'video') return !!data.video_url;
+  return !!data.image_url || !!data.video_url;
+}, 'يجب تحديد رابط الصورة أو الفيديو');
 
 export async function GET(req: Request) {
   const gate = await requirePlatformAdmin(req);

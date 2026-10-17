@@ -1,0 +1,38 @@
+# Roboflow dental-x-ray-panoramic v2 class order. Download/export this exact
+# version as YOLOv8 into this folder before training; see README.md.
+path: dataset
+train: images/train
+val: images/val
+
+names:
+  0: wire
+  1: abutment
+  2: attrition
+  3: bone defect
+  4: Bone Loss
+  5: Caries
+  6: Crown
+  7: Cyst
+  8: Filling
+  9: Fracture teeth
+  10: gingival former
+  11: impacted tooth
+  12: Implant
+  13: Malaligned
+  14: Mandibular Canal
+  15: maxillary sinus
+  16: metal band
+  17: Missing teeth
+  18: orthodontic brackets
+  19: Periapical lesion
+  20: permanent retainer
+  21: Permanent Teeth
+  22: plating
+  23: post - core
+  24: Primary teeth
+  25: Retained root
+  26: Root Canal Treatment
+  27: Root Piece
+  28: Root resorption
+  29: Supra Eruption
+  30: TAD
