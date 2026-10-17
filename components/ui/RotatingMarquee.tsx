@@ -156,7 +156,6 @@ export default function RotatingMarquee({
                   {item.video ? (
                     <video
                       src={item.video}
-                      alt={item.imageAlt ?? item.title}
                       loop
                       muted
                       playsInline
