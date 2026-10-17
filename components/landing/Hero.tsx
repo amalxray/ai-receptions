@@ -17,6 +17,7 @@ import { landingCopy } from '@/lib/landing/landing-copy';
 export type HeroContent = {
   headline1: string;
   headline2: string;
+  headline2Color?: string;
   paragraph: string;
   description: string;
   ctaPrimary: string;
@@ -155,7 +156,10 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
           <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="text-4xl font-black leading-[1.25] text-slate-950 md:text-5xl lg:text-[3.4rem]">
             <TextReveal text={heroContent.headline1} duration={0.7} delay={0.2} />
             <br />
-            <span className="bg-gradient-to-l from-[var(--landing-primary)] to-[var(--landing-secondary)] bg-clip-text text-transparent">
+            <span
+              className={heroContent.headline2Color?.trim() ? undefined : 'text-slate-600'}
+              style={heroContent.headline2Color?.trim() ? { color: heroContent.headline2Color.trim() } : undefined}
+            >
               <TextReveal text={heroContent.headline2} duration={0.7} delay={0.9} />
             </span>
           </motion.h1>
