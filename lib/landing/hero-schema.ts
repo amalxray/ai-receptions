@@ -30,6 +30,7 @@ const safeMediaUrl = z.string().trim().max(1000).refine((value) => {
 export const heroContentSchema = z.object({
   headline1: nonEmptyText(160),
   headline2: nonEmptyText(160),
+  headline2Color: z.string().trim().max(160).optional().default(''),
   paragraph: nonEmptyText(500),
   description: nonEmptyText(800),
   image: safeMediaUrl.optional().default(''),

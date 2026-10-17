@@ -132,6 +132,7 @@ export default function HeroEditor({ initialContent, onClose, onSaved, onImageSa
             )}
             {textField('headline1', 'العنوان الرئيسي')}
             {textField('headline2', 'العنوان الفرعي')}
+            {textField('headline2Color', 'لون العنوان الفرعي (اختياري)')}
             {textField('paragraph', 'النص التمهيدي', { multiline: true })}
             {textField('description', 'الوصف', { multiline: true })}
 
