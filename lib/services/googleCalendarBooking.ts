@@ -38,6 +38,7 @@ export type AvailabilityResult = {
 };
 
 export type GoogleCalendarBusyInterval = { start: string; end: string };
+const GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS = 10_000;
 
 type GoogleCalendarClient = ReturnType<typeof google.calendar>;
 type GoogleCalendarConfig = {
@@ -52,6 +53,21 @@ function nextDate(date: string): string {
   return next.toISOString().slice(0, 10);
 }
 
+function withCalendarTimeout<T>(operation: Promise<T>, stage: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    operation,
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(Object.assign(
+        new Error(`Google Calendar ${stage} timed out after ${GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS}ms`),
+        { code: 'ETIMEDOUT' },
+      )), GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS);
+    }),
+  ]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
 /** Read actual Calendar events for exactly the requested clinic-local date. */
 export async function getGoogleCalendarBusyIntervals(
   clinicId: string,
@@ -59,21 +75,21 @@ export async function getGoogleCalendarBusyIntervals(
   timezone = 'Asia/Jerusalem',
 ): Promise<GoogleCalendarBusyInterval[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date must be in YYYY-MM-DD format.');
-  const client = await getClinicGoogleCalendarClient(clinicId);
+  const client = await withCalendarTimeout(getClinicGoogleCalendarClient(clinicId), 'connection lookup');
   if (!client) return [];
   const { calendar, calendarId } = client;
   const timeMin = clinicLocalToInstant(date, '00:00', timezone);
   const timeMax = clinicLocalToInstant(nextDate(date), '00:00', timezone);
   let response;
   try {
-    response = await calendar.events.list({
+    response = await withCalendarTimeout(calendar.events.list({
       calendarId,
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
       maxResults: 2500,
-    });
+    }, { timeout: GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS }), 'events.list');
   } finally {
     await client.flushTokenPersistence?.();
   }

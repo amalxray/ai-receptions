@@ -220,6 +220,7 @@ export function buildPrompt(
 
   // Combine all optional sections
   const optionalSections = [
+    buildCbctPriceRuleSection(),
     buildSourceSeparationSection(Boolean(context.trim()), isImagingCenter),
     clinicInfoSection,
     safetyRulesSection,
@@ -294,6 +295,14 @@ Question: {question}`;
   }
 
   return prompt;
+}
+
+function buildCbctPriceRuleSection(): string {
+  return [
+    'CBCT PRICING RULE (mandatory): Never present 70 shekels as a fixed final CBCT price.',
+    'If asked in Arabic, answer exactly: "السعر يبدأ من 70 شيكل ويصل إلى 300 شيكل حسب ما يطلبه الطبيب (سن، جزء، فك، فكين)."',
+    'For other languages, state the same 70–300 shekel range and explain that the exact scope is set by the doctor (one tooth, an area, one jaw, or both jaws).',
+  ].join('\n');
 }
 
 /**

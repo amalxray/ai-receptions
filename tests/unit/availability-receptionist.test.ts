@@ -70,6 +70,7 @@ describe('findEarliestAvailableSlot (real availability tool)', () => {
       found: false,
       reason: 'error',
       message: 'تعذّر التحقق من التقويم الآن، حاول لاحقاً',
+      failureSource: 'google_calendar',
     });
     expect(bookingMocks.getAvailableSlots).not.toHaveBeenCalled();
   });

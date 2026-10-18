@@ -12,12 +12,25 @@ import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
  */
 export const MIN_REALISTIC_DURATION_MINUTES = 10;
 const GOOGLE_CALENDAR_UNAVAILABLE_MESSAGE = 'تعذّر التحقق من التقويم الآن، حاول لاحقاً';
+const GOOGLE_CALENDAR_TIMEOUT_MS = 10_000;
 
 class GoogleCalendarAvailabilityError extends Error {
-  constructor() {
+  constructor(readonly failureSource: 'google_calendar' | 'local_scheduling' = 'google_calendar') {
     super(GOOGLE_CALENDAR_UNAVAILABLE_MESSAGE);
     this.name = 'GoogleCalendarAvailabilityError';
   }
+}
+
+function calendarErrorFields(error: unknown) {
+  const candidate = error && typeof error === 'object'
+    ? error as { code?: unknown; status?: unknown; response?: { status?: unknown } }
+    : {};
+  const status = candidate.response?.status ?? candidate.status;
+  return {
+    error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+    error_code: typeof candidate.code === 'string' || typeof candidate.code === 'number' ? candidate.code : null,
+    http_status: typeof status === 'number' ? status : null,
+  };
 }
 
 async function getGoogleCalendarBusyIntervalsOrEmpty(
@@ -25,17 +38,43 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
   timeZone: string | undefined,
   context: { clinicId: string; serviceId: string; providerId?: string },
 ): Promise<Array<{ start: string; end: string }>> {
+  const startedAt = Date.now();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await getGoogleCalendarBusyIntervals(context.clinicId, date, timeZone);
-  } catch (err) {
-    logEvent('availability_google_calendar_error', {
+    const intervals = await Promise.race([
+      getGoogleCalendarBusyIntervals(context.clinicId, date, timeZone),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(Object.assign(new Error(`Google Calendar request timed out after ${GOOGLE_CALENDAR_TIMEOUT_MS}ms`), { code: 'ETIMEDOUT' })),
+          GOOGLE_CALENDAR_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    logEvent('availability_google_calendar_checked', {
       clinic_id: context.clinicId,
       provider_id: context.providerId ?? null,
       service_id: context.serviceId,
       requested_date: date,
-      error: err instanceof Error ? err.message : String(err),
-    }, 'warn');
+      elapsed_ms: Date.now() - startedAt,
+      busy_interval_count: intervals.length,
+    });
+    return intervals;
+  } catch (err) {
+    const fields = calendarErrorFields(err);
+    logEvent('availability_google_calendar_error', {
+      failure_source: 'google_calendar',
+      clinic_id: context.clinicId,
+      provider_id: context.providerId ?? null,
+      service_id: context.serviceId,
+      requested_date: date,
+      elapsed_ms: Date.now() - startedAt,
+      timeout_ms: GOOGLE_CALENDAR_TIMEOUT_MS,
+      timed_out: fields.error_code === 'ETIMEDOUT' || fields.error.toLowerCase().includes('timed out'),
+      ...fields,
+    }, 'error');
     throw new GoogleCalendarAvailabilityError();
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -84,6 +123,7 @@ export type EarliestSlotResult = {
   unrealisticDurationMinutes?: number;
   reason?: 'service_unavailable' | 'no_slots' | 'error';
   message?: string;
+  failureSource?: 'google_calendar' | 'local_scheduling';
 };
 
 export type AvailabilityQuery = {
@@ -318,6 +358,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
   const days: string[] = preferredDate
     ? [preferredDate]
     : Array.from({ length: lookaheadDays }, (_, i) => addDaysIso(todayLocal, i));
+  let failedScheduleDays = 0;
 
   for (const day of days) {
     let calendarBusy: Array<{ start: string; end: string }> = [];
@@ -326,7 +367,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         calendarBusy = await getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, providerId, serviceId });
       } catch (err) {
         if (err instanceof GoogleCalendarAvailabilityError) {
-          return { found: false, reason: 'error', message: err.message };
+          return { found: false, reason: 'error', message: err.message, failureSource: err.failureSource };
         }
         throw err;
       }
@@ -368,6 +409,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         };
       }
     } catch (err) {
+      failedScheduleDays += 1;
       // A single day failing (e.g. malformed schedule) must not abort the scan.
       logEvent('availability_tool_date_error', {
         clinic_id: clinicId,
@@ -377,9 +419,18 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         error: err instanceof Error ? err.message : String(err),
       }, 'warn');
       if (String(err?.message ?? err).includes('Provider is not assigned to this service')) {
-        return { found: false, reason: 'error', message: 'provider not assigned to service' };
+        return { found: false, reason: 'error', message: 'provider not assigned to service', failureSource: 'local_scheduling' };
       }
     }
+  }
+
+  if (failedScheduleDays > 0) {
+    return {
+      found: false,
+      reason: 'error',
+      message: 'The local scheduling system failed while checking availability.',
+      failureSource: 'local_scheduling',
+    };
   }
 
   // FIX-A: the patient's day was searched first and had NOTHING. Explain why
@@ -401,7 +452,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
       });
     } catch (err) {
       if (err instanceof GoogleCalendarAvailabilityError) {
-        return { found: false, reason: 'error', message: err.message };
+        return { found: false, reason: 'error', message: err.message, failureSource: err.failureSource };
       }
       throw err;
     }
@@ -616,6 +667,7 @@ export async function findClinicLevelSlots(params: {
       message: err instanceof GoogleCalendarAvailabilityError
         ? err.message
         : 'clinic-level availability failed',
+      failureSource: err instanceof GoogleCalendarAvailabilityError ? err.failureSource : 'local_scheduling',
     };
   }
 }

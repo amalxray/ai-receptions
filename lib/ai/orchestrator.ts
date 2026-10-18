@@ -43,6 +43,7 @@ import { unavailableReply, expressesTreatmentDesire } from '@/lib/ai/replyText';
 import { persistHandoffReply } from '@/lib/ai/handoffMessages';
 import { generateWithFailover, openStreamWithFailover } from '@/lib/ai/resilience';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
+import { persistPendingBookingLead } from '@/lib/services/pendingBookingLead';
 
 type HistoryMessage = Pick<Message, 'role' | 'content'>;
 
@@ -501,6 +502,7 @@ export async function handleIncomingMessage(opts: {
     // reuse the persisted slot. Failures degrade to a structured NOT_AVAILABLE
     // note — never "AI unavailable".
     let availabilityNote: string | null = null;
+    let availabilityFailureSource: string | null = null;
     // FIX-1 (Global by Default): the REAL slot is resolved as soon as the
     // SERVICE is known — the provider is OPTIONAL and auto-resolved below from
     // provider_services (first eligible provider). Requiring provider_id here
@@ -519,6 +521,11 @@ export async function handleIncomingMessage(opts: {
         clinicProfile?.activityType?.toLowerCase() === 'clinic' &&
         currentState?.booking_intent &&
         currentState.recommended_service_id
+      ) ||
+      Boolean(
+        currentState?.booking_intent &&
+        currentState.recommended_service_id &&
+        (currentState.booking.patient_name || currentState.booking.phone || intelligence.appointment.patientName || intelligence.appointment.phone)
       ) ||
       Boolean(
         currentState?.recommended_service_id &&
@@ -593,6 +600,7 @@ export async function handleIncomingMessage(opts: {
               subject: 'the clinic',
             });
           } else if (clinicLevel.reason === 'error') {
+            availabilityFailureSource = clinicLevel.failureSource ?? 'local_scheduling';
             availabilityNote =
               'REAL AVAILABILITY could not be checked because the local scheduling system returned an error. Do NOT invent or offer dates or times. Apologize briefly and say the imaging team must verify availability.';
           } else {
@@ -647,6 +655,9 @@ export async function handleIncomingMessage(opts: {
             provider_id: availability.providerId,
           });
         } else {
+          if (availability.reason === 'error') {
+            availabilityFailureSource = availability.failureSource ?? 'local_scheduling';
+          }
           availabilityNote = availability.reason === 'error'
             ? availability.message
               ? `REAL AVAILABILITY could not be checked. Tell the patient exactly: "${availability.message}". Do NOT invent or offer dates or times.`
@@ -674,6 +685,7 @@ export async function handleIncomingMessage(opts: {
         }
         }
       } catch (err) {
+        availabilityFailureSource = 'local_scheduling';
         logEvent('receptionist_real_slot_error', {
           clinic_id: clinicId,
           conversation_id: conversationId,
@@ -682,6 +694,67 @@ export async function handleIncomingMessage(opts: {
         availabilityNote =
           `The availability system is temporarily unavailable. Do NOT invent a date/time; ` +
           `tell the patient we could not retrieve slots right now and offer human help.`;
+      }
+
+      if (availabilityFailureSource) {
+        const patientName = currentState.booking.patient_name?.trim()
+          || intelligence.appointment.patientName?.trim()
+          || extractPatientNameFromBookingReply(text)
+          || '';
+        const patientPhone = currentState.booking.phone?.trim() || intelligence.appointment.phone?.trim() || '';
+        const requestedServiceId = currentState.recommended_service_id;
+        const requestedServiceName = operatingData.services.find((service) => service.id === requestedServiceId)?.name ?? 'موعد';
+        let pendingLeadSaved = false;
+
+        if (patientName && patientPhone && requestedServiceId) {
+          try {
+            await persistPendingBookingLead({
+              clinicId,
+              conversationId,
+              name: patientName,
+              phone: patientPhone,
+              serviceId: requestedServiceId,
+              serviceName: requestedServiceName,
+              requestedDate: currentState.preferred_date,
+              requestedTime: currentState.preferred_time_range?.from ?? currentState.preferred_time_options?.[0] ?? null,
+              failureSource: availabilityFailureSource,
+            });
+            pendingLeadSaved = true;
+            await updateConversationState(conversationId, 'awaiting_staff', clinicId).catch((err) => {
+              logEvent('booking_availability_handoff_state_failed', {
+                clinic_id: clinicId,
+                conversation_id: conversationId,
+                error: err instanceof Error ? err.message : String(err),
+              }, 'warn');
+            });
+            await notifyStaffForHandoff(clinicId, conversationId).catch((err) => {
+              logEvent('booking_availability_staff_notification_failed', {
+                clinic_id: clinicId,
+                conversation_id: conversationId,
+                error: err instanceof Error ? err.message : String(err),
+              }, 'warn');
+            });
+            logEvent('booking_availability_fallback_activated', {
+              clinic_id: clinicId,
+              conversation_id: conversationId,
+              failure_source: availabilityFailureSource,
+              pending_lead_saved: true,
+            }, 'warn');
+          } catch (err) {
+            logEvent('booking_availability_pending_lead_failed', {
+              clinic_id: clinicId,
+              conversation_id: conversationId,
+              failure_source: availabilityFailureSource,
+              error: err instanceof Error ? err.message : String(err),
+            }, 'error');
+          }
+        }
+
+        availabilityNote = pendingLeadSaved
+          ? `REAL AVAILABILITY FAILED (${availabilityFailureSource}). A pending booking lead with the patient's name, phone, service, and request details has been saved and reception has been notified. Do NOT say "try later". Tell the patient exactly: "سأسجل طلبك ورقم هاتفك، وسيتواصل معك فريق الاستقبال لتأكيد الموعد." Do NOT claim that an appointment is confirmed.`
+          : patientName && patientPhone
+            ? `REAL AVAILABILITY FAILED (${availabilityFailureSource}) and the Pending Lead database write failed. The patient's contact is already present; do NOT ask for it again and do NOT claim that a lead was saved. Do NOT say "try later" or invent a time. Tell the patient the team will receive the request from this conversation and confirm the appointment; do not claim the appointment is confirmed.`
+            : `REAL AVAILABILITY FAILED (${availabilityFailureSource}). Do NOT say "try later" and do NOT invent or confirm a time. If the patient's name or phone is missing, ask only for the missing contact detail(s). Once both are provided, save the service/request and contact as a pending booking lead, notify reception, and tell the patient exactly: "سأسجل طلبك ورقم هاتفك، وسيتواصل معك فريق الاستقبال لتأكيد الموعد."`;
       }
     }
 
