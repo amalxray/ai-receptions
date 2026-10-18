@@ -49,13 +49,13 @@ export default function PublicGalleryLightbox({
                 muted
                 playsInline
                 preload="metadata"
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
               />
             ) : (
               <MorphingDialogImage
                 src={item.public_url}
                 alt={item.alt_text || item.title || 'صورة من المعرض'}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
               />
             )}
             {item.title && (

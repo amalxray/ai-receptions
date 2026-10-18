@@ -565,7 +565,7 @@ export function ActivitySpaceChrome({
                     loop
                     playsInline
                     controls
-                    className="w-full h-80 md:h-[500px] object-cover bg-black"
+                    className="w-full h-80 md:h-[500px] bg-black object-contain"
                     preload="metadata"
                   />
                   {vid.title && (

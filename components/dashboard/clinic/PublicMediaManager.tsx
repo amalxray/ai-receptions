@@ -60,7 +60,7 @@ type MediaItem = {
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
 const IMAGE_SIZE_LIMIT_MB = 25;
-const VIDEO_SIZE_LIMIT_MB = 500;
+const VIDEO_SIZE_LIMIT_MB = 100;
 
 function uploadToSignedUrl(
   signedUrl: string,

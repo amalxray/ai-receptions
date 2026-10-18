@@ -76,14 +76,14 @@ describe('validateMediaFile', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('rejects videos larger than 500 MiB', () => {
+  it('rejects videos larger than 100 MiB', () => {
     const r = validateMediaFile({
       name: 'tour.mp4',
       type: 'video/mp4',
       size: MEDIA_VIDEO_MAX_BYTES + 1,
     });
     expect(r.ok).toBe(false);
-    if ('message' in r) expect(r.message).toContain('500MB');
+    if ('message' in r) expect(r.message).toContain('100MB');
   });
 
   it('rejects an unsupported MIME even with a harmless name', () => {

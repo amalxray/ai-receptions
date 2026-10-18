@@ -49,7 +49,7 @@ export type MediaMetaPatch = {
 
 export const MEDIA_BUCKET = 'clinic-public-media';
 export const MEDIA_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
-export const MEDIA_VIDEO_MAX_BYTES = 500 * 1024 * 1024;
+export const MEDIA_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 
 const MEDIA_MIME_MAP: Record<string, { type: MediaType; ext: string }> = {
   'image/jpeg': { type: 'image', ext: '.jpg' },
