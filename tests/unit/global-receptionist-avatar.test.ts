@@ -6,9 +6,9 @@ const root = process.cwd();
 const avatarComponent = readFileSync(resolve(root, 'components/chat/ChatPersona.tsx'), 'utf8');
 
 describe('global receptionist avatar', () => {
-  it('points the shared assistant avatar at the full portrait in public/images', () => {
-    expect(avatarComponent).toContain("'/images/receptionist-avatar-full.jpg'");
-    expect(existsSync(resolve(root, 'public/images/receptionist-avatar-full.jpg'))).toBe(true);
+  it('points the shared assistant avatar at the receptionist portrait in public/images', () => {
+    expect(avatarComponent).toContain("'/images/receptionist-avatar.png'");
+    expect(existsSync(resolve(root, 'public/images/receptionist-avatar.png'))).toBe(true);
     expect(avatarComponent).toContain('rounded-full');
     expect(avatarComponent).toContain('object-cover');
   });

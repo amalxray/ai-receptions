@@ -1,8 +1,10 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import path from 'path';
 
 export default defineConfig({
   test: {
+    // Exclude the stale nested clone at ./ai-receptions (separate repo, untracked).
+    exclude: [...configDefaults.exclude, '**/ai-receptions/**'],
     pool: 'threads',
     poolOptions: {
       threads: {

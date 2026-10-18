@@ -26,7 +26,7 @@ import { logEvent } from '@/lib/server/logging';
 const MAX_ATTEMPTS_PER_PROVIDER = 2;
 // Free-tier Gemini wobbles (429/overloaded) need a real pause before the
 // retry — 300/900ms were too fast to outlive a rate-limit window.
-const BACKOFF_MS = [1000, 3000];
+const BACKOFF_MS = [200, 500];
 
 /** Matches transient provider/HTTP failures worth retrying or failing over. */
 const TRANSIENT_ERROR = /timed?\s*out|timeout|rate limit|429|too many requests|internal error|500|bad gateway|502|unavailable|503|504|overloaded|aborted|abort|network|econn|socket|fetch failed|temporarily/i;

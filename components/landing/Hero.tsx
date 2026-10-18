@@ -160,6 +160,8 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
             rotateX: tiltX,
             rotateY: tiltY,
             transformStyle: 'preserve-3d',
+            // Portrait source in a wide banner crop — keep the face visible.
+            objectPosition: '50% 22%',
           }}
         />
         {/* Borde brillante animado */}

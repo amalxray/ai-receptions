@@ -34,6 +34,7 @@
   ],
   "exclude": [
     "node_modules",
+    "ai-receptions",
     "lib/ai/index.ts",
     "lib/services/index.ts"
   ]

@@ -321,6 +321,35 @@ export async function handleIncomingMessage(opts: {
     // the AI can recommend/correct/complete bookings even when the Knowledge
     // Base is empty. Cross-clinic leakage is impossible: every query is
     // filtered by clinic_id.
+    // Start RAG retrieval in parallel with clinic data loading (latency fix).
+    // Both `settingsData` (above) and `intelligence` (above) are already
+    // available here, so the confidence threshold and the greeting/goodbye
+    // skip are computed NOW — letting the embedding + vector search overlap
+    // with the clinic-data Promise.all below instead of starting after it.
+    // The .catch returns an empty AssembledContext (not null) so downstream
+    // code (retrieved.chunks / hasConflictingContext) stays crash-safe.
+    const configuredConfidenceThreshold = Number(
+      settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD
+    );
+    // PERF (unchanged): greetings/goodbyes need no clinic knowledge — skip RAG.
+    const skipRagForSmallTalk = intelligence.intent === 'greeting' || intelligence.intent === 'goodbye';
+    const emptyAssembledContext = {
+      chunks: [],
+      citations: [],
+      totalTokens: 0,
+      truncated: false,
+      hasConflictingContext: false,
+    } as AssembledContext;
+    const retrievalPromise = skipRagForSmallTalk
+      ? Promise.resolve(emptyAssembledContext)
+      : retrieveContext(
+          clinicId,
+          text,
+          5,
+          MAX_CONTEXT_TOKENS,
+          configuredConfidenceThreshold,
+        ).catch(() => emptyAssembledContext);
+
     const [operatingData, clinicProfile] = await Promise.all([
       loadClinicOperatingData(clinicId),
       loadClinicProfile(clinicId),
@@ -733,30 +762,12 @@ export async function handleIncomingMessage(opts: {
     }
 
     // --- Retrieval-Augmented Generation ---
-    // Retrieve relevant context from the knowledge base.
-    // retrieveContext may return either a legacy array of RetrievalResult
-    // (backward-compatible callers) or a full AssembledContext object.
-    //
-    // PERF: greetings/goodbyes need no clinic knowledge, and RAG (embedding +
-    // vector search across the US↔EU hop) is the single biggest cost per turn.
-    // Skip it for those intents ONLY — every other intent (booking, pricing,
-    // services, questions, complaints…) still runs full RAG. `intelligence.intent`
-    // comes from the cheap fast-path classifier computed earlier, so this never
-    // touches the booking flow. Falls through to an empty context, which the
-    // hallucination guard below already handles for greeting/goodbye.
-    const configuredConfidenceThreshold = Number(
-      settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD
-    );
-    const skipRagForSmallTalk = intelligence.intent === 'greeting' || intelligence.intent === 'goodbye';
-    const retrieved = skipRagForSmallTalk
-      ? ({
-          chunks: [],
-          citations: [],
-          totalTokens: 0,
-          truncated: false,
-          hasConflictingContext: false,
-        } as AssembledContext)
-      : await retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold);
+    // retrieveContext was STARTED EARLIER (in parallel with the clinic-data
+    // load — see `retrievalPromise` above) to cut per-turn latency. The
+    // greeting/goodbye skip and the confidence threshold are also computed
+    // there; this await simply materializes the result (or the empty-context
+    // fallback on retrieval failure / small talk).
+    const retrieved = await retrievalPromise;
     // When the active provider has no embedding support (e.g. local Ollama),
     // keyword-only retrieval scores are naturally lower, so lower the
     // effective threshold to match contextRetrieval's behavior.

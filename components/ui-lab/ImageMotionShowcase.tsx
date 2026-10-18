@@ -11,7 +11,7 @@ const gallery: LightboxMedia[] = [
   {
     id: 'receptionist-portrait',
     media_type: 'image',
-    public_url: '/images/receptionist-avatar-full.jpg',
+    public_url: '/images/receptionist-avatar.png',
     title: 'رعاية واهتمام',
     caption: 'صورة محلية من ملفات المشروع.',
     alt_text: 'مراجعة في عيادة أسنان',
@@ -43,14 +43,14 @@ const gallery: LightboxMedia[] = [
 ];
 
 const masonryItems = [
-  { src: '/images/receptionist-avatar-full.jpg', alt: 'مراجعة في عيادة أسنان', title: 'رعاية تبدأ بالاهتمام', size: 'row-span-2' },
+  { src: '/images/receptionist-avatar.png', alt: 'مراجعة في عيادة أسنان', title: 'رعاية تبدأ بالاهتمام', size: 'row-span-2' },
   { src: '/brand/ai-receptionist.png', alt: 'مساعدة الاستقبال الافتراضية', title: 'استقبال ذكي', size: '' },
   { src: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1000&q=85', alt: 'عيادة أسنان عصرية', title: 'مساحة مريحة', size: '' },
   { src: '/images/receptionist-avatar.png', alt: 'صورة موظفة الاستقبال', title: 'فريق قريب منك', size: 'sm:col-span-2' },
 ];
 
 const collageItems = [
-  { id: 'care', src: '/images/receptionist-avatar-full.jpg', alt: 'مراجعة في عيادة أسنان', title: 'اهتمام بكل مراجع' },
+  { id: 'care', src: '/images/receptionist-avatar.png', alt: 'مراجعة في عيادة أسنان', title: 'اهتمام بكل مراجع' },
   { id: 'assistant', src: '/brand/ai-receptionist.png', alt: 'مساعدة الاستقبال الافتراضية', title: 'مساعدة ذكية' },
   { id: 'clinic', src: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1000&q=85', alt: 'عيادة أسنان عصرية', title: 'مكان مريح' },
   { id: 'team', src: 'https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1000&q=85', alt: 'فريق في عيادة أسنان', title: 'فريق العيادة' },
