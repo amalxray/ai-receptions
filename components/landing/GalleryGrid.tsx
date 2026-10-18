@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X, Play, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -29,12 +29,6 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
   const [open, setOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const current = items[currentIndex];
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const scrollPrev = () =>
-    scrollRef.current?.scrollBy({ left: -300, behavior: 'smooth' });
-  const scrollNext = () =>
-    scrollRef.current?.scrollBy({ left: 300, behavior: 'smooth' });
 
   const openLightbox = (index: number) => {
     setCurrentIndex(index);
@@ -53,28 +47,15 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
           <h2 className="mb-8 text-center text-2xl font-bold text-slate-900 md:text-3xl">
             معرض الصور والفيديو
           </h2>
-          <div className="relative">
-            <button
-              type="button"
-              aria-label="السابقة"
-              onClick={scrollPrev}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 hidden md:flex w-10 h-10 rounded-full bg-white/90 flex items-center justify-center text-slate-900 hover:bg-white transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div
-              ref={scrollRef}
-              className="flex overflow-x-auto snap-x snap-mandatory snap-center gap-4 pb-4 hide-scrollbar"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {items.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  onClick={() => openLightbox(index)}
-                  className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-900 border border-white/10 shrink-0 min-w-[280px] w-[280px] md:min-w-[350px] md:w-[350px]"
-                >
-                  <div className="w-full h-full aspect-[4/3]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {items.map((item, index) => (
+              <motion.div
+                key={item.id}
+                whileHover={{ scale: 1.02, y: -5 }}
+                onClick={() => openLightbox(index)}
+                className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-900 border border-white/10"
+              >
+                <div className="w-full h-full aspect-[4/3]">
                   {item.media_type === 'video' && item.video_url ? (
                     <>
                       <video
@@ -122,15 +103,6 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
                 </div>
               </motion.div>
             ))}
-            </div>
-            <button
-              type="button"
-              aria-label="التالية"
-              onClick={scrollNext}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 hidden md:flex w-10 h-10 rounded-full bg-white/90 flex items-center justify-center text-slate-900 hover:bg-white transition-colors"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </section>
