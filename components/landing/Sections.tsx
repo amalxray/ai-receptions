@@ -481,10 +481,18 @@ export function FAQ() {
   );
 }
 
-/* ────────────── Imaging (tabs) ────────────── */
+/* ────────────── Imaging (tabs + patient-file hotspots) ────────────── */
+const PATIENT_FILE_HOTSPOTS = [
+  { id: 'dicom', x: '24%', y: '62%', title: 'صورة أشعة DICOM', description: 'بانوراما ومقاطع CT حتى 2 جيجابايت — مرفوعة من مركز التصوير مباشرة إلى ملف المريض.' },
+  { id: 'report', x: '52%', y: '38%', title: 'تقرير طبي', description: 'تشخيص الطبيب وخطة العلاج مرفقة بالملف — واضحة قبل دخول المريض.' },
+  { id: 'tooth', x: '76%', y: '66%', title: 'تفاصيل السن', description: 'حالة كل سن، العلاجات السابقة، والملاحظات السريرية في مكان واحد.' },
+];
+
 export function Imaging() {
   const copy = useLandingCopy();
   const [tab, setTab] = useState(0);
+  const [activeHotspotId, setActiveHotspotId] = useState<string | null>(PATIENT_FILE_HOTSPOTS[0].id);
+  const activeHotspot = PATIENT_FILE_HOTSPOTS.find((spot) => spot.id === activeHotspotId);
   const healthy = [
     { label: 'الاسم', value: 'أحمد سالم' },
     { label: 'العمر', value: '34 سنة' },
@@ -527,14 +535,58 @@ export function Imaging() {
             className="mt-6 rounded-3xl border border-landing-indigo/10 bg-white p-8 shadow-sm"
           >
             {tab === 0 && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {healthy.map((row) => (
-                  <div key={row.label} className="rounded-2xl border border-landing-indigo/10 bg-landing-bg p-4">
-                    <p className="text-xs text-landing-text/60">{row.label}</p>
-                    <p className="mt-1 font-semibold text-landing-text">{row.value}</p>
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {healthy.map((row) => (
+                    <div key={row.label} className="rounded-2xl border border-landing-indigo/10 bg-landing-bg p-4">
+                      <p className="text-xs text-landing-text/60">{row.label}</p>
+                      <p className="mt-1 font-semibold text-landing-text">{row.value}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Patient-file interactive hotspots — pattern from ui-lab ImageMotionShowcase (IMAGE HOTSPOTS) */}
+                <div dir="rtl" className="relative mt-4 aspect-[4/3] overflow-hidden rounded-2xl border border-landing-indigo/10 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 sm:aspect-[16/8]" aria-label="معاينة ملف المريض التفاعلية">
+                  <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_25%_30%,rgba(34,211,238,0.18),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(139,92,246,0.18),transparent_45%)]" />
+                  <div aria-hidden="true" className="absolute inset-x-6 top-5 rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
+                    <p className="text-xs font-bold text-white">ملف المريض — أحمد سالم (DR-0082)</p>
+                    <p className="mt-1 text-[11px] text-white/70">بانوراما رقمية + تقرير + خطة علاج</p>
                   </div>
-                ))}
-              </div>
+                  {PATIENT_FILE_HOTSPOTS.map((spot) => {
+                    const isActive = activeHotspotId === spot.id;
+                    return (
+                      <button
+                        key={spot.id}
+                        type="button"
+                        onClick={() => setActiveHotspotId(isActive ? null : spot.id)}
+                        aria-label={spot.title}
+                        aria-expanded={isActive}
+                        className={`absolute z-10 grid h-10 w-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-slate-950 transition hover:scale-110 ${isActive ? 'border-white bg-white shadow-[0_0_28px_rgba(255,255,255,0.55)]' : 'border-white/70 bg-cyan-300/90 shadow-[0_0_28px_rgba(103,232,249,0.55)]'}`}
+                        style={{ left: spot.x, top: spot.y }}
+                      >
+                        <span className="absolute inset-0 animate-ping rounded-full bg-cyan-200/40" />
+                        <span className="relative text-lg leading-none">+</span>
+                      </button>
+                    );
+                  })}
+                  {activeHotspot && (
+                    <motion.div
+                      key={activeHotspot.id}
+                      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute bottom-3 left-3 right-3 z-20 rounded-xl border border-white/20 bg-slate-950/85 p-3 text-right shadow-xl backdrop-blur-xl sm:bottom-4 sm:left-4 sm:right-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-xs font-bold text-white">{activeHotspot.title}</h4>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-300">{activeHotspot.description}</p>
+                        </div>
+                        <button type="button" aria-label="إغلاق المعلومة" onClick={() => setActiveHotspotId(null)} className="rounded-full p-1 text-slate-300 transition hover:bg-white/10 hover:text-white">✕</button>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              </>
             )}
             {tab === 1 && (
               <div className="flex flex-col items-center gap-3 py-10">
