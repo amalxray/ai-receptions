@@ -1,7 +1,8 @@
 'use client';
 
 import { BlurFade } from '@/components/ui/blur-fade';
-import { NumberTicker } from '@/components/ui/number-ticker';
+import { useInView } from 'framer-motion';
+import { useRef, useState, useEffect } from 'react';
 
 /**
  * RESULTS SECTION — doctor-focused social proof (B2B, ROI numbers).
@@ -56,8 +57,33 @@ const RESULTS: Result[] = [
 ];
 
 export default function ResultsSection() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { amount: 0.3, once: true });
+  const [counts, setCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!isInView) return;
+    const timers: ReturnType<typeof setInterval>[] = [];
+    RESULTS.forEach((item) => {
+      const key = item.label;
+      const target = item.value;
+      let current = 0;
+      const step = target / 60; // animar en ~60 frames
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) {
+          current = target;
+          clearInterval(timer);
+        }
+        setCounts((prev) => ({ ...prev, [key]: current }));
+      }, 16);
+      timers.push(timer);
+    });
+    return () => timers.forEach((t) => clearInterval(t));
+  }, [isInView]);
+
   return (
-    <section className="bg-[#FAFBFC] py-24" style={{ backgroundImage: 'radial-gradient(circle at 18% 20%, rgba(59,130,246,0.12), transparent 35%), radial-gradient(circle at 82% 80%, rgba(139,92,246,0.12), transparent 35%)' }}>
+    <section ref={ref} className="bg-[#FAFBFC] py-24" style={{ backgroundImage: 'radial-gradient(circle at 18% 20%, rgba(59,130,246,0.12), transparent 35%), radial-gradient(circle at 82% 80%, rgba(139,92,246,0.12), transparent 35%)' }}>
       <div className="mx-auto max-w-6xl px-4">
         <BlurFade inView>
           <div className="mb-16 text-center">
@@ -80,8 +106,10 @@ export default function ResultsSection() {
                   className={`mb-2 bg-gradient-to-br text-6xl font-black ${item.gradient} bg-clip-text text-transparent`}
                   dir="ltr"
                 >
-                  {/* NumberTicker animates integers only — decimals render styled+static. */}
-                  {item.prefix}{Number.isInteger(item.value) ? <NumberTicker value={item.value} /> : item.value.toFixed(1)}
+                  {item.prefix}
+                  {Number.isInteger(item.value)
+                    ? counts[item.label]?.toFixed(0) ?? 0
+                    : item.value.toFixed(1)}
                   <span>{item.suffix}</span>
                 </div>
                 <div className="mb-1 text-lg font-bold text-slate-900">{item.label}</div>

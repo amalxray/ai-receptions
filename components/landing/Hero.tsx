@@ -11,7 +11,6 @@ import { Magnetic } from '@/components/ui/magnetic';
 import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { TextShimmer } from '@/components/ui/text-shimmer';
-import Image from 'next/image';
 import { landingCopy } from '@/lib/landing/landing-copy';
 
 export type HeroContent = {
@@ -69,10 +68,20 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
   };
   const paragraphHighlightIndex = heroContent.paragraph.indexOf('مريض');
   const sectionRef = useRef<HTMLElement>(null);
+  const imageRef = useRef<HTMLDivElement>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] });
   const blobY = useTransform(scrollYProgress, [0, 1], [48, -48]);
   const [showTyping, setShowTyping] = useState(false);
   const [messages, setMessages] = useState<ChatStep[]>([]);
+
+  const handleImageMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = imageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+    const y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+    setMousePos({ x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -126,15 +135,35 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-violet-950/80 to-transparent" />
       </div>
     {heroContent.image && (
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-        <Image
+      <div
+        ref={imageRef}
+        onMouseMove={handleImageMouseMove}
+        onMouseLeave={() => setMousePos({ x: 0, y: 0 })}
+        className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 group cursor-crosshair"
+      >
+        <motion.img
           src={heroContent.image}
           alt="صورة الغلاف لمركز أمل"
           width={1200}
           height={630}
           sizes="(max-width: 1024px) 100vw, 50vw"
-          unoptimized
-          className="w-full rounded-2xl object-cover shadow-2xl"
+          className="w-full rounded-2xl object-cover shadow-2xl transition-transform duration-100 ease-out"
+          style={{
+            transform: `rotateX(${mousePos.y * -8}deg) rotateY(${mousePos.x * 8}deg) scale(1.02)`,
+          }}
+        />
+        {/* Borde brillante animado */}
+        <motion.div
+          animate={{
+            boxShadow: [
+              '0 0 0px transparent',
+              '0 0 40px rgba(139,92,246,0.35)',
+              '0 0 60px rgba(34,211,238,0.25)',
+              '0 0 0px transparent',
+            ],
+          }}
+          transition={{ repeat: Infinity, duration: 5, ease: 'easeInOut' }}
+          className="absolute inset-0 rounded-2xl border-2 border-violet-500/40 group-hover:border-cyan-400/60 transition-all duration-500 pointer-events-none"
         />
       </div>
     )}
