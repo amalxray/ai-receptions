@@ -11,8 +11,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
  * objects. Public renderers read `enabled` rows only.
  *
  * Security invariants (matching the 20260921 migration):
- *   - MIME is validated server-side (never trust the extension alone), size
- *     capped at 25 MiB, filename never used for storage keys (random UUID).
+ *   - MIME is validated server-side (never trust the extension alone), images
+ *     are capped at 25 MiB and videos at 500 MiB, and storage keys use UUIDs.
  *   - Storage object policy + table RLS both restrict to clinic members.
  *   - No service_role usage from the browser; all writes go through this API.
  */
@@ -48,7 +48,8 @@ export type MediaMetaPatch = {
 };
 
 export const MEDIA_BUCKET = 'clinic-public-media';
-export const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+export const MEDIA_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+export const MEDIA_VIDEO_MAX_BYTES = 500 * 1024 * 1024;
 
 const MEDIA_MIME_MAP: Record<string, { type: MediaType; ext: string }> = {
   'image/jpeg': { type: 'image', ext: '.jpg' },
@@ -74,12 +75,23 @@ export function validateMediaFile(file: {
       message: 'نوع الملف غير مدعوم. المقبول: JPG / PNG / WebP / GIF (صور)، MP4 / WebM / MOV (فيديو)',
     };
   }
+  if (!Number.isFinite(file.size)) return { ok: false, message: 'حجم الملف غير صالح' };
   if (file.size <= 0) return { ok: false, message: 'الملف فارغ' };
-  if (file.size > MEDIA_MAX_BYTES) {
-    return { ok: false, message: `حجم الملف يتجاوز الحد الأقصى (${Math.round(MEDIA_MAX_BYTES / 1024 / 1024)}MB)` };
+  const maxBytes = entry.type === 'video' ? MEDIA_VIDEO_MAX_BYTES : MEDIA_IMAGE_MAX_BYTES;
+  if (file.size > maxBytes) {
+    const maxMb = Math.round(maxBytes / 1024 / 1024);
+    return { ok: false, message: `حجم الملف يتجاوز الحد الأقصى (${maxMb}MB)` };
   }
   const lower = file.name.toLowerCase().trim();
-  if (!ALLOWED_EXTS.some((e) => lower.endsWith(e))) {
+  const extension = ALLOWED_EXTS.find((candidate) => lower.endsWith(candidate));
+  if (!extension) {
+    return { ok: false, message: 'امتداد الملف غير مدعوم' };
+  }
+  const extensionMatchesMime =
+    entry.ext === '.jpg'
+      ? extension === '.jpg' || extension === '.jpeg'
+      : extension === entry.ext;
+  if (!extensionMatchesMime) {
     return { ok: false, message: 'امتداد الملف غير مدعوم' };
   }
   return { ok: true, mediaType: entry.type, ext: entry.ext };
@@ -148,6 +160,81 @@ export async function createClinicMedia(
   if (error) {
     // Roll back the orphan object so no dangling storage remains.
     await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([path]);
+    return { ok: false, message: `تعذر حفظ بيانات الملف: ${error.message}` };
+  }
+  return { ok: true, item: data as PublicMediaItem };
+}
+
+export async function createClinicMediaRecordFromUpload(
+  clinicId: string,
+  input: {
+    path: string;
+    filename: string;
+    contentType: string;
+    title?: string | null;
+    caption?: string | null;
+    alt_text?: string | null;
+    category?: string;
+  }
+): Promise<{ ok: true; item: PublicMediaItem } | { ok: false; message: string }> {
+  const prefix = `clinic/${clinicId}/public-media/`;
+  const filename = input.path.startsWith(prefix) ? input.path.slice(prefix.length) : '';
+  if (
+    !filename ||
+    filename.includes('/') ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp|gif|mp4|webm|mov)$/i.test(filename)
+  ) {
+    return { ok: false, message: 'مسار الملف غير صالح لهذه العيادة' };
+  }
+
+  const { data: objects, error: listError } = await supabaseAdmin.storage
+    .from(MEDIA_BUCKET)
+    .list(prefix.slice(0, -1), { limit: 100, search: filename });
+  if (listError) return { ok: false, message: `تعذر التحقق من الملف المرفوع: ${listError.message}` };
+  const uploaded = objects?.find((object) => object.name === filename);
+  if (!uploaded) return { ok: false, message: 'الملف غير موجود في التخزين' };
+
+  const fileSize = Number(uploaded.metadata?.size);
+  const mimeType = String(uploaded.metadata?.mimetype ?? '');
+  const validation = validateMediaFile({
+    name: input.filename,
+    type: mimeType || input.contentType,
+    size: fileSize,
+  });
+  if ('message' in validation) {
+    await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([input.path]);
+    return { ok: false, message: validation.message };
+  }
+  if (mimeType !== input.contentType) {
+    await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([input.path]);
+    return { ok: false, message: 'نوع الملف في التخزين لا يطابق النوع المصرّح به' };
+  }
+  if (`${filename.slice(36)}` !== validation.ext) {
+    await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([input.path]);
+    return { ok: false, message: 'امتداد الملف لا يطابق نوعه' };
+  }
+
+  const category = MEDIA_CATEGORIES.includes(input.category as MediaCategory)
+    ? (input.category as MediaCategory)
+    : 'other';
+  const { data, error } = await supabaseAdmin
+    .from('clinic_public_media')
+    .insert({
+      clinic_id: clinicId,
+      media_type: validation.mediaType,
+      storage_path: input.path,
+      public_url: mediaPublicUrl(input.path),
+      title: input.title?.trim() || null,
+      caption: input.caption?.trim() || null,
+      alt_text: input.alt_text?.trim() || null,
+      category,
+      file_size_bytes: fileSize,
+      mime_type: mimeType,
+    })
+    .select('*')
+    .single();
+  if (error) {
+    await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([input.path]);
     return { ok: false, message: `تعذر حفظ بيانات الملف: ${error.message}` };
   }
   return { ok: true, item: data as PublicMediaItem };

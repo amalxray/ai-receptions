@@ -59,13 +59,51 @@ type MediaItem = {
 
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
-const SIZE_LIMIT_MB = 25;
+const IMAGE_SIZE_LIMIT_MB = 25;
+const VIDEO_SIZE_LIMIT_MB = 500;
+
+function uploadToSignedUrl(
+  signedUrl: string,
+  file: File,
+  onProgress: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const body = new FormData();
+    body.append('cacheControl', '3600');
+    body.append('', file);
+
+    xhr.open('PUT', signedUrl);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve();
+        return;
+      }
+      let message = `فشل الرفع إلى التخزين (${xhr.status})`;
+      try {
+        const response = JSON.parse(xhr.responseText) as { message?: string };
+        if (response.message) message = response.message;
+      } catch {
+        // Keep the status-based message if Storage did not return JSON.
+      }
+      reject(new Error(message));
+    };
+    xhr.onerror = () => reject(new Error('تعذر الاتصال بتخزين الملفات أثناء الرفع'));
+    xhr.onabort = () => reject(new Error('تم إلغاء رفع الملف'));
+    xhr.send(body);
+  });
+}
 
 export default function PublicMediaManager() {
   const { clinicId, authHeaders } = useClinicContext();
   const [items, setItems] = useState<MediaItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -103,37 +141,78 @@ export default function PublicMediaManager() {
   const uploadFiles = async (files: File[]) => {
     if (!clinicId) return;
     if (files.length === 0) return;
-    const validFiles = files.filter((file) => file.size <= SIZE_LIMIT_MB * 1024 * 1024);
+    const validFiles = files.filter((file) => {
+      const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
+      return file.size <= limitMb * 1024 * 1024;
+    });
     const failedFiles = files
-      .filter((file) => file.size > SIZE_LIMIT_MB * 1024 * 1024)
-      .map((file) => `${file.name}: يتجاوز الحد الأقصى (${SIZE_LIMIT_MB}MB)`);
+      .filter((file) => {
+        const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
+        return file.size > limitMb * 1024 * 1024;
+      })
+      .map((file) => {
+        const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
+        return `${file.name}: الحد الأقصى ${limitMb}MB`;
+      });
     if (validFiles.length === 0) {
       setError(failedFiles.join('، '));
       return;
     }
     setBusy(true);
+    setUploadProgress(0);
     setError(null);
     setSuccess(null);
     try {
       const headers = await authHeaders();
       let uploadedCount = 0;
-      for (const file of validFiles) {
-        const form = new FormData();
-        form.append('file', file);
-        if (title.trim()) form.append('title', title.trim());
-        if (altText.trim()) form.append('alt_text', altText.trim());
-        form.append('category', uploadCategory);
+      for (let index = 0; index < validFiles.length; index += 1) {
+        const file = validFiles[index];
         try {
-          const res = await fetch(
-            `/api/clinic/public-media?clinic_id=${encodeURIComponent(clinicId)}`,
-            { method: 'POST', headers, body: form }
-          );
-          const body = (await res.json().catch(() => null)) as { data?: MediaItem; error?: string } | null;
-          if (!res.ok) {
-            failedFiles.push(`${file.name}: ${body?.error ?? `فشل الرفع (${res.status})`}`);
-          } else {
-            uploadedCount += 1;
+          const signedResponse = await fetch('/api/media/presigned', {
+            method: 'POST',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clinic_id: clinicId,
+              filename: file.name,
+              contentType: file.type,
+              fileSize: file.size,
+            }),
+          });
+          const signedBody = (await signedResponse.json().catch(() => null)) as {
+            signedUrl?: string;
+            path?: string;
+            error?: string;
+          } | null;
+          if (!signedResponse.ok || !signedBody?.signedUrl || !signedBody.path) {
+            throw new Error(signedBody?.error ?? `تعذر تجهيز الرفع (${signedResponse.status})`);
           }
+
+          await uploadToSignedUrl(signedBody.signedUrl, file, (percent) => {
+            setUploadProgress(Math.round(((index + percent / 100) / validFiles.length) * 100));
+          });
+
+          const saveResponse = await fetch(
+            `/api/clinic/public-media?clinic_id=${encodeURIComponent(clinicId)}`,
+            {
+              method: 'POST',
+              headers: { ...headers, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                path: signedBody.path,
+                filename: file.name,
+                contentType: file.type,
+                title: title.trim() || null,
+                alt_text: altText.trim() || null,
+                category: uploadCategory,
+              }),
+            }
+          );
+          const saveBody = (await saveResponse.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          if (!saveResponse.ok) {
+            throw new Error(saveBody?.error ?? `تعذر حفظ الملف (${saveResponse.status})`);
+          }
+          uploadedCount += 1;
         } catch (e) {
           failedFiles.push(`${file.name}: ${e instanceof Error ? e.message : 'تعذر رفع الملف'}`);
         }
@@ -150,6 +229,7 @@ export default function PublicMediaManager() {
       setError(e instanceof Error ? e.message : 'تعذر رفع الملف');
     } finally {
       setBusy(false);
+      setUploadProgress(null);
     }
   };
 
@@ -355,7 +435,7 @@ export default function PublicMediaManager() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h3 className="text-base font-semibold text-slate-800">معرض الصور والوسائط</h3>
       <p className="mt-0.5 text-sm text-slate-500">
-        ارفع صورًا وفيديو تظهر في «معرض الأعمال» بالصفحة العامة. الحد الأقصى {SIZE_LIMIT_MB}MB لكل ملف (JPG/PNG/WebP/GIF — MP4/WebM/MOV).
+        ارفع صورًا وفيديو تظهر في «معرض الأعمال» بالصفحة العامة. الحد الأقصى 25MB للصور و500MB للفيديو (JPG/PNG/WebP/GIF — MP4/WebM/MOV).
       </p>
 
       {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
@@ -429,6 +509,27 @@ export default function PublicMediaManager() {
           />
         </label>
       </div>
+      {uploadProgress !== null && (
+        <div className="mt-3" aria-live="polite">
+          <div className="mb-1 flex justify-between text-xs text-slate-600">
+            <span>جارٍ رفع الملفات مباشرة إلى التخزين</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="تقدم رفع الملفات"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={uploadProgress}
+            className="h-2 overflow-hidden rounded-full bg-slate-200"
+          >
+            <div
+              className="h-full rounded-full bg-cyan-600 transition-[width]"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-400">جارٍ التحميل…</p>
