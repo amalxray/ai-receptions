@@ -495,42 +495,29 @@ export async function handleIncomingMessage(opts: {
     }
 
     // --- REAL availability resolution (grounded booking) ---
-    // When the patient is booking and the deterministic service + provider are
-    // known, resolve the EARLIEST real slot from the scheduling engine and
-    // persist it so the AI presents an actual date/time (never invented) and
-    // the booking can complete. Follow-up turns ("أي ساعة؟", confirmation)
-    // reuse the persisted slot. Failures degrade to a structured NOT_AVAILABLE
-    // note — never "AI unavailable".
+    // Resolve slots only on an explicit booking/reschedule turn or a follow-up
+    // in an active, uncompleted booking state. Informational turns never reach
+    // the calendar, even when old booking context remains on the conversation.
     let availabilityNote: string | null = null;
     let availabilityFailureSource: string | null = null;
-    // FIX-1 (Global by Default): the REAL slot is resolved as soon as the
-    // SERVICE is known — the provider is OPTIONAL and auto-resolved below from
-    // provider_services (first eligible provider). Requiring provider_id here
-    // made "بدي احجز بانوراما" (no doctor named) produce no slots and no time
-    // card at all, pushing the model back to "hand off to reception".
-    // UNIFIED SAVE PATH: a real slot is resolved whenever there is ANY
-    // deterministic booking signal — the classifier's booking intent, an
-    // explicit service request the patient stated, or a plain confirmation word
-    // — instead of requiring the LLM to label the turn `appointment_booking`.
-    // Without this, "بدي اتصور بانوراما" (classified `unknown`) produced no
-    // slot, the state machine never advanced and nothing was ever saved.
-    const bookingSignal =
+    // An active pending state means the patient already agreed to book and has
+    // a service selected. It is deliberately ignored for informational intents.
+    const explicitBookingThisTurn =
       intelligence.intent === 'appointment_booking' ||
-      Boolean(intelligence.appointment?.requestedService) ||
-      Boolean(
-        clinicProfile?.activityType?.toLowerCase() === 'clinic' &&
-        currentState?.booking_intent &&
-        currentState.recommended_service_id
-      ) ||
-      Boolean(
-        currentState?.booking_intent &&
-        currentState.recommended_service_id &&
-        (currentState.booking.patient_name || currentState.booking.phone || intelligence.appointment.patientName || intelligence.appointment.phone)
-      ) ||
-      Boolean(
-        currentState?.recommended_service_id &&
-        (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)
-      );
+      intelligence.intent === 'appointment_reschedule';
+    const pendingFollowUpIntent =
+      intelligence.intent === 'unknown' ||
+      intelligence.intent === 'appointment_booking' ||
+      intelligence.intent === 'appointment_reschedule' ||
+      (intelligence.intent === 'general_question' && availabilityTimesInquiryThisTurn);
+    const bookingPendingFollowUp = Boolean(
+      currentState &&
+      pendingFollowUpIntent &&
+      !currentState.booking.appointment_id &&
+      (currentState.booking_intent === true || currentState.state === 'BOOKING' || currentState.state === 'AWAITING_BOOKING_CONFIRMATION') &&
+      (currentState.booking.service_id || currentState.recommended_service_id)
+    );
+    const bookingSignal = explicitBookingThisTurn || bookingPendingFollowUp;
     const needsRealSlot =
       bookingSignal &&
       currentState &&

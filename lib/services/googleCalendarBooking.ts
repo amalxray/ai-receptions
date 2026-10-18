@@ -38,7 +38,7 @@ export type AvailabilityResult = {
 };
 
 export type GoogleCalendarBusyInterval = { start: string; end: string };
-const GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS = 10_000;
+const GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS = 2_000;
 
 type GoogleCalendarClient = ReturnType<typeof google.calendar>;
 type GoogleCalendarConfig = {
