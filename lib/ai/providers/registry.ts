@@ -29,7 +29,7 @@ export function ensureAIProviders(): void {
     registerProvider(createGeminiProvider('gemini-fallback', 'GEMINI_API_KEY_FALLBACK'));
   }
 
-  const configuredId = process.env.AI_PROVIDER?.trim() || 'openai';
+  const configuredId = process.env.AI_PROVIDER?.trim() || 'groq';
   const configuredProvider = listProviders().find((provider) => provider.id === configuredId);
   const keyNameByProvider: Record<string, string> = {
     openai: 'OPENAI_API_KEY',

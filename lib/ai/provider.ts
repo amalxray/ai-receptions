@@ -28,17 +28,24 @@ export interface AIProvider {
 
 // Simple registry
 const providers = new Map<string, AIProvider>();
+let warnedAboutMissingAIProvider = false;
 
 export function registerProvider(p: AIProvider) {
   providers.set(p.id, p);
 }
 
 export function getProvider(id?: string) {
+  const envProvider = process.env.AI_PROVIDER?.trim();
+  if (!envProvider && !warnedAboutMissingAIProvider) {
+    console.warn('[ai] AI_PROVIDER is unset; defaulting to groq.');
+    warnedAboutMissingAIProvider = true;
+  }
+
   // Explicit provider id takes priority
   if (id) return providers.get(id) ?? providers.values().next().value;
 
-  // Select based on AI_PROVIDER env var (default: openai)
-  const configured = process.env.AI_PROVIDER ?? 'openai';
+  // Select based on AI_PROVIDER env var (default: groq).
+  const configured = envProvider || 'groq';
   const selected = providers.get(configured);
   if (selected) return selected;
 

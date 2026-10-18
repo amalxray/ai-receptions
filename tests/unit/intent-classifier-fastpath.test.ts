@@ -2,8 +2,9 @@
  * Fast-path intent classification regression suite (20 mandatory scenarios).
  *
  * Verifies that classifyIntent resolves obvious small-talk (greeting/goodbye)
- * DETERMINISTICALLY — WITHOUT calling the LLM — while every other intent
- * (booking, general_question, …) still falls through to the LLM. The AI provider
+ * DETERMINISTICALLY — WITHOUT calling the LLM — for high-confidence greetings,
+ * simple clinic/service questions, and explicit booking requests. Ambiguous
+ * questions still fall through to the LLM. The AI provider
  * mock records whether `generate` was invoked so each case proves the routing:
  *
  *   - path === 'fast'  → generate MUST NOT be called (no AI latency).
@@ -50,14 +51,14 @@ const SCENARIOS: Row[] = [
   { n: 4, msg: 'هاي', expect: 'greeting', path: FAST },
   { n: 5, msg: 'شكراً', expect: 'goodbye', path: FAST },
   { n: 6, msg: 'باي', expect: 'goodbye', path: FAST },
-  { n: 7, msg: 'مرحبا بدي أحجز', expect: 'appointment_booking', path: AI },
-  { n: 8, msg: 'بدي أحجز', expect: 'appointment_booking', path: AI },
-  { n: 9, msg: 'شو الخدمات؟', expect: 'general_question', path: AI },
+  { n: 7, msg: 'مرحبا بدي أحجز', expect: 'appointment_booking', path: FAST },
+  { n: 8, msg: 'بكرة الساعة 10', expect: 'appointment_booking', path: FAST },
+  { n: 9, msg: 'شو عندكم؟', expect: 'service_information', path: FAST },
   { n: 10, msg: 'كيفك؟', expect: 'greeting', path: FAST },
-  { n: 11, msg: 'شو ساعات العمل؟', expect: 'general_question', path: AI },
-  { n: 12, msg: 'ألم في الضرس', expect: 'general_question', path: AI },
+  { n: 11, msg: 'شو أوقات الدوام؟', expect: 'clinic_information', path: FAST },
+  { n: 12, msg: 'كم سعر التنظيف؟', expect: 'service_information', path: FAST },
   { n: 13, msg: 'مرحبا كيفك', expect: 'greeting', path: FAST },
-  { n: 14, msg: 'بدي أحجز تصوير', expect: 'appointment_booking', path: AI },
+  { n: 14, msg: 'بدي أحجز تصوير', expect: 'appointment_booking', path: FAST },
   { n: 15, msg: 'شكراً كتير', expect: 'goodbye', path: FAST },
   { n: 16, msg: 'مع السلامة', expect: 'goodbye', path: FAST },
   { n: 17, msg: 'صباح الخير', expect: 'greeting', path: FAST },

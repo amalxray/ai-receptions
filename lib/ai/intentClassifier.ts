@@ -2,14 +2,15 @@ import { getProvider } from './provider';
 import { logEvent } from '@/lib/server/logging';
 
 /**
- * PRIMARY: LLM-based semantic intent classification.
+ * High-confidence deterministic classification runs first; ambiguous messages
+ * use LLM-based semantic classification.
  *
  * This classifier returns structured JSON describing what the patient means,
  * independent of exact wording. The LLM understands Arabic dialects, typos,
  * missing hamza, and a wide range of phrasings.
  *
- * The keyword-based rules remain ONLY as a deterministic fast-path/fallback
- * for obvious explicit actions (e.g. "إلغاء") and emergency safety signals.
+ * Deterministic rules short-circuit clear greetings, simple clinic/service
+ * questions, booking requests, explicit actions, and emergency safety signals.
  *
  * IMPORTANT: The local Ollama models currently installed (qwen2.5-coder:3b,
  * qwen2.5:3b, llama3.2:3b, qwen2.5:7b) are either too slow or produce poor
@@ -37,6 +38,7 @@ export type SemanticIntent = (typeof SEMANTIC_INTENTS)[keyof typeof SEMANTIC_INT
 
 /** Valid lowercase intent VALUES (the model returns lowercase per the prompt). */
 const VALID_INTENT_VALUES = new Set<string>(Object.values(SEMANTIC_INTENTS));
+let intentTimingSequence = 0;
 
 export type SemanticIntentResult = {
   intent: SemanticIntent;
@@ -290,6 +292,12 @@ export function extractRequestedServiceFromText(text: string | null | undefined)
   return service.length >= 2 ? service : null;
 }
 
+const FAST_PRICE_INFO = /(?:كم|قديش|شو|ما)\s+(?:هو\s+)?(?:ال)?(?:سعر|تكلفة)|(?:ال)?(?:سعر|تكلفة)\s+(?:كم|شو|قديش)/iu;
+const FAST_SERVICE_INFO = /(?:شو|ايش|إيش|ما)\s+(?:الخدمات|عندكم|بتقدموا)|الخدمات\s+(?:المتوفرة|المتاحة)/iu;
+const FAST_HOURS_INFO = /(?:اوقات|أوقات|ساعات|مواعيد)\s+(?:الدوام|العمل|عملكم)|(?:شو|ايش|إيش)\s+(?:ساعات|أوقات)\s+(?:الدوام|العمل)|متى\s+(?:بتفتحوا|بتفتح|بتسكروا|بتسكر|دوامكم)|الدوام\s+(?:عندكم|متى)/iu;
+const FAST_BOOKING_REQUEST = /(?:بدي|بدّي|اريد|أريد|حابب|حابّة|بحب|أرغب|ارغب)\s+(?:(?:أن|ان)\s+)?(?:احجز(?:لي|لنا)?|أحجز(?:لي|لنا)?|حجز|موعد(?:ا|اً)?)|(?:احجزلي|أحجزلي|احجزي|حجز\s+موعد)|(?:book|schedule)\s+(?:an?\s+)?(?:appointment|visit)/iu;
+const FAST_BOOKING_TIME = /(?:بكرة|بكرا|غدا|غداً)\s+(?:الساعة|ساعه)\s*\d{1,2}(?::\d{2})?|\b(?:tomorrow|today)\s+at\s+\d{1,2}(?::\d{2})?\b/iu;
+
 export function classifyIntentFastPath(text: string): SemanticIntentResult | null {
   const t = text.trim();
 
@@ -298,8 +306,26 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
   }
   if (EXACT_CANCEL.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_CANCELLATION, confidence: 0.95, entities: {} };
   if (EXACT_RESCHEDULE.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_RESCHEDULE, confidence: 0.9, entities: {} };
-  if (EXACT_BOOKING.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_BOOKING, confidence: 0.85, entities: {} };
   if (EXACT_HANDOFF.test(t)) return { intent: SEMANTIC_INTENTS.HUMAN_HANDOFF, confidence: 0.95, entities: {} };
+  if (FAST_HOURS_INFO.test(t)) {
+    return { intent: SEMANTIC_INTENTS.CLINIC_INFORMATION, confidence: 0.94, entities: {} };
+  }
+  if (FAST_PRICE_INFO.test(t) || FAST_SERVICE_INFO.test(t)) {
+    return { intent: SEMANTIC_INTENTS.SERVICE_INFORMATION, confidence: 0.94, entities: {} };
+  }
+  const requestedTime = t.match(FAST_BOOKING_TIME)?.[0];
+  if (FAST_BOOKING_REQUEST.test(t) || requestedTime) {
+    const requestedService = extractRequestedServiceFromText(t);
+    return {
+      intent: SEMANTIC_INTENTS.APPOINTMENT_BOOKING,
+      confidence: 0.95,
+      entities: {
+        ...(requestedService ? { requested_service: requestedService } : {}),
+        ...(requestedTime ? { time: requestedTime } : {}),
+      },
+    };
+  }
+  if (EXACT_BOOKING.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_BOOKING, confidence: 0.85, entities: {} };
   if (EXACT_GREETING.test(t)) return { intent: SEMANTIC_INTENTS.GREETING, confidence: 0.9, entities: {} };
   if (EXACT_GOODBYE.test(t)) return { intent: SEMANTIC_INTENTS.GOODBYE, confidence: 0.9, entities: {} };
   // Leading greeting/goodbye ("مرحبا كيفك", "شكراً كتير") — safe because a
@@ -311,36 +337,40 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
 }
 
 /**
- * Orchestrates semantic classification: emergency safety signals first,
- * then the LLM as PRIMARY, then the deterministic fast-path as a fallback
- * when the LLM is unavailable, then a generic UNKNOWN.
+ * Applies emergency and other high-confidence deterministic rules first,
+ * then uses the LLM for ambiguous messages, then the remaining deterministic
+ * fallback if the LLM is unavailable.
  *
  * Ordering rationale (matches the documented design):
  *  - Emergency signals always short-circuit (safety, deterministic).
- *  - The LLM understands Arabic dialects/typos — it must see the message
- *    first so phrases like "متى أقرب موعد؟" are classified by MEANING
- *    (a question), not short-circuited by the keyword "موعد".
- *  - The keyword fast-path remains as an offline fallback only.
+ *  - High-confidence patterns short-circuit common intents to reduce latency.
+ *  - Ambiguous phrases such as "متى أقرب موعد؟" remain with the LLM so a
+ *    question is not misread as a booking action.
  */
 export async function classifyIntent(text: string): Promise<SemanticIntentResult> {
+  const timerLabel = 'ai.intent_classifier.' + Date.now() + '.' + (++intentTimingSequence);
+  console.time(timerLabel);
+  try {
+    return await classifyIntentWithFastPath(text);
+  } finally {
+    console.timeEnd(timerLabel);
+  }
+}
+
+async function classifyIntentWithFastPath(text: string): Promise<SemanticIntentResult> {
   // 0. Emergency safety signals — always deterministic and first.
   if (EXACT_EMERGENCY.test(text.trim())) {
     return { intent: SEMANTIC_INTENTS.URGENT_SIGNAL, confidence: 0.98, entities: { urgency: 'critical' } };
   }
 
-  // 0b. Small-talk (greeting/goodbye) — resolve deterministically BEFORE the
-  // LLM. These are unambiguous courtesy phrases (see LEADING_* which reject a
-  // trailing booking/question word), so the extra LLM intent call is pure
-  // latency with no accuracy gain. Every other intent still goes to the LLM.
+  // High-confidence deterministic intents avoid a blocking classification LLM
+  // call. Ambiguous booking references and general questions still use the LLM.
   const fastSmallTalk = classifyIntentFastPath(text);
-  if (
-    fastSmallTalk &&
-    (fastSmallTalk.intent === SEMANTIC_INTENTS.GREETING || fastSmallTalk.intent === SEMANTIC_INTENTS.GOODBYE)
-  ) {
+  if (fastSmallTalk && fastSmallTalk.confidence >= 0.9) {
     return fastSmallTalk;
   }
 
-  // 1. Primary semantic (LLM).
+  // 1. Semantic LLM for intents that do not match a high-confidence pattern.
   const semantic = await classifyIntentSemantic(text);
   if (semantic) return semantic;
 

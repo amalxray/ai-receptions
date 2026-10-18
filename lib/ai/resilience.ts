@@ -47,7 +47,7 @@ function sleep(ms: number): Promise<void> {
  */
 export function failoverCandidates(preferredProviderId?: string | null): Array<{ id: string; provider: NonNullable<ReturnType<typeof getProvider>> }> {
   const all = listProviders();
-  const configured = process.env.AI_PROVIDER ?? 'openai';
+  const configured = process.env.AI_PROVIDER?.trim() || 'groq';
 
   const ordered: Array<{ id: string; provider: NonNullable<ReturnType<typeof getProvider>> }> = [];
   const pushUnique = (id: string): void => {

@@ -37,7 +37,7 @@ const receptionistState: any = {
   pending_question: '',
 };
 
-describe('AI Receptionist — intent ordering (LLM primary, keyword fallback)', () => {
+describe('AI Receptionist — fast-path intent classification', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it('classifies by MEANING: availability question is NOT short-circuited by the word "موعد"', async () => {
@@ -53,10 +53,11 @@ describe('AI Receptionist — intent ordering (LLM primary, keyword fallback)', 
     expect(r.entities.urgency).toBe('critical');
   });
 
-  it('falls back to the deterministic fast-path only when the LLM is unavailable', async () => {
+  it('classifies explicit booking requests without waiting for the LLM', async () => {
     mocks.getProvider.mockReturnValue({ embed: false, generate: async () => { throw new Error('provider down'); } });
     const r = await classifyIntent('بدي احجز موعد');
     expect(r.intent).toBe('appointment_booking');
+    expect(mocks.getProvider).not.toHaveBeenCalled();
   });
 });
 

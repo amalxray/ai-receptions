@@ -49,7 +49,7 @@ type HistoryMessage = Pick<Message, 'role' | 'content'>;
 /**
  * Registers the active AI provider based on the AI_PROVIDER environment variable.
  * - AI_PROVIDER=ollama → Ollama (local, zero-cost)
- * - AI_PROVIDER=openai or unset → OpenAI (cloud, production)
+ * - AI_PROVIDER=groq or unset → Groq (cloud, production)
  * Both providers are registered so getProvider() falls back correctly.
  */
 ensureAIProviders();
@@ -69,6 +69,16 @@ const MAX_CONTEXT_TOKENS = 2000;
  * Maximum conversation history tokens to include in the prompt.
  */
 const MAX_HISTORY_TOKENS = 1000;
+let requestTimingSequence = 0;
+
+async function withPerformanceTiming<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  console.time(label);
+  try {
+    return await operation();
+  } finally {
+    console.timeEnd(label);
+  }
+}
 
 async function generateChatReply(
   prompt: string,
@@ -114,7 +124,7 @@ async function generateChatReply(
   } catch (err) {
     if (streamedText) throw err;
     logEvent('ai_stream_fallback_to_generate', {
-      preferred_provider: preferredProviderId ?? process.env.AI_PROVIDER ?? 'openai',
+      preferred_provider: preferredProviderId ?? (process.env.AI_PROVIDER?.trim() || 'groq'),
       error: err instanceof Error ? err.message : String(err),
     }, 'warn');
   }
@@ -299,6 +309,7 @@ export async function handleIncomingMessage(opts: {
   onToken?: (chunk: string) => void;
 }) {
   const { clinicId, conversationId, sessionId, userId, text, modelPreference, onToken } = opts;
+  const timingId = Date.now() + '.' + (++requestTimingSequence);
 
   logEvent('ai_request_started', { clinic_id: clinicId, conversation_id: conversationId, session_id: sessionId, user_id: userId, provider: modelPreference || undefined });
 
@@ -378,10 +389,39 @@ export async function handleIncomingMessage(opts: {
     // the AI can recommend/correct/complete bookings even when the Knowledge
     // Base is empty. Cross-clinic leakage is impossible: every query is
     // filtered by clinic_id.
-    const [operatingData, clinicProfile] = await Promise.all([
-      loadClinicOperatingData(clinicId),
-      loadClinicProfile(clinicId),
-    ]);
+    const configuredConfidenceThreshold = Number(
+      settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD
+    );
+    const skipRagForSmallTalk = intelligence.intent === 'greeting' || intelligence.intent === 'goodbye';
+    const dbPromise = withPerformanceTiming('ai.db_loading.' + timingId, async () => {
+      const profilePromise = loadClinicProfile(clinicId);
+      const workingHoursPromise = profilePromise.then((profile) =>
+        loadClinicWorkingHours(clinicId, profile.timezone)
+      );
+      const [operatingData, clinicProfile, workingHours, receptionState, bookingPolicy] = await Promise.all([
+        loadClinicOperatingData(clinicId),
+        profilePromise,
+        workingHoursPromise,
+        loadReceptionistConversationState(clinicId, conversationId),
+        getChatBookingPolicy(clinicId),
+      ]);
+      return { operatingData, clinicProfile, workingHours, receptionState, bookingPolicy };
+    });
+    const ragPromise = withPerformanceTiming('ai.rag_retrieve.' + timingId, async () => {
+      if (skipRagForSmallTalk) {
+        return {
+          chunks: [],
+          citations: [],
+          totalTokens: 0,
+          truncated: false,
+          hasConflictingContext: false,
+        } as AssembledContext;
+      }
+      return retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold);
+    }).then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error })
+    );
     // Authoritative clinic identity/profile from the `clinics` table. This is
     // the ONLY source of the clinic's real name/address/phone — never inferred
     // from the patient's location or invented by the model. It is resolved
@@ -393,11 +433,8 @@ export async function handleIncomingMessage(opts: {
     // so all three run concurrently instead of three sequential DB round-trips
     // across the US↔EU hop. The booking flow is unchanged — same values, just
     // fetched in parallel.
-    const [workingHours, receptionState, bookingPolicy] = await Promise.all([
-      loadClinicWorkingHours(clinicId, clinicProfile.timezone),
-      loadReceptionistConversationState(clinicId, conversationId),
-      getChatBookingPolicy(clinicId),
-    ]);
+    const clinicData = await dbPromise;
+    const { operatingData, clinicProfile, workingHours, receptionState, bookingPolicy } = clinicData;
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
@@ -789,7 +826,7 @@ export async function handleIncomingMessage(opts: {
       logEvent('repeated_question_detected', { clinic_id: clinicId, conversation_id: conversationId });
     }
 
-    // --- Retrieval-Augmented Generation ---
+    // RAG has been running in parallel with clinic reads and booking-state work.
     // Retrieve relevant context from the knowledge base.
     // retrieveContext may return either a legacy array of RetrievalResult
     // (backward-compatible callers) or a full AssembledContext object.
@@ -801,19 +838,9 @@ export async function handleIncomingMessage(opts: {
     // comes from the cheap fast-path classifier computed earlier, so this never
     // touches the booking flow. Falls through to an empty context, which the
     // hallucination guard below already handles for greeting/goodbye.
-    const configuredConfidenceThreshold = Number(
-      settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD
-    );
-    const skipRagForSmallTalk = intelligence.intent === 'greeting' || intelligence.intent === 'goodbye';
-    const retrieved = skipRagForSmallTalk
-      ? ({
-          chunks: [],
-          citations: [],
-          totalTokens: 0,
-          truncated: false,
-          hasConflictingContext: false,
-        } as AssembledContext)
-      : await retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold);
+    const ragResult = await ragPromise;
+    if (!ragResult.ok) throw ragResult.error;
+    const retrieved = ragResult.value;
     // When the active provider has no embedding support (e.g. local Ollama),
     // keyword-only retrieval scores are naturally lower, so lower the
     // effective threshold to match contextRetrieval's behavior.
@@ -944,7 +971,9 @@ export async function handleIncomingMessage(opts: {
 
       const provider = getProvider(modelPreference || undefined);
       const start = Date.now();
-      const result = await generateChatReply(prompt, modelPreference || undefined, onToken);
+      const result = await withPerformanceTiming('ai.llm.' + timingId, () =>
+        generateChatReply(prompt, modelPreference || undefined, onToken)
+      );
       const took = Date.now() - start;
       const usedProviderId = result.providerId ?? provider?.id;
 
@@ -1029,7 +1058,9 @@ export async function handleIncomingMessage(opts: {
     const provider = getProvider(modelPreference || undefined);
 
     const start = Date.now();
-    const result = await generateChatReply(prompt, modelPreference || undefined, onToken);
+    const result = await withPerformanceTiming('ai.llm.' + timingId, () =>
+      generateChatReply(prompt, modelPreference || undefined, onToken)
+    );
     const took = Date.now() - start;
     const usedProviderId = result.providerId ?? provider?.id;
 
