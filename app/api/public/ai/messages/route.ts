@@ -90,18 +90,24 @@ export async function POST(req: Request) {
       convId = conv.id;
     }
 
-    // Non-streaming path for public chat
-    const { userMessage, assistantMessage } = await receivePatientMessage({ clinicId: clinic.id, conversationId: convId, userId: null, text });
-    void createInAppNotification({
-      clinicId: clinic.id,
-      event: 'message_new',
-      title: 'رسالة جديدة من مريض',
-      body: text.slice(0, 140),
-      // B20 — `/dashboard/{clinic_id}/chat` never existed as a tenant module and
-      // carried a clinic id instead of the slug. The real surface is the
-      // conversations module, deep-linked to this conversation.
-      link: `${tenantDashboardUrl(clinic.slug, 'conversations')}/${encodeURIComponent(convId)}`,
-    });
+    const completeTurn = async (onToken?: (chunk: string) => void) => {
+      const { userMessage, assistantMessage } = await receivePatientMessage({
+        clinicId: clinic.id,
+        conversationId: convId,
+        userId: null,
+        text,
+        onToken,
+      });
+      void createInAppNotification({
+        clinicId: clinic.id,
+        event: 'message_new',
+        title: 'رسالة جديدة من مريض',
+        body: text.slice(0, 140),
+        // B20 — `/dashboard/{clinic_id}/chat` never existed as a tenant module and
+        // carried a clinic id instead of the slug. The real surface is the
+        // conversations module, deep-linked to this conversation.
+        link: `${tenantDashboardUrl(clinic.slug, 'conversations')}/${encodeURIComponent(convId)}`,
+      });
 
     // AI-outage fallback: the orchestrator persists a safe reply + marks handoff.
     // Never render an undefined message to the patient.
@@ -152,21 +158,65 @@ export async function POST(req: Request) {
         ? { ...safeAssistant, content: 'لم يتم تأكيد الحجز بعد. أكمل/ي البيانات المطلوبة، ثم استخدم/ي زر «تأكيد الحجز» في بطاقة الموعد.' }
         : safeAssistant;
     responseAssistant.content = stripSourceCitations(String(responseAssistant.content ?? ''));
-    return NextResponse.json({
-      conversation_id: convId,
-      user_message: userMessage,
-      assistant_message: responseAssistant,
-      booking_context: bookingContext,
-      booking_completed: Boolean(receptionState?.booking.appointment_id),
-      // الردود التفاعلية (أزرار سريعة + بطاقات + مؤشر تقدّم) — مشتقة من
-      // الحالة الخادمية فقط: slot محقَّق من التوفر + نية الحجز في metadata.
-      interactive: buildChatInteractive({
-        bookingContext,
-        conversationState: { state: conversationState },
-        metadata,
-        bookingConfirmation,
-      }),
-    });
+      return {
+        conversation_id: convId,
+        user_message: userMessage,
+        assistant_message: responseAssistant,
+        booking_context: bookingContext,
+        booking_completed: Boolean(receptionState?.booking.appointment_id),
+        // الردود التفاعلية (أزرار سريعة + بطاقات + مؤشر تقدّم) — مشتقة من
+        // الحالة الخادمية فقط: slot محقَّق من التوفر + نية الحجز في metadata.
+        interactive: buildChatInteractive({
+          bookingContext,
+          conversationState: { state: conversationState },
+          metadata,
+          bookingConfirmation,
+        }),
+      };
+    };
+
+    if (parsed.data.stream) {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const write = (event: Record<string, unknown>) => {
+            try {
+              controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+              return true;
+            } catch {
+              return false;
+            }
+          };
+          let emittedToken = false;
+          void completeTurn((chunk) => {
+            if (!chunk) return;
+            emittedToken = true;
+            write({ type: 'token', text: chunk });
+          }).then((payload) => {
+            const finalText = String(payload.assistant_message?.content ?? '');
+            // Safe deterministic replies (e.g. handoff or missing clinic data)
+            // do not pass through a model stream, so still deliver them as one chunk.
+            if (!emittedToken && finalText) write({ type: 'token', text: finalText });
+            write({ type: 'done', payload });
+            controller.close();
+          }).catch((err) => {
+            const message = err instanceof Error ? err.message : String(err);
+            logEvent('public_ai_message_error', { error: message, streaming: true }, 'error');
+            write({ type: 'error', message: 'حدث خطأ غير متوقع. حاول مرة أخرى.' });
+            controller.close();
+          });
+        },
+      });
+      return new Response(body, {
+        headers: {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'cache-control': 'no-cache, no-transform',
+          'x-accel-buffering': 'no',
+        },
+      });
+    }
+
+    return NextResponse.json(await completeTurn());
   } catch (err: any) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('public_ai_message_error', { error: message }, 'error');

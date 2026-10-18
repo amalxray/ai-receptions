@@ -1,5 +1,6 @@
 import { AIProvider, GenerateParams, GenerateResult } from '../provider';
 import { logEvent } from '@/lib/server/logging';
+import { openAICompatibleTextStream } from './openaiCompatibleStream';
 
 /**
  * GROQ PROVIDER (primary AI — fast, free tier).
@@ -159,6 +160,35 @@ export const GroqProvider: AIProvider = {
     // Every attempt returned empty → surface the same error the provider always
     // threw for this case, so resilience.ts fails over to the next provider.
     throw new Error('AI provider returned an empty or malformed response: no content in message');
+  },
+
+  async stream({ prompt, maxTokens = 1024, temperature = 0.2 }): Promise<ReadableStream<Uint8Array>> {
+    const key = process.env.GROQ_API_KEY;
+    if (!key) throw new Error('Groq API key is not configured. Set GROQ_API_KEY in the environment.');
+
+    const model = process.env.GROQ_MODEL ?? DEFAULT_MODEL;
+    const res = await fetchWithTimeout(GROQ_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens,
+        temperature,
+        stream: true,
+      }),
+    }, REQUEST_TIMEOUT_MS);
+
+    if (!res.ok) {
+      const err = await buildProviderError(res, 'stream');
+      logEvent('groq_stream_error', { status: res.status, model, error: err.message }, 'error');
+      throw err;
+    }
+
+    return openAICompatibleTextStream(res);
   },
 };
 

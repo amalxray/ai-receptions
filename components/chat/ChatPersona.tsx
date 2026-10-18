@@ -42,12 +42,12 @@ export function ChatPersonaAvatar({
       >
         {receptionist ? (
           <Image
-            src={imageSrc ?? '/images/receptionist-avatar-full.jpg'}
+            src={imageSrc ?? '/images/receptionist-avatar.png'}
             alt="موظفة الاستقبال"
-            width={1408}
-            height={768}
+            width={896}
+            height={1200}
             sizes={size === 'large' ? '(max-width: 640px) 96px, 128px' : '44px'}
-            className={`h-full w-full object-cover object-[center_42%] ${size === 'large' ? 'scale-[1.16]' : 'scale-[1.28]'}`}
+            className={`h-full w-full object-cover object-[center_36%] ${size === 'large' ? 'scale-[1.08]' : 'scale-[1.18]'}`}
           />
         ) : (
           <svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-500" fill="none" aria-hidden="true">

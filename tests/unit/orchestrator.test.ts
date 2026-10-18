@@ -118,6 +118,14 @@ const mockSecurity = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/ai/security', () => mockSecurity);
 
+const mockStreaming = vi.hoisted(() => ({
+  openStreamWithFailover: vi.fn(),
+}));
+vi.mock('@/lib/ai/resilience', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  ...mockStreaming,
+}));
+
 
 describe('AI Orchestrator RAG Pipeline', () => {
   const mockAiProvider = {
@@ -142,6 +150,7 @@ describe('AI Orchestrator RAG Pipeline', () => {
     mockConversationBooking.attemptConversationBooking.mockResolvedValue({ action: 'not_ready', state: 'INITIAL' });
     mockUnderstanding.understandMessage.mockReturnValue({});
     mockUnderstanding.applyUnderstandingToState.mockImplementation((state: unknown) => state);
+    mockStreaming.openStreamWithFailover.mockReset();
   });
 
   it('should retrieve context, build a RAG prompt, and generate a response', async () => {
@@ -202,6 +211,40 @@ describe('AI Orchestrator RAG Pipeline', () => {
     // 5. Verify usage was tracked with cost
     expect(mockCostService.calculateCost).toHaveBeenCalledWith(aiResponse.model, aiResponse.promptTokens, aiResponse.completionTokens);
     expect(mockSupabase.supabase.from('ai_usage').insert).toHaveBeenCalledWith([expect.objectContaining({ estimated_cost: 0.0002 })]);
+  });
+
+  it('emits streamed model chunks while preserving the normal response persistence path', async () => {
+    mockContextRetrieval.retrieveContext.mockResolvedValue([]);
+    mockPromptManager.buildPrompt.mockReturnValue('stream prompt');
+    const encoder = new TextEncoder();
+    mockStreaming.openStreamWithFailover.mockResolvedValue({
+      providerId: 'groq',
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode('أهلاً '));
+          controller.enqueue(encoder.encode('وسهلاً'));
+          controller.close();
+        },
+      }),
+    });
+    const chunks: string[] = [];
+
+    await handleIncomingMessage({
+      clinicId: 'clinic-1',
+      conversationId: 'conv-1',
+      text: 'مرحبا',
+      onToken: (chunk) => chunks.push(chunk),
+    });
+
+    expect(mockStreaming.openStreamWithFailover).toHaveBeenCalledWith({
+      prompt: 'stream prompt',
+      preferredProviderId: undefined,
+      maxTokens: 512,
+    });
+    expect(chunks.join('')).toBe('أهلاً وسهلاً');
+    expect(mockSupabase.supabase.from('messages').insert).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ role: 'assistant', content: 'أهلاً وسهلاً' })]),
+    );
   });
 
   it('should handle cases where no context is found', async () => {

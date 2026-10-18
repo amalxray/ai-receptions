@@ -282,12 +282,13 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     setAiUnavailable(false);
     setShowSuggested(false);
 
+    let streamingAssistantId: string | null = null;
     try {
       // Root-fix: visitors ALWAYS use the public route. No endpoint guessing by identifier shape.
       const base = '/api/public/ai/messages';
       const payloadBody = isUuid
-        ? { clinic_id: clinicId, conversation_id: conversationId, text: trimmed, stream: false }
-        : { [clinicQueryField]: clinicId, conversation_id: conversationId, text: trimmed, stream: false };
+        ? { clinic_id: clinicId, conversation_id: conversationId, text: trimmed, stream: true }
+        : { [clinicQueryField]: clinicId, conversation_id: conversationId, text: trimmed, stream: true };
 
       const response = await fetch(base, {
         method: 'POST',
@@ -295,8 +296,57 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         body: JSON.stringify(payloadBody),
       });
 
-      // Parse body safely (may be non-JSON). We never blindly assume JSON.
       let payload: any = {};
+      const contentType = response.headers.get('content-type') ?? '';
+      if (response.ok && contentType.includes('application/x-ndjson')) {
+        if (!response.body) throw new Error('Streaming response body is unavailable');
+
+        streamingAssistantId = `streaming-assistant-${Date.now()}`;
+        setMessages((current) => [...current, { id: streamingAssistantId!, role: 'assistant', text: '' }]);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalPayload: any = null;
+        const readEvent = (line: string) => {
+          if (!line.trim()) return;
+          const event = JSON.parse(line) as { type?: string; text?: string; payload?: unknown; message?: string };
+          if (event.type === 'token' && event.text) {
+            setMessages((current) => current.map((message) =>
+              message.id === streamingAssistantId ? { ...message, text: message.text + event.text } : message,
+            ));
+          } else if (event.type === 'done') {
+            finalPayload = event.payload;
+          } else if (event.type === 'error') {
+            throw new Error(event.message || 'Streaming response failed');
+          }
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? '';
+          lines.forEach(readEvent);
+          if (done) {
+            if (buffer.trim()) readEvent(buffer);
+            break;
+          }
+        }
+        if (!finalPayload) throw new Error('Streaming response ended before completion');
+
+        const assistantText = finalPayload?.assistant_message?.content ?? finalPayload?.assistant_message ?? 'تمت معالجة الرسالة.';
+        setConversationId(finalPayload?.conversation_id ?? conversationId);
+        const serverInteractive = (finalPayload?.interactive ?? null) as ChatInteractive | null;
+        setMessages((current) => current.map((message) => message.id === streamingAssistantId
+          ? { ...message, text: assistantText, interactive: serverInteractive ?? undefined }
+          : message,
+        ));
+        if (ttsEnabled) speakTts(assistantText);
+        return;
+      }
+
+      // Error responses and legacy JSON success responses remain safely parsed.
       try {
         payload = await response.json();
       } catch {
@@ -349,6 +399,9 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       // قراءة الرد بصوت (إذا كان TTS مفعّلاً — الافتراضي OFF)
       if (ttsEnabled) speakTts(assistantText);
     } catch (err) {
+      if (streamingAssistantId) {
+        setMessages((current) => current.filter((message) => message.id !== streamingAssistantId));
+      }
       // Network-level failure (offline / server unreachable) — DISTINCT from
       // "assistant unavailable": the browser itself could not complete the
       // request, so blaming the AI provider would be misleading.
