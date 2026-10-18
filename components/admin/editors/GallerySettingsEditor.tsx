@@ -100,7 +100,6 @@ export default function GallerySettingsEditor({ initialContent, onClose, onSaved
         <h3 className="text-lg font-bold text-slate-900">🖼️ إعدادات معرض الصور</h3>
         <p className="mt-1 text-sm text-slate-600">تتحكم في حجم البطاقات وسرعة التنقل ونمط عرض الصور.</p>
         <div className="mt-5 space-y-5">
-        <div className="mt-5 space-y-5">
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-800">حجم الصورة (بكسل)</label>
             <div className="flex items-end gap-3">
@@ -120,7 +119,7 @@ export default function GallerySettingsEditor({ initialContent, onClose, onSaved
             </div>
             <div
               className="mt-2 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-[10px] text-slate-400"
-              style={{ width: draft.gallerySizePx, height: draft.gallerySizePx }}
+              style={{ width: Math.round((draft.gallerySizePx / 1200) * 240), height: Math.round((draft.gallerySizePx / 1200) * 240) }}
             >
               معاينة
             </div>
@@ -128,9 +127,6 @@ export default function GallerySettingsEditor({ initialContent, onClose, onSaved
           <Segmented label="حجم المعرض" value={draft.size} options={SIZE_OPTIONS} onChange={(size) => setDraft((current) => ({ ...current, size }))} />
           <Segmented label="سرعة التنقل" value={draft.gallerySpeed} options={SPEED_OPTIONS} onChange={(speed) => setDraft((current) => ({ ...current, gallerySpeed: speed }))} />
           <Segmented label="نمط العرض" value={draft.galleryFit} options={FIT_OPTIONS} onChange={(fit) => setDraft((current) => ({ ...current, galleryFit: fit }))} />
-          <a href="/admin/gallery" className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700 hover:text-violet-600">إدارة الصور والفيديو ←</a>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </div>
           <a href="/admin/gallery" className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700 hover:text-violet-600">إدارة الصور والفيديو ←</a>
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
