@@ -2,6 +2,7 @@ import {
   hybridSearchClinic,
   keywordSearchClinic,
   keywordSearchKnowledgeBase,
+  HybridSearchResult,
   RetrievalResult,
   RetrievalOptions,
   getDocumentMetadata,
@@ -103,7 +104,7 @@ export async function retrieveContext(
       topK: k,
       language,
     };
-    let results: RetrievalResult[];
+    let results: Array<RetrievalResult | HybridSearchResult>;
     if (vectorSearchAvailable) {
       results = await hybridSearchClinic(clinicId, variant, options);
     } else {
@@ -125,7 +126,7 @@ export async function retrieveContext(
         return {
           ...r,
           similarity: r.similarity,
-          rankingScore: r.hybridScore,
+          rankingScore: 'hybridScore' in r ? r.hybridScore : r.rankingScore ?? r.similarity,
         };
       }
       // Keyword-only path: expose the keywordScore directly; set

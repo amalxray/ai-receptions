@@ -87,7 +87,7 @@ describe('getGoogleCalendarBusyIntervals', () => {
       timeMin: '2026-10-14T00:00:00.000Z',
       timeMax: '2026-10-15T00:00:00.000Z',
       singleEvents: true,
-    }), { timeout: 10_000 });
+    }), { timeout: 2_000 });
   });
 
   it('returns only busy event intervals from Google Calendar', async () => {

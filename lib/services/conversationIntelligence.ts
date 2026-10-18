@@ -23,7 +23,7 @@ const INFORMATIONAL_SEMANTIC_INTENTS: ReadonlySet<SemanticIntent> = new Set([
   SEMANTIC_INTENTS.SERVICE_INFORMATION,
   SEMANTIC_INTENTS.PROVIDER_INFORMATION,
 ]);
-const INFORMATIONAL_CONVERSATION_INTENTS: ReadonlySet<ConversationIntent> = new Set([
+const INFORMATIONAL_CONVERSATION_INTENTS: ReadonlySet<ConversationIntent> = new Set<ConversationIntent>([
   'pricing_inquiry',
   'insurance_inquiry',
   'services_inquiry',
@@ -229,15 +229,8 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
   const bookingAlreadyCompleted = Boolean(existingBooking.appointment_id) || existingMetadata.state === 'COMPLETED';
   const nextMetadata: Record<string, unknown> = { ...existingMetadata, ...metadata };
   if (isInformationalTurn || bookingAlreadyCompleted) {
-    const updatedReceptionContext =
-      metadata.reception_context &&
-      typeof metadata.reception_context === 'object' &&
-      !Array.isArray(metadata.reception_context)
-        ? metadata.reception_context as Record<string, unknown>
-        : {};
     nextMetadata.reception_context = {
       ...existingReceptionContext,
-      ...updatedReceptionContext,
       booking_intent: false,
     };
   }
