@@ -1,10 +1,11 @@
 'use client';
 
 import { BlurFade } from '@/components/ui/blur-fade';
-import Link from 'next/link';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Bot, CalendarCheck, ScanFace, BarChart3, ShieldCheck, Zap, type LucideIcon } from 'lucide-react';
 import { useLandingCopy } from '@/components/landing/LandingContent';
+import FeatureModal from '@/components/landing/FeatureModal';
 
 const CARD_ICONS: LucideIcon[] = [Bot, ScanFace, BarChart3, Zap, CalendarCheck, ShieldCheck];
 
@@ -43,6 +44,9 @@ const cardVariants = { hidden: { opacity: 0, y: 22 }, visible: { opacity: 1, y: 
 export default function WhySection() {
   const copy = useLandingCopy();
   const features = copy.features;
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const activeFeature = activeIndex !== null ? features.cards[activeIndex] : null;
+  const ActiveIcon: LucideIcon = CARD_ICONS[(activeIndex ?? 0) % CARD_ICONS.length];
   return (
     <section id="features" className="relative overflow-hidden bg-[#0A0A0A] py-24 text-white">
       {/* Radial gradient ambience — cyan / violet at low opacity */}
@@ -84,21 +88,41 @@ export default function WhySection() {
                 variants={cardVariants}
                 whileHover={{ y: -5, scale: 1.02 }}
                 whileTap={{ scale: 0.99 }}
-                className={`group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition-shadow duration-300 ${CARD_GLOWS[index % CARD_GLOWS.length]} ${CARD_SPANS[index % CARD_SPANS.length]}`}
+                className={`group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 text-start backdrop-blur-xl transition-shadow duration-300 ${CARD_GLOWS[index % CARD_GLOWS.length]} ${CARD_SPANS[index % CARD_SPANS.length]}`}
               >
-                <Link href={feature.href} className="relative z-10 flex h-full flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+                <span className="relative z-10 flex h-full flex-col">
                   <div className={`grid h-14 w-14 place-items-center rounded-2xl ${CARD_ICON_STYLES[index % CARD_ICON_STYLES.length]}`}>
                     <Icon className="h-7 w-7" aria-hidden="true" />
                   </div>
                   <h3 className={`mt-5 font-bold text-white ${isHero ? 'text-2xl md:text-3xl' : 'text-lg'}`}>{feature.title}</h3>
                   <p className={`mt-2 leading-6 text-slate-400 ${isHero ? 'text-base md:text-lg' : 'text-sm'}`}>{feature.desc}</p>
-                  {feature.cta && <span className="mt-4 inline-flex text-sm font-semibold text-cyan-300">{feature.cta} ←</span>}
-                </Link>
+                  {feature.cta && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveIndex(index)}
+                      className="mt-4 inline-flex w-fit text-sm font-semibold text-cyan-300 transition hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                    >
+                      {feature.cta} ←
+                    </button>
+                  )}
+                </span>
                 <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-violet-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               </motion.article>
             );
           })}
         </motion.div>
+
+        {activeFeature && (
+          <FeatureModal
+            open={activeIndex !== null}
+            onClose={() => setActiveIndex(null)}
+            title={activeFeature.title}
+            desc={activeFeature.desc}
+            Icon={ActiveIcon}
+            iconClassName={CARD_ICON_STYLES[(activeIndex ?? 0) % CARD_ICON_STYLES.length]}
+            detailIndex={activeIndex ?? 0}
+          />
+        )}
       </div>
     </section>
   );
