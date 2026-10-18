@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform, useSpring } from 'framer-motion';
 import Link from 'next/link';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 import { Particles } from '@/components/ui/particles';
 import { Meteors } from '@/components/ui/meteors';
 import { TextReveal } from '@/components/ui/text-reveal';
 import { Magnetic } from '@/components/ui/magnetic';
-import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import { landingCopy } from '@/lib/landing/landing-copy';
@@ -69,7 +68,9 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
   const paragraphHighlightIndex = heroContent.paragraph.indexOf('مريض');
   const sectionRef = useRef<HTMLElement>(null);
   const imageRef = useRef<HTMLDivElement>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  // 3D Tilt (from ui-lab CardsShowcase TiltCard) — spring-smoothed rotateX/rotateY.
+  const tiltX = useSpring(0, { stiffness: 180, damping: 18 });
+  const tiltY = useSpring(0, { stiffness: 180, damping: 18 });
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] });
   const blobY = useTransform(scrollYProgress, [0, 1], [48, -48]);
   const [showTyping, setShowTyping] = useState(false);
@@ -78,9 +79,15 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
   const handleImageMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = imageRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-    const y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
-    setMousePos({ x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) });
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    tiltY.set((x - 0.5) * 12);
+    tiltX.set((0.5 - y) * 12);
+  };
+
+  const resetTilt = () => {
+    tiltX.set(0);
+    tiltY.set(0);
   };
 
   useEffect(() => {
@@ -138,18 +145,21 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
       <div
         ref={imageRef}
         onMouseMove={handleImageMouseMove}
-        onMouseLeave={() => setMousePos({ x: 0, y: 0 })}
-        className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 group cursor-crosshair"
+        onMouseLeave={resetTilt}
+        className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 group cursor-crosshair [perspective:900px]"
       >
+        {/* 3D Tilt — copied pattern from components/ui-lab/CardsShowcase.tsx TiltCard */}
         <motion.img
           src={heroContent.image}
           alt="صورة الغلاف لمركز أمل"
           width={1200}
           height={630}
           sizes="(max-width: 1024px) 100vw, 50vw"
-          className="w-full rounded-2xl object-cover shadow-2xl transition-transform duration-100 ease-out"
+          className="w-full rounded-2xl object-cover shadow-2xl"
           style={{
-            transform: `rotateX(${mousePos.y * -8}deg) rotateY(${mousePos.x * 8}deg) scale(1.02)`,
+            rotateX: tiltX,
+            rotateY: tiltY,
+            transformStyle: 'preserve-3d',
           }}
         />
         {/* Borde brillante animado */}
@@ -217,8 +227,11 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
             className="mt-9 flex flex-wrap justify-center gap-4 lg:justify-start"
           >
             <Magnetic>
-              <Link href={heroContent.ctaPrimaryHref}>
-                <ShimmerButton style={{ background: 'linear-gradient(135deg, var(--landing-primary) 0%, var(--landing-secondary) 100%)' }} className="animate-pulse px-8 py-4 text-lg font-bold shadow-[0_0_24px_rgba(139,92,246,0.32)] hover:shadow-[0_0_36px_rgba(34,211,238,0.55)] transition-all duration-300">{heroContent.ctaPrimary}</ShimmerButton>
+              <Link
+                href={heroContent.ctaPrimaryHref}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/50 bg-emerald-400/10 px-8 py-4 text-lg font-extrabold text-emerald-950 shadow-lg transition duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-300/20 hover:shadow-[0_0_14px_rgba(52,211,153,0.65),0_0_42px_rgba(52,211,153,0.3)] active:translate-y-0"
+              >
+                {heroContent.ctaPrimary}
               </Link>
             </Magnetic>
             <a
