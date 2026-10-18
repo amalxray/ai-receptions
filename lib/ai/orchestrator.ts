@@ -839,7 +839,7 @@ export async function handleIncomingMessage(opts: {
     // touches the booking flow. Falls through to an empty context, which the
     // hallucination guard below already handles for greeting/goodbye.
     const ragResult = await ragPromise;
-    if (!ragResult.ok) throw ragResult.error;
+    if (ragResult.ok === false) throw ragResult.error;
     const retrieved = ragResult.value;
     // When the active provider has no embedding support (e.g. local Ollama),
     // keyword-only retrieval scores are naturally lower, so lower the
