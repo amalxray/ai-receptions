@@ -42,19 +42,46 @@ export default function WhySection() {
           </p>
         </BlurFade>
 
-        <motion.div variants={gridVariants} initial="hidden" whileInView="visible" viewport={{ once: true, margin: '-50px' }} className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          variants={gridVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: '-50px' }}
+          className="mt-14 grid gap-5 sm:gap-6 lg:gap-6 lg:grid-cols-4"
+        >
           {features.cards.map((feature: { icon: string; title: string; desc: string; href: string; cta?: string }, index: number) => {
             const style = CARD_STYLES[index % CARD_STYLES.length];
-            return <motion.article key={`${feature.title}-${index}`} variants={cardVariants} whileHover={{ y: -4 }} whileTap={{ scale: 0.99 }} className={`group relative overflow-hidden rounded-3xl border border-[#E2E8F0] bg-white p-6 shadow-sm transition-shadow duration-300 ${style.glow}`}>
-              <Link href={feature.href} className="relative z-10 block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
-                <span aria-hidden="true" className={`pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full border-2 opacity-0 transition duration-700 group-hover:scale-[1.7] group-hover:opacity-100 ${style.ripple}`} />
-                <div className={`grid h-14 w-14 place-items-center rounded-2xl text-3xl ${style.iconClass}`}>{feature.icon}</div>
-                <h3 className="mt-5 text-lg font-bold text-slate-900">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{feature.desc}</p>
-                {feature.cta && <span className="mt-4 inline-flex text-sm font-semibold text-violet-700">{feature.cta} ←</span>}
-              </Link>
-              <div aria-hidden="true" className={`pointer-events-none absolute inset-0 z-0 bg-gradient-to-br ${style.wash} to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100`} />
-            </motion.article>;
+            // Bento Grid layout: AI (grande), DICOM + Finanzas (mediana), resto (pequeña)
+            const isLarge = index === 0; // IA reception — ocupa 2x2
+            const isMedium = index === 1 || index === 2; // DICOM + Finanzas — ocupa 2x1 o 1x2
+            return (
+              <motion.article
+                key={`${feature.title}-${index}`}
+                variants={cardVariants}
+                whileHover={{
+                  y: -6,
+                  scale: 1.02,
+                  boxShadow: index === 0
+                    ? '0 24px 48px -12px rgba(59,130,246,0.45)' // blue/cyan glow for AI card
+                    : index === 1
+                    ? '0 24px 48px -12px rgba(34,211,238,0.45)' // cyan glow for DICOM
+                    : index === 2
+                    ? '0 24px 48px -12px rgba(16,185,129,0.45)' // emerald glow for Finance
+                    : '0 16px 40px -12px rgba(139,92,246,0.35)',
+                }}
+                whileTap={{ scale: 0.99 }}
+                className={`group relative overflow-hidden rounded-3xl border border-[#E2E8F0] bg-white p-6 shadow-sm transition-shadow duration-300 ${style.glow} ${isLarge ? 'lg:col-span-2 lg:row-span-2' : isMedium ? 'lg:col-span-2' : 'lg:col-span-1'}`}
+              >
+                <Link href={feature.href} className="relative z-10 block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                  <span aria-hidden="true" className={`pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full border-2 opacity-0 transition duration-700 group-hover:scale-[1.7] group-hover:opacity-100 ${style.ripple}`} />
+                  <div className={`grid h-14 w-14 place-items-center rounded-2xl text-3xl ${style.iconClass}`}>{feature.icon}</div>
+                  <h3 className={`mt-5 text-lg font-bold text-slate-900 ${isLarge ? 'text-xl' : ''}`}>{feature.title}</h3>
+                  <p className={`mt-2 text-sm leading-6 text-slate-600 ${isLarge ? 'text-base' : ''}`}>{feature.desc}</p>
+                  {feature.cta && <span className="mt-4 inline-flex text-sm font-semibold text-violet-700">{feature.cta} ←</span>}
+                </Link>
+                <div aria-hidden="true" className={`pointer-events-none absolute inset-0 z-0 bg-gradient-to-br ${style.wash} to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100`} />
+              </motion.article>
+            );
           })}
         </motion.div>
       </div>
