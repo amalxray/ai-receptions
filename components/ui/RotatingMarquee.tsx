@@ -19,6 +19,9 @@ export type RotatingMarqueeDisplay = {
   size?: 'small' | 'medium' | 'large';
   speed?: 'slow' | 'normal' | 'fast';
   fit?: 'contain' | 'cover';
+  /** CMS keys saved by GallerySettingsEditor (preferred over speed/fit). */
+  gallerySpeed?: 'slow' | 'normal' | 'fast';
+  galleryFit?: 'contain' | 'cover';
 };
 
 type RotatingMarqueeProps = {
@@ -85,31 +88,30 @@ export default function RotatingMarquee({
   display = {},
 }: RotatingMarqueeProps) {
   const isLight = variant === 'light';
-  const { gallerySizePx = 400, size = 'medium', speed = 'normal', fit = 'contain' } = display;
+  const {
+    gallerySizePx = 400,
+    speed,
+    fit,
+    gallerySpeed,
+    galleryFit,
+  } = display;
+  // Clamp defensively: a bad CMS row must never produce a zero/NaN card size.
+  const cardSizePx = Number.isFinite(gallerySizePx)
+    ? Math.min(1200, Math.max(200, Math.round(gallerySizePx)))
+    : 400;
   const uniqueItems = Array.from(
     new Map(items.map((item) => [item.id || item.title || item.image || item.video || item.subtitle, item])).values(),
   );
   // Duplicate the unique sequence once so the CSS track loops seamlessly after a full pass.
   const list = [...uniqueItems, ...uniqueItems];
 
-  const sizeClasses = {
-    small: 'w-48 sm:w-56',
-    medium: 'w-56 sm:w-64',
-    large: 'w-72 sm:w-80',
-  }[size];
-
-  const heightClasses = {
-    small: 'h-24 sm:h-28',
-    medium: 'h-36 sm:h-40',
-    large: 'h-44 sm:h-48',
-  }[size];
   const speedDuration = {
     slow: '[animation-duration:150s]',
     normal: '[animation-duration:90s]',
     fast: '[animation-duration:45s]',
-  }[speed];
+  }[gallerySpeed ?? speed ?? 'normal'];
 
-  const objectFit = fit === 'cover' ? 'object-cover' : 'object-contain';
+  const objectFit = (galleryFit ?? fit) === 'cover' ? 'object-cover' : 'object-contain';
 
   return (
     <section className={`relative overflow-hidden ${isLight ? 'bg-[#FAFBFC]' : ''} ${className}`}>
@@ -151,10 +153,12 @@ export default function RotatingMarquee({
                 data-marquee-card
                 onPointerMove={handlePointerMove}
                 onPointerLeave={handlePointerLeave}
-                style={{ width: gallerySizePx, height: gallerySizePx }}
-                className={`group relative shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl ${sizeClasses} ${heightClasses} ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
+                style={{ width: cardSizePx, height: cardSizePx }}
+                className={`group relative shrink-0 overflow-hidden rounded-2xl border p-2 shadow-sm transition duration-500 hover:-translate-y-1 hover:scale-[1.025] hover:shadow-xl ${isLight ? 'border-slate-200 bg-white' : 'border-white/15 bg-slate-900'}`}
               >
-                <div className={`group relative overflow-hidden rounded-xl ${!item.image ? `bg-gradient-to-br ${item.color}` : ''}`}>
+                {/* Definite height (h-full of the sized card) is required so object-contain
+                    letterboxes the media instead of collapsing/clipping it. */}
+                <div className={`group relative h-full w-full overflow-hidden rounded-xl ${!item.image && !item.video ? `bg-gradient-to-br ${item.color}` : ''}`}>
                   {item.video ? (
                     <video
                       src={item.video}
@@ -168,7 +172,6 @@ export default function RotatingMarquee({
                     <img
                       src={item.image}
                       alt={item.imageAlt ?? item.title}
-                      loading="lazy"
                       className={`h-full w-full rounded-lg ${objectFit} transition-transform duration-500 group-hover:scale-105`}
                     />
                   ) : null}
