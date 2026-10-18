@@ -5,6 +5,8 @@ import CardsShowcase from '@/components/ui-lab/CardsShowcase';
 import InputsShowcase from '@/components/ui-lab/InputsShowcase';
 import TogglesShowcase from '@/components/ui-lab/TogglesShowcase';
 import TabsShowcase from '@/components/ui-lab/TabsShowcase';
+import AmbientShowcase from '@/components/ui-lab/AmbientShowcase';
+import ImageMotionShowcase from '@/components/ui-lab/ImageMotionShowcase';
 
 export const metadata: Metadata = {
   title: 'مختبر التصميم | AI-Receptions',
@@ -17,6 +19,8 @@ const sections = [
   { id: 'inputs', number: '03', title: 'حقول الإدخال', subtitle: 'INPUTS' },
   { id: 'toggles', number: '04', title: 'المفاتيح', subtitle: 'TOGGLES' },
   { id: 'tabs', number: '05', title: 'التبويبات', subtitle: 'TABS' },
+  { id: 'ambience', number: '06', title: 'أجواء هادئة', subtitle: 'AMBIENCE' },
+  { id: 'images', number: '07', title: 'حركة الصور', subtitle: 'IMAGE MOTION' },
 ];
 
 export default function UiLabPage() {
@@ -37,7 +41,7 @@ export default function UiLabPage() {
             AI-RECEPTIONS <span className="text-slate-500">/ DESIGN LAB</span>
           </a>
           <span className="hidden rounded-full border border-emerald-300/20 bg-emerald-300/5 px-3 py-1.5 text-xs text-emerald-200 sm:inline-flex">
-            معاينة تفاعلية · 5 مجموعات
+            معاينة تفاعلية · 7 مجموعات
           </span>
         </header>
 
@@ -59,7 +63,7 @@ export default function UiLabPage() {
             </a>
           </div>
 
-          <nav aria-label="أقسام المختبر" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <nav aria-label="أقسام المختبر" className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
             {sections.map((section) => (
               <a key={section.id} href={`#${section.id}`} className="group rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3 transition hover:border-cyan-300/25 hover:bg-white/[0.05]">
                 <span className="block font-mono text-[10px] text-slate-600">{section.number}</span>
@@ -85,6 +89,12 @@ export default function UiLabPage() {
           </ShowcaseSection>
           <ShowcaseSection id="tabs" number="05" title="التبويبات" subtitle="تنقل واضح بمؤشر متحرك بين الخيارات." tags={['LAYOUT ID', 'TABS']}>
             <TabsShowcase />
+          </ShowcaseSection>
+          <ShowcaseSection id="ambience" number="06" title="أجواء هادئة" subtitle="ألوان مريحة وحركة بطيئة تمنح الواجهة نفسًا أهدأ." tags={['AURORA', 'AMBIENT', 'CALM']}>
+            <AmbientShowcase />
+          </ShowcaseSection>
+          <ShowcaseSection id="images" number="07" title="حركة الصور" subtitle="طرق تفاعلية متنوعة لعرض الصور ومحتوى العيادة." tags={['MASONRY', 'LIGHTBOX', 'DRAG']}>
+            <ImageMotionShowcase />
           </ShowcaseSection>
         </div>
 
