@@ -1,9 +1,17 @@
-import { hybridSearchClinic, RetrievalResult, RetrievalOptions, getDocumentMetadata } from '@/lib/services/knowledge/retrieval';
+import {
+  hybridSearchClinic,
+  keywordSearchClinic,
+  keywordSearchKnowledgeBase,
+  HybridSearchResult,
+  RetrievalResult,
+  RetrievalOptions,
+  getDocumentMetadata,
+} from '@/lib/services/knowledge/retrieval';
 import { rankAndFilterResults } from '@/lib/services/knowledge/ranking';
 import { assembleContext, AssembledContext, ContextChunk } from '@/lib/services/knowledge/contextAssembly';
 import { detectLanguage, generateQueryVariants, getRetrievalLanguage } from '@/lib/services/knowledge/multilingual';
 import { logEvent } from '@/lib/server/logging';
-import { getProvider } from '@/lib/ai/provider';
+import { getProvider, getProviderHealth } from '@/lib/ai/provider';
 
 /**
  * Cache entry for retrieval results.
@@ -47,14 +55,15 @@ export function clearRetrievalCache(): void {
  */
 /**
  * Returns the effective confidence threshold for context assembly.
- * When the active provider has no embedding support (e.g. local Ollama),
+ * When the active provider has no embedding support (e.g. Groq),
  * keyword-only retrieval scores are naturally lower, so a lower bar
  * ensures RAG content still reaches the LLM.
  */
 function getEffectiveConfidenceThreshold(configured: number): number {
   try {
     const provider = getProvider();
-    if (provider && !provider.embed) {
+    const providerHealth = getProviderHealth();
+    if (!provider?.embed || !providerHealth.configured) {
       return Math.min(configured, 0.45);
     }
   } catch {
@@ -83,14 +92,28 @@ export async function retrieveContext(
     return assembleContext(cached.results, maxTokens, effectiveThreshold);
   }
 
-  // 3. Perform hybrid search with all query variants
+  // 3. Use vector + keyword retrieval when embeddings are supported. Providers
+  //    such as Groq go directly to clinic-scoped keyword search and never call
+  //    the embedding endpoint that they do not provide.
   const allResults: RetrievalResult[] = [];
+  const provider = getProvider();
+  const providerHealth = getProviderHealth();
+  const vectorSearchAvailable = Boolean(provider?.embed && providerHealth.configured);
   for (const variant of queryVariants) {
     const options: RetrievalOptions = {
       topK: k,
       language,
     };
-    const results = await hybridSearchClinic(clinicId, variant, options);
+    let results: Array<RetrievalResult | HybridSearchResult>;
+    if (vectorSearchAvailable) {
+      results = await hybridSearchClinic(clinicId, variant, options);
+    } else {
+      const [knowledgeBaseResults, chunkResults] = await Promise.all([
+        keywordSearchKnowledgeBase(clinicId, variant, options),
+        keywordSearchClinic(clinicId, variant, options),
+      ]);
+      results = [...knowledgeBaseResults, ...chunkResults];
+    }
     // Map results for compatibility with ranking/assembly.
     // NOTE: Do NOT set `rankingScore` to the hybrid score when the
     // result is keyword-only (similarity=0). The hybrid score is
@@ -103,7 +126,7 @@ export async function retrieveContext(
         return {
           ...r,
           similarity: r.similarity,
-          rankingScore: r.hybridScore,
+          rankingScore: 'hybridScore' in r ? r.hybridScore : r.rankingScore ?? r.similarity,
         };
       }
       // Keyword-only path: expose the keywordScore directly; set

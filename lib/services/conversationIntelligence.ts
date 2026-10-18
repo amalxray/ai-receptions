@@ -18,6 +18,19 @@ export const ANALYTICS_EVENTS = {
   conversationStateChanged: 'conversation_state_changed',
 } as const;
 
+const INFORMATIONAL_SEMANTIC_INTENTS: ReadonlySet<SemanticIntent> = new Set([
+  SEMANTIC_INTENTS.CLINIC_INFORMATION,
+  SEMANTIC_INTENTS.SERVICE_INFORMATION,
+  SEMANTIC_INTENTS.PROVIDER_INFORMATION,
+]);
+const INFORMATIONAL_CONVERSATION_INTENTS: ReadonlySet<ConversationIntent> = new Set<ConversationIntent>([
+  'pricing_inquiry',
+  'insurance_inquiry',
+  'services_inquiry',
+  'clinic_hours',
+  'location',
+]);
+
 export async function recordAnalyticsEvent(client: IntelligenceClient, event: {
   clinicId: string;
   conversationId?: string | null;
@@ -198,6 +211,29 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
     !Array.isArray(existingConversation.metadata)
       ? existingConversation.metadata as Record<string, unknown>
       : {};
+  const existingReceptionContext =
+    existingMetadata.reception_context &&
+    typeof existingMetadata.reception_context === 'object' &&
+    !Array.isArray(existingMetadata.reception_context)
+      ? existingMetadata.reception_context as Record<string, unknown>
+      : {};
+  const existingBooking =
+    existingMetadata.booking &&
+    typeof existingMetadata.booking === 'object' &&
+    !Array.isArray(existingMetadata.booking)
+      ? existingMetadata.booking as Record<string, unknown>
+      : {};
+  const isInformationalTurn =
+    INFORMATIONAL_SEMANTIC_INTENTS.has(semantic.intent) ||
+    INFORMATIONAL_CONVERSATION_INTENTS.has(intelligence.intent);
+  const bookingAlreadyCompleted = Boolean(existingBooking.appointment_id) || existingMetadata.state === 'COMPLETED';
+  const nextMetadata: Record<string, unknown> = { ...existingMetadata, ...metadata };
+  if (isInformationalTurn || bookingAlreadyCompleted) {
+    nextMetadata.reception_context = {
+      ...existingReceptionContext,
+      booking_intent: false,
+    };
+  }
 
   const { error: conversationError } = await client.from('conversations')
     .update({
@@ -206,7 +242,7 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
       intent_confidence: intelligence.confidence,
       urgency: intelligence.urgency,
       appointment_data: intelligence.appointment,
-      metadata: { ...existingMetadata, ...metadata },
+      metadata: nextMetadata,
     })
     .eq('id', params.conversationId)
     .eq('clinic_id', params.clinicId);

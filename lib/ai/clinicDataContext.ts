@@ -362,6 +362,14 @@ export async function persistReceptionistSlot(
     if (fields.booking_summary_presented !== undefined) meta.booking_summary_presented = fields.booking_summary_presented;
     if (fields.imaging_summary_presented !== undefined) meta.imaging_summary_presented = fields.imaging_summary_presented;
     if (fields.state !== undefined) meta.state = fields.state;
+    if (fields.appointment_id) {
+      const receptionContext = meta.reception_context &&
+        typeof meta.reception_context === 'object' &&
+        !Array.isArray(meta.reception_context)
+        ? meta.reception_context as Record<string, unknown>
+        : {};
+      meta.reception_context = { ...receptionContext, booking_intent: false };
+    }
     await supabaseAdmin
       .from('conversations')
       .update({ metadata: { ...meta, booking } })

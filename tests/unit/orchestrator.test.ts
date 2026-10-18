@@ -432,11 +432,11 @@ describe('AI Orchestrator — changed booking preferences refresh real availabil
   });
 });
 
-describe('AI Orchestrator — persisted clinic booking intent resolves availability', () => {
+describe('AI Orchestrator — informational turns ignore persisted booking intent', () => {
   it.each([
-    ['clinic', true],
-    ['imaging_center', false],
-  ])('uses the persisted booking intent only for %s activity', async (activityType, shouldResolveAvailability) => {
+    ['clinic'],
+    ['imaging_center'],
+  ])('does not resolve availability for a service-info turn in %s activity', async (activityType) => {
     const preferredTimeRange = { from: '15:00', to: '15:59' };
     mockClinicDataContext.loadClinicProfile.mockResolvedValue({
       id: 'clinic-1',
@@ -500,19 +500,7 @@ describe('AI Orchestrator — persisted clinic booking intent resolves availabil
       text: 'فحص أسنان',
     });
 
-    if (shouldResolveAvailability) {
-      expect(mockAvailabilityTool.findEarliestAvailableSlot).toHaveBeenCalledWith(
-        expect.objectContaining({
-          clinicId: 'clinic-1',
-          providerId: 'provider-1',
-          serviceId: 'service-1',
-          preferredDate: '2026-10-13',
-          preferredTimeRange,
-        }),
-      );
-    } else {
-      expect(mockAvailabilityTool.findEarliestAvailableSlot).not.toHaveBeenCalled();
-    }
+    expect(mockAvailabilityTool.findEarliestAvailableSlot).not.toHaveBeenCalled();
   });
 });
 

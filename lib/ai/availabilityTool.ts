@@ -12,7 +12,7 @@ import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
  */
 export const MIN_REALISTIC_DURATION_MINUTES = 10;
 const GOOGLE_CALENDAR_UNAVAILABLE_MESSAGE = 'تعذّر التحقق من التقويم الآن، حاول لاحقاً';
-const GOOGLE_CALENDAR_TIMEOUT_MS = 10_000;
+const GOOGLE_CALENDAR_TIMEOUT_MS = 2_000;
 
 class GoogleCalendarAvailabilityError extends Error {
   constructor(readonly failureSource: 'google_calendar' | 'local_scheduling' = 'google_calendar') {
@@ -36,17 +36,34 @@ function calendarErrorFields(error: unknown) {
 async function getGoogleCalendarBusyIntervalsOrEmpty(
   date: string,
   timeZone: string | undefined,
-  context: { clinicId: string; serviceId: string; providerId?: string },
+  context: { clinicId: string; serviceId: string; providerId?: string; googleCalendarDeadlineAt?: number },
 ): Promise<Array<{ start: string; end: string }>> {
   const startedAt = Date.now();
+  const remainingBudgetMs = context.googleCalendarDeadlineAt
+    ? context.googleCalendarDeadlineAt - startedAt
+    : GOOGLE_CALENDAR_TIMEOUT_MS;
+  if (remainingBudgetMs <= 0) {
+    logEvent('availability_google_calendar_fallback', {
+      clinic_id: context.clinicId,
+      provider_id: context.providerId ?? null,
+      service_id: context.serviceId,
+      requested_date: date,
+      elapsed_ms: 0,
+      timeout_ms: GOOGLE_CALENDAR_TIMEOUT_MS,
+      reason: 'request_budget_exhausted',
+      fallback_source: 'supabase_schedule',
+    }, 'warn');
+    return [];
+  }
+  const timeoutMs = Math.min(GOOGLE_CALENDAR_TIMEOUT_MS, remainingBudgetMs);
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const intervals = await Promise.race([
       getGoogleCalendarBusyIntervals(context.clinicId, date, timeZone),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(
-          () => reject(Object.assign(new Error(`Google Calendar request timed out after ${GOOGLE_CALENDAR_TIMEOUT_MS}ms`), { code: 'ETIMEDOUT' })),
-          GOOGLE_CALENDAR_TIMEOUT_MS,
+          () => reject(Object.assign(new Error(`Google Calendar request timed out after ${timeoutMs}ms`), { code: 'ETIMEDOUT' })),
+          timeoutMs,
         );
       }),
     ]);
@@ -61,6 +78,21 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
     return intervals;
   } catch (err) {
     const fields = calendarErrorFields(err);
+    const timedOut = fields.error_code === 'ETIMEDOUT' || /timed? out|timeout/i.test(fields.error);
+    if (timedOut) {
+      logEvent('availability_google_calendar_fallback', {
+        failure_source: 'google_calendar',
+        clinic_id: context.clinicId,
+        provider_id: context.providerId ?? null,
+        service_id: context.serviceId,
+        requested_date: date,
+        elapsed_ms: Date.now() - startedAt,
+        timeout_ms: timeoutMs,
+        timed_out: true,
+        fallback_source: 'supabase_schedule',
+      }, 'warn');
+      return [];
+    }
     logEvent('availability_google_calendar_error', {
       failure_source: 'google_calendar',
       clinic_id: context.clinicId,
@@ -68,8 +100,8 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
       service_id: context.serviceId,
       requested_date: date,
       elapsed_ms: Date.now() - startedAt,
-      timeout_ms: GOOGLE_CALENDAR_TIMEOUT_MS,
-      timed_out: fields.error_code === 'ETIMEDOUT' || fields.error.toLowerCase().includes('timed out'),
+      timeout_ms: timeoutMs,
+      timed_out: false,
       ...fields,
     }, 'error');
     throw new GoogleCalendarAvailabilityError();
@@ -204,6 +236,7 @@ async function describeUnavailableRequestedDay(params: {
   lookaheadDays: number;
   timeZone?: string;
   checkGoogleCalendar?: boolean;
+  googleCalendarDeadlineAt?: number;
   durationMinutes?: number;
 }): Promise<{ dayStatus: 'closed' | 'holiday' | 'fully_booked'; nextAvailable?: { date: string; time: string; slot: string } }> {
   let dayStatus: 'closed' | 'holiday' | 'fully_booked' = 'fully_booked';
@@ -335,6 +368,9 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     limitPerDay = 20,
     checkGoogleCalendar = false,
   } = params;
+  const googleCalendarDeadlineAt = checkGoogleCalendar
+    ? Date.now() + GOOGLE_CALENDAR_TIMEOUT_MS
+    : undefined;
 
   const service = await getActiveServiceById(clinicId, serviceId).catch(() => null);
   if (!service) {
@@ -364,7 +400,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     let calendarBusy: Array<{ start: string; end: string }> = [];
     if (checkGoogleCalendar) {
       try {
-        calendarBusy = await getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, providerId, serviceId });
+        calendarBusy = await getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, providerId, serviceId, googleCalendarDeadlineAt });
       } catch (err) {
         if (err instanceof GoogleCalendarAvailabilityError) {
           return { found: false, reason: 'error', message: err.message, failureSource: err.failureSource };
@@ -448,6 +484,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         lookaheadDays,
         timeZone,
         checkGoogleCalendar,
+        googleCalendarDeadlineAt,
         durationMinutes: service.duration_minutes,
       });
     } catch (err) {
@@ -535,6 +572,9 @@ export async function findClinicLevelSlots(params: {
   const { clinicId, serviceId } = params;
   const now = params.now ?? new Date();
   const timeZone = params.timeZone ?? 'Asia/Jerusalem';
+  const googleCalendarDeadlineAt = params.checkGoogleCalendar
+    ? Date.now() + GOOGLE_CALENDAR_TIMEOUT_MS
+    : undefined;
   try {
     const service = await getActiveServiceById(clinicId, serviceId).catch(() => null);
     if (!service) return { found: false, reason: 'service_unavailable', message: 'service not available for this clinic' };
@@ -591,7 +631,7 @@ export async function findClinicLevelSlots(params: {
       const [candidates, calendarBusy] = await Promise.all([
         Promise.resolve(buildDaySlots(day)),
         params.checkGoogleCalendar
-          ? getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, serviceId })
+          ? getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, serviceId, googleCalendarDeadlineAt })
           : Promise.resolve([]),
       ]);
       const daySlots = candidates.filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, calendarBusy));
@@ -616,7 +656,7 @@ export async function findClinicLevelSlots(params: {
       const [requestedCandidates, requestedBusy] = await Promise.all([
         Promise.resolve(buildDaySlots(params.preferredDate)),
         params.checkGoogleCalendar
-          ? getGoogleCalendarBusyIntervalsOrEmpty(params.preferredDate, timeZone, { clinicId, serviceId })
+          ? getGoogleCalendarBusyIntervalsOrEmpty(params.preferredDate, timeZone, { clinicId, serviceId, googleCalendarDeadlineAt })
           : Promise.resolve([]),
       ]);
       const requestedSlots = requestedCandidates.filter((slot) =>
@@ -629,7 +669,7 @@ export async function findClinicLevelSlots(params: {
         const [candidates, busy] = await Promise.all([
           Promise.resolve(buildDaySlots(day)),
           params.checkGoogleCalendar
-            ? getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, serviceId })
+            ? getGoogleCalendarBusyIntervalsOrEmpty(day, timeZone, { clinicId, serviceId, googleCalendarDeadlineAt })
             : Promise.resolve([]),
         ]);
         const slots = candidates.filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, busy));

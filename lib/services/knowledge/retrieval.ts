@@ -257,6 +257,68 @@ export async function keywordSearchClinic(
 
 }
 
+/** Keyword-only fallback against the clinic's source knowledge table. */
+export async function keywordSearchKnowledgeBase(
+  clinicId: string,
+  query: string,
+  options: RetrievalOptions = {},
+): Promise<RetrievalResult[]> {
+  const topK = options.topK ?? MATCH_COUNT;
+  const terms = Array.from(new Set(
+    query
+      .toLowerCase()
+      .replace(/[\u064B-\u065F\u0670]/g, '')
+      .replace(/[^\u0600-\u06FFa-z0-9]+/gi, ' ')
+      .split(/\s+/)
+      .filter((term) => term.length >= 2),
+  )).slice(0, 8);
+
+  if (terms.length === 0) return [];
+
+  const ilikeConditions = terms.flatMap((term) => [
+    `content.ilike.%${term}%`,
+    `title.ilike.%${term}%`,
+  ]).join(',');
+  const { data, error } = await supabaseAdmin
+    .from('knowledge_base')
+    .select('id, title, content, category, created_at, updated_at')
+    .eq('clinic_id', clinicId)
+    .is('deleted_at', null)
+    .or(ilikeConditions)
+    .order('updated_at', { ascending: false })
+    .limit(topK);
+
+  if (error) {
+    logEvent('retrieval_error', {
+      clinic_id: clinicId,
+      error: `knowledge_base keyword search failed: ${error.message}`,
+    }, 'error');
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const searchableText = `${row.title ?? ''} ${row.content ?? ''}`.toLowerCase();
+    const matchedTerms = terms.filter((term) => searchableText.includes(term));
+    const keywordScore = matchedTerms.length / terms.length;
+    return {
+      id: row.id,
+      document_id: null,
+      chunk_index: null,
+      content: row.content,
+      similarity: 0,
+      rankingScore: keywordScore,
+      keywordScore,
+      type: 'unstructured' as const,
+      subtype: row.category,
+      title: row.title,
+      metadata: null,
+      structured_data: null,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }).filter((result) => result.keywordScore > 0);
+}
+
 /**
  * Performs a hybrid search combining vector similarity and keyword matching.
  *
