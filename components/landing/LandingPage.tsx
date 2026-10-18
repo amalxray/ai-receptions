@@ -17,7 +17,7 @@ import LeadForm from './LeadForm';
 import Navbar from './Navbar';
 import UrgencyBar from './UrgencyBar';
 import Hero from './Hero';
-import RotatingMarquee from '@/components/ui/RotatingMarquee';
+import GalleryGrid from './GalleryGrid';
 
 type LandingPageProps = {
   galleryImages?: Array<{ id: string; title: string; image_url: string; category: string | null }>;
@@ -87,26 +87,7 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
     faq: <FAQSection key="faq" />,
     pricing: <PricingSection key="pricing" />,
     testimonials: <TestimonialsSection key="testimonials" />,
-    gallery: (
-      <>
-        <RotatingMarquee
-          key="gallery-images"
-          variant="light"
-          title="معرض الصور"
-          display={(copy as any).gallery ?? {}}
-          items={galleryImages.length ? galleryImages.map((image) => ({ id: image.id, title: image.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: image.category ?? '', image: image.image_url, imageAlt: image.title })) : undefined}
-        />
-        {galleryVideos.length ? (
-          <RotatingMarquee
-            key="gallery-videos"
-            variant="light"
-            title="معرض الفيديو"
-            display={(copy as any).gallery ?? {}}
-            items={galleryVideos.map((video) => ({ id: video.id, title: video.title, subtitle: '', Badge: '', color: 'from-[#8B5CF6] to-[#0EA5E9]', accent: 'from-violet-500 to-cyan-400', chip: video.category ?? '', video: video.video_url, imageAlt: video.title }))}
-          />
-        ) : null}
-      </>
-    ),
+    gallery: <GalleryGrid images={galleryImages} videos={galleryVideos} />,
     cta: <FinalCTASection key="cta" />,
     footer: <LandingFooter key="footer" />,
   };
