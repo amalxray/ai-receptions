@@ -1,9 +1,10 @@
-import { registerProvider } from '../provider';
+import { listProviders, registerProvider } from '../provider';
 import { OpenAIProvider } from './openai';
 import { OllamaProvider } from './ollama';
 import { AnthropicProvider, isAnthropicConfigured } from './anthropic';
 import { GeminiProvider, createGeminiProvider } from './gemini';
 import { GroqProvider, isGroqConfigured } from './groq';
+import { logEvent } from '@/lib/server/logging';
 
 let registered = false;
 
@@ -26,6 +27,29 @@ export function ensureAIProviders(): void {
   // fails over to another Gemini credential (set GEMINI_API_KEY_FALLBACK).
   if (process.env.GEMINI_API_KEY_FALLBACK) {
     registerProvider(createGeminiProvider('gemini-fallback', 'GEMINI_API_KEY_FALLBACK'));
+  }
+
+  const configuredId = process.env.AI_PROVIDER?.trim() || 'openai';
+  const configuredProvider = listProviders().find((provider) => provider.id === configuredId);
+  const keyNameByProvider: Record<string, string> = {
+    openai: 'OPENAI_API_KEY',
+    groq: 'GROQ_API_KEY',
+    gemini: 'GEMINI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    ollama: 'OLLAMA_MODEL',
+  };
+  const keyName = keyNameByProvider[configuredId];
+  if (!configuredProvider || (keyName && !process.env[keyName])) {
+    logEvent('ai_provider_configuration_warning', {
+      configured_provider: configuredId,
+      reason: !configuredProvider ? 'provider_not_registered_or_missing_key' : 'provider_key_missing',
+      required_env: keyName,
+    }, 'warn');
+  } else {
+    logEvent('ai_provider_configured', {
+      provider: configuredId,
+      streaming: Boolean(configuredProvider.stream),
+    });
   }
   registered = true;
 }

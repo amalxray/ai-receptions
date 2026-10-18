@@ -1,5 +1,6 @@
 import { AIProvider, GenerateParams, GenerateResult, EmbedResult } from '../provider';
 import { logEvent } from '@/lib/server/logging';
+import { openAICompatibleTextStream } from './openaiCompatibleStream';
 
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_EMBED_URL = 'https://api.openai.com/v1/embeddings';
@@ -155,6 +156,35 @@ export const OpenAIProvider: AIProvider = {
       model: parsed.model,
       raw: json,
     };
+  },
+
+  async stream({ prompt, maxTokens = 512, temperature = 0.2 }): Promise<ReadableStream<Uint8Array>> {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error('OpenAI API key is not configured. Set OPENAI_API_KEY in the environment.');
+
+    const model = process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
+    const res = await fetchWithTimeout(OPENAI_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxTokens,
+        temperature,
+        stream: true,
+      }),
+    }, REQUEST_TIMEOUT_MS);
+
+    if (!res.ok) {
+      const err = await buildProviderError(res, 'stream');
+      logEvent('openai_stream_error', { status: res.status, model, error: err.message }, 'error');
+      throw err;
+    }
+
+    return openAICompatibleTextStream(res);
   },
 
   async embed(input: string): Promise<EmbedResult> {

@@ -46,6 +46,7 @@ export async function receivePatientMessage(params: {
   sessionId?: string | null;
   userId?: string | null;
   text: string;
+  onToken?: (chunk: string) => void;
 }) {
   // The orchestrator handles persisting the user message and generating the AI response.
   const messages = await handleIncomingMessage({
@@ -54,6 +55,7 @@ export async function receivePatientMessage(params: {
     sessionId: params.sessionId || null,
     userId: params.userId || null,
     text: params.text,
+    onToken: params.onToken,
   });
   
   return messages || { userMessage: null, assistantMessage: null };

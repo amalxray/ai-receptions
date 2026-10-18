@@ -68,7 +68,7 @@ const operatingData = {
   providerServiceIds: [{ service_id: 'service-1', provider_id: 'provider-1' }],
 };
 
-async function postMessage() {
+async function postMessage(stream = false) {
   const { POST } = await import('@/app/api/public/ai/messages/route');
   return POST(new Request('https://example.test/api/public/ai/messages', {
     method: 'POST',
@@ -77,6 +77,7 @@ async function postMessage() {
       clinic_slug: clinic.slug,
       conversation_id: 'conversation-1',
       text: 'أريد حجز موعد',
+      stream,
     }),
   }));
 }
@@ -137,6 +138,30 @@ describe('public AI messages booking responses and history restoration', () => {
         patient_name: 'سارة أحمد',
       },
       actions: ['confirm', 'edit'],
+    });
+  });
+
+  it('POST streams generated text and sends booking metadata as the final event', async () => {
+    mocks.receivePatientMessage.mockImplementationOnce(async ({ onToken }) => {
+      onToken?.('الرد ');
+      onToken?.('يتدفق');
+      return {
+        userMessage: { id: 'user-1', role: 'patient', content: 'أريد حجز موعد' },
+        assistantMessage: { id: 'assistant-1', role: 'assistant', content: 'الرد يتدفق' },
+      };
+    });
+
+    const response = await postMessage(true);
+    const lines = (await response.text()).trim().split('\n').map((line) => JSON.parse(line));
+
+    expect(response.headers.get('content-type')).toContain('application/x-ndjson');
+    expect(lines.filter((event) => event.type === 'token').map((event) => event.text).join('')).toBe('الرد يتدفق');
+    expect(lines[lines.length - 1]).toMatchObject({
+      type: 'done',
+      payload: {
+        assistant_message: { content: expect.stringContaining('تأكيد الحجز') },
+        interactive: { booking_confirmation: { type: 'booking_confirmation' } },
+      },
     });
   });
 

@@ -41,7 +41,7 @@ import { saveConversationContext, type ConversationContext } from '@/lib/ai/conv
 import { buildDiscoveryGuidance } from '@/lib/ai/discoveryGuidance';
 import { unavailableReply, expressesTreatmentDesire } from '@/lib/ai/replyText';
 import { persistHandoffReply } from '@/lib/ai/handoffMessages';
-import { generateWithFailover } from '@/lib/ai/resilience';
+import { generateWithFailover, openStreamWithFailover } from '@/lib/ai/resilience';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
 
 type HistoryMessage = Pick<Message, 'role' | 'content'>;
@@ -69,6 +69,62 @@ const MAX_CONTEXT_TOKENS = 2000;
  * Maximum conversation history tokens to include in the prompt.
  */
 const MAX_HISTORY_TOKENS = 1000;
+
+async function generateChatReply(
+  prompt: string,
+  preferredProviderId?: string | null,
+  onToken?: (chunk: string) => void,
+) {
+  if (!onToken) return generateWithFailover({ prompt, preferredProviderId });
+
+  let streamedText = '';
+  try {
+    const { stream, providerId } = await openStreamWithFailover({ prompt, preferredProviderId, maxTokens: 512 });
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      if (!chunk) continue;
+      streamedText += chunk;
+      onToken(chunk);
+    }
+    const finalChunk = decoder.decode();
+    if (finalChunk) {
+      streamedText += finalChunk;
+      onToken(finalChunk);
+    }
+    if (streamedText) {
+      const model = providerId === 'groq'
+        ? process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b'
+        : providerId === 'openai'
+          ? process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
+          : undefined;
+      return {
+        text: streamedText,
+        providerId,
+        model,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        raw: { streaming: true },
+      };
+    }
+  } catch (err) {
+    if (streamedText) throw err;
+    logEvent('ai_stream_fallback_to_generate', {
+      preferred_provider: preferredProviderId ?? process.env.AI_PROVIDER ?? 'openai',
+      error: err instanceof Error ? err.message : String(err),
+    }, 'warn');
+  }
+
+  // Providers without a streaming endpoint, or an empty stream, retain the
+  // existing resilient generation path and reveal its completed text at once.
+  const result = await generateWithFailover({ prompt, preferredProviderId });
+  if (result.text) onToken(result.text);
+  return result;
+}
 
 /**
  * Maps the authoritative clinic profile to the prompt's clinicInfo shape.
@@ -240,8 +296,9 @@ export async function handleIncomingMessage(opts: {
   userId?: string | null;
   text: string;
   modelPreference?: string | null;
+  onToken?: (chunk: string) => void;
 }) {
-  const { clinicId, conversationId, sessionId, userId, text, modelPreference } = opts;
+  const { clinicId, conversationId, sessionId, userId, text, modelPreference, onToken } = opts;
 
   logEvent('ai_request_started', { clinic_id: clinicId, conversation_id: conversationId, session_id: sessionId, user_id: userId, provider: modelPreference || undefined });
 
@@ -887,7 +944,7 @@ export async function handleIncomingMessage(opts: {
 
       const provider = getProvider(modelPreference || undefined);
       const start = Date.now();
-      const result = await generateWithFailover({ prompt, preferredProviderId: modelPreference || undefined });
+      const result = await generateChatReply(prompt, modelPreference || undefined, onToken);
       const took = Date.now() - start;
       const usedProviderId = result.providerId ?? provider?.id;
 
@@ -972,7 +1029,7 @@ export async function handleIncomingMessage(opts: {
     const provider = getProvider(modelPreference || undefined);
 
     const start = Date.now();
-    const result = await generateWithFailover({ prompt, preferredProviderId: modelPreference || undefined });
+    const result = await generateChatReply(prompt, modelPreference || undefined, onToken);
     const took = Date.now() - start;
     const usedProviderId = result.providerId ?? provider?.id;
 
