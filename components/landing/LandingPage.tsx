@@ -87,7 +87,13 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
     faq: <FAQSection key="faq" />,
     pricing: <PricingSection key="pricing" />,
     testimonials: <TestimonialsSection key="testimonials" />,
-    gallery: <GalleryGrid images={galleryImages} videos={galleryVideos} />,
+    gallery: (
+      <GalleryGrid
+        images={galleryImages}
+        videos={galleryVideos}
+        display={(copy as any).gallery ?? {}}
+      />
+    ),
     cta: <FinalCTASection key="cta" />,
     footer: <LandingFooter key="footer" />,
   };

@@ -13,12 +13,23 @@ type GalleryItem = {
   media_type?: 'image' | 'video' | null;
 };
 
+type GalleryGridDisplay = {
+  gallerySizePx?: number;
+  gallerySpeed?: 'slow' | 'normal' | 'fast';
+  galleryFit?: 'cover' | 'contain';
+};
+
 type GalleryGridProps = {
   images: GalleryItem[];
   videos: GalleryItem[];
+  display?: GalleryGridDisplay;
 };
 
-export default function GalleryGrid({ images = [], videos = [] }: GalleryGridProps) {
+export default function GalleryGrid({
+  images = [],
+  videos = [],
+  display = {},
+}: GalleryGridProps) {
   const items: GalleryItem[] = [
     ...images.map((item) => ({ ...item, media_type: 'image' as const })),
     ...videos.map((item) => ({ ...item, media_type: 'video' as const })),
@@ -26,15 +37,26 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
 
   if (!items.length) return null;
 
+  const { gallerySizePx = 280, gallerySpeed, galleryFit } = display;
+  const cardSizePx = Number.isFinite(gallerySizePx)
+    ? Math.min(1200, Math.max(200, Math.round(gallerySizePx)))
+    : 280;
+  const speedDuration = {
+    slow: 1,
+    normal: 0.5,
+    fast: 0.2,
+  }[gallerySpeed ?? 'normal'];
+  const objectFit = galleryFit === 'cover' ? 'cover' : 'contain';
+
   const [open, setOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const current = items[currentIndex];
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollPrev = () =>
-    scrollRef.current?.scrollBy({ left: -300, behavior: 'smooth' });
+    scrollRef.current?.scrollBy({ left: -cardSizePx, behavior: 'smooth' });
   const scrollNext = () =>
-    scrollRef.current?.scrollBy({ left: 300, behavior: 'smooth' });
+    scrollRef.current?.scrollBy({ left: cardSizePx, behavior: 'smooth' });
 
   const openLightbox = (index: number) => {
     setCurrentIndex(index);
@@ -71,8 +93,10 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
                 <motion.div
                   key={item.id}
                   whileHover={{ scale: 1.02, y: -5 }}
+                  transition={{ duration: speedDuration }}
                   onClick={() => openLightbox(index)}
-                  className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-900 border border-white/10 shrink-0 min-w-[280px] w-[280px] md:min-w-[350px] md:w-[350px]"
+                  className="relative group cursor-pointer overflow-hidden rounded-xl bg-slate-900 border border-white/10 shrink-0"
+                  style={{ width: cardSizePx, minWidth: cardSizePx }}
                 >
                   <div className="w-full h-full aspect-[4/3]">
                   {item.media_type === 'video' && item.video_url ? (
@@ -82,7 +106,8 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
                         muted
                         playsInline
                         poster={item.image_url ?? undefined}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full"
+                        style={{ objectFit }}
                       />
                       <button
                         type="button"
@@ -104,7 +129,8 @@ export default function GalleryGrid({ images = [], videos = [] }: GalleryGridPro
                       alt={item.title}
                       loading="lazy"
                       decoding="async"
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="w-full h-full transition-transform duration-500 group-hover:scale-105"
+                      style={{ objectFit }}
                     />
                   ) : null}
                   <div
