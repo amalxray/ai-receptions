@@ -36,6 +36,12 @@ describe('Prompt Manager', () => {
     expect(prompt).toContain('Question: Great, what about Aetna?');
   });
 
+  it('includes the mandatory CBCT range price in full and fallback system prompts', () => {
+    const expected = 'السعر يبدأ من 70 شيكل ويصل إلى 300 شيكل حسب ما يطلبه الطبيب (سن، جزء، فك، فكين).';
+    expect(buildPrompt(mockSettings, 'كم سعر CBCT؟', [], mockContext)).toContain(expected);
+    expect(buildPrompt(mockSettings, 'كم سعر CBCT؟', [], [])).toContain(expected);
+  });
+
   it('enforces Arabic-only purity in the RAG prompt (no language mixing / auto-translation)', () => {
     const question = 'أريد حجز تصوير بانوراما';
     const prompt = buildPrompt(mockSettings, question, mockHistory, mockContext);
