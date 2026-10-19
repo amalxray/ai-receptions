@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { createCatalogService, listCatalogServices } from '@/lib/services/clinicServiceCatalog';
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
     const data = await createCatalogService(clinicId, parsed.data);
 
     logEvent('clinic_service_created', { clinic_id: clinicId, service_id: data.id });
+    revalidatePath('/[slug]', 'page');
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
