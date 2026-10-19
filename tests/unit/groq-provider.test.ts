@@ -76,7 +76,7 @@ describe('Groq Provider', () => {
       expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('allam-2-7b');
     });
 
-    it('throws a transient-shaped error on 429 so resilience retries/fails over', async () => {
+    it('throws a transient-shaped error on 429 so resilience immediately fails over', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ error: { message: 'rate limit' } }), { status: 429 }),
       ));

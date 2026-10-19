@@ -123,6 +123,13 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // Public chat, availability, and ask routes use their own clinic-scoped
+  // authorization/data checks. They do not rely on a Supabase browser session,
+  // so avoid a network round trip to Auth on every public AI request.
+  if (pathname.startsWith('/api/public/')) {
+    return response;
+  }
+
   const supabase = createServerClient(supabaseUrl, anonKey, {
     cookies: {
       getAll() {

@@ -71,6 +71,44 @@ const MAX_CONTEXT_TOKENS = 2000;
  */
 const MAX_HISTORY_TOKENS = 1000;
 
+async function withTiming<T>(stage: string, clinicId: string, run: () => PromiseLike<T> | T): Promise<T> {
+  const startedAt = Date.now();
+  let outcome: 'ok' | 'error' = 'ok';
+  try {
+    return await run();
+  } catch (error) {
+    outcome = 'error';
+    throw error;
+  } finally {
+    logEvent('[TIMING]', {
+      stage,
+      clinic_id: clinicId,
+      elapsed_ms: Date.now() - startedAt,
+      outcome,
+    });
+  }
+}
+
+function persistReceptionistSlotTimed(
+  clinicId: string,
+  conversationId: string,
+  fields: Parameters<typeof persistReceptionistSlot>[2],
+): Promise<void> {
+  return withTiming('persistReceptionistSlot', clinicId, () =>
+    persistReceptionistSlot(clinicId, conversationId, fields)
+  );
+}
+
+function saveConversationContextTimed(
+  clinicId: string,
+  conversationId: string,
+  context: ConversationContext,
+): Promise<boolean> {
+  return withTiming('saveConversationContext', clinicId, () =>
+    saveConversationContext(clinicId, conversationId, context)
+  );
+}
+
 const FAST_STRUCTURED_RAG_INTENTS = new Set([
   'greeting',
   'goodbye',
@@ -327,40 +365,48 @@ export async function handleIncomingMessage(opts: {
 
   try {
     // Persist incoming message
-    const { data: userMsg, error: userMsgError } = await supabaseAdmin.from('messages').insert([
-      {
-        conversation_id: conversationId,
-        clinic_id: clinicId,
-        role: 'patient',
-        sender_id: userId,
-        content: text,
-      },
-    ]).select('*').single();
+    const { data: userMsg, error: userMsgError } = await withTiming('messages.insert_patient', clinicId, () =>
+      supabaseAdmin.from('messages').insert([
+        {
+          conversation_id: conversationId,
+          clinic_id: clinicId,
+          role: 'patient',
+          sender_id: userId,
+          content: text,
+        },
+      ]).select('*').single()
+    );
     if (userMsgError) throw userMsgError;
 
     // Retrieve clinic settings and context
-    const { data: settingsData } = await supabaseAdmin.from('clinic_ai_settings').select('*').eq('clinic_id', clinicId).limit(1).single();
-    const intelligence = await analyzeAndPersistMessage(supabaseAdmin, {
-      clinicId,
-      conversationId,
-      text,
-      confidenceThreshold: Number(settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? 0.65),
-    });
+    const { data: settingsData } = await withTiming('clinic_ai_settings.select', clinicId, () =>
+      supabaseAdmin.from('clinic_ai_settings').select('*').eq('clinic_id', clinicId).limit(1).single()
+    );
+    const intelligence = await withTiming('analyzeAndPersistMessage', clinicId, () =>
+      analyzeAndPersistMessage(supabaseAdmin, {
+        clinicId,
+        conversationId,
+        text,
+        confidenceThreshold: Number(settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? 0.65),
+      })
+    );
 
     // --- Handoff Integrity Check ---
     if (intelligence.shouldHandoff) {
-      await updateConversationState(conversationId, 'awaiting_staff', clinicId);
-      await notifyStaffForHandoff(clinicId, conversationId);
+      await withTiming('updateConversationState.handoff', clinicId, () =>
+        updateConversationState(conversationId, 'awaiting_staff', clinicId)
+      );
+      await withTiming('notifyStaffForHandoff', clinicId, () => notifyStaffForHandoff(clinicId, conversationId));
       logEvent('ai_handoff_triggered', { clinic_id: clinicId, conversation_id: conversationId, reason: intelligence.intent });
       // P0 FIX: the patient must ALWAYS receive a reply. Emergencies get
       // explicit urgent-care instructions; human-handoff requests get an
       // acknowledgment. The reply is persisted so the transcript matches.
-      const handoffReply = await persistHandoffReply({
+      const handoffReply = await withTiming('persistHandoffReply', clinicId, () => persistHandoffReply({
         supabase: supabaseAdmin,
         clinicId,
         conversationId,
         intent: intelligence.intent,
-      });
+      }));
       return {
         userMessage: userMsg,
         assistantMessage: {
@@ -379,7 +425,7 @@ export async function handleIncomingMessage(opts: {
     // --- Conversational Memory & Context ---
     // Security: Moderate user input before processing
     try {
-      await moderateUserPrompt(text);
+      await withTiming('moderateUserPrompt', clinicId, () => moderateUserPrompt(text));
     } catch (error) {
       if (error instanceof ContentFlaggedError) {
         // Stop processing if content is flagged, but don't crash.
@@ -393,8 +439,8 @@ export async function handleIncomingMessage(opts: {
     // Base is empty. Cross-clinic leakage is impossible: every query is
     // filtered by clinic_id.
     const [operatingData, clinicProfile] = await Promise.all([
-      loadClinicOperatingData(clinicId),
-      loadClinicProfile(clinicId),
+      withTiming('loadClinicOperatingData', clinicId, () => loadClinicOperatingData(clinicId)),
+      withTiming('loadClinicProfile', clinicId, () => loadClinicProfile(clinicId)),
     ]);
     // Authoritative clinic identity/profile from the `clinics` table. This is
     // the ONLY source of the clinic's real name/address/phone — never inferred
@@ -408,9 +454,9 @@ export async function handleIncomingMessage(opts: {
     // across the US↔EU hop. The booking flow is unchanged — same values, just
     // fetched in parallel.
     const [workingHours, receptionState, bookingPolicy] = await Promise.all([
-      loadClinicWorkingHours(clinicId, clinicProfile.timezone),
-      loadReceptionistConversationState(clinicId, conversationId),
-      getChatBookingPolicy(clinicId),
+      withTiming('loadClinicWorkingHours', clinicId, () => loadClinicWorkingHours(clinicId, clinicProfile.timezone)),
+      withTiming('loadReceptionistConversationState', clinicId, () => loadReceptionistConversationState(clinicId, conversationId)),
+      withTiming('getChatBookingPolicy', clinicId, () => getChatBookingPolicy(clinicId)),
     ]);
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
@@ -437,7 +483,7 @@ export async function handleIncomingMessage(opts: {
       ) {
         currentState.preferred_time_range = null;
         currentState.preferred_time_options = null;
-        await saveConversationContext(clinicId, conversationId, {
+        await saveConversationContextTimed(clinicId, conversationId, {
           preferred_time_range: null,
           preferred_time_options: null,
         });
@@ -445,7 +491,7 @@ export async function handleIncomingMessage(opts: {
       availabilityPreferencesChangedThisTurn = availabilityPreferencesChanged(receptionState, currentState);
       if (currentState.booking.slot && (availabilityPreferencesChangedThisTurn || availabilityTimesInquiryThisTurn)) {
         currentState.booking.slot = null;
-        await persistReceptionistSlot(clinicId, conversationId, {
+        await persistReceptionistSlotTimed(clinicId, conversationId, {
           slot: null,
           slot_start: null,
           slot_end: null,
@@ -454,7 +500,7 @@ export async function handleIncomingMessage(opts: {
         });
       }
       if (Object.keys(understanding).length > 0) {
-        await saveConversationContext(clinicId, conversationId, understanding as unknown as ConversationContext);
+        await saveConversationContextTimed(clinicId, conversationId, understanding as unknown as ConversationContext);
       }
       const explicitlyNamedService = matchServiceByName(text, operatingData.services);
       if (
@@ -466,7 +512,7 @@ export async function handleIncomingMessage(opts: {
         currentState.recommended_service_id = explicitlyNamedService.id;
         currentState.booking.service_id = explicitlyNamedService.id;
         if (selectedServiceChanged) currentState.booking.slot = null;
-        await persistReceptionistSlot(clinicId, conversationId, {
+        await persistReceptionistSlotTimed(clinicId, conversationId, {
           service_id: explicitlyNamedService.id,
           ...(selectedServiceChanged ? { slot: null } : {}),
           patient_confirmed_booking: false,
@@ -496,7 +542,7 @@ export async function handleIncomingMessage(opts: {
         const svc = serviceHint ? matchServiceByName(serviceHint, operatingData.services) : undefined;
         if (svc) {
           currentState.recommended_service_id = svc.id;
-          await persistReceptionistSlot(clinicId, conversationId, { service_id: svc.id });
+          await persistReceptionistSlotTimed(clinicId, conversationId, { service_id: svc.id });
           logEvent('receptionist_service_resolved_by_name', {
             clinic_id: clinicId,
             conversation_id: conversationId,
@@ -544,14 +590,16 @@ export async function handleIncomingMessage(opts: {
         // resolve the first eligible provider for THIS service automatically.
         let providerId = currentState!.recommended_provider_id as string | undefined;
         if (!providerId) {
-          providerId = (await resolveFirstProviderForService(clinicId, currentState!.recommended_service_id as string)) ?? undefined;
+          providerId = (await withTiming('resolveFirstProviderForService', clinicId, () =>
+            resolveFirstProviderForService(clinicId, currentState!.recommended_service_id as string)
+          )) ?? undefined;
           if (providerId && currentState) currentState.recommended_provider_id = providerId;
         }
         if (!providerId) {
           // FIX-2: no eligible provider → derive clinic-level slots from the
           // clinic's aggregated hours (multi-shift aware) so the patient still
           // gets a REAL, honest proposal + interactive card instead of a handoff.
-          const clinicLevel = await findClinicLevelSlots({
+          const clinicLevel = await withTiming('findClinicLevelSlots', clinicId, () => findClinicLevelSlots({
             clinicId,
             serviceId: currentState!.recommended_service_id as string,
             timeZone: clinicProfile?.timezone ?? undefined,
@@ -559,9 +607,9 @@ export async function handleIncomingMessage(opts: {
             preferredTimeRange: currentState!.preferred_time_range ?? undefined,
             preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
             checkGoogleCalendar: bookingPolicy.checkGoogleCalendar,
-          });
+          }));
           if (clinicLevel.found && clinicLevel.slot) {
-            await persistReceptionistSlot(clinicId, conversationId, {
+            await persistReceptionistSlotTimed(clinicId, conversationId, {
               slot: clinicLevel.slot,
               slot_start: clinicLevel.slotStart ?? clinicLevel.slot,
               slot_end: clinicLevel.slotEnd ?? clinicLevel.slot,
@@ -609,7 +657,7 @@ export async function handleIncomingMessage(opts: {
               'Do NOT invent a slot. Tell the patient availability must be confirmed by the clinic and offer to take their contact details.';
           }
         } else {
-        const availability = await findEarliestAvailableSlot({
+        const availability = await withTiming('findEarliestAvailableSlot', clinicId, () => findEarliestAvailableSlot({
           clinicId,
           providerId: currentState!.recommended_provider_id as string,
           serviceId: currentState!.recommended_service_id as string,
@@ -618,9 +666,9 @@ export async function handleIncomingMessage(opts: {
           preferredTimeOptions: currentState!.preferred_time_options ?? undefined,
           timeZone: clinicProfile?.timezone ?? undefined,
           checkGoogleCalendar: bookingPolicy.checkGoogleCalendar,
-        });
+        }));
         if (availability.found) {
-          await persistReceptionistSlot(clinicId, conversationId, {
+          await persistReceptionistSlotTimed(clinicId, conversationId, {
             slot: availability.slot,
             slot_start: availability.slotStart ?? availability.slot,
             slot_end: availability.slotEnd ?? availability.slot,
@@ -708,7 +756,7 @@ export async function handleIncomingMessage(opts: {
 
         if (patientName && patientPhone && requestedServiceId) {
           try {
-            await persistPendingBookingLead({
+            await withTiming('persistPendingBookingLead', clinicId, () => persistPendingBookingLead({
               clinicId,
               conversationId,
               name: patientName,
@@ -718,16 +766,18 @@ export async function handleIncomingMessage(opts: {
               requestedDate: currentState.preferred_date,
               requestedTime: currentState.preferred_time_range?.from ?? currentState.preferred_time_options?.[0] ?? null,
               failureSource: availabilityFailureSource,
-            });
+            }));
             pendingLeadSaved = true;
-            await updateConversationState(conversationId, 'awaiting_staff', clinicId).catch((err) => {
+            await withTiming('updateConversationState.availability_handoff', clinicId, () =>
+              updateConversationState(conversationId, 'awaiting_staff', clinicId)
+            ).catch((err) => {
               logEvent('booking_availability_handoff_state_failed', {
                 clinic_id: clinicId,
                 conversation_id: conversationId,
                 error: err instanceof Error ? err.message : String(err),
               }, 'warn');
             });
-            await notifyStaffForHandoff(clinicId, conversationId).catch((err) => {
+            await withTiming('notifyStaffForHandoff', clinicId, () => notifyStaffForHandoff(clinicId, conversationId)).catch((err) => {
               logEvent('booking_availability_staff_notification_failed', {
                 clinic_id: clinicId,
                 conversation_id: conversationId,
@@ -780,7 +830,9 @@ export async function handleIncomingMessage(opts: {
         postTurnState.booking.provider_id = postTurnState.recommended_provider_id;
       }
       if (!postTurnState.booking.provider_id && postTurnState.booking.service_id) {
-        const autoProvider = await resolveFirstProviderForService(clinicId, postTurnState.booking.service_id);
+        const autoProvider = await withTiming('resolveFirstProviderForService', clinicId, () =>
+          resolveFirstProviderForService(clinicId, postTurnState.booking.service_id as string)
+        );
         if (autoProvider) {
           postTurnState.booking.provider_id = autoProvider;
           postTurnState.recommended_provider_id = autoProvider;
@@ -819,7 +871,7 @@ export async function handleIncomingMessage(opts: {
       );
       if (readyToReview) postTurnState.state = 'BOOKING';
       postTurnState.patient_confirmed_booking = false;
-      await persistReceptionistSlot(clinicId, conversationId, {
+      await persistReceptionistSlotTimed(clinicId, conversationId, {
         ...(postTurnState.booking.service_id ? { service_id: postTurnState.booking.service_id } : {}),
         ...(postTurnState.booking.provider_id ? { provider_id: postTurnState.booking.provider_id } : {}),
         ...(postTurnState.booking.slot ? { slot: postTurnState.booking.slot } : {}),
@@ -836,14 +888,14 @@ export async function handleIncomingMessage(opts: {
     }
     // STEP 5 — Network Discovery Mode: computed ONLY when the patient
     // explicitly asked for alternatives. Prompt-only (never persisted).
-    const discoveryGuidance = await buildDiscoveryGuidance({
+    const discoveryGuidance = await withTiming('buildDiscoveryGuidance', clinicId, () => buildDiscoveryGuidance({
       // Per-turn intent ONLY («وين عيادة ثانية؟» in THIS message). The persisted
       // flag stays as history and must never re-trigger clinic lists later.
       agreed: turnDiscoveryAgreed,
       patientCity: currentState?.patient_location?.city ?? null,
       requestedService: currentState?.requested_service ?? null,
       currentClinicName: clinicProfile?.name ?? null,
-    });
+    }));
     const promptReceptionState: ReceptionistConversationState | null = currentState
       ? {
           ...currentState,
@@ -854,7 +906,7 @@ export async function handleIncomingMessage(opts: {
       : null;
 
     // Retrieve conversation history and summarize if needed
-    const rawHistory = await getConversationHistory(conversationId, 10);
+    const rawHistory = await withTiming('getConversationHistory', clinicId, () => getConversationHistory(conversationId, 10));
     const history = summarizeHistory(rawHistory, MAX_HISTORY_TOKENS);
 
     // Check for repeated questions
@@ -883,7 +935,7 @@ export async function handleIncomingMessage(opts: {
           truncated: false,
           hasConflictingContext: false,
         } as AssembledContext)
-      : await retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold);
+      : await withTiming('retrieveContext', clinicId, () => retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold));
     // When the active provider has no embedding support (e.g. local Ollama),
     // keyword-only retrieval scores are naturally lower, so lower the
     // effective threshold to match contextRetrieval's behavior.
@@ -953,7 +1005,8 @@ export async function handleIncomingMessage(opts: {
       if (clinicSpecificIntent && lowConfidence && !operativeIntent && !operatingData.usable && !treatmentDesire) {
         // Explicit "I don't know" for clinic facts — gender-neutral + actionable.
         const unavailableResponse = unavailableReply(detectLanguage(text) === 'ar' ? 'ar' : 'en');
-        const { data: assistantMsg, error: assistantMsgError } = await supabaseAdmin.from('messages').insert([{
+        const { data: assistantMsg, error: assistantMsgError } = await withTiming('messages.insert_rag_fallback', clinicId, () =>
+          supabaseAdmin.from('messages').insert([{
           conversation_id: conversationId,
           clinic_id: clinicId,
           role: 'assistant',
@@ -965,7 +1018,8 @@ export async function handleIncomingMessage(opts: {
             has_sufficient_context: false,
             reason: 'clinic_fact_unavailable',
           },
-        }]).select('*').single();
+        }]).select('*').single()
+        );
         if (assistantMsgError) throw assistantMsgError;
         return { userMessage: userMsg, assistantMessage: assistantMsg, citations };
       }
@@ -1014,11 +1068,14 @@ export async function handleIncomingMessage(opts: {
 
       const provider = getProvider(modelPreference || undefined);
       const start = Date.now();
-      const result = await generateChatReply(prompt, modelPreference || undefined, onToken);
+      const result = await withTiming('generateChatReply', clinicId, () =>
+        generateChatReply(prompt, modelPreference || undefined, onToken)
+      );
       const took = Date.now() - start;
       const usedProviderId = result.providerId ?? provider?.id;
 
-      const { data: assistantMsg, error: assistantMsgError } = await supabaseAdmin.from('messages').insert([
+      const { data: assistantMsg, error: assistantMsgError } = await withTiming('messages.insert_assistant', clinicId, () =>
+        supabaseAdmin.from('messages').insert([
         {
           conversation_id: conversationId,
           clinic_id: clinicId,
@@ -1038,14 +1095,15 @@ export async function handleIncomingMessage(opts: {
             reason: 'general_conversation',
           },
         },
-      ]).select('*').single();
+        ]).select('*').single()
+      );
       if (assistantMsgError) throw assistantMsgError;
 
       if (result.totalTokens && result.totalTokens > 0) {
         const estimatedCost = calculateCost(result.model, result.promptTokens ?? 0, result.completionTokens ?? 0);
-        await supabaseAdmin.from('ai_usage').insert([
+        await withTiming('ai_usage.insert', clinicId, () => supabaseAdmin.from('ai_usage').insert([
           { clinic_id: clinicId, model: result.model || null, prompt_tokens: result.promptTokens, completion_tokens: result.completionTokens, total_tokens: result.totalTokens, estimated_cost: estimatedCost },
-        ]);
+        ]));
       }
 
       logEvent('ai_request_completed_general', { clinic_id: clinicId, conversation_id: conversationId, provider: usedProviderId, took_ms: took, tokens: result.totalTokens, intent: intelligence.intent });
@@ -1102,7 +1160,9 @@ export async function handleIncomingMessage(opts: {
     const provider = getProvider(modelPreference || undefined);
 
     const start = Date.now();
-    const result = await generateChatReply(prompt, modelPreference || undefined, onToken);
+    const result = await withTiming('generateChatReply', clinicId, () =>
+      generateChatReply(prompt, modelPreference || undefined, onToken)
+    );
     const took = Date.now() - start;
     const usedProviderId = result.providerId ?? provider?.id;
 
@@ -1158,7 +1218,8 @@ export async function handleIncomingMessage(opts: {
       ];
     }
 
-    const { data: assistantMsg, error: assistantMsgError } = await supabaseAdmin.from('messages').insert([
+    const { data: assistantMsg, error: assistantMsgError } = await withTiming('messages.insert_assistant', clinicId, () =>
+      supabaseAdmin.from('messages').insert([
       {
         conversation_id: conversationId,
         clinic_id: clinicId,
@@ -1170,13 +1231,14 @@ export async function handleIncomingMessage(opts: {
         response_time_ms: took,
         metadata: assistantMetadata,
       },
-    ]).select('*').single();
+      ]).select('*').single()
+    );
     if (assistantMsgError) throw assistantMsgError;
 
     // Track usage
     if (result.totalTokens && result.totalTokens > 0) {
       const estimatedCost = calculateCost(result.model, result.promptTokens ?? 0, result.completionTokens ?? 0);
-      await supabaseAdmin.from('ai_usage').insert([
+      await withTiming('ai_usage.insert', clinicId, () => supabaseAdmin.from('ai_usage').insert([
         {
           clinic_id: clinicId,
           model: result.model || null,
@@ -1185,12 +1247,12 @@ export async function handleIncomingMessage(opts: {
           total_tokens: result.totalTokens,
           estimated_cost: estimatedCost,
         },
-      ]);
+      ]));
     }
 
-    await supabaseAdmin.from('ai_events').insert([
+    await withTiming('ai_events.insert_response', clinicId, () => supabaseAdmin.from('ai_events').insert([
       { clinic_id: clinicId, conversation_id: conversationId, event_type: 'conversation_response', payload: { tokens: result.totalTokens ?? ((result.promptTokens ?? 0) + (result.completionTokens ?? 0)), took, intent: intelligence.intent, citations_count: citations.length, max_confidence: maxConfidence } },
-    ]);
+    ]));
 
     logEvent('ai_request_completed', { clinic_id: clinicId, conversation_id: conversationId, session_id: sessionId, user_id: userId, provider: usedProviderId, took_ms: took, tokens: result.totalTokens, citations: citations.length });
 
@@ -1211,9 +1273,10 @@ export async function handleIncomingMessage(opts: {
     try {
       const fallbackText =
         'عذراً، حدثت مشكلة مؤقتة في النظام ولا أستطيع الرد الآن. تم تسجيل رسالتك وسيقوم فريق العيادة بمتابعتك في أقرب وقت.';
-      const { data: fallbackMsg } = await supabaseAdmin
-        .from('messages')
-        .insert([
+      const { data: fallbackMsg } = await withTiming('messages.insert_failure_fallback', clinicId, () =>
+        supabaseAdmin
+          .from('messages')
+          .insert([
           {
             conversation_id: conversationId,
             clinic_id: clinicId,
@@ -1221,13 +1284,16 @@ export async function handleIncomingMessage(opts: {
             content: fallbackText,
             metadata: { fallback: true, handoff_recommended: true },
           },
-        ])
-        .select('*').single();
-      await supabaseAdmin
-        .from('conversations')
-        .update({ state: 'awaiting_staff' })
-        .eq('id', conversationId)
-        .eq('clinic_id', clinicId);
+          ])
+          .select('*').single()
+      );
+      await withTiming('conversations.update_failure_fallback', clinicId, () =>
+        supabaseAdmin
+          .from('conversations')
+          .update({ state: 'awaiting_staff' })
+          .eq('id', conversationId)
+          .eq('clinic_id', clinicId)
+      );
       logEvent('ai_fallback_persisted', { clinic_id: clinicId, conversation_id: conversationId });
       return { userMessage: null as any, assistantMessage: fallbackMsg ?? null, citations: [] };
     } catch (fallbackError) {
