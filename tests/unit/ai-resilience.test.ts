@@ -22,12 +22,7 @@ afterEach(() => {
   else process.env.AI_PROVIDER = originalEnv;
 });
 
-/** Flushes fake-timer backoffs so awaited retries resolve under vitest. */
-async function flushBackoff(times = 4): Promise<void> {
-  for (let i = 0; i < times; i++) await vi.runAllTimersAsync();
-}
-
-describe('isTransientAiError — retry/failover classification', () => {
+describe('isTransientAiError — provider failure classification', () => {
   it('classifies rate limits, timeouts and server errors as transient', () => {
     expect(isTransientAiError(new Error('Rate limited (429) during generate'))).toBe(true);
     expect(isTransientAiError(new Error('Anthropic request timed out'))).toBe(true);
@@ -77,20 +72,19 @@ describe('openStreamWithFailover — resilient stream OPEN (STEP 8)', () => {
     expect(res.stream).toBe(stream);
   });
 
-  it('retries a transient open failure on the same provider then succeeds', async () => {
+  it('fails over immediately on a stream rate limit instead of retrying that provider', async () => {
     process.env.AI_PROVIDER = 'primary';
     const stream = new ReadableStream({ start(c) { c.close(); } });
     let calls = 0;
     registerProvider({
       id: 'primary',
       generate: async () => ({ text: '' }),
-      stream: async () => { calls++; if (calls < 2) throw new Error('Rate limited (429)'); return stream; },
+      stream: async () => { calls++; throw new Error('Rate limited (429)'); },
     });
     registerProvider({ id: 'openai', generate: async () => ({ text: '' }), stream: async () => stream });
-    const pending = openStreamWithFailover({ prompt: 'p' });
-    const res = await Promise.race([pending, flushBackoff().then(() => pending)]);
-    expect(res.providerId).toBe('primary');
-    expect(calls).toBe(2);
+    const res = await openStreamWithFailover({ prompt: 'p' });
+    expect(res.providerId).toBe('openai');
+    expect(calls).toBe(1);
   });
 
   it('fails over to a secondary provider when the primary stream keeps failing', async () => {
@@ -103,18 +97,16 @@ describe('openStreamWithFailover — resilient stream OPEN (STEP 8)', () => {
     });
     const stream = new ReadableStream({ start(c) { c.close(); } });
     registerProvider({ id: 'openai', generate: async () => ({ text: '' }), stream: async () => stream });
-    const pending = openStreamWithFailover({ prompt: 'p' });
-    const res = await Promise.race([pending, flushBackoff().then(() => pending)]);
+    const res = await openStreamWithFailover({ prompt: 'p' });
     expect(res.providerId).toBe('openai');
-    expect(primaryCalls).toBe(2);
+    expect(primaryCalls).toBe(1);
   });
 
   it('throws when every provider stream fails (graceful degradation keeps working)', async () => {
     process.env.AI_PROVIDER = 'a';
     registerProvider({ id: 'a', generate: async () => ({ text: '' }), stream: async () => { throw new Error('Rate limited (429)'); } });
     registerProvider({ id: 'b', generate: async () => ({ text: '' }), stream: async () => { throw new Error('internal error (500)'); } });
-    const pending = openStreamWithFailover({ prompt: 'p' });
-    await expect(Promise.race([pending, flushBackoff().then(() => pending)])).rejects.toThrow('internal error (500)');
+    await expect(openStreamWithFailover({ prompt: 'p' })).rejects.toThrow('internal error (500)');
   });
 
   it('skips candidates that do not implement stream()', async () => {
@@ -128,23 +120,22 @@ describe('openStreamWithFailover — resilient stream OPEN (STEP 8)', () => {
 });
 
 describe('generateWithFailover — resilience paths', () => {
-  it('retries a transient failure on the SAME provider then succeeds', async () => {
+  it('fails over immediately after a transient failure without retrying that provider', async () => {
     process.env.AI_PROVIDER = 'primary';
     let calls = 0;
     registerProvider({
       id: 'primary',
       generate: async () => {
         calls++;
-        if (calls < 2) throw new Error('Rate limited (429)');
-        return { text: 'ok', totalTokens: 1 };
+        throw new Error('internal error (500)');
       },
     });
+    registerProvider({ id: 'openai', generate: async () => ({ text: 'secondary-ok', totalTokens: 1 }) });
 
-    const pending = generateWithFailover({ prompt: 'p' });
-    const result = await Promise.race([pending, flushBackoff().then(() => pending)]);
-    expect(result.text).toBe('ok');
-    expect(result.providerId).toBe('primary');
-    expect(calls).toBe(2);
+    const result = await generateWithFailover({ prompt: 'p' });
+    expect(result.text).toBe('secondary-ok');
+    expect(result.providerId).toBe('openai');
+    expect(calls).toBe(1);
   });
 
   it('fails over to the secondary provider when primary keeps failing', async () => {
@@ -159,11 +150,10 @@ describe('generateWithFailover — resilience paths', () => {
     });
     registerProvider({ id: 'openai', generate: async () => ({ text: 'from-secondary' }) });
 
-    const pending = generateWithFailover({ prompt: 'p' });
-    const result = await Promise.race([pending, flushBackoff().then(() => pending)]);
+    const result = await generateWithFailover({ prompt: 'p' });
     expect(result.text).toBe('from-secondary');
     expect(result.providerId).toBe('openai');
-    expect(primaryCalls).toBe(2); // bounded retries before failing over
+    expect(primaryCalls).toBe(1);
   });
 
   it('does NOT waste retries on non-transient errors — fails over immediately', async () => {
@@ -178,10 +168,27 @@ describe('generateWithFailover — resilience paths', () => {
     });
     registerProvider({ id: 'openai', generate: async () => ({ text: 'secondary-ok' }) });
 
-    const pending = generateWithFailover({ prompt: 'p' });
-    const result = await Promise.race([pending, flushBackoff(2).then(() => pending)]);
+    const result = await generateWithFailover({ prompt: 'p' });
     expect(result.providerId).toBe('openai');
     expect(calls).toBe(1);
+  });
+
+  it('does NOT retry a rate-limited provider before moving to the next provider', async () => {
+    process.env.AI_PROVIDER = 'rate-limited';
+    let primaryCalls = 0;
+    registerProvider({
+      id: 'rate-limited',
+      generate: async () => {
+        primaryCalls++;
+        throw new Error('Rate limited (429): insufficient_quota');
+      },
+    });
+    registerProvider({ id: 'openai', generate: async () => ({ text: 'secondary-ok' }) });
+
+    const result = await generateWithFailover({ prompt: 'p' });
+    expect(result.providerId).toBe('openai');
+    expect(result.text).toBe('secondary-ok');
+    expect(primaryCalls).toBe(1);
   });
 
   it('throws the last error when every provider fails (handoff stays the last resort)', async () => {
@@ -189,7 +196,6 @@ describe('generateWithFailover — resilience paths', () => {
     registerProvider({ id: 'a', generate: async () => { throw new Error('Rate limited (429)'); } });
     registerProvider({ id: 'b', generate: async () => { throw new Error('internal error (500)'); } });
 
-    const pending = generateWithFailover({ prompt: 'p' });
-    await expect(Promise.race([pending, flushBackoff().then(() => pending)])).rejects.toThrow('internal error (500)');
+    await expect(generateWithFailover({ prompt: 'p' })).rejects.toThrow('internal error (500)');
   });
 });

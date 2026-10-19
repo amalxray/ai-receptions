@@ -1,8 +1,8 @@
 /**
  * Regression suite for the "المساعد غير متاح" root causes (Groq empty response
  * + malformed classifier JSON). Covers:
- *  - Fix 1: Groq retries ONCE in place on an empty (non-filtered) response, then
- *    succeeds; if still empty it throws so resilience.ts fails over to Gemini.
+ *  - Fix 1: Groq surfaces an empty (non-filtered) response immediately so the
+ *    resilience layer can fail over without an in-place delay.
  *  - Fix 2: the intent classifier tolerates ```json fences, surrounding prose,
  *    trailing commas and smart quotes instead of throwing.
  *  - Arabic-Indic digits (٠-٩) are normalised to Latin before time/intent parsing.
@@ -15,17 +15,6 @@ vi.mock('@/lib/server/logging', () => mockLogging);
 import { GroqProvider } from '@/lib/ai/providers/groq';
 import { extractBookingIntent, extractPreferredTimeRange } from '@/lib/ai/understanding';
 
-function okResponse(text: string) {
-  return new Response(
-    JSON.stringify({
-      choices: [{ message: { content: text }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-      model: 'openai/gpt-oss-120b',
-    }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
-  );
-}
-
 /** An empty, non-filtered Groq response — the production failure mode. */
 function emptyResponse() {
   return new Response(
@@ -34,7 +23,7 @@ function emptyResponse() {
   );
 }
 
-describe('Groq empty-response retry (Fix 1)', () => {
+describe('Groq empty-response failover (Fix 1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GROQ_API_KEY = 'gsk-test-key-not-real';
@@ -45,27 +34,20 @@ describe('Groq empty-response retry (Fix 1)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('retries ONCE in place on empty content, then returns the good response', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(emptyResponse())
-      .mockResolvedValueOnce(okResponse('أهلاً، كيف أساعدك؟'));
+  it('throws after one empty response so resilience can move to the next provider', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(emptyResponse());
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await GroqProvider.generate({ prompt: 'مرحبا' });
-
-    expect(result.text).toBe('أهلاً، كيف أساعدك؟');
-    expect(fetchMock).toHaveBeenCalledTimes(2); // one empty + one good
+    await expect(GroqProvider.generate({ prompt: 'مرحبا' })).rejects.toThrow(/no content in message/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('throws after exhausting retries so resilience fails over to Gemini', async () => {
-    // Fresh Response per call — a Response body can only be read once, and the
-    // real Groq endpoint returns a new Response on every attempt.
+  it('does not retry an empty response in place', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => emptyResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(GroqProvider.generate({ prompt: 'مرحبا' })).rejects.toThrow(/no content in message/);
-    expect(fetchMock).toHaveBeenCalledTimes(2); // initial + 1 retry, then give up
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('does NOT retry a legitimate content_filter turn (returns empty, no throw)', async () => {
@@ -127,7 +109,9 @@ describe('Classifier JSON robustness (Fix 2) via classifyIntentSemantic', () => 
     return classifyIntentSemantic('بدي أحجز');
   }
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('parses a clean JSON object', async () => {
     const r = await classify('{"intent":"appointment_booking","confidence":0.9,"entities":{}}');

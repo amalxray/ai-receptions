@@ -9,13 +9,9 @@ import { logEvent } from '@/lib/server/logging';
  * experience to the human-handoff fallback — a provider hiccup became a
  * lost conversation turn.
  *
- * Fix (bounded, no new credentials, fits the existing registry):
- *  1. Limited retries per provider for TRANSIENT errors with exponential
- *     backoff (1s → 3s).
- *  2. Failover to the NEXT configured registered provider before giving up.
- *  3. Non-transient errors (auth/permission/malformed request) skip retries
- *     and move straight to failover.
- *  4. The human-handoff fallback remains the LAST resort — unchanged.
+ * Fix (no same-provider retries, no new credentials, fits the existing registry):
+ *  1. Any failed provider call moves to the next configured provider immediately.
+ *  2. The human-handoff fallback remains the LAST resort — unchanged.
  *
  * Deliberate policy: local Ollama is EXCLUDED from automatic failover. It is
  * documented as unsuitable for production conversational Arabic; silently
@@ -23,21 +19,19 @@ import { logEvent } from '@/lib/server/logging';
  * It remains fully usable when explicitly selected via AI_PROVIDER=ollama.
  */
 
-const MAX_ATTEMPTS_PER_PROVIDER = 2;
-// Free-tier Gemini wobbles (429/overloaded) need a real pause before the
-// retry — 300/900ms were too fast to outlive a rate-limit window.
-const BACKOFF_MS = [1000, 3000];
-
-/** Matches transient provider/HTTP failures worth retrying or failing over. */
+/** Matches transient provider/HTTP failures for structured diagnostics. */
 const TRANSIENT_ERROR = /timed?\s*out|timeout|rate limit|429|too many requests|internal error|500|bad gateway|502|unavailable|503|504|overloaded|aborted|abort|network|econn|socket|fetch failed|temporarily/i;
+const IMMEDIATE_FAILOVER_ERROR = /\b429\b|rate.?limit|too many requests|insufficient[_ ]quota|credit[_ ]balance|quota exceeded/i;
 
 export function isTransientAiError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return TRANSIENT_ERROR.test(message);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Quota/rate-limit responses are not recoverable by retrying the same provider. */
+export function shouldFailoverImmediately(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return IMMEDIATE_FAILOVER_ERROR.test(message);
 }
 
 /**
@@ -70,7 +64,7 @@ export function failoverCandidates(preferredProviderId?: string | null): Array<{
 export type FailoverGenerateResult = GenerateResult & { providerId: string };
 
 /**
- * generate() with bounded retry + secondary-provider failover.
+ * generate() with immediate secondary-provider failover on any failed call.
  * Throws the LAST error when every candidate fails (callers keep their
  * existing graceful-degradation path).
  */
@@ -83,10 +77,9 @@ export type OpenStreamResult = {
  * Resilient OPEN of a provider stream (STEP 8 reliability).
  *
  * Only the stream handshake (the `provider.stream()` call that materializes a
- * ReadableStream) can be retried/failed over — once bytes start flowing we
- * cannot switch providers mid-stream. Transit failures get bounded retry +
- * backoff on the same provider, then failover to the next registered provider
- * that actually implements `stream()`. Returns the first successful stream.
+ * ReadableStream) can fail over — once bytes start flowing we cannot switch
+ * providers mid-stream. Any handshake failure moves to the next registered
+ * provider without a same-provider retry or backoff.
  * Throws the LAST error when every streaming candidate fails so callers keep
  * their existing graceful-degradation path.
  */
@@ -97,27 +90,21 @@ export async function openStreamWithFailover(params: GenerateParams & { preferre
 
   for (const candidate of candidates) {
     const streamFn = candidate.provider.stream!;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
-      try {
-        const stream = await streamFn(generateParams);
-        if (attempt > 0 || candidates[0].id !== candidate.id) {
-          logEvent('ai_stream_failover_succeeded', { provider: candidate.id, attempt });
-        }
-        return { stream, providerId: candidate.id };
-      } catch (err) {
-        lastError = err;
-        const transient = isTransientAiError(err);
-        logEvent('ai_stream_open_attempt_failed', {
-          provider: candidate.id,
-          attempt,
-          transient,
-          error: err instanceof Error ? err.message : String(err),
-        }, 'warn');
-        if (!transient) break; // auth/perm/malformed → try NEXT provider now
-        if (attempt < MAX_ATTEMPTS_PER_PROVIDER - 1) {
-          await sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
-        }
+    try {
+      const stream = await streamFn(generateParams);
+      if (candidates[0].id !== candidate.id) {
+        logEvent('ai_stream_failover_succeeded', { provider: candidate.id, attempt: 0 });
       }
+      return { stream, providerId: candidate.id };
+    } catch (err) {
+      lastError = err;
+      logEvent('ai_stream_open_attempt_failed', {
+        provider: candidate.id,
+        attempt: 0,
+        transient: isTransientAiError(err),
+        quota_or_rate_limit: shouldFailoverImmediately(err),
+        error: err instanceof Error ? err.message : String(err),
+      }, 'warn');
     }
   }
 
@@ -130,27 +117,21 @@ export async function generateWithFailover(params: GenerateParams & { preferredP
   let lastError: unknown = new Error('No AI provider is registered');
 
   for (const candidate of candidates) {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
-      try {
-        const result = await candidate.provider.generate(generateParams);
-        if (attempt > 0 || candidates[0].id !== candidate.id) {
-          logEvent('ai_failover_succeeded', { provider: candidate.id, attempt });
-        }
-        return { ...result, providerId: candidate.id };
-      } catch (err) {
-        lastError = err;
-        const transient = isTransientAiError(err);
-        logEvent('ai_generate_attempt_failed', {
-          provider: candidate.id,
-          attempt,
-          transient,
-          error: err instanceof Error ? err.message : String(err),
-        }, 'warn');
-        if (!transient) break; // auth/perm/malformed → try NEXT provider now
-        if (attempt < MAX_ATTEMPTS_PER_PROVIDER - 1) {
-          await sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
-        }
+    try {
+      const result = await candidate.provider.generate(generateParams);
+      if (candidates[0].id !== candidate.id) {
+        logEvent('ai_failover_succeeded', { provider: candidate.id, attempt: 0 });
       }
+      return { ...result, providerId: candidate.id };
+    } catch (err) {
+      lastError = err;
+      logEvent('ai_generate_attempt_failed', {
+        provider: candidate.id,
+        attempt: 0,
+        transient: isTransientAiError(err),
+        quota_or_rate_limit: shouldFailoverImmediately(err),
+        error: err instanceof Error ? err.message : String(err),
+      }, 'warn');
     }
   }
 

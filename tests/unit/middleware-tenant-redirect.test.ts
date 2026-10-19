@@ -12,8 +12,20 @@ import { NextRequest } from 'next/server';
 
 // Demo mode (no Supabase env) keeps the session-refresh branch out of the way —
 // the redirect block must run BEFORE it and independently of it.
+const supabaseConfig = vi.hoisted(() => ({
+  supabaseUrl: undefined as string | undefined,
+  anonKey: undefined as string | undefined,
+}));
+const authMocks = vi.hoisted(() => ({
+  getUser: vi.fn(async () => ({ data: { user: null } })),
+  createServerClient: vi.fn(),
+}));
+
 vi.mock('@/lib/supabase/config', () => ({
-  getSupabaseCoreConfig: () => ({ supabaseUrl: undefined, anonKey: undefined }),
+  getSupabaseCoreConfig: () => supabaseConfig,
+}));
+vi.mock('@supabase/ssr', () => ({
+  createServerClient: authMocks.createServerClient,
 }));
 
 /**
@@ -48,6 +60,11 @@ function request(url: string, host?: string): NextRequest {
 describe('middleware — legacy URL → tenant subdomain (301)', () => {
   beforeEach(() => {
     clearTenantSlugCache();
+    supabaseConfig.supabaseUrl = undefined;
+    supabaseConfig.anonKey = undefined;
+    authMocks.getUser.mockClear();
+    authMocks.createServerClient.mockClear();
+    authMocks.createServerClient.mockReturnValue({ auth: { getUser: authMocks.getUser } });
     readiness.hosts = new Set(['hala-clinic.dentairec.com']);
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ available: false, reason: 'taken' })));
   });
@@ -119,5 +136,19 @@ describe('middleware — legacy URL → tenant subdomain (301)', () => {
 
     expect(res.headers.get('location')).toBeNull();
     expect(res.headers.get('x-middleware-rewrite')).toContain('https://hala-clinic.dentairec.com/hala-clinic');
+  });
+
+  it('skips Supabase auth for public AI API requests even when auth is configured', async () => {
+    supabaseConfig.supabaseUrl = 'https://supabase.example.test';
+    supabaseConfig.anonKey = 'anon-test-key';
+
+    const res = await middleware(request(
+      'https://amal-x-ray-center.dentairec.com/api/public/ai/messages',
+      'amal-x-ray-center.dentairec.com',
+    ));
+
+    expect(res.status).toBe(200);
+    expect(authMocks.createServerClient).not.toHaveBeenCalled();
+    expect(authMocks.getUser).not.toHaveBeenCalled();
   });
 });

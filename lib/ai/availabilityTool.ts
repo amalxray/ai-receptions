@@ -13,6 +13,8 @@ import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
 export const MIN_REALISTIC_DURATION_MINUTES = 10;
 const GOOGLE_CALENDAR_UNAVAILABLE_MESSAGE = 'تعذّر التحقق من التقويم الآن، حاول لاحقاً';
 const GOOGLE_CALENDAR_TIMEOUT_MS = 2_000;
+const INVALID_GRANT_CACHE_MS = 5 * 60 * 1000;
+const invalidGrantUntilByClinic = new Map<string, number>();
 
 class GoogleCalendarAvailabilityError extends Error {
   constructor(readonly failureSource: 'google_calendar' | 'local_scheduling' = 'google_calendar') {
@@ -33,12 +35,50 @@ function calendarErrorFields(error: unknown) {
   };
 }
 
+function isInvalidGrantError(error: unknown, message: string): boolean {
+  const candidate = error && typeof error === 'object'
+    ? error as {
+        code?: unknown;
+        response?: { data?: { error?: unknown; error_description?: unknown } };
+      }
+    : {};
+  return /invalid_grant/i.test([
+    message,
+    typeof candidate.code === 'string' ? candidate.code : '',
+    typeof candidate.response?.data?.error === 'string' ? candidate.response.data.error : '',
+    typeof candidate.response?.data?.error_description === 'string' ? candidate.response.data.error_description : '',
+  ].join(' '));
+}
+
+function logSupabaseScheduleFallback(context: {
+  clinicId: string;
+  serviceId: string;
+  providerId?: string;
+}, date: string, elapsedMs: number, reason: string): void {
+  logEvent('availability_google_calendar_fallback', {
+    clinic_id: context.clinicId,
+    provider_id: context.providerId ?? null,
+    service_id: context.serviceId,
+    requested_date: date,
+    elapsed_ms: elapsedMs,
+    reason,
+    fallback_source: 'supabase_schedule',
+  }, 'warn');
+}
+
 async function getGoogleCalendarBusyIntervalsOrEmpty(
   date: string,
   timeZone: string | undefined,
   context: { clinicId: string; serviceId: string; providerId?: string; googleCalendarDeadlineAt?: number },
 ): Promise<Array<{ start: string; end: string }>> {
   const startedAt = Date.now();
+  const invalidGrantUntil = invalidGrantUntilByClinic.get(context.clinicId) ?? 0;
+  if (invalidGrantUntil > startedAt) {
+    logSupabaseScheduleFallback(context, date, 0, 'invalid_grant_cached');
+    return [];
+  }
+  if (invalidGrantUntil > 0) invalidGrantUntilByClinic.delete(context.clinicId);
+
   const remainingBudgetMs = context.googleCalendarDeadlineAt
     ? context.googleCalendarDeadlineAt - startedAt
     : GOOGLE_CALENDAR_TIMEOUT_MS;
@@ -91,6 +131,17 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
         timed_out: true,
         fallback_source: 'supabase_schedule',
       }, 'warn');
+      return [];
+    }
+    if (isInvalidGrantError(err, fields.error)) {
+      invalidGrantUntilByClinic.set(context.clinicId, Date.now() + INVALID_GRANT_CACHE_MS);
+      if (invalidGrantUntilByClinic.size > 500) {
+        const now = Date.now();
+        invalidGrantUntilByClinic.forEach((expiresAt, clinicId) => {
+          if (expiresAt <= now) invalidGrantUntilByClinic.delete(clinicId);
+        });
+      }
+      logSupabaseScheduleFallback(context, date, Date.now() - startedAt, 'invalid_grant');
       return [];
     }
     logEvent('availability_google_calendar_error', {

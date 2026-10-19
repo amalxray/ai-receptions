@@ -75,6 +75,32 @@ describe('findEarliestAvailableSlot (real availability tool)', () => {
     expect(bookingMocks.getAvailableSlots).not.toHaveBeenCalled();
   });
 
+  it('uses Supabase slots after invalid_grant and caches the calendar failure for five minutes', async () => {
+    bookingMocks.getActiveServiceById.mockResolvedValue({ id: 'svc', name: 'Panorama', duration_minutes: 30 });
+    bookingMocks.getAvailableSlots.mockResolvedValue(['2026-09-04T13:30:00.000Z']);
+    bookingMocks.getGoogleCalendarBusyIntervals.mockRejectedValue(
+      Object.assign(new Error('Google OAuth error: invalid_grant'), {
+        response: { data: { error: 'invalid_grant' } },
+      }),
+    );
+    const query = {
+      clinicId: 'invalid-grant-c1',
+      providerId: 'p1',
+      serviceId: 'svc',
+      preferredDate: '2026-09-04',
+      checkGoogleCalendar: true,
+      now: FIXED_NOW,
+    };
+
+    const first = await findEarliestAvailableSlot(query);
+    const second = await findEarliestAvailableSlot(query);
+
+    expect(first).toMatchObject({ found: true, slot: '2026-09-04T13:30:00.000Z' });
+    expect(second).toMatchObject({ found: true, slot: '2026-09-04T13:30:00.000Z' });
+    expect(bookingMocks.getGoogleCalendarBusyIntervals).toHaveBeenCalledTimes(1);
+    expect(bookingMocks.getAvailableSlots).toHaveBeenCalledTimes(2);
+  });
+
   it('returns the earliest real slot from the availability engine', async () => {
     bookingMocks.getActiveServiceById.mockResolvedValue({ id: 'svc', name: 'فحص أسنان', duration_minutes: 30 });
     // The engine returns a concrete slot on the first day we scan.
