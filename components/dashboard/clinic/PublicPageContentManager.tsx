@@ -45,6 +45,7 @@ const TYPE_LABELS: Record<ContentType, string> = {
 const TAB_ORDER: TabId[] = ['theme', 'sections', 'achievements', 'testimonials', 'articles', 'news'];
 
 const SECTION_ORDER_ITEMS = [
+  { id: 'clinic_services', label: 'بطاقة الخدمات والحجز', icon: '💎' },
   { id: 'hero', label: 'الغلاف والواجهة الرئيسية', icon: '🏠' },
   { id: 'about', label: 'نبذة عن المنشأة', icon: 'ℹ️' },
   { id: 'services', label: 'الخدمات', icon: '🩺' },

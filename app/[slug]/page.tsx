@@ -10,6 +10,7 @@ import {
   getClinicReviewsForPublic,
   getClinicReviewsStats,
 } from '@/lib/services/reviewsService';
+import { PUBLIC_SECTION_ORDER_KEYS } from '@/lib/services/clinicPublicConfig';
 import ReviewsSection from '@/components/public/ReviewsSection';
 import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
@@ -199,16 +200,71 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   const reviewsSection = (
     <ReviewsSection clinicName={space.name} clinicSlug={params.slug} stats={reviews.stats} items={reviews.items} viewAllHref={`/${params.slug}/reviews`} />
   );
+  /**
+   * كتلة «بطاقة الخدمات والحجز» (المعرف `clinic_services` في ترتيب الأقسام).
+   * تُعرض المجموعة الموحّدة (بطاقة الخدمات + زر الحجز في 30 ثانية +
+   * المحادثة المضغوطة) وفق موضعها في `space.sectionOrder`. عند عدم وجود
+   * ترتيب مخصص، تظهر الكتلة أول الصفحة لأن `DEFAULT_PUBLIC_SECTION_ORDER`
+   * تبدأ بـ `clinic_services`.
+   */
+  function ServicesBookingBlock({
+    space: blockSpace,
+    services: blockServices,
+  }: {
+    space: ActivityPublicSpace;
+    services: { name: string; price: number | null }[];
+  }) {
+    return (
+      <>
+        <PublicServicesCard
+          services={blockServices}
+          activityType={blockSpace.activityType}
+        />
+        <div className="text-center">
+          <BookIn30Button clinicId={blockSpace.clinicId} />
+        </div>
+        <QuickClinicChat clinicId={blockSpace.clinicId} mode="compact" />
+      </>
+    );
+  }
+
+  // كتل الصفحة العليا حسب ترتيب الأقسام المحفوظ؛ كل قسم apart من
+  // clinic_services يُمَثَّل بمساحة العيادة الرئيسية (ClinicPublicSpace).
+  type PageBlock = 'clinic_services' | 'clinic_main';
+  const pageBlocks: PageBlock[] = [];
+  const seenBlocks = new Set<PageBlock>();
+  for (const key of (Array.isArray(space.sectionOrder)
+    ? space.sectionOrder
+    : []).filter((k): k is (typeof PUBLIC_SECTION_ORDER_KEYS)[number] =>
+      typeof k === 'string' &&
+      PUBLIC_SECTION_ORDER_KEYS.includes(k as (typeof PUBLIC_SECTION_ORDER_KEYS)[number]),
+    )) {
+    const block: PageBlock = key === 'clinic_services' ? 'clinic_services' : 'clinic_main';
+    if (!seenBlocks.has(block)) {
+      seenBlocks.add(block);
+      pageBlocks.push(block);
+    }
+  }
+  // عندما لا يُحدّد ترتيب مخصص، تظهر بطاقة الخدمات والحجز أول الصفحة
+  // (DEFAULT_PUBLIC_SECTION_ORDER تبدأ بـ clinic_services).
+  if (!seenBlocks.has('clinic_services')) pageBlocks.push('clinic_services');
+  if (!seenBlocks.has('clinic_main')) pageBlocks.push('clinic_main');
+
   // PWA — every activity space renders the same self-hiding install banner.
   switch (space.activityType) {
     case 'imaging_center':
       return (
         <>
           {schemaScript}
-          <ImagingPublicSpace space={space} />
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
-          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
+          {pageBlocks.map((block) => (
+            <div key={block} style={{ display: 'contents' }}>
+              {block === 'clinic_services' ? (
+                <ServicesBookingBlock space={space} services={services ?? []} />
+              ) : (
+                <ImagingPublicSpace space={space} />
+              )}
+            </div>
+          ))}
           {reviewsSection}
           <QuickClinicChat clinicId={space.clinicId} mode="inline" />
           <QuickClinicChat clinicId={space.clinicId} mode="floating" />
@@ -219,10 +275,15 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <DentalLabPublicSpace space={space} />
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
-          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
+          {pageBlocks.map((block) => (
+            <div key={block} style={{ display: 'contents' }}>
+              {block === 'clinic_services' ? (
+                <ServicesBookingBlock space={space} services={services ?? []} />
+              ) : (
+                <DentalLabPublicSpace space={space} />
+              )}
+            </div>
+          ))}
           {reviewsSection}
           <QuickClinicChat clinicId={space.clinicId} mode="inline" />
           <QuickClinicChat clinicId={space.clinicId} mode="floating" />
@@ -233,10 +294,15 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <ClinicPublicSpace space={space} />
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
-          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
+          {pageBlocks.map((block) => (
+            <div key={block} style={{ display: 'contents' }}>
+              {block === 'clinic_services' ? (
+                <ServicesBookingBlock space={space} services={services ?? []} />
+              ) : (
+                <ClinicPublicSpace space={space} />
+              )}
+            </div>
+          ))}
           {reviewsSection}
           <QuickClinicChat clinicId={space.clinicId} mode="inline" />
           <QuickClinicChat clinicId={space.clinicId} mode="floating" />
