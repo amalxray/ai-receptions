@@ -3,7 +3,7 @@ import { logEvent } from '@/lib/server/logging';
 import { getProvider } from './provider';
 import { ensureAIProviders } from './providers/registry';
 import { retrieveContext, clearRetrievalCache } from './contextRetrieval';
-import { buildPrompt } from './promptManager';
+import { buildFastClinicPrompt, buildPrompt } from './promptManager';
 import { analyzeAndPersistMessage } from '@/lib/services/conversationIntelligence';
 import { getConversationHistory } from '@/lib/services/messageService';
 import { updateConversationState } from '@/lib/services/conversationService';
@@ -70,6 +70,19 @@ const MAX_CONTEXT_TOKENS = 2000;
  * Maximum conversation history tokens to include in the prompt.
  */
 const MAX_HISTORY_TOKENS = 1000;
+
+const FAST_STRUCTURED_RAG_INTENTS = new Set([
+  'greeting',
+  'goodbye',
+  'pricing_inquiry',
+  'clinic_hours',
+]);
+const FAST_INFORMATIONAL_RAG_INTENTS = new Set(['services_inquiry', 'location', 'appointment_booking']);
+
+function shouldSkipClinicRag(intent: string, semanticFastPath?: boolean): boolean {
+  return FAST_STRUCTURED_RAG_INTENTS.has(intent) ||
+    (semanticFastPath === true && FAST_INFORMATIONAL_RAG_INTENTS.has(intent));
+}
 
 async function generateChatReply(
   prompt: string,
@@ -854,18 +867,15 @@ export async function handleIncomingMessage(opts: {
     // retrieveContext may return either a legacy array of RetrievalResult
     // (backward-compatible callers) or a full AssembledContext object.
     //
-    // PERF: greetings/goodbyes need no clinic knowledge, and RAG (embedding +
-    // vector search across the US↔EU hop) is the single biggest cost per turn.
-    // Skip it for those intents ONLY — every other intent (booking, pricing,
-    // services, questions, complaints…) still runs full RAG. `intelligence.intent`
-    // comes from the cheap fast-path classifier computed earlier, so this never
-    // touches the booking flow. Falls through to an empty context, which the
-    // hallucination guard below already handles for greeting/goodbye.
+    // PERF: operational questions with authoritative structured data need no
+    // knowledge-base round trip. Keep RAG for medical/detail and clinic-policy
+    // questions; simple service/contact questions skip only when the classifier
+    // resolved them through its deterministic fast path.
     const configuredConfidenceThreshold = Number(
       settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD
     );
-    const skipRagForSmallTalk = intelligence.intent === 'greeting' || intelligence.intent === 'goodbye';
-    const retrieved = skipRagForSmallTalk
+    const skipRagForFastPath = shouldSkipClinicRag(intelligence.intent, intelligence.semanticFastPath);
+    const retrieved = skipRagForFastPath
       ? ({
           chunks: [],
           citations: [],
@@ -920,7 +930,7 @@ export async function handleIncomingMessage(opts: {
       !(retrieved as AssembledContext).hasConflictingContext
     );
 
-    if (!hasSufficientContext) {
+    if (!hasSufficientContext && !skipRagForFastPath) {
       // RAG failed/insufficient. But NOT every message needs RAG.
       // Clinic-specific intents (pricing, services, location, hours, insurance) MUST NOT
       // guess without knowledge. General/unknown/complaint/greeting intents should
@@ -1081,10 +1091,13 @@ export async function handleIncomingMessage(opts: {
       },
     };
 
-    // Include patient context from intelligence when available
-    const prompt = citations.length > 0
-      ? buildPrompt(settingsData || null, text, history, contextForPrompt, citations, promptOptions)
-      : buildPrompt(settingsData || null, text, history, contextForPrompt, undefined, promptOptions);
+    // Compact operational turns use only structured clinic facts and booking
+    // state. Medical and detailed clinic questions retain the full RAG prompt.
+    const prompt = skipRagForFastPath
+      ? buildFastClinicPrompt(settingsData || null, text, history, promptOptions)
+      : citations.length > 0
+        ? buildPrompt(settingsData || null, text, history, contextForPrompt, citations, promptOptions)
+        : buildPrompt(settingsData || null, text, history, contextForPrompt, undefined, promptOptions);
 
     const provider = getProvider(modelPreference || undefined);
 

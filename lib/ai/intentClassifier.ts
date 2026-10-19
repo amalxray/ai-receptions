@@ -1,5 +1,6 @@
 import { getProvider } from './provider';
 import { logEvent } from '@/lib/server/logging';
+import type { ConversationIntent } from './intelligence';
 
 /**
  * PRIMARY: LLM-based semantic intent classification.
@@ -8,8 +9,8 @@ import { logEvent } from '@/lib/server/logging';
  * independent of exact wording. The LLM understands Arabic dialects, typos,
  * missing hamza, and a wide range of phrasings.
  *
- * The keyword-based rules remain ONLY as a deterministic fast-path/fallback
- * for obvious explicit actions (e.g. "إلغاء") and emergency safety signals.
+ * Deterministic fast paths handle clear small talk, operational clinic questions,
+ * explicit actions, and emergency safety signals. Other messages use the LLM.
  *
  * IMPORTANT: The local Ollama models currently installed (qwen2.5-coder:3b,
  * qwen2.5:3b, llama3.2:3b, qwen2.5:7b) are either too slow or produce poor
@@ -41,6 +42,10 @@ const VALID_INTENT_VALUES = new Set<string>(Object.values(SEMANTIC_INTENTS));
 export type SemanticIntentResult = {
   intent: SemanticIntent;
   confidence: number;
+  /** Deterministic classification completed without an LLM call. */
+  fastPath?: boolean;
+  /** Precise operational intent when the semantic label is broader. */
+  conversationIntent?: ConversationIntent;
   entities: {
     problem?: string;
     duration?: string;
@@ -219,6 +224,22 @@ const EXACT_CANCEL = unicodePhrasePattern('إلغاء|الغاء|الغي|الغ
 const EXACT_BOOKING = unicodePhrasePattern('احجزلي|احجزي|احجزنا|احجزها|احجزله|احجزهم|ابدي احجز|بدي احجز|بدي حجز|بدي موعد|اريد حجز|أريد حجز|حجز موعد|احجز|بدي اتصور|بديتصور|أتصور|بدي تصوير|اريد تصوير|أريد تصوير|بدي اعمل تصوير|بدي صورة|صورة اشعة|صورة أشعة|book|booking|appointment');
 const EXACT_RESCHEDULE = unicodePhrasePattern('تأجيل الموعد|تاجيل الموعد|تغيير الموعد|تعديل الموعد|بدي اغير موعدي|بدي أغير موعدي|بدي اجدد موعدي|بدي أجدد موعدي|reschedule|change appointment');
 const EXACT_HANDOFF = unicodePhrasePattern('بدي احكي مع موظفة|بدي احكي مع موظف|بدي احكي مع الدكتور|بدي حدى من العيادة|بدي حدا من العيادة|مش فاهم|مش فاهمة|human|agent|staff|call me');
+// Explicit operational questions can be answered from clinic-scoped structured
+// data without the semantic-classifier LLM or a knowledge-base retrieval.
+const FAST_PRICE_INQUIRY = /(?:\b(?:price|pricing|cost|fee)\b|\bhow\s+much\b|\u0633\u0639\u0631|\u0627\u0644\u062a\u0643\u0644\u0641\u0629|\u0628\u0643\u0645|\u0642\u062f\u064a\u0634)/i;
+const FAST_HOURS_INQUIRY = /(?:opening\s+hours|hours\s+of\s+operation|when\s+(?:do|does|are)\s+you\s+(?:open|close)|\u062f\u0648\u0627\u0645|\u0627\u0648\u0642\u0627\u062a\s+(?:\u0627\u0644)?\u0639\u0645\u0644|\u0633\u0627\u0639\u0627\u062a\s+(?:\u0627\u0644)?\u0639\u0645\u0644|\u0645\u062a\u0649\s+(?:\u0628\u062a)?(?:\u0641\u062a\u062d|\u0642\u0641\u0644|\u062a\u0633\u0643\u0631))/i;
+const FAST_SERVICE_LIST = /(?:what\s+(?:services|treatments)\s+(?:do\s+you\s+offer|are\s+available)|list\s+(?:your\s+)?services|available\s+services|\u0634\u0648\s+(?:\u0627\u0644)?\u062e\u062f\u0645\u0627\u062a|\u0645\u0627\s+(?:\u0647\u064a\s+)?\u0627\u0644?\u062e\u062f\u0645\u0627\u062a|\u0627\u0644\u062e\u062f\u0645\u0627\u062a\s+\u0627\u0644\u0645\u062a\u0627\u062d\u0629)/i;
+const FAST_CLINIC_CONTACT = /(?:clinic.{0,20}(?:phone|telephone|address|location|contact)|where\s+is\s+(?:the\s+)?clinic|\u0631\u0642\u0645\s+(?:\u0627\u0644)?(?:\u0647\u0627\u062a\u0641|\u062a\u0644\u0641\u0648\u0646)|\u0639\u0646\u0648\u0627\u0646\s+(?:\u0627\u0644)?\u0639\u064a\u0627\u062f\u0629|\u0645\u0648\u0642\u0639\s+(?:\u0627\u0644)?\u0639\u064a\u0627\u062f\u0629|\u0643\u064a\u0641\s+\u0627\u062a\u0648\u0627\u0635\u0644)/i;
+
+function fastResult(
+  intent: SemanticIntent,
+  confidence: number,
+  entities: SemanticIntentResult['entities'] = {},
+  conversationIntent?: ConversationIntent,
+): SemanticIntentResult {
+  return { intent, confidence, entities, fastPath: true, ...(conversationIntent ? { conversationIntent } : {}) };
+}
+
 // A pure greeting/goodbye: phrase at the start, optionally followed by
 // punctuation/whitespace ONLY — "مرحبا بدي احجز" must NOT be a greeting.
 const EXACT_GREETING = new RegExp(`^${NO_LETTER_BEFORE}(مرحبا|مرحبة|اهلا|أهلا|اهلين|أهلين|صباح الخير|مساء الخير|مساء النور|هاي|هلا|سلام|hello|hi|hey)${NO_LETTER_AFTER}[\\s،,.!؟?:؛~]*$`, 'iu');
@@ -294,18 +315,31 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
   const t = text.trim();
 
   if (EXACT_EMERGENCY.test(t)) {
-    return { intent: SEMANTIC_INTENTS.URGENT_SIGNAL, confidence: 0.98, entities: { urgency: 'critical' } };
+    return fastResult(SEMANTIC_INTENTS.URGENT_SIGNAL, 0.98, { urgency: 'critical' });
   }
-  if (EXACT_CANCEL.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_CANCELLATION, confidence: 0.95, entities: {} };
-  if (EXACT_RESCHEDULE.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_RESCHEDULE, confidence: 0.9, entities: {} };
-  if (EXACT_BOOKING.test(t)) return { intent: SEMANTIC_INTENTS.APPOINTMENT_BOOKING, confidence: 0.85, entities: {} };
-  if (EXACT_HANDOFF.test(t)) return { intent: SEMANTIC_INTENTS.HUMAN_HANDOFF, confidence: 0.95, entities: {} };
-  if (EXACT_GREETING.test(t)) return { intent: SEMANTIC_INTENTS.GREETING, confidence: 0.9, entities: {} };
-  if (EXACT_GOODBYE.test(t)) return { intent: SEMANTIC_INTENTS.GOODBYE, confidence: 0.9, entities: {} };
+  if (EXACT_CANCEL.test(t)) return fastResult(SEMANTIC_INTENTS.APPOINTMENT_CANCELLATION, 0.95);
+  if (EXACT_RESCHEDULE.test(t)) return fastResult(SEMANTIC_INTENTS.APPOINTMENT_RESCHEDULE, 0.9);
+  if (EXACT_BOOKING.test(t)) return fastResult(SEMANTIC_INTENTS.APPOINTMENT_BOOKING, 0.85);
+  if (EXACT_HANDOFF.test(t)) return fastResult(SEMANTIC_INTENTS.HUMAN_HANDOFF, 0.95);
+  if (EXACT_GREETING.test(t)) return fastResult(SEMANTIC_INTENTS.GREETING, 0.9);
+  if (EXACT_GOODBYE.test(t)) return fastResult(SEMANTIC_INTENTS.GOODBYE, 0.9);
   // Leading greeting/goodbye ("مرحبا كيفك", "شكراً كتير") — safe because a
   // trailing booking/question word falls through to the LLM (see LEADING_*).
-  if (LEADING_GREETING.test(t)) return { intent: SEMANTIC_INTENTS.GREETING, confidence: 0.85, entities: {} };
-  if (LEADING_GOODBYE.test(t)) return { intent: SEMANTIC_INTENTS.GOODBYE, confidence: 0.85, entities: {} };
+  if (LEADING_GREETING.test(t)) return fastResult(SEMANTIC_INTENTS.GREETING, 0.85);
+  if (LEADING_GOODBYE.test(t)) return fastResult(SEMANTIC_INTENTS.GOODBYE, 0.85);
+
+  if (FAST_PRICE_INQUIRY.test(t)) {
+    return fastResult(SEMANTIC_INTENTS.SERVICE_INFORMATION, 0.9, {}, 'pricing_inquiry');
+  }
+  if (FAST_HOURS_INQUIRY.test(t)) {
+    return fastResult(SEMANTIC_INTENTS.CLINIC_INFORMATION, 0.9, {}, 'clinic_hours');
+  }
+  if (FAST_SERVICE_LIST.test(t)) {
+    return fastResult(SEMANTIC_INTENTS.SERVICE_INFORMATION, 0.85, {}, 'services_inquiry');
+  }
+  if (FAST_CLINIC_CONTACT.test(t)) {
+    return fastResult(SEMANTIC_INTENTS.CLINIC_INFORMATION, 0.85, {}, 'location');
+  }
 
   return null;
 }
@@ -325,17 +359,20 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
 export async function classifyIntent(text: string): Promise<SemanticIntentResult> {
   // 0. Emergency safety signals — always deterministic and first.
   if (EXACT_EMERGENCY.test(text.trim())) {
-    return { intent: SEMANTIC_INTENTS.URGENT_SIGNAL, confidence: 0.98, entities: { urgency: 'critical' } };
+    return fastResult(SEMANTIC_INTENTS.URGENT_SIGNAL, 0.98, { urgency: 'critical' });
   }
 
-  // 0b. Small-talk (greeting/goodbye) — resolve deterministically BEFORE the
-  // LLM. These are unambiguous courtesy phrases (see LEADING_* which reject a
-  // trailing booking/question word), so the extra LLM intent call is pure
-  // latency with no accuracy gain. Every other intent still goes to the LLM.
+  // 0b. Small-talk and explicit operational questions resolve deterministically
+  // before the LLM. They can be answered from structured clinic data, and a
+  // classifier round-trip adds latency without improving these unambiguous asks.
   const fastSmallTalk = classifyIntentFastPath(text);
+  const fastOperationalIntent = ['pricing_inquiry', 'clinic_hours', 'services_inquiry', 'location']
+    .includes(fastSmallTalk?.conversationIntent ?? '');
   if (
     fastSmallTalk &&
-    (fastSmallTalk.intent === SEMANTIC_INTENTS.GREETING || fastSmallTalk.intent === SEMANTIC_INTENTS.GOODBYE)
+    (fastSmallTalk.intent === SEMANTIC_INTENTS.GREETING ||
+      fastSmallTalk.intent === SEMANTIC_INTENTS.GOODBYE ||
+      fastOperationalIntent)
   ) {
     return fastSmallTalk;
   }

@@ -31,6 +31,8 @@ export type AppointmentExtraction = {
 
 export type ConversationIntelligence = {
   intent: ConversationIntent;
+  /** True when intentClassifier resolved this message deterministically, without an LLM call. */
+  semanticFastPath?: boolean;
   confidence: number;
   urgency: 'low' | 'normal' | 'high' | 'critical';
   lead: { temperature: LeadTemperature; confidence: number; estimatedValue: number };

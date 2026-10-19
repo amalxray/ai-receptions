@@ -78,6 +78,7 @@ const mockContextRetrieval = vi.hoisted(() => ({
 vi.mock('@/lib/ai/contextRetrieval', () => mockContextRetrieval);
 
 const mockPromptManager = vi.hoisted(() => ({
+  buildFastClinicPrompt: vi.fn(),
   buildPrompt: vi.fn(),
 }));
 vi.mock('@/lib/ai/promptManager', () => mockPromptManager);
@@ -287,6 +288,34 @@ describe('AI Orchestrator RAG Pipeline', () => {
 
     // Verify AI provider was called with the fallback prompt
     expect(mockAiProvider.generate).toHaveBeenCalledWith({ prompt: fallbackPrompt });
+  });
+
+  it.each([
+    'greeting',
+    'goodbye',
+    'pricing_inquiry',
+    'clinic_hours',
+    'appointment_booking',
+    'services_inquiry',
+    'location',
+  ])('skips retrieval and uses the compact prompt for fast structured intent: %s', async (intent) => {
+    mockIntelligence.analyzeAndPersistMessage.mockResolvedValue({
+      intent,
+      semanticFastPath: true,
+      shouldHandoff: false,
+      state: 'ai',
+    } as any);
+    mockPromptManager.buildFastClinicPrompt.mockReturnValue('COMPACT PROMPT');
+    mockAiProvider.generate.mockResolvedValue({
+      text: 'A concise clinic reply.', promptTokens: 5, completionTokens: 5, totalTokens: 10, model: 'm',
+    });
+
+    await handleIncomingMessage({ clinicId: 'clinic-1', conversationId: 'conv-1', text: 'simple question' });
+
+    expect(mockContextRetrieval.retrieveContext).not.toHaveBeenCalled();
+    expect(mockPromptManager.buildFastClinicPrompt).toHaveBeenCalled();
+    expect(mockPromptManager.buildPrompt).not.toHaveBeenCalled();
+    expect(mockAiProvider.generate).toHaveBeenCalledWith({ prompt: 'COMPACT PROMPT' });
   });
 
   it('should stop processing and trigger handoff when required', async () => {

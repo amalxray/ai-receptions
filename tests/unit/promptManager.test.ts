@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPrompt } from '../../lib/ai/promptManager';
+import { buildFastClinicPrompt, buildPrompt } from '../../lib/ai/promptManager';
 import { ClinicAISettings } from '../../types/db';
 
 describe('Prompt Manager', () => {
@@ -21,6 +21,32 @@ describe('Prompt Manager', () => {
   const mockContext = [
     { id: 'chunk-1', document_id: 'doc-1', chunk_index: 0, content: 'We are in-network with Cigna PPO.', similarity: 0.9, type: 'unstructured' as const, document: { id: 'doc-1', original_filename: 'faq.txt', file_type: 'text', mime_type: 'text/plain' } },
   ];
+
+  it('builds a compact operational prompt from structured clinic facts only', () => {
+    const prompt = buildFastClinicPrompt(mockSettings, 'What are your hours?', [], {
+      intent: 'clinic_hours',
+      clinicInfo: { name: 'Dentaire Clinic', address: 'Main Street', phone: '0501234567' },
+      operatingData: {
+        services: [{
+          id: 'cleaning', name: 'Cleaning', description: 'Routine cleaning', duration_minutes: 30,
+          pricing_type: 'fixed', price: 100, price_min: null, price_max: null,
+          price_visible_to_patients: true, active: true,
+        }],
+        providers: [], providerServiceIds: [], currency: 'ils', hasServices: true, hasProviders: false, usable: true,
+      },
+      workingHours: {
+        days: [{ weekday: 0, start_time: '09:00:00', end_time: '17:00:00' }],
+        todayName: 'Sunday', todayWeekday: 0, currentTime: '12:00', isOpenNow: true,
+      },
+    });
+
+    expect(prompt).toContain('Dentaire Clinic');
+    expect(prompt).toContain('Cleaning');
+    expect(prompt).toContain('100');
+    expect(prompt).toContain('09:00');
+    expect(prompt).not.toContain('General Dental Knowledge');
+    expect(prompt).not.toContain('Context:');
+  });
 
   it('should build a full RAG prompt with history, settings, and context', () => {
     const question = 'Great, what about Aetna?';

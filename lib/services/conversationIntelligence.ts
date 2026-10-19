@@ -73,22 +73,26 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
   // Map semantic intent list (14 intents) to the legacy ConversationIntent union.
   // The legacy keyword rules fill any gaps with entity extraction (appointment, contact).
   let semanticAsLegacy: ConversationIntent;
-  switch (semantic.intent as SemanticIntent) {
-    case SEMANTIC_INTENTS.GREETING: semanticAsLegacy = 'greeting'; break;
-    case SEMANTIC_INTENTS.GENERAL_QUESTION: semanticAsLegacy = 'general_question'; break;
-    case SEMANTIC_INTENTS.DENTAL_GENERAL_QUESTION: semanticAsLegacy = 'general_question'; break;
-    case SEMANTIC_INTENTS.PATIENT_COMPLAINT: semanticAsLegacy = 'patient_complaint'; break;
-    case SEMANTIC_INTENTS.CLINIC_INFORMATION:
-    case SEMANTIC_INTENTS.SERVICE_INFORMATION:
-    case SEMANTIC_INTENTS.PROVIDER_INFORMATION:
-      semanticAsLegacy = 'services_inquiry'; break;
-    case SEMANTIC_INTENTS.APPOINTMENT_BOOKING: semanticAsLegacy = 'appointment_booking'; break;
-    case SEMANTIC_INTENTS.APPOINTMENT_CANCELLATION: semanticAsLegacy = 'appointment_cancellation'; break;
-    case SEMANTIC_INTENTS.APPOINTMENT_RESCHEDULE: semanticAsLegacy = 'appointment_reschedule'; break;
-    case SEMANTIC_INTENTS.HUMAN_HANDOFF: semanticAsLegacy = 'human_handoff'; break;
-    case SEMANTIC_INTENTS.URGENT_SIGNAL: semanticAsLegacy = 'emergency'; break;
-    case SEMANTIC_INTENTS.GOODBYE: semanticAsLegacy = 'goodbye'; break;
-    default: semanticAsLegacy = 'unknown'; break;
+  if (semantic.conversationIntent) {
+    semanticAsLegacy = semantic.conversationIntent;
+  } else {
+    switch (semantic.intent as SemanticIntent) {
+      case SEMANTIC_INTENTS.GREETING: semanticAsLegacy = 'greeting'; break;
+      case SEMANTIC_INTENTS.GENERAL_QUESTION: semanticAsLegacy = 'general_question'; break;
+      case SEMANTIC_INTENTS.DENTAL_GENERAL_QUESTION: semanticAsLegacy = 'general_question'; break;
+      case SEMANTIC_INTENTS.PATIENT_COMPLAINT: semanticAsLegacy = 'patient_complaint'; break;
+      case SEMANTIC_INTENTS.CLINIC_INFORMATION:
+      case SEMANTIC_INTENTS.SERVICE_INFORMATION:
+      case SEMANTIC_INTENTS.PROVIDER_INFORMATION:
+        semanticAsLegacy = 'services_inquiry'; break;
+      case SEMANTIC_INTENTS.APPOINTMENT_BOOKING: semanticAsLegacy = 'appointment_booking'; break;
+      case SEMANTIC_INTENTS.APPOINTMENT_CANCELLATION: semanticAsLegacy = 'appointment_cancellation'; break;
+      case SEMANTIC_INTENTS.APPOINTMENT_RESCHEDULE: semanticAsLegacy = 'appointment_reschedule'; break;
+      case SEMANTIC_INTENTS.HUMAN_HANDOFF: semanticAsLegacy = 'human_handoff'; break;
+      case SEMANTIC_INTENTS.URGENT_SIGNAL: semanticAsLegacy = 'emergency'; break;
+      case SEMANTIC_INTENTS.GOODBYE: semanticAsLegacy = 'goodbye'; break;
+      default: semanticAsLegacy = 'unknown'; break;
+    }
   }
 
   // Use the LLM classifier output when it is confident enough.
@@ -117,6 +121,7 @@ export async function analyzeAndPersistMessage(client: IntelligenceClient, param
   } else {
     intelligence = detectConversationIntelligence(params.text, threshold);
   }
+  intelligence = { ...intelligence, semanticFastPath: semantic.fastPath === true };
 
   // --- Conversation engine: patient context + state machine ---
   // Load existing patient context, update it from the current message's entities,
