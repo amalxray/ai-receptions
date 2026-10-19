@@ -836,6 +836,7 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
         >
           احجز الآن
         </a>
+        {/* زر المحادثة الحية مخفي مؤقتاً في صفحة العيادة العامة — الكود محفوظ أدناه بدون حذف
         {space.sections?.aiCta !== false && (
           <button
             type="button"
@@ -844,7 +845,7 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
           >
             استشارة
           </button>
-        )}
+        ) */}
       </div>
     </div>
   );
