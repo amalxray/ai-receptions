@@ -21,6 +21,7 @@ import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdom
 import { tenantPublicUrl } from '@/lib/vercel/tenantLinks';
 
 export type PublicSectionKey =
+  | 'clinic_services'
   | 'hero'
   | 'about'
   | 'services'
@@ -40,14 +41,14 @@ export type PublicSectionKey =
   | 'news';
 
 export const PUBLIC_SECTION_ORDER_KEYS = [
-  'hero', 'about', 'services', 'providers', 'hours', 'offers', 'gallery',
+  'clinic_services', 'hero', 'about', 'services', 'providers', 'hours', 'offers', 'gallery',
   'beforeAfter', 'badges', 'contact', 'bookingCta', 'aiCta', 'qrShare',
   'achievements', 'testimonials', 'articles', 'news',
 ] as const;
 export type PublicSectionOrderKey = (typeof PUBLIC_SECTION_ORDER_KEYS)[number];
 
 export const DEFAULT_PUBLIC_SECTION_ORDER: PublicSectionOrderKey[] = [
-  'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
+  'clinic_services', 'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
   'offers', 'services', 'providers', 'hours', 'contact', 'bookingCta',
   'testimonials', 'articles', 'qrShare', 'news', 'aiCta',
 ];
@@ -344,6 +345,7 @@ export function defaultPublicPageSections(activityType: ActivityType): Record<Pu
   switch (activityType) {
     case 'imaging_center':
       return {
+        clinic_services: true,
         hero: true, about: true, services: true, providers: false, hours: true,
         offers: false, gallery: false, beforeAfter: true, badges: true, contact: true,
         bookingCta: true, aiCta: true, qrShare: true,
@@ -351,6 +353,7 @@ export function defaultPublicPageSections(activityType: ActivityType): Record<Pu
       };
     case 'dental_lab':
       return {
+        clinic_services: true,
         hero: true, about: true, services: true, providers: false, hours: true,
         offers: false, gallery: false, beforeAfter: true, badges: true, contact: true,
         bookingCta: true, aiCta: true, qrShare: true,
@@ -358,6 +361,7 @@ export function defaultPublicPageSections(activityType: ActivityType): Record<Pu
       };
     default:
       return {
+        clinic_services: true,
         hero: true, about: true, services: true, providers: true, hours: true,
         offers: true, gallery: false, beforeAfter: true, badges: true, contact: true,
         bookingCta: true, aiCta: true, qrShare: true,
