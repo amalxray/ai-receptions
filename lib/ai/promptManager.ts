@@ -297,6 +297,75 @@ Question: {question}`;
   return prompt;
 }
 
+/**
+ * Small operational turns do not need the full dental knowledge, RAG citations,
+ * safety taxonomy, and receptionist policy bundle. Keep their prompt grounded
+ * in clinic-scoped structured facts while preserving booking guards.
+ */
+export function buildFastClinicPrompt(
+  settings: ClinicAISettings | null,
+  question: string,
+  history: HistoryMessage[],
+  options?: PromptOptions,
+): string {
+  const assistantName = settings?.assistant_name || 'AI Assistant';
+  const tone = settings?.tone || 'professional and friendly';
+  const language = settings?.language || "the patient's language";
+  const activity = (options?.activityType ?? '').toLowerCase();
+  const business = activity === 'imaging_center' || activity === 'imaging'
+    ? 'dental imaging center'
+    : activity === 'dental_lab'
+      ? 'dental laboratory'
+      : 'dental clinic';
+
+  const lines = [
+    `You are ${assistantName}, the receptionist of a ${business}.`,
+    `Use a ${tone} tone and respond in ${language}. Keep the reply concise and answer only the patient's current question.`,
+    'Use only the authoritative clinic facts below. Never invent a service, price, contact detail, working hour, or availability; if a fact is missing, say the clinic must confirm it.',
+    'Never diagnose a medical condition or prescribe medication.',
+    buildClinicInfoSection(options?.clinicInfo),
+    buildCompactOperatingDataSection(options?.operatingData),
+    buildWorkingHoursSection(options?.workingHours),
+    buildCompactBookingState(options?.receptionistState, options?.operatingData, options?.intent),
+    history.length > 0
+      ? `Recent conversation:\n${history.slice(-6).map((message) => `${message.role === 'patient' ? 'Patient' : 'Assistant'}: ${message.content}`).join('\n')}`
+      : '',
+    `Patient message: ${question}`,
+  ];
+
+  return lines.filter(Boolean).join('\n\n');
+}
+
+function buildCompactOperatingDataSection(operatingData?: ClinicOperatingData | null): string {
+  if (!operatingData) return '';
+  const lines = ['Clinic services and patient-visible prices (clinic database):'];
+  for (const service of operatingData.services) {
+    const price = describePriceForPrompt(service.id, operatingData);
+    lines.push(`- ${service.name}${price}`);
+  }
+  if (operatingData.services.length === 0) lines.push('- No services are configured. Do not invent any.');
+  return lines.join('\n');
+}
+
+function buildCompactBookingState(
+  state?: ReceptionistConversationState | null,
+  operatingData?: ClinicOperatingData | null,
+  intent?: ConversationIntent,
+): string {
+  if (intent !== 'appointment_booking' || !state) return '';
+  const service = operatingData?.services.find((item) => item.id === (state.booking.service_id ?? state.recommended_service_id));
+  const provider = operatingData?.providers.find((item) => item.id === (state.booking.provider_id ?? state.recommended_provider_id));
+  return [
+    'Booking state (authoritative):',
+    `- Stage: ${state.state}.`,
+    service ? `- Selected service: ${service.name}.` : '',
+    provider ? `- Matched provider: ${provider.name}.` : '',
+    state.booking.slot ? `- Verified slot: ${state.booking.slot}.` : '',
+    state.booking_issue ? `- Current scheduling note: ${state.booking_issue}` : '',
+    '- Offer only a slot explicitly marked as verified above. Ask only for the next missing booking detail. Never say the appointment is saved; only the on-screen Confirm button creates it.',
+  ].filter(Boolean).join('\n');
+}
+
 function buildCbctPriceRuleSection(): string {
   return [
     'CBCT PRICING RULE (mandatory): Never present 70 shekels as a fixed final CBCT price.',

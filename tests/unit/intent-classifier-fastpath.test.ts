@@ -41,7 +41,7 @@ import { classifyIntent } from '@/lib/ai/intentClassifier';
 const FAST = 'fast' as const;
 const AI = 'ai' as const;
 
-type Row = { n: number; msg: string; expect: string; path: typeof FAST | typeof AI };
+type Row = { n: number; msg: string; expect: string; path: typeof FAST | typeof AI; conversationIntent?: string };
 
 const SCENARIOS: Row[] = [
   { n: 1, msg: 'مرحبا', expect: 'greeting', path: FAST },
@@ -52,9 +52,9 @@ const SCENARIOS: Row[] = [
   { n: 6, msg: 'باي', expect: 'goodbye', path: FAST },
   { n: 7, msg: 'مرحبا بدي أحجز', expect: 'appointment_booking', path: AI },
   { n: 8, msg: 'بدي أحجز', expect: 'appointment_booking', path: AI },
-  { n: 9, msg: 'شو الخدمات؟', expect: 'general_question', path: AI },
+  { n: 9, msg: 'شو الخدمات؟', expect: 'service_information', path: FAST, conversationIntent: 'services_inquiry' },
   { n: 10, msg: 'كيفك؟', expect: 'greeting', path: FAST },
-  { n: 11, msg: 'شو ساعات العمل؟', expect: 'general_question', path: AI },
+  { n: 11, msg: 'شو ساعات العمل؟', expect: 'clinic_information', path: FAST, conversationIntent: 'clinic_hours' },
   { n: 12, msg: 'ألم في الضرس', expect: 'general_question', path: AI },
   { n: 13, msg: 'مرحبا كيفك', expect: 'greeting', path: FAST },
   { n: 14, msg: 'بدي أحجز تصوير', expect: 'appointment_booking', path: AI },
@@ -64,16 +64,20 @@ const SCENARIOS: Row[] = [
   { n: 18, msg: 'مساء الخير', expect: 'greeting', path: FAST },
   { n: 19, msg: 'السلام عليكم بدي أسأل', expect: 'general_question', path: AI },
   { n: 20, msg: 'أهلاً شو في', expect: 'greeting', path: FAST },
+  { n: 21, msg: '\u0643\u0645 \u0633\u0639\u0631 \u0627\u0644\u062a\u0646\u0638\u064a\u0641\u061f', expect: 'service_information', path: FAST, conversationIntent: 'pricing_inquiry' },
+  { n: 22, msg: '\u0645\u0627 \u0647\u064a \u0633\u0627\u0639\u0627\u062a \u0627\u0644\u0639\u0645\u0644\u061f', expect: 'clinic_information', path: FAST, conversationIntent: 'clinic_hours' },
+  { n: 23, msg: '\u0634\u0648 \u0627\u0644\u062e\u062f\u0645\u0627\u062a \u0627\u0644\u0645\u062a\u0627\u062d\u0629\u061f', expect: 'service_information', path: FAST, conversationIntent: 'services_inquiry' },
+  { n: 24, msg: '\u0648\u064a\u0646 \u0645\u0648\u0642\u0639 \u0627\u0644\u0639\u064a\u0627\u062f\u0629\u061f', expect: 'clinic_information', path: FAST, conversationIntent: 'location' },
 ];
 
-describe('classifyIntent fast-path (20 scenarios)', () => {
+describe('classifyIntent fast-path (24 scenarios)', () => {
   beforeEach(() => {
     providerMock.generate.mockReset();
   });
 
-  it('covers exactly the 20 mandated scenarios', () => {
-    expect(SCENARIOS).toHaveLength(20);
-    expect(SCENARIOS.map((r) => r.n)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+  it('covers the original 20 scenarios plus 4 operational fast paths', () => {
+    expect(SCENARIOS).toHaveLength(24);
+    expect(SCENARIOS.map((r) => r.n)).toEqual(Array.from({ length: 24 }, (_, i) => i + 1));
   });
 
   for (const row of SCENARIOS) {
@@ -87,6 +91,8 @@ describe('classifyIntent fast-path (20 scenarios)', () => {
       const result = await classifyIntent(row.msg);
 
       expect(result.intent).toBe(row.expect);
+      if (row.conversationIntent) expect(result.conversationIntent).toBe(row.conversationIntent);
+      if (row.path === FAST) expect(result.fastPath).toBe(true);
 
       if (row.path === FAST) {
         expect(providerMock.generate).not.toHaveBeenCalled();
