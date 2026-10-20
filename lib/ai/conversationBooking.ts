@@ -217,57 +217,39 @@ export async function attemptConversationBooking(params: {
 
     let googleCalendarConnected = false;
     if (googleCalendar) {
-      try {
-        const actualInstant = clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem');
-        const calendarBooking = await createGoogleCalendarBooking({
-          clinic_id: clinicId,
-          provider_id: booking.provider_id as string,
-          clinic_name: clinicName ?? undefined,
-          appointment_id: created.id,
-          patient_id: patientId,
-          patient_name: (booking.patient_name as string).trim(),
-          patient_phone: phone ?? '',
-          service: service.name,
-          appointment_time: actualInstant.toISOString(),
-          timezone: timeZone ?? 'Asia/Jerusalem',
-          duration_minutes: service.duration_minutes ?? undefined,
-          status: 'confirmed',
-        });
-        googleCalendarConnected = calendarBooking.calendar_connected;
-        if (googleCalendarConnected) {
-          await persistReceptionistSlot(clinicId, conversationId, {
-            appointment_id: created.id,
-            appointment_status: 'confirmed',
-            scheduled_at: created.scheduled_at,
-          });
-        }
-      } catch (calendarError) {
-        const reason = calendarError instanceof Error ? calendarError.message : String(calendarError);
-        await supabaseAdmin
-          .from('appointments')
-          .update({ status: 'cancelled' })
-          .eq('clinic_id', clinicId)
-          .eq('id', created.id);
-        await persistReceptionistSlot(clinicId, conversationId, {
-          appointment_id: null,
-          appointment_status: 'google_calendar_failed',
-        });
-        await cancelAppointmentReminders({ clinicId, appointmentId: created.id, client: supabaseAdmin }).catch(() => undefined);
+      // Fire-and-forget: Google Calendar sync must never fail the booking.
+      // The DB appointment is the source of truth; sync errors are logged only.
+      createGoogleCalendarBooking({
+        clinic_id: clinicId,
+        provider_id: booking.provider_id as string,
+        clinic_name: clinicName ?? undefined,
+        appointment_id: created.id,
+        patient_id: patientId,
+        patient_name: (booking.patient_name as string).trim(),
+        patient_phone: phone ?? '',
+        service: service.name,
+        appointment_time: clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem').toISOString(),
+        timezone: timeZone ?? 'Asia/Jerusalem',
+        duration_minutes: service.duration_minutes ?? undefined,
+        status: 'confirmed',
+      }).catch((err) => {
         logEvent('conversation_google_calendar_booking_failed', {
           clinic_id: clinicId,
           conversation_id: conversationId,
           appointment_id: created.id,
-          error: reason,
-          stack: calendarError instanceof Error ? calendarError.stack ?? null : null,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
         }, 'error');
-        return {
-          action: 'failed',
-          reason,
-          failureSource: 'google_calendar',
-          stack: calendarError instanceof Error ? calendarError.stack : undefined,
-        };
-      }
+      });
     }
+
+    // Persist the booking in the conversation state regardless of Google Calendar sync result.
+    // The DB appointment is the source of truth.
+    await persistReceptionistSlot(clinicId, conversationId, {
+      appointment_id: created.id,
+      appointment_status: created.status,
+      scheduled_at: created.scheduled_at,
+    });
 
     logEvent('conversation_booking_created', {
       clinic_id: clinicId,
@@ -281,7 +263,7 @@ export async function attemptConversationBooking(params: {
       appointment: {
         id: created.id,
         scheduled_at: created.scheduled_at,
-        status: googleCalendarConnected ? 'confirmed' : created.status,
+        status: created.status,
       },
     };
   } catch (err) {
