@@ -84,6 +84,12 @@ export async function middleware(request: NextRequest) {
       301
     );
   }
+  if (redirect?.kind === 'tenant-path') {
+    return NextResponse.redirect(
+      new URL(`${clinicSpaceUrl(redirect.slug)}${request.nextUrl.search}`),
+      301
+    );
+  }
   if (redirect?.kind === 'apex-path') {
     // A 301 is issued only when BOTH conditions hold:
     //   1. the slug really is a live tenant (`tenantSlugExists`) — a permanent

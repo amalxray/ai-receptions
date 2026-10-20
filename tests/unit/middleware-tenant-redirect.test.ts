@@ -138,6 +138,15 @@ describe('middleware — legacy URL → tenant subdomain (301)', () => {
     expect(res.headers.get('x-middleware-rewrite')).toContain('https://hala-clinic.dentairec.com/hala-clinic');
   });
 
+  it('redirects the old slug path on the tenant host to the root and keeps query params', async () => {
+    const res = await middleware(
+      request('https://hala-clinic.dentairec.com/hala-clinic?utm_source=qr', 'hala-clinic.dentairec.com')
+    );
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('location')).toBe('https://hala-clinic.dentairec.com/?utm_source=qr');
+  });
+
   it('skips Supabase auth for public AI API requests even when auth is configured', async () => {
     supabaseConfig.supabaseUrl = 'https://supabase.example.test';
     supabaseConfig.anonKey = 'anon-test-key';
