@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 /**
  * PHASE L — PUBLIC PAGE CONTENT item management.
  * PATCH {type, ...patch} — update one tenant content item (ADMIN_ROLES).

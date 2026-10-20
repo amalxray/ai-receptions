@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 /**
  * CLINIC PUBLIC PAGE OWNER EXPERIENCE — public page management API.
  *

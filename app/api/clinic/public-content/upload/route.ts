@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 /**
  * PHASE L — reusable public-content image upload.
  * POST FormData: file → storage (clinic-public-media / clinic/{clinic_id}/public-content/...) → { path, url }.

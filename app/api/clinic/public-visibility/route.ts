@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 /**
  * PP-8A — Public Visibility management API (clinic-scoped).
  *

@@ -1,3 +1,5 @@
+export const preferredRegion = 'icn1';
+
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resolvePublicClinic } from '@/lib/services/clinics';

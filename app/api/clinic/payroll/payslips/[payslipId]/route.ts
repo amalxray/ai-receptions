@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { getPayslipDetail } from '@/lib/services/payroll-engine';
