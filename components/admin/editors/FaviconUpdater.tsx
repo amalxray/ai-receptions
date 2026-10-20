@@ -9,7 +9,7 @@ export default function FaviconUpdater() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/admin/landing-page/site_identity', {
+        const res = await fetch('/api/public/site-identity', {
           cache: 'no-store',
         });
         if (!res.ok) return;
