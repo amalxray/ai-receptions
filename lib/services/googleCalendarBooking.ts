@@ -11,6 +11,7 @@ import {
   loadProviderSchedule,
 } from '@/lib/services/bookingService';
 import { checkSlotAvailability } from '@/lib/services/scheduling';
+import { logEvent } from '@/lib/server/logging';
 
 export type AppointmentStatus = 'pending' | 'pending_confirmation' | 'confirmed' | 'cancelled';
 
@@ -40,6 +41,7 @@ export type AvailabilityResult = {
 export type GoogleCalendarBusyInterval = { start: string; end: string };
 const GOOGLE_CALENDAR_TIMEOUT_MS = 3_000;
 const GOOGLE_CALENDAR_FAIL_FAST_MS = GOOGLE_CALENDAR_TIMEOUT_MS - 100;
+const GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS = 2_000;
 
 type GoogleCalendarClient = ReturnType<typeof google.calendar>;
 type GoogleCalendarConfig = {
@@ -54,15 +56,15 @@ function nextDate(date: string): string {
   return next.toISOString().slice(0, 10);
 }
 
-function withCalendarTimeout<T>(operation: Promise<T>, stage: string): Promise<T> {
+function withCalendarTimeout<T>(operation: Promise<T>, stage: string, timeoutMs = GOOGLE_CALENDAR_FAIL_FAST_MS): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     operation,
     new Promise<never>((_, reject) => {
       timeout = setTimeout(() => reject(Object.assign(
-        new Error(`Google Calendar ${stage} exceeded its ${GOOGLE_CALENDAR_FAIL_FAST_MS}ms fail-fast limit`),
+        new Error(`Google Calendar ${stage} exceeded its ${timeoutMs}ms fail-fast limit`),
         { code: 'ETIMEDOUT' },
-      )), GOOGLE_CALENDAR_FAIL_FAST_MS);
+      )), timeoutMs);
     }),
   ]).finally(() => {
     if (timeout) clearTimeout(timeout);
@@ -73,6 +75,7 @@ function isCalendarTimeout(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const candidate = error as { code?: unknown; name?: unknown };
   return candidate.code === 'ETIMEDOUT'
+    || candidate.code === 'ERR_CANCELED'
     || candidate.name === 'AbortError'
     || candidate.name === 'TimeoutError';
 }
@@ -82,9 +85,16 @@ export async function getGoogleCalendarBusyIntervals(
   clinicId: string,
   date: string,
   timezone = 'Asia/Jerusalem',
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<GoogleCalendarBusyInterval[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date must be in YYYY-MM-DD format.');
-  const client = await withCalendarTimeout(getClinicGoogleCalendarClient(clinicId), 'connection lookup');
+  const timeoutMs = options.timeoutMs ?? GOOGLE_CALENDAR_TIMEOUT_MS;
+  const signal = options.signal ?? AbortSignal.timeout(timeoutMs);
+  const client = await withCalendarTimeout(
+    getClinicGoogleCalendarClient(clinicId),
+    'connection lookup',
+    timeoutMs,
+  );
   if (!client) return [];
   const { calendar, calendarId } = client;
   const timeMin = clinicLocalToInstant(date, '00:00', timezone);
@@ -99,9 +109,9 @@ export async function getGoogleCalendarBusyIntervals(
       orderBy: 'startTime',
       maxResults: 2500,
     }, {
-      timeout: GOOGLE_CALENDAR_TIMEOUT_MS,
-      signal: AbortSignal.timeout(GOOGLE_CALENDAR_TIMEOUT_MS),
-    }), 'events.list');
+      timeout: timeoutMs,
+      signal,
+    }), 'events.list', timeoutMs);
   } finally {
     await client.flushTokenPersistence?.();
   }
@@ -134,18 +144,25 @@ export async function checkAvailability(
     throw new Error('Date must be in YYYY-MM-DD format.');
   }
 
-  let schedule;
-  let localSlots: string[];
-  let calendarBusy: GoogleCalendarBusyInterval[];
+  const [schedule, localSlots] = await Promise.all([
+    loadProviderSchedule(clinicId, providerId),
+    getAvailableSlots(clinicId, providerId, date, 200),
+  ]);
+  let calendarBusy: GoogleCalendarBusyInterval[] = [];
   try {
-    [schedule, localSlots, calendarBusy] = await Promise.all([
-      loadProviderSchedule(clinicId, providerId),
-      getAvailableSlots(clinicId, providerId, date, 200),
-      getGoogleCalendarBusyIntervals(clinicId, date, timezone),
-    ]);
+    calendarBusy = await getGoogleCalendarBusyIntervals(clinicId, date, timezone, {
+      timeoutMs: GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS,
+      signal: AbortSignal.timeout(GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS),
+    });
   } catch (error) {
     if (!isCalendarTimeout(error)) throw error;
-    return { date, timezone, available: false, slots: [], reason: 'timeout' };
+    logEvent('availability_check_timeout', {
+      clinic_id: clinicId,
+      provider_id: providerId,
+      requested_date: date,
+      timeout_ms: GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS,
+      fallback: 'local_schedule',
+    }, 'warn');
   }
   if (!schedule) throw new Error('Provider not found for this clinic');
   const openSlots: Array<{ start: string; end: string }> = [];
@@ -167,6 +184,30 @@ export async function checkAvailability(
     slots: openSlots,
     reason: openSlots.length === 0 ? 'No availability remains for the selected date.' : undefined,
   };
+}
+
+async function getBookingCalendarConflictsOrEmpty(
+  clinicId: string,
+  date: string,
+  timezone: string,
+  providerId: string,
+): Promise<GoogleCalendarBusyInterval[]> {
+  try {
+    return await getGoogleCalendarBusyIntervals(clinicId, date, timezone, {
+      timeoutMs: GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS,
+      signal: AbortSignal.timeout(GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (!isCalendarTimeout(error)) throw error;
+    logEvent('availability_check_timeout', {
+      clinic_id: clinicId,
+      provider_id: providerId,
+      requested_date: date,
+      timeout_ms: GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS,
+      fallback: 'local_schedule',
+    }, 'warn');
+    return [];
+  }
 }
 
 export async function bookAppointment(details: GoogleCalendarBookingDetails) {
@@ -224,7 +265,7 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
         calendar_connected: false,
       };
     }
-    const calendarConflicts = await getGoogleCalendarBusyIntervals(details.clinic_id, requestedLocal.date, timezone);
+    const calendarConflicts = await getBookingCalendarConflictsOrEmpty(details.clinic_id, requestedLocal.date, timezone, details.provider_id);
     if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
       throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
     }
@@ -233,7 +274,7 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
 
   const client = await getClinicGoogleCalendarClient(details.clinic_id);
   if (client) {
-    const calendarConflicts = await getGoogleCalendarBusyIntervals(details.clinic_id, requestedLocal.date, timezone);
+    const calendarConflicts = await getBookingCalendarConflictsOrEmpty(details.clinic_id, requestedLocal.date, timezone, details.provider_id);
     if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
       throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
     }

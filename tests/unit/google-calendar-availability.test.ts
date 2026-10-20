@@ -7,6 +7,7 @@ import {
 
 const calendarMocks = vi.hoisted(() => ({
   list: vi.fn(),
+  logEvent: vi.fn(),
 }));
 
 const oauthMocks = vi.hoisted(() => ({
@@ -40,6 +41,7 @@ const supabaseMocks = vi.hoisted(() => {
 vi.mock('@/lib/services/bookingService', () => bookingMocks);
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: supabaseMocks.query }));
 vi.mock('@/lib/services/googleCalendarOAuth', () => oauthMocks);
+vi.mock('@/lib/server/logging', () => ({ logEvent: calendarMocks.logEvent }));
 vi.mock('@/lib/services/scheduling', () => ({
   checkSlotAvailability: vi.fn(() => ({ available: true, reason: 'available', endsAt: '2026-10-14T09:30:00.000Z' })),
 }));
@@ -108,7 +110,7 @@ describe('getGoogleCalendarBusyIntervals', () => {
     ]);
   });
 
-  it('fails closed when the Google Calendar availability request exceeds three seconds', async () => {
+  it('uses local slots when the Google Calendar availability request exceeds two seconds', async () => {
     calendarMocks.list.mockImplementation((_params, options: { signal: AbortSignal }) => new Promise((_, reject) => {
       options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
     }));
@@ -120,12 +122,19 @@ describe('getGoogleCalendarBusyIntervals', () => {
     expect(result).toEqual({
       date: '2026-10-14',
       timezone: 'UTC',
-      available: false,
-      slots: [],
-      reason: 'timeout',
+      available: true,
+      slots: [{ start: '2026-10-14T09:00:00.000Z', end: '2026-10-14T09:30:00.000Z' }],
     });
-    expect(elapsedMs).toBeLessThan(3_000);
-  }, 4_000);
+    expect(elapsedMs).toBeLessThan(2_500);
+    expect(calendarMocks.list).toHaveBeenCalledWith(expect.anything(), {
+      timeout: 2_000,
+      signal: expect.any(AbortSignal),
+    });
+    expect(calendarMocks.logEvent).toHaveBeenCalledWith('availability_check_timeout', expect.objectContaining({
+      timeout_ms: 2_000,
+      fallback: 'local_schedule',
+    }), 'warn');
+  }, 3_000);
 
   it('uses only tenant-scoped local slots when this clinic has no connected calendar', async () => {
     oauthMocks.getClinicGoogleCalendarClient.mockResolvedValue(null);

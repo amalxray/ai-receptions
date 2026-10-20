@@ -99,7 +99,10 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const intervals = await Promise.race([
-      getGoogleCalendarBusyIntervals(context.clinicId, date, timeZone),
+      getGoogleCalendarBusyIntervals(context.clinicId, date, timeZone, {
+        timeoutMs,
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(
           () => reject(Object.assign(new Error(`Google Calendar request timed out after ${timeoutMs}ms`), { code: 'ETIMEDOUT' })),
@@ -118,9 +121,11 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
     return intervals;
   } catch (err) {
     const fields = calendarErrorFields(err);
-    const timedOut = fields.error_code === 'ETIMEDOUT' || /timed? out|timeout/i.test(fields.error);
+    const timedOut = fields.error_code === 'ETIMEDOUT'
+      || fields.error_code === 'ERR_CANCELED'
+      || /timed? out|timeout|cancelled|canceled/i.test(fields.error);
     if (timedOut) {
-      logEvent('availability_google_calendar_fallback', {
+      logEvent('availability_check_timeout', {
         failure_source: 'google_calendar',
         clinic_id: context.clinicId,
         provider_id: context.providerId ?? null,
@@ -129,7 +134,7 @@ async function getGoogleCalendarBusyIntervalsOrEmpty(
         elapsed_ms: Date.now() - startedAt,
         timeout_ms: timeoutMs,
         timed_out: true,
-        fallback_source: 'supabase_schedule',
+        fallback: 'local_schedule',
       }, 'warn');
       return [];
     }
