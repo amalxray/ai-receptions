@@ -204,20 +204,22 @@ export function apexTenantSlugFromPath(pathname: string): string | null {
  * Redirect decision for a request host + path — pure host math, no DB, so it
  * stays unit-tested and Edge-safe.
  *
- * Two legacy→canonical shapes are recognised:
+ * Legacy→canonical shapes are recognised:
  *   1. `www.<slug>.<root>/…`  → `{ kind: 'host' }`   (301 to `<slug>.<root>/…`)
- *   2. `<root>/<slug>`        → `{ kind: 'apex-path' }` (301 to `<slug>.<root>`)
+ *   2. `<slug>.<root>/<slug>` → `{ kind: 'tenant-path' }` (301 to the host root)
+ *   3. `<root>/<slug>`        → `{ kind: 'apex-path' }` (301 to `<slug>.<root>`)
  *
  * Case 2 is only a CANDIDATE: the caller verifies the tenant actually exists
  * before issuing a permanent redirect (a 301 for a non-existent slug would be
  * cached by browsers/crawlers forever). Case 1 needs no lookup — the slug is
  * already a live, resolved host by construction.
  *
- * Returns null when the request is already canonical (`<slug>.<root>`), is a
+ * Returns null when the request is already canonical (`<slug>.<root>/`), is a
  * platform route, or has nothing to redirect.
  */
 export type TenantRedirect =
   | { kind: 'host'; host: string }
+  | { kind: 'tenant-path'; slug: string }
   | { kind: 'apex-path'; slug: string };
 
 export function tenantRedirect(hostname: string, pathname: string): TenantRedirect | null {
@@ -227,6 +229,15 @@ export function tenantRedirect(hostname: string, pathname: string): TenantRedire
   if (host.startsWith('www.')) {
     const slug = tenantSlugFromHostname(host.slice('www.'.length));
     if (slug) return { kind: 'host', host: clinicSubdomain(slug) };
+  }
+
+  // A tenant space is served at the root of its own subdomain. Older links
+  // sometimes included the slug as a path segment; send those to the root so
+  // they do not create a second public URL for the same clinic.
+  const tenantSlug = tenantSlugFromHostname(host);
+  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  if (tenantSlug && normalizedPath === `/${tenantSlug}`) {
+    return { kind: 'tenant-path', slug: tenantSlug };
   }
 
   // 2) <root>/<slug> (and www.<root>/<slug>) → <slug>.<root>.

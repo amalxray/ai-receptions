@@ -231,8 +231,21 @@ describe('legacy URL → canonical subdomain redirect', () => {
     });
   });
 
-  it('does nothing for already-canonical or non-platform hosts', () => {
-    expect(tenantRedirect('hala-clinic.dentairec.com', '/hala-clinic')).toBeNull();
+  it('redirects the slug path on a tenant host to the canonical subdomain root', () => {
+    expect(tenantRedirect('hala-clinic.dentairec.com', '/hala-clinic')).toEqual({
+      kind: 'tenant-path',
+      slug: 'hala-clinic',
+    });
+    expect(tenantRedirect('hala-clinic.dentairec.com', '/hala-clinic/')).toEqual({
+      kind: 'tenant-path',
+      slug: 'hala-clinic',
+    });
+    expect(tenantRedirect('hala-clinic.dentairec.com', '/')).toBeNull();
+    expect(tenantRedirect('hala-clinic.dentairec.com', '/reviews')).toBeNull();
+    expect(tenantRedirect('www.dentairec.com', '/c/hala-clinic')).toBeNull();
+  });
+
+  it('does nothing for non-platform hosts and non-canonical tenant paths', () => {
     expect(tenantRedirect('dentairec.com', '/')).toBeNull();
     expect(tenantRedirect('staging.dentairec.com', '/hala-clinic')).toBeNull();
     expect(tenantRedirect('hala-clinic.vercel.app', '/hala-clinic')).toBeNull();
