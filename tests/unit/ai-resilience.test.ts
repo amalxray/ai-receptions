@@ -7,6 +7,7 @@ import {
   failoverCandidates,
   generateWithFailover,
   openStreamWithFailover,
+  resetCircuitBreakersForTests,
 } from '@/lib/ai/resilience';
 import { registerProvider, clearProviders } from '@/lib/ai/provider';
 
@@ -14,6 +15,7 @@ const originalEnv = process.env.AI_PROVIDER;
 
 beforeEach(() => {
   clearProviders();
+  resetCircuitBreakersForTests();
   vi.useFakeTimers();
 });
 afterEach(() => {
