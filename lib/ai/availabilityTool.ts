@@ -1,4 +1,4 @@
-import { getAvailableSlots, getActiveServiceById, getActiveProviders, isClinicHoliday, loadProviderSchedule } from '@/lib/services/bookingService';
+import { getAvailableSlots, getAvailableSlotsForRange, getActiveServiceById, getActiveProviders, isClinicHoliday, loadProviderSchedule } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { getClinicHours, clinicLocalToInstant, timeToMinutes, zonedParts } from '@/lib/services/clinicHours';
 import { dateInTimeZone, timeInTimeZone, addDaysIso } from '@/lib/ai/understanding';
@@ -292,26 +292,60 @@ async function describeUnavailableRequestedDay(params: {
 }): Promise<{ dayStatus: 'closed' | 'holiday' | 'fully_booked'; nextAvailable?: { date: string; time: string; slot: string } }> {
   let dayStatus: 'closed' | 'holiday' | 'fully_booked' = 'fully_booked';
   try {
-    const holiday = await isClinicHoliday(params.clinicId, params.requestedDate);
+    const statusStartedAt = Date.now();
+    const [holiday, schedule] = await Promise.all([
+      isClinicHoliday(params.clinicId, params.requestedDate),
+      loadProviderSchedule(params.clinicId, params.providerId),
+    ]);
     if (holiday) {
       dayStatus = 'holiday';
     } else {
-      const schedule = await loadProviderSchedule(params.clinicId, params.providerId);
       const weekday = new Date(`${params.requestedDate}T00:00:00Z`).getUTCDay();
       const day = schedule?.days?.find((item) => item.weekday === weekday);
       const onVacation = schedule?.vacationDates?.includes(params.requestedDate) ?? false;
       if (!day?.enabled || onVacation) dayStatus = 'closed';
     }
+    logEvent('availability_slot_prefetch_step', {
+      clinic_id: params.clinicId,
+      provider_id: params.providerId,
+      service_id: params.serviceId,
+      stage: 'requested_day_status',
+      elapsed_ms: Date.now() - statusStartedAt,
+    });
   } catch {
     // Conservative default ('fully_booked') — this lookup must never break the search.
   }
 
   let nextAvailable: { date: string; time: string; slot: string } | undefined;
   try {
-    for (let i = 1; i <= params.lookaheadDays; i += 1) {
-      const nextDay = addDaysIso(params.requestedDate, i);
+    const nextDays = Array.from({ length: params.lookaheadDays }, (_, i) => addDaysIso(params.requestedDate, i + 1));
+    const prefetchStartedAt = Date.now();
+    let prefetchedSlots: Map<string, string[]> | null = null;
+    try {
+      prefetchedSlots = await getAvailableSlotsForRange(
+        params.clinicId,
+        params.providerId,
+        nextDays,
+        20,
+        params.serviceId,
+      );
+      logEvent('availability_slot_prefetch', {
+        clinic_id: params.clinicId,
+        provider_id: params.providerId,
+        service_id: params.serviceId,
+        dates_count: nextDays.length,
+        elapsed_ms: Date.now() - prefetchStartedAt,
+        outcome: 'ok',
+        phase: 'requested_day_alternative_scan',
+      });
+    } catch {
+      // Preserve the per-day fallback for installations with an incomplete schema.
+    }
+    for (const nextDay of nextDays) {
       const [providerSlots, calendarBusy] = await Promise.all([
-        getAvailableSlots(params.clinicId, params.providerId, nextDay, 20, params.serviceId),
+        prefetchedSlots
+          ? Promise.resolve(prefetchedSlots.get(nextDay) ?? [])
+          : getAvailableSlots(params.clinicId, params.providerId, nextDay, 20, params.serviceId),
         params.checkGoogleCalendar
           ? getGoogleCalendarBusyIntervalsOrEmpty(nextDay, params.timeZone, params)
           : Promise.resolve([]),
@@ -447,6 +481,30 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     : Array.from({ length: lookaheadDays }, (_, i) => addDaysIso(todayLocal, i));
   let failedScheduleDays = 0;
 
+  let prefetchedSlots: Map<string, string[]> | null = null;
+  const prefetchStartedAt = Date.now();
+  try {
+    prefetchedSlots = await getAvailableSlotsForRange(clinicId, providerId, days, limitPerDay, serviceId);
+    logEvent('availability_slot_prefetch', {
+      clinic_id: clinicId,
+      provider_id: providerId,
+      service_id: serviceId,
+      dates_count: days.length,
+      elapsed_ms: Date.now() - prefetchStartedAt,
+      outcome: 'ok',
+    });
+  } catch (error) {
+    logEvent('availability_slot_prefetch', {
+      clinic_id: clinicId,
+      provider_id: providerId,
+      service_id: serviceId,
+      dates_count: days.length,
+      elapsed_ms: Date.now() - prefetchStartedAt,
+      outcome: 'fallback_to_single_day_reads',
+      error: error instanceof Error ? error.message : String(error),
+    }, 'warn');
+  }
+
   for (const day of days) {
     let calendarBusy: Array<{ start: string; end: string }> = [];
     if (checkGoogleCalendar) {
@@ -460,7 +518,9 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
       }
     }
     try {
-      const providerSlots = await getAvailableSlots(clinicId, providerId, day, limitPerDay, serviceId);
+      const providerSlots = prefetchedSlots
+        ? prefetchedSlots.get(day) ?? []
+        : await getAvailableSlots(clinicId, providerId, day, limitPerDay, serviceId);
       const slots = (providerSlots ?? []).filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, calendarBusy));
       if (!slots || slots.length === 0) continue;
 

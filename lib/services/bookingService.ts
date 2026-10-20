@@ -41,40 +41,32 @@ function schedulePeriods(row: {
  * Returns null if the provider does not belong to the clinic.
  */
 export async function loadProviderSchedule(clinicId: string, providerId: string): Promise<ProviderSchedule | null> {
-  // Verify provider belongs to the clinic
-  const { data: provider, error: providerError } = await supabaseAdmin
-    .from('providers')
-    .select('id, name')
-    .eq('id', providerId)
-    .eq('clinic_id', clinicId)
-    .is('deleted_at', null)
-    .single();
+  const [providerResult, scheduleResult, vacationResult] = await Promise.all([
+    supabaseAdmin
+      .from('providers')
+      .select('id, name')
+      .eq('id', providerId)
+      .eq('clinic_id', clinicId)
+      .is('deleted_at', null)
+      .single(),
+    supabaseAdmin
+      .from('provider_schedules')
+      .select('*')
+      .eq('clinic_id', clinicId)
+      .eq('provider_id', providerId),
+    supabaseAdmin
+      .from('provider_vacations')
+      .select('vacation_date')
+      .eq('clinic_id', clinicId)
+      .eq('provider_id', providerId),
+  ]);
 
-  if (providerError || !provider) {
-    return null;
-  }
+  if (providerResult.error || !providerResult.data) return null;
+  if (scheduleResult.error) throw new Error('Failed to load provider schedule');
+  if (vacationResult.error) throw new Error('Failed to load provider vacations');
 
-  // Load schedule rows for the provider
-  const { data: scheduleRows, error: scheduleError } = await supabaseAdmin
-    .from('provider_schedules')
-    .select('*')
-    .eq('clinic_id', clinicId)
-    .eq('provider_id', providerId);
-
-  if (scheduleError) {
-    throw new Error('Failed to load provider schedule');
-  }
-
-  // Load vacations
-  const { data: vacationRows, error: vacationError } = await supabaseAdmin
-    .from('provider_vacations')
-    .select('vacation_date')
-    .eq('clinic_id', clinicId)
-    .eq('provider_id', providerId);
-
-  if (vacationError) {
-    throw new Error('Failed to load provider vacations');
-  }
+  const scheduleRows = scheduleResult.data;
+  const vacationRows = vacationResult.data;
 
   const days = (scheduleRows ?? []).map((row) => ({
     weekday: row.weekday,
@@ -390,6 +382,117 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
     // end and the overlap/holiday/break validation — nothing else changes.
     hourlyOnly: true,
   });
+}
+
+/**
+ * Preloads the local scheduling inputs once for a multi-day availability scan.
+ * The single-day API above remains the booking-time authority; this is for
+ * read-only discovery and keeps the scan's result identical to that API.
+ */
+export async function getAvailableSlotsForRange(
+  clinicId: string,
+  providerId: string,
+  dates: string[],
+  limit = 10,
+  serviceId?: string,
+): Promise<Map<string, string[]>> {
+  const uniqueDates = Array.from(new Set(dates)).sort();
+  const slotsByDate = new Map<string, string[]>(uniqueDates.map((date) => [date, []]));
+  if (uniqueDates.length === 0) return slotsByDate;
+  if (uniqueDates.some((date) => !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
+    throw new Error('Dates must use YYYY-MM-DD format.');
+  }
+
+  const timed = async <T>(stage: string, read: () => Promise<T>): Promise<T> => {
+    const startedAt = Date.now();
+    try {
+      return await read();
+    } finally {
+      logEvent('availability_slot_prefetch_step', {
+        clinic_id: clinicId,
+        provider_id: providerId,
+        service_id: serviceId ?? null,
+        stage,
+        elapsed_ms: Date.now() - startedAt,
+      });
+    }
+  };
+
+  const firstDate = new Date(`${uniqueDates[0]}T00:00:00.000Z`);
+  firstDate.setUTCDate(firstDate.getUTCDate() - 1);
+  const appointmentStartDate = firstDate.toISOString().slice(0, 10);
+  const lastDate = uniqueDates[uniqueDates.length - 1];
+  const totalStartedAt = Date.now();
+  const [schedule, service, assignment, holidayResult, appointmentResult] = await Promise.all([
+    timed('provider_schedule', () => loadProviderSchedule(clinicId, providerId)),
+    timed('service', () => serviceId ? getActiveServiceById(clinicId, serviceId) : Promise.resolve(null)),
+    timed('provider_service_assignment', () => serviceId
+      ? isProviderAssignedToService(clinicId, providerId, serviceId)
+      : Promise.resolve(null)),
+    timed('clinic_holidays', async () => {
+      const { data, error } = await supabaseAdmin
+        .from('clinic_holidays')
+        .select('holiday_date')
+        .eq('clinic_id', clinicId)
+        .gte('holiday_date', uniqueDates[0])
+        .lte('holiday_date', lastDate);
+      if (error) throw new Error('Failed to load clinic holidays');
+      return data ?? [];
+    }),
+    timed('existing_appointments', async () => {
+      const { data, error } = await supabaseAdmin
+        .from('appointments')
+        .select('id, provider_id, scheduled_at, duration_minutes, status')
+        .eq('clinic_id', clinicId)
+        .eq('provider_id', providerId)
+        .gte('appointment_date', appointmentStartDate)
+        .lte('appointment_date', lastDate)
+        .is('deleted_at', null);
+      if (error) throw new Error('Failed to load existing appointments');
+      return (data ?? []).map((row) => ({
+        id: row.id,
+        providerId: row.provider_id,
+        startsAt: row.scheduled_at,
+        durationMinutes: row.duration_minutes,
+        status: row.status,
+      } satisfies ScheduledAppointment));
+    }),
+  ]);
+
+  if (!schedule) throw new Error('Provider not found for this clinic');
+  if (serviceId && !service) throw new Error('Service not found for this clinic');
+  if (assignment === false) throw new Error('Provider is not assigned to this service');
+
+  const durationMinutes = service?.duration_minutes ?? schedule.appointmentDurationMinutes;
+  const scanSchedule = { ...schedule, appointmentDurationMinutes: durationMinutes };
+  const holidayDates = new Set((holidayResult as Array<{ holiday_date: string }>).map((row) => row.holiday_date));
+  for (const date of uniqueDates) {
+    const slotStartedAt = Date.now();
+    slotsByDate.set(date, suggestFreeSlots({
+      date,
+      schedule: scanSchedule,
+      existingAppointments: appointmentResult,
+      holiday: holidayDates.has(date),
+      limit,
+      hourlyOnly: true,
+    }));
+    logEvent('availability_slot_prefetch_step', {
+      clinic_id: clinicId,
+      provider_id: providerId,
+      service_id: serviceId ?? null,
+      stage: 'generate_slots',
+      date,
+      elapsed_ms: Date.now() - slotStartedAt,
+    });
+  }
+  logEvent('availability_slot_prefetch_complete', {
+    clinic_id: clinicId,
+    provider_id: providerId,
+    service_id: serviceId ?? null,
+    dates_count: uniqueDates.length,
+    elapsed_ms: Date.now() - totalStartedAt,
+  });
+  return slotsByDate;
 }
 
 /**
