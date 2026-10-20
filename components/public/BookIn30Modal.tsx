@@ -93,7 +93,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
       setSuccess(true);
       setTimeout(() => { onClose(); setSuccess(false); }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'فشل الحجز');
+      setError(typeof err === 'string' ? err : err?.message || err?.error?.message || 'حدث خطأ، حاول مرة أخرى');
     } finally {
       setIsSubmitting(false);
     }
@@ -199,7 +199,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
                     </div>
                   </div>
                   {error && (
-                    <p className="text-sm text-rose-400 bg-rose-500/10 rounded-lg p-3">{error}</p>
+                    <p className="text-sm text-rose-400 bg-rose-500/10 rounded-lg p-3">{String(error)}</p>
                   )}
                   <motion.button
                     whileHover={{ scale: 1.02 }}
