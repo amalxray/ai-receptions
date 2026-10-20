@@ -47,8 +47,8 @@ export const PUBLIC_SECTION_ORDER_KEYS = [
 export type PublicSectionOrderKey = (typeof PUBLIC_SECTION_ORDER_KEYS)[number];
 
 export const DEFAULT_PUBLIC_SECTION_ORDER: PublicSectionOrderKey[] = [
-  'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
-  'offers', 'services', 'providers', 'hours', 'contact', 'bookingCta',
+  'services', 'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
+  'offers', 'providers', 'hours', 'contact', 'bookingCta',
   'testimonials', 'articles', 'qrShare', 'news', 'aiCta',
 ];
 

@@ -205,8 +205,8 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <ImagingPublicSpace space={space} />
           <PublicServicesCard services={services ?? []} activityType={space.activityType} />
+          <ImagingPublicSpace space={space} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
@@ -219,8 +219,8 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <DentalLabPublicSpace space={space} />
           <PublicServicesCard services={services ?? []} activityType={space.activityType} />
+          <DentalLabPublicSpace space={space} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
@@ -233,8 +233,8 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <ClinicPublicSpace space={space} />
           <PublicServicesCard services={services ?? []} activityType={space.activityType} />
+          <ClinicPublicSpace space={space} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
