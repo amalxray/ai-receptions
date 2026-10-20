@@ -67,6 +67,7 @@ export default function ChatInterface({ clinicId = '', initialConversationId = n
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [streamingPhase, setStreamingPhase] = useState<'searching' | 'collecting' | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [clinicName, setClinicName] = useState<string | null>(null);
@@ -214,12 +215,15 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     setAiUnavailable(false);
     setShowSuggested(false);
 
+    let streamingMessageId: string | null = null;
     try {
       // Root-fix: visitors ALWAYS use the public route. No endpoint guessing by identifier shape.
       const base = '/api/public/ai/messages';
       const payloadBody = isUuid
-        ? { clinic_id: clinicId, conversation_id: conversationId, text: trimmed, stream: false }
-        : { [clinicQueryField]: clinicId, conversation_id: conversationId, text: trimmed, stream: false };
+        ? { clinic_id: clinicId, conversation_id: conversationId, text: trimmed, stream: true }
+        : { [clinicQueryField]: clinicId, conversation_id: conversationId, text: trimmed, stream: true };
+
+      setStreamingPhase('searching');
 
       const response = await fetch(base, {
         method: 'POST',
@@ -227,12 +231,14 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         body: JSON.stringify(payloadBody),
       });
 
-      // Parse body safely (may be non-JSON). We never blindly assume JSON.
+      // Error responses are JSON; successful responses are streamed NDJSON.
       let payload: any = {};
-      try {
-        payload = await response.json();
-      } catch {
-        payload = { error: 'Unreadable server response' };
+      if (!response.ok) {
+        try {
+          payload = await response.json();
+        } catch {
+          payload = { error: 'Unreadable server response' };
+        }
       }
 
       if (!response.ok) {
@@ -271,13 +277,52 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         return;
       }
 
-      const assistantText = payload?.assistant_message?.content ?? payload?.assistant_message ?? 'تمت معالجة الرسالة.';
-      setConversationId(payload?.conversation_id ?? conversationId);
-      const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
-      setMessages((current) => [
-        ...current,
-        { role: 'assistant', text: assistantText, interactive: serverInteractive ?? undefined },
-      ]);
+      if (!response.body) throw new Error('The streaming response has no body');
+
+      const assistantMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      streamingMessageId = assistantMessageId;
+      setStreamingPhase('collecting');
+      setMessages((current) => [...current, { id: assistantMessageId, role: 'assistant', text: '' }]);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let pending = '';
+      let streamedText = '';
+      let finalPayload: any = null;
+      const handleLine = (line: string) => {
+        if (!line.trim()) return;
+        const streamEvent = JSON.parse(line);
+        if (streamEvent.type === 'token' && typeof streamEvent.text === 'string') {
+          streamedText += streamEvent.text;
+          setMessages((current) => current.map((message) =>
+            message.id === assistantMessageId ? { ...message, text: streamedText } : message,
+          ));
+        } else if (streamEvent.type === 'done') {
+          finalPayload = streamEvent.payload;
+        } else if (streamEvent.type === 'error') {
+          throw new Error(String(streamEvent.message ?? 'Streaming response failed'));
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        pending += decoder.decode(value, { stream: !done });
+        const lines = pending.split('\n');
+        pending = lines.pop() ?? '';
+        for (const line of lines) handleLine(line);
+        if (done) break;
+      }
+      if (pending.trim()) handleLine(pending);
+
+      const finalText = finalPayload?.assistant_message?.content ??
+        finalPayload?.assistant_message ?? streamedText ?? 'Response processed.';
+      setConversationId(finalPayload?.conversation_id ?? conversationId);
+      const serverInteractive = (finalPayload?.interactive ?? null) as ChatInteractive | null;
+      setMessages((current) => current.map((message) =>
+        message.id === assistantMessageId
+          ? { ...message, text: String(finalText), interactive: serverInteractive ?? undefined }
+          : message,
+      ));
     } catch (err) {
       // Network-level failure (offline / server unreachable) — DISTINCT from
       // "assistant unavailable": the browser itself could not complete the
@@ -285,11 +330,12 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       console.warn('[ai chat] request threw:', err);
       setAiUnavailable(true);
       setMessages((current) => [
-        ...current,
+        ...current.filter((message) => message.id !== streamingMessageId),
         { role: 'assistant', text: 'تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت ثم أعد المحاولة.' },
       ]);
     } finally {
       setIsSubmitting(false);
+      setStreamingPhase(null);
     }
   }
 
@@ -575,7 +621,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
             {isSubmitting && (
               <div dir="ltr" className="flex items-center justify-end gap-3 sm:gap-4">
                 <div dir="rtl" className="flex items-center gap-2 border-r-2 border-teal-300 py-2 pr-3 text-sm text-slate-500 sm:pr-5">
-                  <span>موظفة الاستقبال تكتب</span>
+                  <span>{streamingPhase === 'searching' ? '\u0623\u0628\u062d\u062b...' : streamingPhase === 'collecting' ? '\u0623\u062c\u0645\u0639...' : '\u0645\u0648\u0638\u0641\u0629 \u0627\u0644\u0627\u0633\u062a\u0642\u0628\u0627\u0644 \u062a\u0643\u062a\u0628'}</span>
                   <TypingDots />
                 </div>
                 <ChatPersonaAvatar persona="receptionist" active size="small" />
