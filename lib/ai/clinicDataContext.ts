@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { clearClinicCache, getOrFetch } from '@/lib/cache/clinicCache';
 import { getClinicHours, toClinicWorkingHoursData } from '@/lib/services/clinicHours';
 
 /**
@@ -86,68 +87,28 @@ export const EMPTY_OPERATING_DATA: ClinicOperatingData = {
  * outcome: the prompt section is simply omitted.
  */
 export async function loadClinicWorkingHours(clinicId: string, timezone?: string | null) {
-  const now = Date.now();
-  const cached = workingHoursCache.get(clinicId);
-  if (cached && cached.expires > now) return cached.data;
-
-  let data: Awaited<ReturnType<typeof loadClinicWorkingHoursUncached>>;
-  try {
-    data = await loadClinicWorkingHoursUncached(clinicId, timezone);
-  } catch {
-    return null;
-  }
-  if (workingHoursCache.size >= OPERATING_DATA_MAX_ENTRIES) {
-    workingHoursCache.forEach((entry, key) => {
-      if (entry.expires <= now) workingHoursCache.delete(key);
-    });
-  }
-  workingHoursCache.set(clinicId, { data, expires: now + OPERATING_DATA_TTL_MS });
-  return data;
+  const cacheKey = `working-hours:${timezone ?? ''}`;
+  return getOrFetch(clinicId, cacheKey, async () => {
+    try {
+      return await loadClinicWorkingHoursUncached(clinicId, timezone);
+    } catch {
+      return null;
+    }
+  });
 }
-
-const workingHoursCache = new Map<string, { data: Awaited<ReturnType<typeof loadClinicWorkingHoursUncached>>; expires: number }>();
 
 async function loadClinicWorkingHoursUncached(clinicId: string, timezone?: string | null) {
   const hours = await getClinicHours(clinicId, { timezone });
   return toClinicWorkingHoursData(hours);
 }
 
-/** In-memory TTL cache for operating data. Services/providers change rarely,
- *  so a short TTL removes 5 DB round-trips (US↔EU) from every chat turn while
- *  keeping data fresh. Bounded to avoid unbounded growth on many tenants. */
-const OPERATING_DATA_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const OPERATING_DATA_MAX_ENTRIES = 100;
-const operatingDataCache = new Map<string, { data: ClinicOperatingData; expires: number }>();
-
-function evictExpiredOperatingData(now: number) {
-  operatingDataCache.forEach((entry, key) => {
-    if (entry.expires <= now) operatingDataCache.delete(key);
-  });
-}
-
 export async function loadClinicOperatingData(clinicId: string): Promise<ClinicOperatingData> {
-  const now = Date.now();
-  const cached = operatingDataCache.get(clinicId);
-  if (cached && cached.expires > now) return cached.data;
-
-  const data = await fetchOperatingData(clinicId);
-  // Opportunistic eviction keeps the map bounded without a timer.
-  if (operatingDataCache.size >= OPERATING_DATA_MAX_ENTRIES) {
-    evictExpiredOperatingData(now);
-    // Still full (all fresh)? drop the oldest inserted entry (Map preserves order).
-    if (operatingDataCache.size >= OPERATING_DATA_MAX_ENTRIES) {
-      const oldestKey = operatingDataCache.keys().next().value;
-      if (oldestKey !== undefined) operatingDataCache.delete(oldestKey);
-    }
-  }
-  operatingDataCache.set(clinicId, { data, expires: now + OPERATING_DATA_TTL_MS });
-  return data;
+  return getOrFetch(clinicId, 'operating-data', () => fetchOperatingData(clinicId));
 }
 
-/** Exported for tests: clear the operating-data + working-hours caches. */
+/** Exported for tests: clear cached clinic context data. */
 export function clearOperatingDataCache() {
-  operatingDataCache.clear();
-  workingHoursCache.clear();
+  clearClinicCache();
 }
 
 async function fetchOperatingData(clinicId: string): Promise<ClinicOperatingData> {
@@ -276,30 +237,32 @@ export const EMPTY_CLINIC_PROFILE: ClinicProfile = {
 };
 
 export async function loadClinicProfile(clinicId: string): Promise<ClinicProfile> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('clinics')
-      .select('id, slug, name, address, phone, website, settings, activity_type')
-      .eq('id', clinicId)
-      .maybeSingle();
-    if (error || !data) {
+  return getOrFetch(clinicId, 'profile', async () => {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('clinics')
+        .select('id, slug, name, address, phone, website, settings, activity_type')
+        .eq('id', clinicId)
+        .maybeSingle();
+      if (error || !data) {
+        return { ...EMPTY_CLINIC_PROFILE, id: clinicId };
+      }
+      const settings = (data.settings ?? {}) as Record<string, unknown>;
+      return {
+        id: data.id,
+        slug: data.slug,
+        name: data.name,
+        address: (data.address as string | null) ?? null,
+        phone: (data.phone as string | null) ?? null,
+        website: (data.website as string | null) ?? null,
+        timezone: (settings.timezone as string | null) ?? null,
+        activityType: (data.activity_type as string | null) ?? null,
+        hasProfile: true,
+      };
+    } catch {
       return { ...EMPTY_CLINIC_PROFILE, id: clinicId };
     }
-    const settings = (data.settings ?? {}) as Record<string, unknown>;
-    return {
-      id: data.id,
-      slug: data.slug,
-      name: data.name,
-      address: (data.address as string | null) ?? null,
-      phone: (data.phone as string | null) ?? null,
-      website: (data.website as string | null) ?? null,
-      timezone: (settings.timezone as string | null) ?? null,
-      activityType: (data.activity_type as string | null) ?? null,
-      hasProfile: true,
-    };
-  } catch {
-    return { ...EMPTY_CLINIC_PROFILE, id: clinicId };
-  }
+  });
 }
 
 /**

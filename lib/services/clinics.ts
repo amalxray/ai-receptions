@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getOrFetch } from '@/lib/cache/clinicCache';
 import type { Clinic } from '@/types/clinic';
 
 /**
@@ -67,43 +68,53 @@ export async function resolvePublicClinic(params: { id?: string; publicId?: stri
     return null;
   }
 
-  let query = supabaseAdmin
-    .from('clinics')
-    .select('id, slug, name, latitude, longitude, phone, city, area, address_detail, settings')
-    .is('deleted_at', null);
+  const identifier = params.id
+    ? { type: 'id', value: params.id }
+    : params.publicId
+      ? { type: 'public-id', value: params.publicId }
+      : { type: 'slug', value: params.slug! };
+  const cacheClinicId = params.id ?? 'public-clinic-lookup';
+  const cacheKey = `resolve-public:${identifier.type}:${identifier.value}`;
 
-  if (params.id) {
-    query = query.eq('id', params.id);
-  } else if (params.publicId) {
-    query = query.eq('public_id', params.publicId);
-  } else {
-    query = query.eq('slug', params.slug);
-  }
+  return getOrFetch(cacheClinicId, cacheKey, async () => {
+    let query = supabaseAdmin
+      .from('clinics')
+      .select('id, slug, name, latitude, longitude, phone, city, area, address_detail, settings')
+      .is('deleted_at', null);
 
-  const { data, error } = await query.maybeSingle();
+    if (params.id) {
+      query = query.eq('id', params.id);
+    } else if (params.publicId) {
+      query = query.eq('public_id', params.publicId);
+    } else {
+      query = query.eq('slug', params.slug);
+    }
 
-  if (error || !data) {
-    return null;
-  }
+    const { data, error } = await query.maybeSingle();
 
-  // Phone stays private unless the owner enabled show_phone on the public
-  // profile (same gating as the public space).
-  const pp = ((data.settings as Record<string, unknown> | null)?.public_profile ?? {}) as {
-    show_phone?: unknown;
-  };
-  const showPhone = pp.show_phone === true;
+    if (error || !data) {
+      return null;
+    }
 
-  const addressBits = [data.city, data.area, data.address_detail].filter(Boolean) as string[];
+    // Phone stays private unless the owner enabled show_phone on the public
+    // profile (same gating as the public space).
+    const pp = ((data.settings as Record<string, unknown> | null)?.public_profile ?? {}) as {
+      show_phone?: unknown;
+    };
+    const showPhone = pp.show_phone === true;
 
-  return {
-    id: data.id,
-    slug: data.slug,
-    name: data.name,
-    latitude: typeof data.latitude === 'number' ? data.latitude : null,
-    longitude: typeof data.longitude === 'number' ? data.longitude : null,
-    address: addressBits.length > 0 ? addressBits.join(' — ') : null,
-    phone: showPhone ? (data.phone ?? null) : null,
-  };
+    const addressBits = [data.city, data.area, data.address_detail].filter(Boolean) as string[];
+
+    return {
+      id: data.id,
+      slug: data.slug,
+      name: data.name,
+      latitude: typeof data.latitude === 'number' ? data.latitude : null,
+      longitude: typeof data.longitude === 'number' ? data.longitude : null,
+      address: addressBits.length > 0 ? addressBits.join(' — ') : null,
+      phone: showPhone ? (data.phone ?? null) : null,
+    };
+  });
 }
 
 export async function createClinic(clinic: Omit<Clinic, 'id' | 'created_at'>): Promise<Clinic> {
