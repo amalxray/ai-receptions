@@ -11,8 +11,16 @@ export const fetchCache = 'force-no-store';
 
 const BASE = getAppBaseUrl();
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const article = (await getPublishedArticle(params.slug)) as Record<string, unknown> | null;
+type ArticleParams = { slug: string } | Promise<{ slug: string }>;
+
+export async function generateMetadata({ params }: { params: ArticleParams }): Promise<Metadata> {
+  const { slug } = await params;
+  let article: Record<string, unknown> | null;
+  try {
+    article = (await getPublishedArticle(slug)) as Record<string, unknown> | null;
+  } catch {
+    return { title: 'المقال غير موجود' };
+  }
   if (!article) return { title: 'المقال غير موجود' };
   const img = String(article.featured_image_url ?? '') || ((article.featured_image as { image_url?: string } | null)?.image_url ?? null);
   const title = String(article.title);
@@ -23,14 +31,24 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     keywords: (article.tags as string[] | null) ?? undefined,
     openGraph: { title, description, images: img ? [img, '/og/article-default.png'] : ['/og/article-default.png'], type: 'article', locale: 'ar_PS', siteName: 'سنّي' },
     twitter: { card: 'summary_large_image', title, description, images: [img, '/ask/api/og?title=' + encodeURIComponent(title) + '&type=article'].filter(Boolean) as string[] },
-    alternates: { canonical: `${BASE}/ask/article/${params.slug}` },
+    alternates: { canonical: `${BASE}/ask/article/${slug}` },
   };
 }
 
-export default async function AskArticlePage({ params }: { params: { slug: string } }) {
-  const article = (await getPublishedArticle(params.slug)) as Record<string, unknown> | null;
+export default async function AskArticlePage({ params }: { params: ArticleParams }) {
+  const { slug } = await params;
+  let article: Record<string, unknown> | null;
+  try {
+    article = (await getPublishedArticle(slug)) as Record<string, unknown> | null;
+  } catch {
+    notFound();
+  }
   if (!article) notFound();
-  await incrementArticleViews(String(article.id));
+  try {
+    await incrementArticleViews(String(article.id));
+  } catch {
+    // A failed view counter must not turn a valid public article into a 500.
+  }
 
   const img = String(article.featured_image_url ?? '') || ((article.featured_image as { image_url?: string } | null)?.image_url ?? null);
   const faqItems = Array.isArray(article.faq)
@@ -100,7 +118,7 @@ export default async function AskArticlePage({ params }: { params: { slug: strin
           </div>
         </section>
       )}
-      <div className="mt-8"><ShareButtons url={`/ask/article/${params.slug}`} title={`${String(article.title)} | سنّي`} /></div>
+      <div className="mt-8"><ShareButtons url={`/ask/article/${slug}`} title={`${String(article.title)} | سنّي`} /></div>
       <p className="mt-6 text-sm"><Link href="/ask" className="text-cyan-400">💬 استشارة ذكية جديدة</Link></p>
     </main>
   );
