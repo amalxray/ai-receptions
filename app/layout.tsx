@@ -4,7 +4,7 @@ import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import './globals.css';
-import FaviconUpdater from '@/components/admin/editors/FaviconUpdater';
+
 
 const tajawal = Tajawal({
   subsets: ['arabic'],
@@ -102,7 +102,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <OrganizationJsonLd />
-        <FaviconUpdater />
         {children}
         {/* PWA - stash `beforeinstallprompt` the moment Chrome fires it. The event
             is never replayed, and the install button lives in a client component
