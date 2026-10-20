@@ -2,7 +2,7 @@ export const preferredRegion = 'icn1';
 
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { resolvePublicClinic } from '@/lib/services/clinics';
+import { loadClinicChatBootstrap } from '@/lib/services/clinicChatBootstrap';
 import { createConversation, getConversationById } from '@/lib/services/conversationService';
 import { receivePatientMessage } from '@/lib/services/messageService';
 import { getSupabaseEnvConfig } from '@/lib/config';
@@ -76,8 +76,9 @@ export async function POST(req: Request) {
     }
 
     const { clinic_slug, clinic_id, conversation_id, text } = parsed.data;
-    const clinic = await resolvePublicClinic({ id: clinic_id, slug: clinic_slug });
-    if (!clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const bootstrap = await loadClinicChatBootstrap({ id: clinic_id, slug: clinic_slug });
+    if (!bootstrap) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const { clinic } = bootstrap;
 
     let convId = conversation_id || null;
     if (convId) {
@@ -238,8 +239,9 @@ export async function GET(req: Request) {
     if (!convId || (!clinicSlug && !clinicId)) {
       return NextResponse.json({ error: 'conversation_id and clinic identifier required' }, { status: 400 });
     }
-    const clinic = await resolvePublicClinic({ id: clinicId ?? undefined, slug: clinicSlug ?? undefined });
-    if (!clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const bootstrap = await loadClinicChatBootstrap({ id: clinicId ?? undefined, slug: clinicSlug ?? undefined });
+    if (!bootstrap) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const { clinic } = bootstrap;
 
     // Verify the conversation belongs to this clinic (IDOR protection)
     try {
