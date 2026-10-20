@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { attemptConversationBooking } from '@/lib/ai/conversationBooking';
 import { buildBookingConfirmation } from '@/lib/ai/bookingConfirmation';
-import { loadClinicOperatingData, loadClinicProfile, loadReceptionistConversationState, persistReceptionistSlot } from '@/lib/ai/clinicDataContext';
+import { loadReceptionistConversationState, persistReceptionistSlot } from '@/lib/ai/clinicDataContext';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
-import { resolvePublicClinic } from '@/lib/services/clinics';
+import { loadClinicChatBootstrap } from '@/lib/services/clinicChatBootstrap';
 import { getAvailableSlots, isValidBookingPhone } from '@/lib/services/bookingService';
 import { getConversationById } from '@/lib/services/conversationService';
 import { saveMessage } from '@/lib/services/messageService';
@@ -45,17 +45,15 @@ export async function POST(request: Request) {
     if (!input.clinic_slug && !input.clinic_id) {
       return NextResponse.json({ error: 'يجب تحديد العيادة.' }, { status: 400 });
     }
-    const clinic = await resolvePublicClinic({ slug: input.clinic_slug, id: input.clinic_id });
+    const bootstrap = await loadClinicChatBootstrap({ slug: input.clinic_slug, id: input.clinic_id });
+    const clinic = bootstrap?.clinic;
     if (!clinic) return NextResponse.json({ error: 'العيادة غير موجودة.' }, { status: 404 });
     clinicIdForLogging = clinic.id;
     const conversation = await getConversationById(input.conversation_id, clinic.id);
     if (!conversation) return NextResponse.json({ error: 'المحادثة غير موجودة لهذه العيادة.' }, { status: 404 });
 
-    const [state, operatingData, profile] = await Promise.all([
-      loadReceptionistConversationState(clinic.id, input.conversation_id),
-      loadClinicOperatingData(clinic.id),
-      loadClinicProfile(clinic.id),
-    ]);
+    const { operatingData, profile } = bootstrap;
+    const state = await loadReceptionistConversationState(clinic.id, input.conversation_id);
     if (!state) return NextResponse.json({ error: 'تعذر تحميل بيانات الحجز.' }, { status: 500 });
     if (state.booking.appointment_id) {
       return NextResponse.json({

@@ -107,6 +107,22 @@ export async function loadClinicWorkingHours(clinicId: string, timezone?: string
 
 const workingHoursCache = new Map<string, { data: Awaited<ReturnType<typeof loadClinicWorkingHoursUncached>>; expires: number }>();
 
+const clinicProfileCache = new Map<string, { data: ClinicProfile; expires: number }>();
+
+/** Prime the per-instance chat data caches from the consolidated clinic RPC. */
+export function primeClinicChatData(input: {
+  clinicId: string;
+  operatingData: ClinicOperatingData;
+  profile: ClinicProfile;
+  workingHours: Awaited<ReturnType<typeof loadClinicWorkingHoursUncached>>;
+  ttlMs?: number;
+}) {
+  const expires = Date.now() + (input.ttlMs ?? 60_000);
+  operatingDataCache.set(input.clinicId, { data: input.operatingData, expires });
+  clinicProfileCache.set(input.clinicId, { data: input.profile, expires });
+  workingHoursCache.set(input.clinicId, { data: input.workingHours, expires });
+}
+
 async function loadClinicWorkingHoursUncached(clinicId: string, timezone?: string | null) {
   const hours = await getClinicHours(clinicId, { timezone });
   return toClinicWorkingHoursData(hours);
@@ -148,6 +164,7 @@ export async function loadClinicOperatingData(clinicId: string): Promise<ClinicO
 export function clearOperatingDataCache() {
   operatingDataCache.clear();
   workingHoursCache.clear();
+  clinicProfileCache.clear();
 }
 
 async function fetchOperatingData(clinicId: string): Promise<ClinicOperatingData> {
@@ -276,6 +293,8 @@ export const EMPTY_CLINIC_PROFILE: ClinicProfile = {
 };
 
 export async function loadClinicProfile(clinicId: string): Promise<ClinicProfile> {
+  const cached = clinicProfileCache.get(clinicId);
+  if (cached && cached.expires > Date.now()) return cached.data;
   try {
     const { data, error } = await supabaseAdmin
       .from('clinics')
@@ -286,7 +305,7 @@ export async function loadClinicProfile(clinicId: string): Promise<ClinicProfile
       return { ...EMPTY_CLINIC_PROFILE, id: clinicId };
     }
     const settings = (data.settings ?? {}) as Record<string, unknown>;
-    return {
+    const profile = {
       id: data.id,
       slug: data.slug,
       name: data.name,
@@ -297,6 +316,8 @@ export async function loadClinicProfile(clinicId: string): Promise<ClinicProfile
       activityType: (data.activity_type as string | null) ?? null,
       hasProfile: true,
     };
+    clinicProfileCache.set(clinicId, { data: profile, expires: Date.now() + OPERATING_DATA_TTL_MS });
+    return profile;
   } catch {
     return { ...EMPTY_CLINIC_PROFILE, id: clinicId };
   }
