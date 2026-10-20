@@ -38,7 +38,8 @@ export type AvailabilityResult = {
 };
 
 export type GoogleCalendarBusyInterval = { start: string; end: string };
-const GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS = 2_000;
+const GOOGLE_CALENDAR_TIMEOUT_MS = 3_000;
+const GOOGLE_CALENDAR_FAIL_FAST_MS = GOOGLE_CALENDAR_TIMEOUT_MS - 100;
 
 type GoogleCalendarClient = ReturnType<typeof google.calendar>;
 type GoogleCalendarConfig = {
@@ -59,13 +60,21 @@ function withCalendarTimeout<T>(operation: Promise<T>, stage: string): Promise<T
     operation,
     new Promise<never>((_, reject) => {
       timeout = setTimeout(() => reject(Object.assign(
-        new Error(`Google Calendar ${stage} timed out after ${GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS}ms`),
+        new Error(`Google Calendar ${stage} exceeded its ${GOOGLE_CALENDAR_FAIL_FAST_MS}ms fail-fast limit`),
         { code: 'ETIMEDOUT' },
-      )), GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS);
+      )), GOOGLE_CALENDAR_FAIL_FAST_MS);
     }),
   ]).finally(() => {
     if (timeout) clearTimeout(timeout);
   });
+}
+
+function isCalendarTimeout(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; name?: unknown };
+  return candidate.code === 'ETIMEDOUT'
+    || candidate.name === 'AbortError'
+    || candidate.name === 'TimeoutError';
 }
 
 /** Read actual Calendar events for exactly the requested clinic-local date. */
@@ -89,7 +98,10 @@ export async function getGoogleCalendarBusyIntervals(
       singleEvents: true,
       orderBy: 'startTime',
       maxResults: 2500,
-    }, { timeout: GOOGLE_CALENDAR_AVAILABILITY_TIMEOUT_MS }), 'events.list');
+    }, {
+      timeout: GOOGLE_CALENDAR_TIMEOUT_MS,
+      signal: AbortSignal.timeout(GOOGLE_CALENDAR_TIMEOUT_MS),
+    }), 'events.list');
   } finally {
     await client.flushTokenPersistence?.();
   }
@@ -122,11 +134,19 @@ export async function checkAvailability(
     throw new Error('Date must be in YYYY-MM-DD format.');
   }
 
-  const [schedule, localSlots, calendarBusy] = await Promise.all([
-    loadProviderSchedule(clinicId, providerId),
-    getAvailableSlots(clinicId, providerId, date, 200),
-    getGoogleCalendarBusyIntervals(clinicId, date, timezone),
-  ]);
+  let schedule;
+  let localSlots: string[];
+  let calendarBusy: GoogleCalendarBusyInterval[];
+  try {
+    [schedule, localSlots, calendarBusy] = await Promise.all([
+      loadProviderSchedule(clinicId, providerId),
+      getAvailableSlots(clinicId, providerId, date, 200),
+      getGoogleCalendarBusyIntervals(clinicId, date, timezone),
+    ]);
+  } catch (error) {
+    if (!isCalendarTimeout(error)) throw error;
+    return { date, timezone, available: false, slots: [], reason: 'timeout' };
+  }
   if (!schedule) throw new Error('Provider not found for this clinic');
   const openSlots: Array<{ start: string; end: string }> = [];
   for (const slot of localSlots) {
@@ -275,7 +295,7 @@ async function createEventAndConfirm(
           start: { dateTime: startTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
           end: { dateTime: endTime.toISOString(), timeZone: details.timezone ?? 'Asia/Jerusalem' },
         },
-      });
+      }, { timeout: GOOGLE_CALENDAR_TIMEOUT_MS, signal: AbortSignal.timeout(GOOGLE_CALENDAR_TIMEOUT_MS) });
     } finally {
       await client.flushTokenPersistence?.();
     }
@@ -283,7 +303,10 @@ async function createEventAndConfirm(
     const eventId = eventResponse?.data.id;
     if (eventId) {
       try {
-        await calendar.events.delete({ calendarId, eventId });
+        await calendar.events.delete(
+          { calendarId, eventId },
+          { timeout: GOOGLE_CALENDAR_TIMEOUT_MS, signal: AbortSignal.timeout(GOOGLE_CALENDAR_TIMEOUT_MS) },
+        );
       } catch (cleanupError) {
         throw new Error(
           `Failed to persist refreshed Google credentials and clean up the created event: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`,
@@ -311,7 +334,10 @@ async function createEventAndConfirm(
     .single();
   if (error || !data) {
     try {
-      await calendar.events.delete({ calendarId, eventId: googleEventId });
+      await calendar.events.delete(
+        { calendarId, eventId: googleEventId },
+        { timeout: GOOGLE_CALENDAR_TIMEOUT_MS, signal: AbortSignal.timeout(GOOGLE_CALENDAR_TIMEOUT_MS) },
+      );
     } catch (rollbackError) {
       console.error('[google-calendar] event-rollback-failed', {
         clinicId: details.clinic_id,

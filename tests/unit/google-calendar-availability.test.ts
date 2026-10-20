@@ -87,7 +87,10 @@ describe('getGoogleCalendarBusyIntervals', () => {
       timeMin: '2026-10-14T00:00:00.000Z',
       timeMax: '2026-10-15T00:00:00.000Z',
       singleEvents: true,
-    }), { timeout: 2_000 });
+    }), {
+      timeout: 3_000,
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('returns only busy event intervals from Google Calendar', async () => {
@@ -104,6 +107,25 @@ describe('getGoogleCalendarBusyIntervals', () => {
       { start: '2026-10-14T10:00', end: '2026-10-14T10:30' },
     ]);
   });
+
+  it('fails closed when the Google Calendar availability request exceeds three seconds', async () => {
+    calendarMocks.list.mockImplementation((_params, options: { signal: AbortSignal }) => new Promise((_, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+    }));
+
+    const startedAt = performance.now();
+    const result = await checkAvailability('clinic-id', 'provider-id', '2026-10-14', 'UTC');
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(result).toEqual({
+      date: '2026-10-14',
+      timezone: 'UTC',
+      available: false,
+      slots: [],
+      reason: 'timeout',
+    });
+    expect(elapsedMs).toBeLessThan(3_000);
+  }, 4_000);
 
   it('uses only tenant-scoped local slots when this clinic has no connected calendar', async () => {
     oauthMocks.getClinicGoogleCalendarClient.mockResolvedValue(null);
