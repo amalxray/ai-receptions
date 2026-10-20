@@ -1,3 +1,5 @@
+export const preferredRegion = 'icn1';
+
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { logEvent } from '@/lib/server/logging';

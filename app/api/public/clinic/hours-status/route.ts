@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 /**
  * PUBLIC HOURS STATUS — live "open now / closed" for a clinic's public page.
  * GET /api/public/clinic/hours-status?slug={slug}

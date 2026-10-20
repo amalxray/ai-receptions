@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, CASH_SESSION_OPEN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
 import { openCashSession, listCashSessions } from '@/lib/services/accounting';

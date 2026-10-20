@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 /**
  * PHASE L — PUBLIC PAGE CONTENT management API.
  * GET  ?type=achievements|testimonials|articles|news — list tenant content (DATA_ROLES).

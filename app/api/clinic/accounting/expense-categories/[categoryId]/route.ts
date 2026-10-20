@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, roleDenied, EXPENSE_CATEGORY_MANAGE_ROLES } from '@/lib/services/clinicAuthorization';
 import { updateExpenseCategory } from '@/lib/services/accounting';

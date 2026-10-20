@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { runClinicAssistant } from '@/lib/services/clinicAssistant';

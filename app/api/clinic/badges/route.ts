@@ -1,3 +1,6 @@
+export const preferredRegion = 'icn1';
+export const maxDuration = 60;
+
 import { NextResponse } from 'next/server';
 import { featureGateForClinic } from '@/lib/subscription/featureGateServer';
 import { z } from 'zod';
