@@ -12,7 +12,7 @@ import { buildChatInteractive } from '@/lib/ai/chatInteractive';
 import { buildBookingConfirmation } from '@/lib/ai/bookingConfirmation';
 import { containsConfirmationWord, attemptConversationBooking } from '@/lib/ai/conversationBooking';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
-import { loadClinicOperatingData, loadClinicProfile, loadReceptionistConversationState } from '@/lib/ai/clinicDataContext';
+import { loadClinicOperatingData, loadClinicProfile, loadReceptionistConversationState, type ClinicOperatingData, type ReceptionistConversationState } from '@/lib/ai/clinicDataContext';
 import { saveMessage } from '@/lib/services/messageService';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
@@ -44,6 +44,27 @@ const postLimiter = new RateLimiter(POST_RATE_MAX, POST_RATE_WINDOW_MS);
 const getLimiter = new RateLimiter(30, 60_000);
 const SOURCE_CITATION_PATTERN = /\[Source:[^\]]+\]/g;
 const CHAT_BOOKING_PENDING_MESSAGE = '\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u0645\u0648\u0639\u062f\u0643 \u0641\u064a \u0642\u0627\u0639\u062f\u0629 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0639\u064a\u0627\u062f\u0629 \u0648\u0647\u0648 \u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629.';
+
+function buildBookingReceipt(
+  clinic: { name: string; phone: string | null },
+  state: ReceptionistConversationState | null,
+  operatingData: ClinicOperatingData,
+) {
+  const appointmentId = state?.booking.appointment_id;
+  if (!appointmentId || !state) return null;
+  const serviceId = state.booking.service_id ?? state.recommended_service_id;
+  const service = operatingData.services.find((item) => item.id === serviceId)?.name ?? 'موعد';
+  const slot = state.booking.slot ?? state.booking.scheduled_at ?? '';
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(slot);
+  return {
+    appointment_id: appointmentId,
+    service,
+    appointment_date: match ? `${match[1]} — ${match[2]}` : slot,
+    patient_name: state.booking.patient_name ?? '',
+    clinic_name: clinic.name,
+    clinic_phone: clinic.phone,
+  };
+}
 
 function stripSourceCitations(content: string): string {
   return content.replace(SOURCE_CITATION_PATTERN, '').replace(/[ \t]{2,}/g, ' ').trim();
@@ -234,6 +255,9 @@ export async function POST(req: Request) {
         assistant_message: responseAssistant,
         booking_context: bookingContext,
         booking_completed: Boolean(receptionState?.booking.appointment_id),
+        booking_confirmation_result: confirmedByMessage
+          ? buildBookingReceipt(clinic, receptionState, operatingData)
+          : null,
         // الردود التفاعلية (أزرار سريعة + بطاقات + مؤشر تقدّم) — مشتقة من
         // الحالة الخادمية فقط: slot محقَّق من التوفر + نية الحجز في metadata.
         interactive: buildChatInteractive({
@@ -342,6 +366,9 @@ export async function GET(req: Request) {
     const bookingConfirmation = metadata.handoff === true
       ? null
       : buildBookingConfirmation(clinic, receptionState, operatingData);
+    const bookingConfirmationResult = metadata.handoff === true
+      ? null
+      : buildBookingReceipt(clinic, receptionState, operatingData);
     const bookingDetailsPending = metadata.handoff !== true &&
       receptionState?.state === 'BOOKING' &&
       Boolean(receptionState.booking.slot) &&
@@ -378,6 +405,7 @@ export async function GET(req: Request) {
       // STEP 10C: suppress pending-booking projection for staff-handoff conversations.
       booking_context: bookingContext,
       booking_completed: Boolean(receptionState?.booking.appointment_id),
+      booking_confirmation_result: bookingConfirmationResult,
       // نفس الحمولة التفاعلية بعد إعادة التحميل — تُشتق من الخادم لا من localStorage.
       interactive: buildChatInteractive({
         bookingContext,

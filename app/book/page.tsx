@@ -8,6 +8,7 @@ import { format12h } from '@/lib/time/format';
 import { DatePicker } from '@/components/booking/DatePicker';
 import { formatArabicDate, monthKey, startOfDay, toISODate } from '@/lib/booking/calendar';
 import ReviewPromptModal from '@/components/public/ReviewPromptModal';
+import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
 
 type Service = { id: string; name: string; description: string | null; duration_minutes: number; price: number | null };
 type Provider = { id: string; name: string; title: string | null };
@@ -553,13 +554,15 @@ function BookingForm() {
 
           {clinic.status === 'ready' && step === 'success' && bookingResult ? (
             <div className="text-center">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 text-3xl text-emerald-400">✓</div>
-              <h2 className="text-2xl font-semibold text-white">تم إنشاء الحجز بنجاح</h2>
-              <p className="mt-2 text-slate-400">رقم الحجز: <span className="font-semibold text-slate-200">{bookingResult.appointment_id}</span></p>
-              <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-left">
-                <Row label="الخدمة" value={bookingResult.service} />
-                <Row label="التاريخ" value={formatArabicDate(bookingResult.date) || bookingResult.date} />
-                <Row label="الوقت" value={bookingResult.time} />
+              <BookingConfirmationCard
+                appointmentId={bookingResult.appointment_id}
+                serviceName={bookingResult.service}
+                appointmentDate={`${formatArabicDate(bookingResult.date) || bookingResult.date} — ${bookingResult.time}`}
+                patientName={patientInfo.name}
+                clinicName={clinic.clinic.name}
+                clinicPhone={clinic.clinic.phone}
+              />
+              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-right">
                 <Row label="الحالة" value={bookingResult.status === 'tentative' ? 'قيد الانتظار' : bookingResult.status === 'confirmed' ? 'مؤكد' : bookingResult.status === 'cancelled' ? 'ملغي' : bookingResult.status} />
               </div>
 

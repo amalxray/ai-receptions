@@ -5,6 +5,16 @@ import { freshConversationState, conversationStorageKeysToPurge } from '@/lib/ch
 import type { BookingConfirmationData, ChatInteractive } from '@/lib/ai/chatInteractive';
 import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
+import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
+
+type BookingConfirmationResult = {
+  appointment_id: string;
+  service: string;
+  appointment_date: string;
+  patient_name: string;
+  clinic_name: string;
+  clinic_phone: string | null;
+};
 
 type ChatMessage = {
   id?: string;
@@ -12,6 +22,7 @@ type ChatMessage = {
   text: string;
   /** طبقة تفاعلية مشتقة خادمياً (أزرار/بطاقات/تقدّم) — على آخر رسالة مساعد فقط. */
   interactive?: ChatInteractive;
+  bookingConfirmation?: BookingConfirmationResult;
 };
 
 type Props = {
@@ -137,6 +148,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                 role: (item.role === 'assistant' ? 'assistant' : 'user') as ChatMessage['role'],
                 text: item.content as string,
                 interactive: undefined as ChatInteractive | undefined,
+                bookingConfirmation: undefined as BookingConfirmationResult | undefined,
               }));
               // الطبقة التفاعلية تُشتق خادمياً للمحادثة كاملة (أحدث خطوة معلّقة)
               // وتُرفق بآخر رسالة مساعد فقط — لا أزرار قديمة من localStorage.
@@ -145,6 +157,14 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                 for (let i = restored.length - 1; i >= 0; i -= 1) {
                   if (restored[i].role === 'assistant') {
                     restored[i].interactive = serverInteractive;
+                    break;
+                  }
+                }
+              }
+              if (payload?.booking_confirmation_result) {
+                for (let i = restored.length - 1; i >= 0; i -= 1) {
+                  if (restored[i].role === 'assistant') {
+                    restored[i].bookingConfirmation = payload.booking_confirmation_result;
                     break;
                   }
                 }
@@ -276,7 +296,12 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
       setMessages((current) => [
         ...current,
-        { role: 'assistant', text: assistantText, interactive: serverInteractive ?? undefined },
+        {
+          role: 'assistant',
+          text: assistantText,
+          interactive: serverInteractive ?? undefined,
+          bookingConfirmation: payload?.booking_confirmation_result ?? undefined,
+        },
       ]);
     } catch (err) {
       // Network-level failure (offline / server unreachable) — DISTINCT from
@@ -344,7 +369,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         setBookingCompleted(true);
         setMessages((current) => [
           ...current,
-          { role: 'assistant', text: payload.message ?? 'تم حجز موعدك بنجاح ✅ سنرسل لك تذكيراً قبل الموعد.' },
+          {
+            role: 'assistant',
+            text: payload.message ?? 'تم تسجيل حجزك بنجاح ✅',
+            bookingConfirmation: payload.confirmation,
+          },
         ]);
       }
     } catch (error) {
@@ -471,6 +500,18 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                       {isReceptionist ? (assistantName ?? 'موظفة الاستقبال') : 'أنت'}
                     </p>
                     <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-[15px]">{message.text}</p>
+                    {message.bookingConfirmation && (
+                      <div className="mt-3">
+                        <BookingConfirmationCard
+                          appointmentId={message.bookingConfirmation.appointment_id}
+                          serviceName={message.bookingConfirmation.service}
+                          appointmentDate={message.bookingConfirmation.appointment_date}
+                          patientName={message.bookingConfirmation.patient_name}
+                          clinicName={message.bookingConfirmation.clinic_name}
+                          clinicPhone={message.bookingConfirmation.clinic_phone}
+                        />
+                      </div>
+                    )}
                     {index === messages.length - 1 && isReceptionist && message.interactive ? (
                       <>
                         {message.interactive.booking_confirmation ? (() => {
