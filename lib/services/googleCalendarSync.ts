@@ -36,7 +36,11 @@ function isInvalidGrant(error: unknown): boolean {
 async function updateSyncState(
   appointmentId: string,
   clinicId: string,
-  values: { needs_google_sync: boolean; google_sync_blocked_at: string | null },
+  values: {
+    needs_google_sync: boolean;
+    google_sync_blocked_at: string | null;
+    appointment_time?: string | null;
+  },
 ): Promise<void> {
   const { error } = await supabaseAdmin
     .from('appointments')
@@ -77,11 +81,16 @@ async function notifyReconnectRequired(clinicId: string, appointmentId: string):
   });
 }
 
-/** Marks an appointment for immediate best-effort sync and hourly retry. */
-export async function queueGoogleCalendarSync(appointmentId: string, clinicId: string): Promise<void> {
+/** Marks an appointment for immediate best-effort sync and scheduled retry. */
+export async function queueGoogleCalendarSync(
+  appointmentId: string,
+  clinicId: string,
+  appointmentTime?: string,
+): Promise<void> {
   await updateSyncState(appointmentId, clinicId, {
     needs_google_sync: true,
     google_sync_blocked_at: null,
+    ...(appointmentTime ? { appointment_time: appointmentTime } : {}),
   });
 }
 

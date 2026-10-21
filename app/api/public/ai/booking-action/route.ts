@@ -25,8 +25,7 @@ const requestSchema = z.object({
 });
 
 const BOOKING_SUCCESS = 'تمت مزامنة موعدك مع تقويم العيادة ✅';
-const BOOKING_PENDING =
-  'تم تسجيل طلب الموعد في قاعدة بيانات العيادة، لكن لم تتم مزامنته مع Google Calendar لأن ربط التقويم غير مفعّل حالياً. يرجى التواصل مع الاستقبال لتأكيد الموعد.';
+const BOOKING_PENDING = '\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u0645\u0648\u0639\u062f\u0643 \u0641\u064a \u0642\u0627\u0639\u062f\u0629 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0639\u064a\u0627\u062f\u0629 \u0648\u0647\u0648 \u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629.';
 const bookingMessage = (status?: string | null) =>
   status === 'confirmed' ? BOOKING_SUCCESS : BOOKING_PENDING;
 const bookingActionLimiter = new RateLimiter(10, 60_000);
@@ -140,7 +139,6 @@ export async function POST(request: Request) {
       operatingData,
       requirePhone: true,
       googleCalendar: policy.createGoogleCalendarEvent,
-      clinicName: profile.name,
       timeZone: profile.timezone,
     });
 

@@ -109,9 +109,9 @@ describe('public chat booking action', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({ ok: true, status: 'pending_confirmation', appointment_id: 'appointment-1' });
-    expect(payload.message).toContain('لم تتم مزامنته مع Google Calendar');
+    expect(payload.message).toContain('\u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629');
     expect(mocks.saveMessage).toHaveBeenCalledWith(expect.objectContaining({
-      content: expect.stringContaining('لم تتم مزامنته مع Google Calendar'),
+      content: expect.stringContaining('\u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629'),
     }));
     expect(mocks.attemptConversationBooking).toHaveBeenCalledWith(expect.objectContaining({
       clinicId: 'clinic-1',
