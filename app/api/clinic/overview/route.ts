@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { getSupabaseEnvConfig } from '@/lib/config';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 
@@ -22,15 +23,16 @@ export async function GET(req: Request) {
 
     const cookieStore = cookies();
     const serverClient = createServerClient(config.supabaseUrl, config.anonKey, {
+      cookieOptions: supabaseCookieOptions,
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          cookieStore.set({ name, value, ...options, ...supabaseCookieOptions });
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
+          cookieStore.set({ name, value: '', ...options, ...supabaseCookieOptions });
         },
       },
     });

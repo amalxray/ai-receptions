@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSupabaseCoreConfig } from '@/lib/supabase/config';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 import {
   clinicSpaceUrl,
   tenantRedirect,
@@ -131,6 +132,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const supabase = createServerClient(supabaseUrl, anonKey, {
+    cookieOptions: supabaseCookieOptions,
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -141,7 +143,7 @@ export async function middleware(request: NextRequest) {
         // rewrite is not silently dropped when cookies are refreshed.
         response = buildResponse();
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
+          response.cookies.set(name, value, { ...options, ...supabaseCookieOptions })
         );
       },
     },

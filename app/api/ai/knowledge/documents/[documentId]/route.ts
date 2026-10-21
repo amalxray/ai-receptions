@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { getSupabaseEnvConfig } from '@/lib/config';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 
 async function getActiveClinicId(userId: string, client: any): Promise<string | null> {
   const { data, error } = await client.from('clinic_users').select('clinic_id').eq('user_id', userId).is('deleted_at', null).limit(1).single();
@@ -27,15 +28,16 @@ export async function DELETE(request: Request) {
     config.supabaseUrl,
     config.anonKey,
     {
+      cookieOptions: supabaseCookieOptions,
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          cookieStore.set({ name, value, ...options, ...supabaseCookieOptions });
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
+          cookieStore.set({ name, value: '', ...options, ...supabaseCookieOptions });
         },
       },
     }
@@ -82,15 +84,16 @@ export async function POST(request: Request) {
     config.supabaseUrl,
     config.anonKey,
     {
+      cookieOptions: supabaseCookieOptions,
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          cookieStore.set({ name, value, ...options, ...supabaseCookieOptions });
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
+          cookieStore.set({ name, value: '', ...options, ...supabaseCookieOptions });
         },
       },
     }
