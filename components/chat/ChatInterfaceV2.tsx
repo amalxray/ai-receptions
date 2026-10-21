@@ -87,13 +87,15 @@ export default function ChatInterfaceV2({ clinicId = '', initialConversationId =
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [clinicName, setClinicName] = useState<string | null>(null);
+  const [resolvedClinicSlug, setResolvedClinicSlug] = useState<string | null>(clinicSlug);
   const [assistantName, setAssistantName] = useState<string | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
   const [showSuggested, setShowSuggested] = useState(true);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [bookingCompleted, setBookingCompleted] = useState(false);
-  // Phase 3a — post-booking review prompt (display only; send/voice/booking untouched).
+  // Post-booking review prompt.
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewPatientName, setReviewPatientName] = useState('');
   const reviewPromptShownRef = useRef(false);
   const [editingBooking, setEditingBooking] = useState(false);
   const [bookingDraft, setBookingDraft] = useState<BookingConfirmationData | null>(null);
@@ -160,6 +162,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         if (res.ok) {
           const payload = await res.json();
           setClinicName(payload?.data?.name ?? null);
+          setResolvedClinicSlug(payload?.data?.slug ?? null);
         }
       } catch {
         // Non-fatal — fallback welcome below
@@ -167,6 +170,10 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
     void loadClinicInfo();
   }, [clinicId, isUuid]);
+
+  useEffect(() => {
+    if (clinicSlug) setResolvedClinicSlug(clinicSlug);
+  }, [clinicSlug]);
 
   // Load conversation history on mount
   useEffect(() => {
@@ -247,25 +254,31 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
   }, [conversationId, storageKey]);
 
-  // Phase 3a — show the review prompt once after booking completes.
-  // Strict guard: per-conversation sessionStorage flag + in-memory ref.
-  // Fail-silent when no clinicSlug is available (uuid-only hosts).
-  // Send logic, voice, and booking flow are untouched.
+  // Show the review prompt two seconds after the confirmation card appears.
   useEffect(() => {
     if (!bookingCompleted || reviewPromptShownRef.current || !conversationId) return;
-    const slug = clinicSlug ?? (!isUuid ? clinicId : null);
+    const confirmation = [...messages].reverse().find((message) => message.bookingConfirmation)?.bookingConfirmation;
+    if (!confirmation) return;
+    const slug = clinicSlug ?? resolvedClinicSlug ?? (!isUuid ? clinicId : null);
     if (!slug) return;
-    let key: string | null = null;
+    const key = `review_prompt_${conversationId}`;
     try {
-      key = `review_prompt_${conversationId}`;
       if (sessionStorage.getItem(key)) return;
-      sessionStorage.setItem(key, '1');
     } catch {
       // sessionStorage unavailable — still show once per mount via ref.
     }
-    reviewPromptShownRef.current = true;
-    setShowReviewModal(true);
-  }, [bookingCompleted, conversationId, clinicId, clinicSlug, isUuid]);
+    const timer = window.setTimeout(() => {
+      reviewPromptShownRef.current = true;
+      try {
+        sessionStorage.setItem(key, '1');
+      } catch {
+        // The in-memory ref still prevents repeated prompts in this mount.
+      }
+      setReviewPatientName(confirmation.patient_name);
+      setShowReviewModal(true);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [bookingCompleted, conversationId, messages, clinicId, clinicSlug, resolvedClinicSlug, isUuid]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement> | null, overrideText?: string) {
     if (event) event.preventDefault();
@@ -358,6 +371,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         const assistantText = finalPayload?.assistant_message?.content ?? finalPayload?.assistant_message ?? 'تمت معالجة الرسالة.';
         setConversationId(finalPayload?.conversation_id ?? conversationId);
         const serverInteractive = (finalPayload?.interactive ?? null) as ChatInteractive | null;
+        if (finalPayload?.booking_confirmation_result) setBookingCompleted(true);
         setMessages((current) => current.map((message) => message.id === streamingAssistantId
           ? {
               ...message,
@@ -416,6 +430,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
 
       const assistantText = payload?.assistant_message?.content ?? payload?.assistant_message ?? 'تمت معالجة الرسالة.';
       setConversationId(payload?.conversation_id ?? conversationId);
+      if (payload?.booking_confirmation_result) setBookingCompleted(true);
       const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
       setMessages((current) => [
         ...current,
@@ -525,6 +540,9 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     setMessages(fresh.messages);
     setConversationId(fresh.conversationId);
     setBookingCompleted(false);
+    setShowReviewModal(false);
+    setReviewPatientName('');
+    reviewPromptShownRef.current = false;
     setShowSuggested(fresh.showSuggested);
     setStatusMessage(fresh.statusMessage);
     lastSentRef.current = null;
@@ -641,7 +659,9 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                     <p className={`mb-1 text-[11px] font-bold tracking-wide ${isReceptionist ? 'text-teal-700' : 'text-cyan-800'}`}>
                       {isReceptionist ? (assistantName ?? 'موظفة الاستقبال') : 'أنت'}
                     </p>
-                    <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-[15px]">{message.text}</p>
+                    {!message.bookingConfirmation && message.text.trim() && (
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-[15px]">{message.text}</p>
+                    )}
                     {message.bookingConfirmation && (
                       <div className="mt-3">
                         <BookingConfirmationCard
@@ -841,11 +861,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           </p>
         )}
       </form>
-      {/* Phase 3a — post-booking review prompt (display only). */}
       <ReviewPromptModal
         open={showReviewModal}
-        clinicSlug={clinicSlug ?? (!isUuid ? clinicId : null)}
-        source="chat"
+        clinicSlug={clinicSlug ?? resolvedClinicSlug ?? (!isUuid ? clinicId : null)}
+        source="booking"
+        patientName={reviewPatientName}
         onClose={() => setShowReviewModal(false)}
       />
     </div>

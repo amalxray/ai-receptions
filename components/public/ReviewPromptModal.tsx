@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 type ReviewPromptModalProps = {
   /** Show/hide the modal. Parent owns visibility. */
@@ -8,7 +8,7 @@ type ReviewPromptModalProps = {
   /** Clinic slug for POST /api/public/reviews. If missing, renders nothing (fail-silent). */
   clinicSlug: string | null | undefined;
   /** Review source recorded server-side. */
-  source: 'form' | 'chat' | 'public';
+  source: 'form' | 'chat' | 'public' | 'booking';
   /** Pre-fill the author name (e.g. from the booking form). */
   patientName?: string;
   /** Close the modal (parent also flips its visibility state). */
@@ -17,7 +17,7 @@ type ReviewPromptModalProps = {
 
 /**
  * Phase 3a — shared post-booking review prompt (RTL).
- * Used by app/book/page.tsx (source='form') and ChatInterfaceV2 (source='chat').
+ * Used by the booking form and the chat booking confirmation flow.
  * Posts to the existing POST /api/public/reviews endpoint — no new API.
  * Parent controls `open`; this component owns form state + submission only.
  */
@@ -29,6 +29,17 @@ export default function ReviewPromptModal({ open, clinicSlug, source, patientNam
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setRating(0);
+    setHovered(0);
+    setAuthorName(patientName);
+    setComment('');
+    setSubmitting(false);
+    setDone(false);
+    setError(null);
+  }, [open, patientName]);
 
   // Fail-silent: no slug → no modal (Chat often only has a uuid clinicId).
   if (!open || !clinicSlug) return null;
@@ -114,16 +125,20 @@ export default function ReviewPromptModal({ open, clinicSlug, source, patientNam
                 </button>
               ))}
             </div>
-            <label htmlFor="review-prompt-name" className="mt-4 block text-sm font-semibold text-slate-700">الاسم</label>
-            <input
-              id="review-prompt-name"
-              type="text"
-              value={authorName}
-              onChange={(e) => setAuthorName(e.target.value)}
-              maxLength={100}
-              placeholder="اسمك الكريم"
-              className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:bg-white"
-            />
+            {!(source === 'booking' && patientName.trim()) && (
+              <>
+                <label htmlFor="review-prompt-name" className="mt-4 block text-sm font-semibold text-slate-700">الاسم</label>
+                <input
+                  id="review-prompt-name"
+                  type="text"
+                  value={authorName}
+                  onChange={(e) => setAuthorName(e.target.value)}
+                  maxLength={100}
+                  placeholder="اسمك الكريم"
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:bg-white"
+                />
+              </>
+            )}
             <label htmlFor="review-prompt-comment" className="mt-3 block text-sm font-semibold text-slate-700">
               تعليق <span className="font-normal text-slate-400">(اختياري)</span>
             </label>

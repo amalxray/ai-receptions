@@ -153,8 +153,9 @@ export async function attemptConversationBooking(params: {
   requirePhone?: boolean;
   googleCalendar?: boolean;
   timeZone?: string | null;
+  initialStatus?: 'tentative' | 'pending_confirmation' | 'confirmed';
 }): Promise<BookingAttemptResult> {
-  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, timeZone } = params;
+  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, timeZone, initialStatus = 'pending_confirmation' } = params;
 
   if (!['BOOKING', 'AWAITING_BOOKING_CONFIRMATION'].includes(state) || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
@@ -234,7 +235,7 @@ export async function attemptConversationBooking(params: {
       serviceId: service.id,
       conversationId,
       durationMinutes: service.duration_minutes ?? undefined,
-      initialStatus: 'pending_confirmation',
+      initialStatus,
       // UNIFIED SAVE PATH: no `timeZone` here on purpose — the availability
       // engine already emits wall-clock-as-UTC slots ("2026-09-19T09:00:00Z"
       // means 09:00 AT THE CLINIC), which is the convention the public

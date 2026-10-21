@@ -1,7 +1,6 @@
 import { ClinicAISettings, Message } from '@/types/db';
 import { RetrievalResult } from '@/lib/services/knowledge/retrieval';
 import { ContextChunk, SourceCitation } from '@/lib/services/knowledge/contextAssembly';
-import { detectLanguage } from '@/lib/services/knowledge/multilingual';
 import { ConversationIntent, ConversationState } from '@/lib/ai/intelligence';
 import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
 import type { ReceptionistConversationState } from '@/lib/ai/clinicDataContext';
@@ -70,17 +69,8 @@ export interface PromptOptions {
   workingHours?: ClinicWorkingHoursData | null;
 }
 
-function responseLanguage(question: string): 'Arabic' | 'English' {
-  const explicitlyRequestsEnglish =
-    /(?:أجب|اجب|رد|تحدث|اكتب|احكي|كلمني|كلميني).{0,24}(?:بالإنجليزية|بالانجليزية|بالإنجليزي|بالانجليزي|باللغة الإنجليزية|باللغة الانجليزية)/i.test(question) ||
-    /\b(?:answer|reply|respond|speak|write)\s+(?:to me\s+)?in\s+English\b|\bEnglish\s+(?:please|only)\b/i.test(question);
-  return explicitlyRequestsEnglish || detectLanguage(question) === 'en' ? 'English' : 'Arabic';
-}
-
-function responseLanguageDirective(question: string): string {
-  return responseLanguage(question) === 'English'
-    ? 'LANGUAGE OVERRIDE: Reply in English only because the patient wrote in English or explicitly asked for English. Do not add an Arabic translation or a second-language section.'
-    : 'تعليمات اللغة (أولوية قصوى): أجب بالعربية فقط. لا تستخدم الإنجليزية إلا إذا كتب المريض بالإنجليزية أو طلب صراحةً الرد بها. لا تضف ترجمة أو فقرة بلغة ثانية.';
+function responseLanguageDirective(): string {
+  return 'أجب بالعربية دائماً (إلا إذا كتب المريض بالإنجليزية).';
 }
 
 /** One day of clinic opening hours, as read from provider_schedules. */
@@ -135,8 +125,6 @@ These are general educational points — they are NOT clinic-specific, prices, o
 
 const DEFAULT_PROMPT_TEMPLATE = `You are a helpful AI assistant for a dental clinic. Your name is {assistant_name}.
 Your tone should be {tone}.
-You must respond in {language}.
-LANGUAGE PURITY (mandatory): write the ENTIRE reply in a single language — Arabic when the patient writes Arabic, English only when the patient writes English. NEVER mix languages in one reply, NEVER produce a second section in another language (no "العربية:" + "English:" split), and NEVER auto-translate. The ONLY foreign words allowed are proper nouns and established loanwords that appear in the clinic's own data (e.g. "CBCT", "DICOM"). When in doubt, reply fully in Arabic.
 GENDER-NEUTRAL ADDRESS (mandatory): the patient's gender is unknown. Address them neutrally — e.g. «يبدو أن لديك…», «هل يمكنك توضيح…», «أفهم أن هناك…». NEVER use gendered verb forms like «تواجهين», «ستجدين», «يمكنكِ», or any masculine/feminine form that assumes the patient's gender.
 
 Use information this way:
@@ -160,7 +148,7 @@ Question: {question}`;
  * Builds a RAG prompt using a template, retrieved context, and user query.
  *
  * Features:
- * - Multilingual support: detects query language and sets the response language.
+ * - Language guidance: defaults to Arabic and follows English patient messages.
  * - Source citations: includes document filename, chunk ID, and confidence in context.
  * - Hallucination prevention: instructs the AI to only answer from provided context.
  * - Confidence thresholds: includes a confidence score for each context chunk.
@@ -186,10 +174,7 @@ export function buildPrompt(
   const isImagingCenter = ['imaging_center', 'imaging'].includes((options?.activityType ?? '').toLowerCase());
   const generalKnowledge = isImagingCenter ? '' : GENERAL_DENTAL_KNOWLEDGE;
 
-  // The patient's current language overrides clinic settings. Arabic is the
-  // default; English is used only when the patient writes in or asks for it.
-  const language = responseLanguage(question);
-
+  // Clinic-specific language settings do not override the Arabic-first rule.
   // Build context string with source citations
   const context = rankedContext
     .map((chunk, index) => {
@@ -247,8 +232,6 @@ export function buildPrompt(
   if (!context.trim()) {
     let fallbackPrompt = `You are a helpful assistant with a dental clinic named {assistant_name}.
 Your tone should be {tone}.
-You must respond in {language}.
-LANGUAGE PURITY (mandatory): write the ENTIRE reply in a single language — Arabic when the patient writes Arabic, English only when the patient writes English. NEVER mix languages in one reply, NEVER produce a second section in another language (no "العربية:" + "English:" split), and NEVER auto-translate. The ONLY foreign words allowed are proper nouns and established loanwords that appear in the clinic's own data (e.g. "CBCT", "DICOM"). When in doubt, reply fully in Arabic.
 GENDER-NEUTRAL ADDRESS (mandatory): the patient's gender is unknown. Address them neutrally — e.g. «يبدو أن لديك…», «هل يمكنك توضيح…». NEVER use gendered verb forms like «تواجهين», «ستجدين», «يمكنكِ».
 
 Use this information:
@@ -268,7 +251,6 @@ Question: {question}`;
     }
     fallbackPrompt = fallbackPrompt.replace('{assistant_name}', assistantName);
     fallbackPrompt = fallbackPrompt.replace('{tone}', tone);
-    fallbackPrompt = fallbackPrompt.replace('{language}', language);
     fallbackPrompt = fallbackPrompt.replace('{history}', historyString);
     fallbackPrompt = fallbackPrompt.replace('{general_dental_knowledge}', generalKnowledge);
     fallbackPrompt = fallbackPrompt.replace('{question}', question);
@@ -278,7 +260,7 @@ Question: {question}`;
       fallbackPrompt = `${fallbackPrompt}\n\n${optionalSections}`;
     }
 
-    fallbackPrompt = `${fallbackPrompt}\n\n${responseLanguageDirective(question)}`;
+    fallbackPrompt = `${fallbackPrompt}\n\n${responseLanguageDirective()}`;
 
     return fallbackPrompt;
   }
@@ -291,7 +273,6 @@ Question: {question}`;
   }
   prompt = prompt.replace('{assistant_name}', assistantName);
   prompt = prompt.replace('{tone}', tone);
-  prompt = prompt.replace('{language}', language);
   prompt = prompt.replace('{history}', historyString);
   prompt = prompt.replace('{context}', context);
   prompt = prompt.replace('{general_dental_knowledge}', generalKnowledge);
@@ -302,7 +283,7 @@ Question: {question}`;
     prompt = `${prompt}\n\n${optionalSections}`;
   }
 
-  prompt = `${prompt}\n\n${responseLanguageDirective(question)}`;
+  prompt = `${prompt}\n\n${responseLanguageDirective()}`;
 
   return prompt;
 }
@@ -320,7 +301,6 @@ export function buildFastClinicPrompt(
 ): string {
   const assistantName = settings?.assistant_name || 'AI Assistant';
   const tone = settings?.tone || 'professional and friendly';
-  const language = responseLanguage(question);
   const activity = (options?.activityType ?? '').toLowerCase();
   const business = activity === 'imaging_center' || activity === 'imaging'
     ? 'dental imaging center'
@@ -330,7 +310,7 @@ export function buildFastClinicPrompt(
 
   const lines = [
     `You are ${assistantName}, the receptionist of a ${business}.`,
-    `Use a ${tone} tone and respond in ${language}. Keep the reply concise and answer only the patient's current question.`,
+    `Use a ${tone} tone. Keep the reply concise and answer only the patient's current question.`,
     'Use only the authoritative clinic facts below. Never invent a service, price, contact detail, working hour, or availability; if a fact is missing, say the clinic must confirm it.',
     'Never diagnose a medical condition or prescribe medication.',
     buildClinicInfoSection(options?.clinicInfo),
@@ -342,7 +322,7 @@ export function buildFastClinicPrompt(
       ? `Recent conversation:\n${history.slice(-6).map((message) => `${message.role === 'patient' ? 'Patient' : 'Assistant'}: ${message.content}`).join('\n')}`
       : '',
     `Patient message: ${question}`,
-    responseLanguageDirective(question),
+    responseLanguageDirective(),
   ];
 
   return lines.filter(Boolean).join('\n\n');

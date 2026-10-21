@@ -574,7 +574,7 @@ export async function createBooking(params: {
   serviceId?: string;
   conversationId?: string | null;
   durationMinutes?: number;
-  initialStatus?: 'tentative' | 'pending_confirmation';
+  initialStatus?: 'tentative' | 'pending_confirmation' | 'confirmed';
   /**
    * Clinic IANA zone (e.g. "Asia/Hebron"). When supplied, `date`+`time` are
    * treated as CLINIC-LOCAL wall clock and converted to the matching UTC
