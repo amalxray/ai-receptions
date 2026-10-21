@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
 import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
-import { bookAppointment } from '@/lib/services/googleCalendarBooking';
-import { clinicLocalToInstant } from '@/lib/services/clinicClock';
+import { queueGoogleCalendarSync, syncGoogleCalendarAppointment } from '@/lib/services/googleCalendarSync';
 import { logEvent } from '@/lib/server/logging';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
@@ -68,32 +67,42 @@ export async function POST(req: Request) {
     // ── Google Calendar sync (Form parity with the chat path) ──
     // Mirrors conversationBooking: NO `timeZone` on purpose (legacy wall-clock
     // contract) and appointment_time is the TRUE clinic-local instant.
-    // Connected → attach the event to the just-created row; ANY failure rolls
-    // the row back (bookAppointment itself also guards double-booking against
-    // Google busy). Disconnected → DB-only, exactly as before (no rollback).
-    const policy = await getChatBookingPolicy(clinic_id);
-    if (policy.createGoogleCalendarEvent) {
-      // Fire-and-forget: Google Calendar sync must never fail the booking.
-      // The DB appointment is the source of truth; sync errors are logged only.
-      bookAppointment({
-        appointment_id: appointment.id,
+    // Connected → keep the database booking as source of truth and sync the
+    // event asynchronously. Calendar failures never roll back a valid booking.
+    let shouldSyncCalendar = false;
+    try {
+      shouldSyncCalendar = (await getChatBookingPolicy(clinic_id)).createGoogleCalendarEvent;
+    } catch {
+      // The appointment is already durable; a policy lookup problem must not
+      // turn a successful booking into an HTTP failure.
+      logEvent('booking_google_sync_policy_failed', {
         clinic_id,
-        provider_id,
-        appointment_time: clinicLocalToInstant(date, time, 'Asia/Jerusalem').toISOString(),
-        patient_name,
-        patient_phone: phone,
-        service,
-        duration_minutes,
-        // لا timeZone — mirror conversationBooking contract
-      }).catch((err) => {
-        logEvent(
-          'booking_google_sync_failed',
-          { clinic_id, provider_id, appointment_id: appointment.id, date, time, error: err instanceof Error ? err.message : String(err) },
-          'error',
-        );
+        appointment_id: appointment.id,
+      }, 'warn');
+    }
+    if (shouldSyncCalendar) {
+      // Persist the retry marker before starting best-effort work. Vercel may
+      // stop the request process after the response, so the hourly cron is the
+      // durable fallback if this immediate attempt is interrupted.
+      try {
+        await queueGoogleCalendarSync(appointment.id, clinic_id);
+      } catch {
+        logEvent('booking_google_sync_queue_failed', {
+          clinic_id,
+          appointment_id: appointment.id,
+          reason: 'queue_marker_write_failed',
+        }, 'error');
+      }
+      void syncGoogleCalendarAppointment(appointment.id).catch((err) => {
+        logEvent('booking_google_sync_failed', {
+          clinic_id,
+          provider_id,
+          appointment_id: appointment.id,
+          date,
+          time,
+          error: err instanceof Error ? err.message : 'Unknown calendar sync error',
+        }, 'error');
       });
-    } else {
-      // Policy fetch or calendar-disconnected: nothing to sync — booking stands.
     }
 
     logEvent('booking_created', { clinic_id: clinic_id, provider_id: provider_id, appointment_id: appointment.id });

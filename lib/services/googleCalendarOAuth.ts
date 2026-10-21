@@ -275,6 +275,20 @@ export async function finishGoogleCalendarAuthorization(
     .eq('id', clinicId)
     .is('deleted_at', null);
   if (error) throw error;
+
+  // A successful reconnect re-enables appointments previously blocked by
+  // invalid_grant so the next hourly pass can deliver their calendar events.
+  const { error: retryError } = await supabaseAdmin
+    .from('appointments')
+    .update({ google_sync_blocked_at: null })
+    .eq('clinic_id', clinicId)
+    .eq('needs_google_sync', true);
+  if (retryError) {
+    logEvent('clinic_google_calendar_reconnect_retry_unblock_failed', {
+      clinic_id: clinicId,
+      reason: 'pending_sync_rows_could_not_be_unblocked',
+    }, 'warn');
+  }
 }
 
 export async function disconnectGoogleCalendar(clinicId: string): Promise<void> {
