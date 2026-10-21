@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock } from '@/components/public/ActivitySpaceChrome';
 
@@ -62,7 +63,7 @@ export function imagingServicePriceLabel(svc: { pricing_mode: string | null; pri
   }
 }
 
-export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
+export function ImagingPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace; servicesCard?: ReactNode }) {
   const hasImaging = space.imagingServices.length > 0;
   const hasShared = space.services.length > 0;
   return (
@@ -71,6 +72,7 @@ export function ImagingPublicSpace({ space }: { space: ActivityPublicSpace }) {
       headline={space.name}
       children={
         <>
+          {servicesCard}
           {/* 5) Imaging services / modalities */}
           <section className="mb-10">
             <h2 className="mb-3 text-xl font-semibold text-slate-800">خدمات التصوير والفحوصات</h2>

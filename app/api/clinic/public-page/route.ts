@@ -24,7 +24,7 @@ import { writeAuditLog } from '@/lib/services/auditService';
 import { getPublicPageConfig, updatePublicPageConfig } from '@/lib/services/clinicPublicConfig';
 
 const SECTION_ORDER_KEYS = [
-  'hero', 'about', 'services', 'providers', 'hours', 'offers', 'gallery',
+  'hero', 'about', 'services', 'clinic_services', 'providers', 'hours', 'offers', 'gallery',
   'beforeAfter', 'badges', 'contact', 'bookingCta', 'aiCta', 'qrShare',
   'achievements', 'testimonials', 'articles', 'news',
 ] as const;

@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { ScanFace, Radiation, Bone, Stethoscope, Sparkles } from 'lucide-react';
 
@@ -15,6 +16,9 @@ interface Service {
 interface Props {
   services: Service[];
   activityType: 'clinic' | 'imaging_center' | 'dental_lab';
+  sectionKey?: string;
+  className?: string;
+  style?: CSSProperties;
 }
 
 function iconFor(name: string) {
@@ -31,7 +35,7 @@ function priceDisplay(s: Service): string {
   return 'حسب الطلب';
 }
 
-export default function PublicServicesCard({ services, activityType }: Props) {
+export default function PublicServicesCard({ services, activityType, sectionKey = 'clinic_services', className, style }: Props) {
   const title =
     activityType === 'imaging_center'
       ? 'خدمات التصوير'
@@ -42,7 +46,11 @@ export default function PublicServicesCard({ services, activityType }: Props) {
   if (services.length === 0) return null;
 
   return (
-    <section className="max-w-4xl mx-auto my-8 rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/95 via-slate-950/95 to-slate-900/95 backdrop-blur-2xl p-8 shadow-2xl shadow-cyan-500/10">
+    <section
+      data-section-key={sectionKey}
+      className={['max-w-4xl mx-auto my-8 rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/95 via-slate-950/95 to-slate-900/95 backdrop-blur-2xl p-8 shadow-2xl shadow-cyan-500/10', className].filter(Boolean).join(' ')}
+      style={style}
+    >
       <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 bg-gradient-to-r from-cyan-400 via-white to-emerald-400 bg-clip-text text-transparent">
         {title}
       </h2>

@@ -70,6 +70,19 @@ export interface PromptOptions {
   workingHours?: ClinicWorkingHoursData | null;
 }
 
+function responseLanguage(question: string): 'Arabic' | 'English' {
+  const explicitlyRequestsEnglish =
+    /(?:أجب|اجب|رد|تحدث|اكتب|احكي|كلمني|كلميني).{0,24}(?:بالإنجليزية|بالانجليزية|بالإنجليزي|بالانجليزي|باللغة الإنجليزية|باللغة الانجليزية)/i.test(question) ||
+    /\b(?:answer|reply|respond|speak|write)\s+(?:to me\s+)?in\s+English\b|\bEnglish\s+(?:please|only)\b/i.test(question);
+  return explicitlyRequestsEnglish || detectLanguage(question) === 'en' ? 'English' : 'Arabic';
+}
+
+function responseLanguageDirective(question: string): string {
+  return responseLanguage(question) === 'English'
+    ? 'LANGUAGE OVERRIDE: Reply in English only because the patient wrote in English or explicitly asked for English. Do not add an Arabic translation or a second-language section.'
+    : 'تعليمات اللغة (أولوية قصوى): أجب بالعربية فقط. لا تستخدم الإنجليزية إلا إذا كتب المريض بالإنجليزية أو طلب صراحةً الرد بها. لا تضف ترجمة أو فقرة بلغة ثانية.';
+}
+
 /** One day of clinic opening hours, as read from provider_schedules. */
 export type ClinicWorkingHoursDay = {
   /** 0 = Sunday … 6 = Saturday (same as provider_schedules.weekday). */
@@ -173,16 +186,9 @@ export function buildPrompt(
   const isImagingCenter = ['imaging_center', 'imaging'].includes((options?.activityType ?? '').toLowerCase());
   const generalKnowledge = isImagingCenter ? '' : GENERAL_DENTAL_KNOWLEDGE;
 
-  // Multilingual: use the clinic's configured language, or fall back to the
-  // original "the user's language" default. Language detection is used only
-  // to add an advisory note — it must not replace the existing instruction.
-  const detectedLang = detectLanguage(question);
-  const language = settings?.language || 'the user\'s language';
-  const languageNote = detectedLang === 'ar'
-    ? "Note: The user's query is in Arabic. Please respond in Arabic."
-    : detectedLang === 'en'
-      ? "Note: The user's query is in English. Please respond in English."
-      : '';
+  // The patient's current language overrides clinic settings. Arabic is the
+  // default; English is used only when the patient writes in or asks for it.
+  const language = responseLanguage(question);
 
   // Build context string with source citations
   const context = rankedContext
@@ -272,6 +278,8 @@ Question: {question}`;
       fallbackPrompt = `${fallbackPrompt}\n\n${optionalSections}`;
     }
 
+    fallbackPrompt = `${fallbackPrompt}\n\n${responseLanguageDirective(question)}`;
+
     return fallbackPrompt;
   }
 
@@ -294,6 +302,8 @@ Question: {question}`;
     prompt = `${prompt}\n\n${optionalSections}`;
   }
 
+  prompt = `${prompt}\n\n${responseLanguageDirective(question)}`;
+
   return prompt;
 }
 
@@ -310,7 +320,7 @@ export function buildFastClinicPrompt(
 ): string {
   const assistantName = settings?.assistant_name || 'AI Assistant';
   const tone = settings?.tone || 'professional and friendly';
-  const language = settings?.language || "the patient's language";
+  const language = responseLanguage(question);
   const activity = (options?.activityType ?? '').toLowerCase();
   const business = activity === 'imaging_center' || activity === 'imaging'
     ? 'dental imaging center'
@@ -327,10 +337,12 @@ export function buildFastClinicPrompt(
     buildCompactOperatingDataSection(options?.operatingData),
     buildWorkingHoursSection(options?.workingHours),
     buildCompactBookingState(options?.receptionistState, options?.operatingData, options?.intent),
+    'BOOKING CONSENT: A clear affirmative reply to the selected appointment is consent to submit it. The server creates the booking after validating the required details and availability. Never tell the patient to click a confirmation button, and never claim success before the server confirms it.',
     history.length > 0
       ? `Recent conversation:\n${history.slice(-6).map((message) => `${message.role === 'patient' ? 'Patient' : 'Assistant'}: ${message.content}`).join('\n')}`
       : '',
     `Patient message: ${question}`,
+    responseLanguageDirective(question),
   ];
 
   return lines.filter(Boolean).join('\n\n');
@@ -362,7 +374,7 @@ function buildCompactBookingState(
     provider ? `- Matched provider: ${provider.name}.` : '',
     state.booking.slot ? `- Verified slot: ${state.booking.slot}.` : '',
     state.booking_issue ? `- Current scheduling note: ${state.booking_issue}` : '',
-    '- Offer only a slot explicitly marked as verified above. Ask only for the next missing booking detail. Never say the appointment is saved; only the on-screen Confirm button creates it.',
+    '- Offer only a slot explicitly marked as verified above. Ask only for the next missing booking detail. Once all required details are available, a clear yes in chat submits the appointment; never say it was saved before the server confirms it.',
   ].filter(Boolean).join('\n');
 }
 
@@ -507,7 +519,7 @@ Receptionist persona rules (mandatory):
 - Mention image/report delivery channels when asked (WhatsApp / email / DICOM / printed) and typical delivery time ONLY if present in the clinic context.
 - Booking = imaging session; duration comes from the service duration in Clinic Operating Data.
 - Booking order: select the real service and patient-requested clinic-local date/time; check real availability for that exact date before offering alternatives; then ask for the patient name, followed by a contact phone, one question per turn.
-- After the verified service/slot, name, and phone are available, direct the patient to the booking confirmation card. Do not ask for textual confirmation; only the explicit Confirm button creates the appointment. Never claim that an appointment or Calendar event was saved.
+- After the verified service/slot, name, and phone are available, ask once for the patient's consent. A clear «نعم» or «موافق» in chat submits the booking; never tell the patient to click a button or claim that an appointment or Calendar event was saved before the server confirms it.
 - If the requested date is unavailable, explain its verified status first, then offer only a real alternative. If Calendar lookup fails, do not guess or book.`;
     case 'dental_lab':
       return `Business Activity: DENTAL LAB (مختبر أسنان).
@@ -530,8 +542,9 @@ function buildUnifiedChatBookingSection(): string {
   return `UNIFIED CHAT BOOKING POLICY (all clinics, imaging centers, and labs — mandatory):
 - Use warm, concise, professional Arabic. Address the patient respectfully («أستاذ/سيدتي») and use natural caring phrases such as «سلامتك» and «يسعدنا خدمتك» when appropriate, without repeating greetings or questions already answered.
 - For a requested weekday/date, check real availability for that exact clinic-local date first. Never skip directly to another date. Only after the requested date is actually checked and unavailable may you offer a verified alternative from the scheduling system.
-- Booking order: confirm the real service and available date/time; ask for the patient's name; then ask for a valid contact phone. When all required details are available, point to the booking confirmation card; do not request spoken/textual confirmation. Ask only the next missing question and do not collect already-provided information again.
-- Only the explicit Confirm button persists a booking. Never claim an appointment or Calendar event was saved because the patient typed a confirmation or because a booking note includes a marker.
+- Booking order: confirm the real service and available date/time; ask for the patient's name; then ask for a valid contact phone. Ask only the next missing question and do not collect already-provided information again.
+- When all required details are verified, ask for the patient's consent in Arabic. A clear affirmative reply such as «نعم»، «موافق»، or «أكد» immediately submits the booking through the server, which rechecks availability and saves it as pending confirmation. The confirmation card is then a receipt. Never tell the patient that they must click a Confirm button; the button is only an optional alternative.
+- Never claim that an appointment or Calendar event was saved before the server reports a successful booking. If the server reports a conflict or error, explain that the appointment was not created and ask the patient to choose another verified slot or contact reception.
 - If Google Calendar or scheduling cannot be checked, explain that honestly; do not invent a date/time or state that the booking is confirmed.`;
 }
 
@@ -623,7 +636,7 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   if (isImagingCenter) {
     lines.push('- IMAGING CENTER TONE: Speak warmly, professionally, and diplomatically in Arabic. Use natural phrases such as «سلامتك»، «أستاذ/سيدتي»، and «يسعدنا خدمتك» when appropriate; do not force them into every reply. Acknowledge the patient once and do not repeat greetings or already answered questions.');
     lines.push('- IMAGING BOOKING ORDER (mandatory): first resolve the requested imaging service and the patient-requested clinic-local date/time against real availability for that exact date. Never skip the requested date and never suggest an alternative until that exact day has been checked. Then collect the patient name, then a contact phone number (required for this imaging workflow), one question at a time.');
-    lines.push('- After the service, verified slot, name, and phone are known, direct the patient to the booking confirmation card. Do not ask for textual confirmation; only the explicit Confirm button can create the appointment. Never claim that an appointment or Calendar event was saved.');
+    lines.push('- After the service, verified slot, name, and phone are known, ask for consent once. A clear «نعم» or «موافق» in the chat submits the booking immediately; never tell the patient to click a confirmation button. The card is shown after the server saves the appointment. Never claim an appointment or Calendar event was saved before that result.');
     lines.push('- If the requested date has no real Google Calendar availability, explain that result first and only then offer the verified alternative date/time provided by the availability system. If calendar lookup fails, say availability could not be checked; do not guess or book.');
     lines.push('- Imaging staff are radiology technicians. Do not describe the appointment as a dental treatment or imply that an imaging slot is a medical diagnosis.');
   }
@@ -644,17 +657,20 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
     lines.push('- The service/doctor is not known yet. Ask the patient which treatment/need they have and name the REAL services from Clinic Operating Data as examples (e.g. exam, cleaning, X-ray). Do NOT hand off or claim there is no availability just because the service is unspecified.');
   }
   if (receptionistState.state === 'AWAITING_BOOKING_CONFIRMATION') {
-    lines.push('- The patient has a recommendation. Confirm the service + doctor and ask whether they want to book (one clear yes/no question).');
+    lines.push('- The patient has a recommendation. If they have not agreed yet, ask one clear yes/no question. If the recent conversation already contains a clear yes, honor it: continue only with missing verified slot/contact details and do not ask for another confirmation or tell them to press a button.');
   }
   if (receptionistState.state === 'BOOKING') {
+    const missingSlot = !receptionistState.booking.slot;
     const missingName = !receptionistState.booking.patient_name?.trim();
     const missingPhone = !receptionistState.booking.phone?.trim();
-    if (missingName) {
-      lines.push('- Booking in progress: ask only for the patient name. Do not repeat the proposed time or ask for confirmation.');
+    if (missingSlot) {
+      lines.push('- Booking in progress: ask the patient to choose one of the real available slots. Do not invent a time or repeat questions already answered.');
+    } else if (missingName) {
+      lines.push('- Booking in progress: ask only for the patient name. Do not repeat the proposed time or ask for confirmation again if the patient already agreed.');
     } else if (missingPhone) {
-      lines.push('- Booking in progress: ask only for the required contact phone. Do not repeat the proposed time or ask for confirmation.');
+      lines.push('- Booking in progress: ask only for the required contact phone. Do not repeat the proposed time or ask for confirmation again if the patient already agreed.');
     } else {
-      lines.push('- Booking details are complete. Do not ask a follow-up question or textual confirmation. Direct the patient to the on-screen booking confirmation card and its Confirm/Edit buttons.');
+      lines.push('- Booking details are complete but the appointment is not saved yet. Ask one concise consent question. If the patient replies «نعم», «موافق», or another clear affirmative, the server creates the booking; never instruct them to press Confirm.');
     }
   }
   if (receptionistState.booking_issue) {
@@ -696,9 +712,9 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   lines.push('- STRICT GROUNDING: State ONLY clinic facts that appear in Clinic Information / Operating Data. NEVER add descriptive words like "متميز", "خبير", "الأفضل", "الأشهر" unless they appear VERBATIM in clinic data. NEVER invent a clinic name/address/phone, doctors, titles, services, prices, policies, or dates.');
   lines.push('- LOCATION: NEVER infer the clinic location from the patient\'s city/area. If the patient says they live in a city, that is about THEM, not the clinic. The clinic location is ONLY the address in Clinic Information (if any); otherwise say it is not currently available.');
   lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time only when the patient is choosing a time. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');
-  // P2: "تم تأكيد موعدك" must never be a hallucination — the [BOOKING_SAVED]
-  // tag in the booking note is the ONLY proof the appointment was persisted.
-  lines.push('- BOOKING CONFIRMATION RULE: a chat message, including «نعم», never confirms or saves a booking. Only the explicit Confirm button creates it. Direct patients to the confirmation card when shown; never invent a booking id, [BOOKING_SAVED] marker, or claim that the booking or Calendar event was saved.');
+  // A chat affirmative is consent, while only a successful server result proves
+  // persistence. The confirmation card is a receipt after that point.
+  lines.push('- BOOKING CONFIRMATION RULE: a clear affirmative chat reply (for example «نعم» or «موافق») is consent to submit a complete booking. The server performs the final availability check and creates it. Never say the patient must press a button; never invent a booking id, [BOOKING_SAVED] marker, or claim that a booking or Calendar event was saved before a successful server result.');
   lines.push('- PROVIDERS: only list doctors that appear in Clinic Operating Data, with exactly their recorded title. Do not invent credentials or specialties.');
 
   return lines.join('\n');

@@ -194,6 +194,13 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       dangerouslySetInnerHTML={{ __html: jsonLd }}
     />
   );
+  const servicesCard = (
+    <PublicServicesCard
+      sectionKey="clinic_services"
+      services={services ?? []}
+      activityType={space.activityType}
+    />
+  );
   // PHASE 2 — patient reviews block under the space (all activity types).
   // Phase 3b — viewAllHref links to /{slug}/reviews when total > 5.
   const reviewsSection = (
@@ -205,8 +212,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <ImagingPublicSpace space={space} />
+          <ImagingPublicSpace space={space} servicesCard={servicesCard} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
@@ -219,8 +225,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <DentalLabPublicSpace space={space} />
+          <DentalLabPublicSpace space={space} servicesCard={servicesCard} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
@@ -233,8 +238,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <ClinicPublicSpace space={space} />
+          <ClinicPublicSpace space={space} servicesCard={servicesCard} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}

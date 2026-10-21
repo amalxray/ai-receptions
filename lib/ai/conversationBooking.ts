@@ -16,24 +16,53 @@ import { persistReceptionistSlot } from './clinicDataContext';
  * it was done — the exact "fake confirmation" bug. This local gate runs on the
  * RAW user message (no LLM) as a second consent path.
  */
-const CONFIRMATION_WORDS = [
-  'نعم', 'أكيد', 'اكيد', 'أكد', 'اكد', 'موافق', 'أوافق', 'تمام', 'طيب', 'احجز', 'احجزي',
-  'ok', 'okay', 'yes', 'confirm', 'yep', 'sure',
-] as const;
+const AFFIRMATIVE_WORDS = new Set([
+  'نعم', 'اجل', 'اي', 'اه', 'اكيد', 'اكد', 'موافق', 'موافقة', 'اوافق', 'تمام', 'حسنا',
+  'احجز', 'احجزي', 'احجزلي', 'احجزيلي', 'yes', 'yep', 'yeah', 'ok', 'okay', 'sure',
+  'confirm', 'confirmed', 'agree', 'agreed', 'book', 'booked',
+]);
+const AFFIRMATIVE_TAIL_WORDS = new Set([
+  'نعم', 'اجل', 'اي', 'اه', 'اكيد', 'اكد', 'موافق', 'موافقة', 'اوافق', 'تمام', 'حسنا',
+  'احجز', 'احجزي', 'احجزلي', 'احجزيلي', 'yes', 'yep', 'yeah', 'ok', 'okay', 'sure',
+  'confirm', 'confirmed', 'agree', 'agreed', 'book', 'booked', 'اريد', 'لي', 'على', 'عليه',
+  'ذلك', 'هذا', 'الموعد', 'الحجز', 'بالتأكيد', 'بالتاكيد', 'فضلك', 'من', 'لو', 'سمحت',
+  'please', 'the', 'appointment', 'it', 'now', 'i', 'انا',
+]);
+const NON_AFFIRMATIVE_WORDS = new Set([
+  'لا', 'مش', 'مو', 'ليس', 'لست', 'لكن', 'بس', 'but', 'however', 'no', 'not', 'انتظر',
+  'استنى', 'wait', 'cancel', 'تراجع', 'الغاء', 'الغ', 'تعديل', 'غير', 'ما', 'متى', 'كيف', 'السعر',
+]);
 
-/** True when the raw message contains any confirmation word (diacritics-insensitive). */
+/** True when the raw message is a clear affirmative reply, not a side question. */
 export function containsConfirmationWord(text: string | null | undefined): boolean {
   if (!text) return false;
-  const normalized = text.toLowerCase().replace(/[\u064B-\u0652\u0670]/g, '').trim();
-  return CONFIRMATION_WORDS.some((word) => normalized.includes(word));
+  const normalized = text
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/\b(?:don't|doesn't|didn't|isn't|can't|won't)\b/g, 'not')
+    .replace(/[\u064B-\u0652\u0670ـ]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/[.,!?؟،؛:()[\]{}"“”'’]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized || /[?؟]/.test(text)) return false;
+
+  const words = normalized.split(' ');
+  if (words.some((word) => NON_AFFIRMATIVE_WORDS.has(word))) return false;
+  if (words[0] === 'انا') {
+    return AFFIRMATIVE_WORDS.has(words[1] ?? '') && words.slice(2).every((word) => AFFIRMATIVE_TAIL_WORDS.has(word));
+  }
+  if (words[0] === 'i') {
+    return ['agree', 'confirm', 'book'].includes(words[1] ?? '') && words.slice(2).every((word) => AFFIRMATIVE_TAIL_WORDS.has(word));
+  }
+  return AFFIRMATIVE_WORDS.has(words[0]) && words.slice(1).every((word) => AFFIRMATIVE_TAIL_WORDS.has(word));
 }
 
 /**
- * Conversational booking execution — creates the appointment only when the
- * explicit booking-action endpoint calls it with:
- *   state === 'BOOKING' && patient_confirmed_booking
- * AND every required field (service, provider, patient name, phone, slot) is
- * already known.
+ * Conversational booking execution — creates the appointment when the patient
+ * explicitly agrees in the chat or uses the confirmation action, and every
+ * required field (service, provider, patient name, phone, slot) is known.
  *
  * Safety:
  *  - Uses the existing `createBooking` (slot re-check + DB unique constraint),
@@ -127,7 +156,7 @@ export async function attemptConversationBooking(params: {
 }): Promise<BookingAttemptResult> {
   const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, timeZone } = params;
 
-  if (state !== 'BOOKING' || !patientConfirmedBooking) {
+  if (!['BOOKING', 'AWAITING_BOOKING_CONFIRMATION'].includes(state) || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
   }
 
