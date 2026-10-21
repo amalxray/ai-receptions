@@ -42,40 +42,33 @@ function schedulePeriods(row: {
  * Returns null if the provider does not belong to the clinic.
  */
 export async function loadProviderSchedule(clinicId: string, providerId: string): Promise<ProviderSchedule | null> {
-  // Verify provider belongs to the clinic
-  const { data: provider, error: providerError } = await supabaseAdmin
-    .from('providers')
-    .select('id, name')
-    .eq('id', providerId)
-    .eq('clinic_id', clinicId)
-    .is('deleted_at', null)
-    .single();
+  // These are independent clinic-scoped reads. Running them together removes
+  // two database round-trips from every availability lookup.
+  const [providerResult, scheduleResult, vacationResult] = await Promise.all([
+    supabaseAdmin
+      .from('providers')
+      .select('id, name')
+      .eq('id', providerId)
+      .eq('clinic_id', clinicId)
+      .is('deleted_at', null)
+      .single(),
+    supabaseAdmin
+      .from('provider_schedules')
+      .select('*')
+      .eq('clinic_id', clinicId)
+      .eq('provider_id', providerId),
+    supabaseAdmin
+      .from('provider_vacations')
+      .select('vacation_date')
+      .eq('clinic_id', clinicId)
+      .eq('provider_id', providerId),
+  ]);
 
-  if (providerError || !provider) {
-    return null;
-  }
-
-  // Load schedule rows for the provider
-  const { data: scheduleRows, error: scheduleError } = await supabaseAdmin
-    .from('provider_schedules')
-    .select('*')
-    .eq('clinic_id', clinicId)
-    .eq('provider_id', providerId);
-
-  if (scheduleError) {
-    throw new Error('Failed to load provider schedule');
-  }
-
-  // Load vacations
-  const { data: vacationRows, error: vacationError } = await supabaseAdmin
-    .from('provider_vacations')
-    .select('vacation_date')
-    .eq('clinic_id', clinicId)
-    .eq('provider_id', providerId);
-
-  if (vacationError) {
-    throw new Error('Failed to load provider vacations');
-  }
+  if (providerResult.error || !providerResult.data) return null;
+  if (scheduleResult.error) throw new Error('Failed to load provider schedule');
+  if (vacationResult.error) throw new Error('Failed to load provider vacations');
+  const scheduleRows = scheduleResult.data;
+  const vacationRows = vacationResult.data;
 
   const days = (scheduleRows ?? []).map((row) => ({
     weekday: row.weekday,
@@ -354,7 +347,11 @@ export async function getActiveProviders(clinicId: string, serviceId?: string): 
  * If serviceId is provided, uses the service duration for slot calculation.
  */
 export async function getAvailableSlots(clinicId: string, providerId: string, date: string, limit = 10, serviceId?: string): Promise<string[]> {
-  const schedule = await loadProviderSchedule(clinicId, providerId);
+  const [schedule, service, assigned] = await Promise.all([
+    loadProviderSchedule(clinicId, providerId),
+    serviceId ? getActiveServiceById(clinicId, serviceId) : Promise.resolve(null),
+    serviceId ? isProviderAssignedToService(clinicId, providerId, serviceId) : Promise.resolve(null),
+  ]);
   if (!schedule) {
     throw new Error('Provider not found for this clinic');
   }
@@ -362,7 +359,6 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
   // If serviceId provided, use service duration for slot calculation
   let durationMinutes = schedule.appointmentDurationMinutes;
   if (serviceId) {
-    const service = await getActiveServiceById(clinicId, serviceId);
     if (!service) {
       throw new Error('Service not found for this clinic');
     }
@@ -370,14 +366,15 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
 
     // Verify the provider is actually assigned to this service
     // (when assignments exist). This prevents querying availability for a provider that doesn't offer the service.
-    const assigned = await isProviderAssignedToService(clinicId, providerId, serviceId);
     if (assigned === false) {
       throw new Error('Provider is not assigned to this service');
     }
   }
 
-  const holiday = await isClinicHoliday(clinicId, date);
-  const existingAppointments = await loadExistingAppointments(clinicId, providerId, date);
+  const [holiday, existingAppointments] = await Promise.all([
+    isClinicHoliday(clinicId, date),
+    loadExistingAppointments(clinicId, providerId, date),
+  ]);
 
   return suggestFreeSlots({
     date,
@@ -391,6 +388,87 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
     // end and the overlap/holiday/break validation — nothing else changes.
     hourlyOnly: true,
   });
+}
+
+/**
+ * Computes availability for several clinic-local dates from one shared set of
+ * provider/service data and one range read for appointments/holidays. Chat's
+ * earliest-slot search often checks many dates; the single-date helper above
+ * made five serial database reads for every date in that search.
+ */
+export async function getAvailableSlotsForDates(
+  clinicId: string,
+  providerId: string,
+  dates: string[],
+  limit = 20,
+  serviceId?: string,
+): Promise<Map<string, string[]>> {
+  const orderedDates = Array.from(new Set(dates)).sort();
+  if (orderedDates.length === 0) return new Map();
+
+  const firstDate = orderedDates[0];
+  const previousDate = new Date(`${firstDate}T00:00:00.000Z`);
+  previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+  const firstAppointmentDate = previousDate.toISOString().slice(0, 10);
+  const lastDate = orderedDates[orderedDates.length - 1];
+
+  const [schedule, service, assignedResult, holidayResult, appointmentResult] = await Promise.all([
+    loadProviderSchedule(clinicId, providerId),
+    serviceId ? getActiveServiceById(clinicId, serviceId) : Promise.resolve(null),
+    serviceId ? isProviderAssignedToService(clinicId, providerId, serviceId) : Promise.resolve(null),
+    supabaseAdmin
+      .from('clinic_holidays')
+      .select('holiday_date')
+      .eq('clinic_id', clinicId)
+      .in('holiday_date', orderedDates),
+    supabaseAdmin
+      .from('appointments')
+      .select('id, provider_id, scheduled_at, duration_minutes, status, appointment_date')
+      .eq('clinic_id', clinicId)
+      .eq('provider_id', providerId)
+      .gte('appointment_date', firstAppointmentDate)
+      .lte('appointment_date', lastDate)
+      .is('deleted_at', null),
+  ]);
+
+  if (!schedule) throw new Error('Provider not found for this clinic');
+  if (serviceId && !service) throw new Error('Service not found for this clinic');
+  if (assignedResult === false) throw new Error('Provider is not assigned to this service');
+  if (holidayResult.error) throw new Error('Failed to load clinic holidays');
+  if (appointmentResult.error) throw new Error('Failed to load existing appointments');
+
+  const durationMinutes = service?.duration_minutes ?? schedule.appointmentDurationMinutes;
+  const holidayDates = new Set((holidayResult.data ?? []).map((row) => row.holiday_date));
+  const appointments = (appointmentResult.data ?? []).map((row) => ({
+    appointmentDate: row.appointment_date,
+    appointment: {
+      id: row.id,
+      providerId: row.provider_id,
+      startsAt: row.scheduled_at,
+      durationMinutes: row.duration_minutes,
+      status: row.status,
+    } satisfies ScheduledAppointment,
+  }));
+  const result = new Map<string, string[]>();
+
+  for (const date of orderedDates) {
+    const dayBefore = new Date(`${date}T00:00:00.000Z`);
+    dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+    const previousDay = dayBefore.toISOString().slice(0, 10);
+    const existingAppointments = appointments
+      .filter(({ appointmentDate }) => appointmentDate >= previousDay && appointmentDate <= date)
+      .map(({ appointment }) => appointment);
+    result.set(date, suggestFreeSlots({
+      date,
+      schedule: { ...schedule, appointmentDurationMinutes: durationMinutes },
+      existingAppointments,
+      holiday: holidayDates.has(date),
+      limit,
+      hourlyOnly: true,
+    }));
+  }
+
+  return result;
 }
 
 /**
@@ -574,7 +652,7 @@ export async function createBooking(params: {
   serviceId?: string;
   conversationId?: string | null;
   durationMinutes?: number;
-  initialStatus?: 'tentative' | 'pending_confirmation';
+  initialStatus?: 'tentative' | 'pending_confirmation' | 'confirmed';
   /**
    * Clinic IANA zone (e.g. "Asia/Hebron"). When supplied, `date`+`time` are
    * treated as CLINIC-LOCAL wall clock and converted to the matching UTC

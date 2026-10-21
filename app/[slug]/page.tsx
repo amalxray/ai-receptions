@@ -172,26 +172,35 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   if (!space) {
     notFound();
   }
-  const reviews = await loadReviews(space.clinicId);
-
   const servicesTable =
     space.activityType === 'imaging_center' ? 'imaging_services' :
     space.activityType === 'dental_lab' ? 'lab_services' :
     'clinic_services';
 
-  const { data: services } = await supabaseAdmin
-    .from(servicesTable)
-    .select('name, price, price_min, price_max, duration_minutes, description')
-    .eq('clinic_id', space.clinicId)
-    .eq('active', true)
-    .order('sort_order', { ascending: true })
-    .limit(6);
+  const [reviews, servicesResult] = await Promise.all([
+    loadReviews(space.clinicId),
+    supabaseAdmin
+      .from(servicesTable)
+      .select('name, price, price_min, price_max, duration_minutes, description')
+      .eq('clinic_id', space.clinicId)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .limit(6),
+  ]);
+  const { data: services } = servicesResult;
 
   const jsonLd = buildSpaceJsonLd(space, reviews);
   const schemaScript = (
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: jsonLd }}
+    />
+  );
+  const servicesCard = (
+    <PublicServicesCard
+      sectionKey="clinic_services"
+      services={services ?? []}
+      activityType={space.activityType}
     />
   );
   // PHASE 2 — patient reviews block under the space (all activity types).
@@ -205,8 +214,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <ImagingPublicSpace space={space} />
+          <ImagingPublicSpace space={space} servicesCard={servicesCard} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
@@ -219,8 +227,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <DentalLabPublicSpace space={space} />
+          <DentalLabPublicSpace space={space} servicesCard={servicesCard} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
@@ -233,8 +240,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
-          <ClinicPublicSpace space={space} />
+          <ClinicPublicSpace space={space} servicesCard={servicesCard} />
           <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
           <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}

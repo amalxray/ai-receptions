@@ -11,7 +11,7 @@ const createReviewSchema = z.object({
   author_name: z.string().trim().min(1).max(100),
   comment: z.string().trim().max(1000).optional().nullable(),
   patient_phone: z.string().trim().min(5).max(30).optional().nullable(),
-  source: z.enum(['form', 'chat', 'cron', 'public']).default('form'),
+  source: z.enum(['form', 'chat', 'booking', 'cron', 'public']).default('form'),
 });
 
 async function resolveClinicId(slug: string): Promise<string | null> {

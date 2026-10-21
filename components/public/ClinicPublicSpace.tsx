@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark } from '@/components/public/ActivitySpaceChrome';
 
@@ -11,7 +12,7 @@ import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark
  * behind `prefers-reduced-motion` in globals.css.
  */
 
-export function ClinicPublicSpace({ space }: { space: ActivityPublicSpace }) {
+export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace; servicesCard?: ReactNode }) {
   const hasServices = space.services.length > 0;
   const hasProviders = space.providers.length > 0;
   const hasAds = space.ads.length > 0;
@@ -21,6 +22,7 @@ export function ClinicPublicSpace({ space }: { space: ActivityPublicSpace }) {
       headline={space.name}
       children={
         <>
+          {servicesCard}
           {/* Empathy / pain → solution (PR-EMO) */}
           <section className="mb-10 rounded-3xl border border-brand-cyan/25 bg-gradient-to-l from-brand-cyan/10 via-white to-slate-50 p-6 text-center">
             <p className="text-sm leading-relaxed text-slate-600">

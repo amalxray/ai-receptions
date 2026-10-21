@@ -24,7 +24,7 @@ const requestSchema = z.object({
   phone: z.string().max(30).optional(),
 });
 
-const BOOKING_SUCCESS = 'تمت مزامنة موعدك مع تقويم العيادة ✅';
+const BOOKING_SUCCESS = '✅ تم تأكيد الحجز';
 const BOOKING_PENDING = '\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u0645\u0648\u0639\u062f\u0643 \u0641\u064a \u0642\u0627\u0639\u062f\u0629 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0639\u064a\u0627\u062f\u0629 \u0648\u0647\u0648 \u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629.';
 const bookingMessage = (status?: string | null) =>
   status === 'confirmed' ? BOOKING_SUCCESS : BOOKING_PENDING;
@@ -155,6 +155,7 @@ export async function POST(request: Request) {
       requirePhone: true,
       googleCalendar: policy.createGoogleCalendarEvent,
       timeZone: profile.timezone,
+      initialStatus: 'confirmed',
     });
 
     if (result.action === 'already_booked') {
@@ -163,6 +164,7 @@ export async function POST(request: Request) {
         message: bookingMessage(state.booking.appointment_status),
         appointment_id: result.appointment_id,
         status: state.booking.appointment_status,
+        confirmation: toConfirmationCard(result.appointment_id),
       });
     }
     if (result.action === 'slot_unavailable') {

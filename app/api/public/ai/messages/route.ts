@@ -151,9 +151,11 @@ export async function POST(req: Request) {
       loadClinicOperatingData(clinic.id),
     ]);
     let confirmedByMessage = false;
+    let bookingAttemptResult: Awaited<ReturnType<typeof attemptConversationBooking>> | null = null;
     if (
       metadata.handoff !== true &&
-      receptionState?.state === 'BOOKING' &&
+      receptionState &&
+      ['BOOKING', 'AWAITING_BOOKING_CONFIRMATION'].includes(receptionState.state) &&
       !receptionState.booking.appointment_id &&
       containsConfirmationWord(text) &&
       (receptionState.booking.service_id ?? receptionState.recommended_service_id) &&
@@ -176,7 +178,9 @@ export async function POST(req: Request) {
       const attempt = await attemptConversationBooking({
         clinicId: clinic.id,
         conversationId: convId,
-        state: receptionState.state,
+        // A clear affirmative in either active booking stage is consent. The
+        // booking service still validates all fields and rechecks the slot.
+        state: 'BOOKING',
         patientConfirmedBooking: true,
         booking: {
           ...receptionState.booking,
@@ -188,6 +192,7 @@ export async function POST(req: Request) {
         googleCalendar,
         timeZone: profile.timezone,
       });
+      bookingAttemptResult = attempt;
       if (attempt.action === 'booked' || attempt.action === 'already_booked') {
         confirmedByMessage = true;
         try {
@@ -237,8 +242,12 @@ export async function POST(req: Request) {
       !receptionState.booking.appointment_id;
     const responseAssistant = confirmedByMessage
       ? { ...safeAssistant, content: CHAT_BOOKING_PENDING_MESSAGE }
+      : bookingAttemptResult?.action === 'slot_unavailable'
+        ? { ...safeAssistant, content: 'لم يعد هذا الموعد متاحًا، لذلك لم يتم إنشاء الحجز. اختر وقتًا آخر من المواعيد المتاحة.' }
+      : bookingAttemptResult?.action === 'failed'
+        ? { ...safeAssistant, content: 'تعذر إنشاء الحجز الآن، ولم يتم تسجيل الموعد. حاول اختيار موعد متاح آخر أو تواصل مع الاستقبال.' }
       : bookingConfirmation
-      ? { ...safeAssistant, content: 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.' }
+      ? { ...safeAssistant, content: 'تفاصيل الموعد جاهزة. أرسل «نعم» لإنشاء الحجز، أو عدّل أي معلومة من البطاقة.' }
       : hasCompleteBookingDetails && !metadata.handoff
         ? { ...safeAssistant, content: 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.' }
       : bookingDetailsPending && !receptionState.booking.patient_name?.trim()
@@ -246,7 +255,7 @@ export async function POST(req: Request) {
       : bookingDetailsPending && !receptionState.booking.phone?.trim()
         ? { ...safeAssistant, content: 'ما رقم الهاتف للتواصل؟' }
       : hasUnverifiedBookingClaim
-        ? { ...safeAssistant, content: 'لم يتم تأكيد الحجز بعد. أكمل/ي البيانات المطلوبة، ثم استخدم/ي زر «تأكيد الحجز» في بطاقة الموعد.' }
+        ? { ...safeAssistant, content: 'لم يتم إنشاء الحجز بعد. أكمل البيانات المطلوبة، ثم أرسل «نعم» للموافقة على تسجيل الموعد.' }
         : safeAssistant;
     responseAssistant.content = stripSourceCitations(String(responseAssistant.content ?? ''));
       return {
@@ -385,7 +394,7 @@ export async function GET(req: Request) {
       for (let index = (messages ?? []).length - 1; index >= 0; index -= 1) {
         if (messages[index].role === 'assistant') {
           messages[index].content = bookingConfirmation
-            ? 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.'
+            ? 'راجعي تفاصيل الموعد في البطاقة. أرسلي «نعم» لإنشاء الحجز، أو عدّلي أي معلومة قبل المتابعة.'
             : hasCompleteBookingDetails
               ? 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.'
               : !receptionState?.booking.patient_name?.trim()

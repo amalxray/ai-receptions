@@ -63,6 +63,9 @@ function getElementText(node: ReactNode): string {
 }
 
 function publicChildSectionKey(node: ReactNode): string {
+  if (isValidElement<{ sectionKey?: string }>(node) && node.props.sectionKey === 'clinic_services') {
+    return 'clinic_services';
+  }
   const text = getElementText(node);
   if (/عروض وإعلانات/.test(text)) return 'offers';
   if (/الأطباء|مقدمو الخدمة/.test(text)) return 'providers';
@@ -339,6 +342,7 @@ export function ActivitySpaceChrome({
   };
   const orderedActivitySections = flattenPageChildren(children).map((child, index) => {
     const key = publicChildSectionKey(child);
+    if (key === 'clinic_services' && space.sections?.clinic_services === false) return null;
     if (!isValidElement(child)) {
       return <div key={`public-activity-section-${index}`} style={{ order: sectionPosition(key) }}>{child}</div>;
     }

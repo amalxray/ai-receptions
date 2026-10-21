@@ -24,6 +24,7 @@ export type PublicSectionKey =
   | 'hero'
   | 'about'
   | 'services'
+  | 'clinic_services'
   | 'providers'
   | 'hours'
   | 'offers'
@@ -40,14 +41,14 @@ export type PublicSectionKey =
   | 'news';
 
 export const PUBLIC_SECTION_ORDER_KEYS = [
-  'hero', 'about', 'services', 'providers', 'hours', 'offers', 'gallery',
+  'hero', 'about', 'services', 'clinic_services', 'providers', 'hours', 'offers', 'gallery',
   'beforeAfter', 'badges', 'contact', 'bookingCta', 'aiCta', 'qrShare',
   'achievements', 'testimonials', 'articles', 'news',
 ] as const;
 export type PublicSectionOrderKey = (typeof PUBLIC_SECTION_ORDER_KEYS)[number];
 
 export const DEFAULT_PUBLIC_SECTION_ORDER: PublicSectionOrderKey[] = [
-  'services', 'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
+  'services', 'clinic_services', 'hero', 'gallery', 'beforeAfter', 'achievements', 'badges', 'about',
   'offers', 'providers', 'hours', 'contact', 'bookingCta',
   'testimonials', 'articles', 'qrShare', 'news', 'aiCta',
 ];
@@ -344,21 +345,21 @@ export function defaultPublicPageSections(activityType: ActivityType): Record<Pu
   switch (activityType) {
     case 'imaging_center':
       return {
-        hero: true, about: true, services: true, providers: false, hours: true,
+        hero: true, about: true, services: true, clinic_services: true, providers: false, hours: true,
         offers: false, gallery: false, beforeAfter: true, badges: true, contact: true,
         bookingCta: true, aiCta: true, qrShare: true,
         achievements: false, testimonials: false, articles: false, news: false,
       };
     case 'dental_lab':
       return {
-        hero: true, about: true, services: true, providers: false, hours: true,
+        hero: true, about: true, services: true, clinic_services: true, providers: false, hours: true,
         offers: false, gallery: false, beforeAfter: true, badges: true, contact: true,
         bookingCta: true, aiCta: true, qrShare: true,
         achievements: false, testimonials: false, articles: false, news: false,
       };
     default:
       return {
-        hero: true, about: true, services: true, providers: true, hours: true,
+        hero: true, about: true, services: true, clinic_services: true, providers: true, hours: true,
         offers: true, gallery: false, beforeAfter: true, badges: true, contact: true,
         bookingCta: true, aiCta: true, qrShare: true,
         achievements: false, testimonials: false, articles: false, news: false,

@@ -48,6 +48,7 @@ const SECTION_ORDER_ITEMS = [
   { id: 'hero', label: 'الغلاف والواجهة الرئيسية', icon: '🏠' },
   { id: 'about', label: 'نبذة عن المنشأة', icon: 'ℹ️' },
   { id: 'services', label: 'الخدمات', icon: '🩺' },
+  { id: 'clinic_services', label: 'خدمات التصوير', icon: '🩺' },
   { id: 'providers', label: 'مقدمو الخدمة', icon: '👩‍⚕️' },
   { id: 'hours', label: 'ساعات العمل', icon: '🕒' },
   { id: 'offers', label: 'العروض', icon: '🎁' },

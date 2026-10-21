@@ -251,16 +251,42 @@ export async function getPublicClinicProfile(
     Array.isArray(pp.hidden_providers) ? pp.hidden_providers.map(String) : []
   );
 
-  // Active services — clinic-scoped by the resolved id exclusively.
-  const { data: servicesRows } = await supabaseAdmin
-    .from('clinic_services')
-    .select(
-      'id, name, description, duration_minutes, price, price_min, price_max, price_visible_to_patients'
-    )
-    .eq('clinic_id', clinic.id)
-    .eq('active', true)
-    .is('deleted_at', null)
-    .order('name', { ascending: true });
+  // These reads are independent after resolving the tenant and its public
+  // settings. Fetch them together instead of serially waiting on the database.
+  const today = new Date().toISOString().slice(0, 10);
+  const [servicesResult, scheduleResult, providersResult, adsResult] = await Promise.all([
+    supabaseAdmin
+      .from('clinic_services')
+      .select('id, name, description, duration_minutes, price, price_min, price_max, price_visible_to_patients')
+      .eq('clinic_id', clinic.id)
+      .eq('active', true)
+      .is('deleted_at', null)
+      .order('name', { ascending: true }),
+    supabaseAdmin
+      .from('provider_schedules')
+      .select('weekday, start_time, end_time')
+      .eq('clinic_id', clinic.id)
+      .eq('enabled', true),
+    showProviders
+      ? supabaseAdmin
+          .from('providers')
+          .select('id, name, title, specialty')
+          .eq('clinic_id', clinic.id)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: true })
+          .limit(12)
+      : Promise.resolve({ data: null, error: null }),
+    supabaseAdmin
+      .from('clinic_ads')
+      .select('title, description, image_url, cta_text, cta_link')
+      .eq('clinic_id', clinic.id)
+      .eq('is_active', true)
+      .or(`start_date.is.null,start_date.lte.${today}`)
+      .or(`end_date.is.null,end_date.gte.${today}`)
+      .order('display_order', { ascending: true })
+      .limit(6),
+  ]);
+  const { data: servicesRows } = servicesResult;
 
   const services: PublicService[] = (servicesRows ?? [])
     .filter((s) => !hiddenServices.has(s.id))
@@ -277,11 +303,7 @@ export async function getPublicClinicProfile(
   });
 
   // Aggregated working hours — merged across providers, no provider names.
-  const { data: scheduleRows } = await supabaseAdmin
-    .from('provider_schedules')
-    .select('weekday, start_time, end_time')
-    .eq('clinic_id', clinic.id)
-    .eq('enabled', true);
+  const { data: scheduleRows } = scheduleResult;
 
   const byWeekday = new Map<number, { start: string; end: string }>();
   for (const row of scheduleRows ?? []) {
@@ -301,39 +323,22 @@ export async function getPublicClinicProfile(
     .map(([weekday, v]) => ({ weekday, start_time: v.start, end_time: v.end }));
 
   // Public providers (name/title/specialty only — never contact or internal ids).
-  let providers: PublicProvider[] = [];
-  if (showProviders) {
-    const { data: providerRows } = await supabaseAdmin
-      .from('providers')
-      .select('id, name, title, specialty')
-      .eq('clinic_id', clinic.id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
-      .limit(12);
-    providers = (providerRows ?? [])
+  const providers: PublicProvider[] = showProviders
+    ? (providersResult.data ?? [])
       .filter((p) => !hiddenProviders.has(p.id))
       .map((p) => ({
         name: p.name,
         title: p.title ?? null,
         specialty: p.specialty ?? null,
-      }));
-  }
+      }))
+    : [];
 
   // Active announcements/offers (clinic_ads) — date-windowed, tenant-scoped.
   // `clinic_ads` has no deleted_at column (20260833_clinic_ads_fix.sql); the
   // previous `.is('deleted_at', null)` made PostgREST fail the whole read, so
   // ads never rendered. Date windows are inclusive and allow open-ended ads
   // (null start/end), same semantics as /api/booking/ads.
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: adRows, error: adsError } = await supabaseAdmin
-    .from('clinic_ads')
-    .select('title, description, image_url, cta_text, cta_link')
-    .eq('clinic_id', clinic.id)
-    .eq('is_active', true)
-    .or(`start_date.is.null,start_date.lte.${today}`)
-    .or(`end_date.is.null,end_date.gte.${today}`)
-    .order('display_order', { ascending: true })
-    .limit(6);
+  const { data: adRows, error: adsError } = adsResult;
   if (adsError) {
     // Degrade gracefully: the public profile still renders without ads.
     logEvent('public_profile_ads_error', { clinicId: clinic.id, error: adsError.message }, 'error');

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark } from '@/components/public/ActivitySpaceChrome';
 
@@ -9,7 +10,7 @@ import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark
  * additive lab_services catalog (tenant-scoped).
  */
 
-export function DentalLabPublicSpace({ space }: { space: ActivityPublicSpace }) {
+export function DentalLabPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace; servicesCard?: ReactNode }) {
   const hasLab = space.labServices.length > 0;
   const hasShared = space.services.length > 0;
   return (
@@ -18,6 +19,7 @@ export function DentalLabPublicSpace({ space }: { space: ActivityPublicSpace }) 
       headline={space.name}
       children={
         <>
+          {servicesCard}
           {/* Collaboration concept */}
           <section className="mb-10 rounded-xl border border-slate-200 bg-white p-5 text-center">
             <p className="text-sm leading-relaxed text-slate-600">
