@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
+import { sendBookingConfirmationEmail } from '@/lib/communications/email/bookingConfirmation';
 import { checkSlotAvailability, suggestFreeSlots, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
 import { channelsForNotificationType, filterEnabledChannels, getClinicCommunicationSettings } from '@/lib/communications/settings';
 
@@ -404,6 +405,35 @@ export async function findOrCreatePatient(params: {
 }): Promise<string> {
   const { clinicId, name, phone, email } = params;
 
+  const persistEmailForExistingPatient = async (patientId: string): Promise<string> => {
+    const normalizedEmail = email?.trim();
+    if (!normalizedEmail) return patientId;
+
+    try {
+      const { error } = await supabaseAdmin
+        .from('patients')
+        .update({ email: normalizedEmail })
+        .eq('id', patientId)
+        .eq('clinic_id', clinicId);
+      if (error) {
+        logEvent('booking_patient_email_update_failed', {
+          clinic_id: clinicId,
+          patient_id: patientId,
+          error: error.message,
+        }, 'warn');
+      }
+    } catch (error) {
+      // The booking should still proceed if an existing patient's optional
+      // email cannot be refreshed. The email receipt remains best-effort too.
+      logEvent('booking_patient_email_update_failed', {
+        clinic_id: clinicId,
+        patient_id: patientId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, 'warn');
+    }
+    return patientId;
+  };
+
   const findExistingPatient = async (): Promise<string | null> => {
     if (phone) {
       const { data } = await supabaseAdmin
@@ -414,7 +444,7 @@ export async function findOrCreatePatient(params: {
         .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
-      if (data) return data.id;
+      if (data) return persistEmailForExistingPatient(data.id);
     }
     if (email) {
       const { data } = await supabaseAdmin
@@ -425,7 +455,7 @@ export async function findOrCreatePatient(params: {
         .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
-      if (data) return data.id;
+      if (data) return persistEmailForExistingPatient(data.id);
     }
     return null;
   };
@@ -442,7 +472,7 @@ export async function findOrCreatePatient(params: {
       .maybeSingle();
 
     if (!phoneError && byPhone) {
-      return byPhone.id;
+      return persistEmailForExistingPatient(byPhone.id);
     }
   }
 
@@ -458,7 +488,7 @@ export async function findOrCreatePatient(params: {
       .maybeSingle();
 
     if (!emailError && byEmail) {
-      return byEmail.id;
+      return persistEmailForExistingPatient(byEmail.id);
     }
   }
 
@@ -668,6 +698,41 @@ export async function createBooking(params: {
     throw new Error('Failed to create appointment');
   }
   logEvent('booking_insert_success', { clinic_id: clinicId, appointment_id: data.id, starts_at: startsAt });
+
+  // Send the booking receipt as soon as the appointment is durable. Email
+  // delivery is best-effort and never rolls back a successful booking.
+  try {
+    const { data: patient } = await supabaseAdmin
+      .from('patients')
+      .select('email, full_name')
+      .eq('id', patientId)
+      .eq('clinic_id', clinicId)
+      .maybeSingle();
+    const recipient = patient?.email ?? null;
+    if (recipient) {
+      const { data: clinic } = await supabaseAdmin
+        .from('clinics')
+        .select('name')
+        .eq('id', clinicId)
+        .maybeSingle();
+      await sendBookingConfirmationEmail({
+        clinicId,
+        appointmentId: data.id,
+        to: recipient,
+        clinicName: clinic?.name ?? 'العيادة',
+        patientName: patient?.full_name ?? 'المريض/ة',
+        service,
+        date,
+        time,
+      });
+    }
+  } catch (emailError) {
+    logEvent('booking_confirmation_email_failure', {
+      clinic_id: clinicId,
+      appointment_id: data.id,
+      error: emailError instanceof Error ? emailError.message : 'Unknown email error',
+    }, 'error');
+  }
 
   // Keep a public-safe booking summary in the conversation metadata in
   // addition to the relational `conversation_id` link. This lets the chat

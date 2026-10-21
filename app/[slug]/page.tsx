@@ -15,6 +15,9 @@ import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
 import InstallPWA from '@/components/pwa/InstallPWA';
+import PublicServicesCard from '@/components/public/PublicServicesCard';
+import BookIn30Button from '@/components/public/BookIn30Button';
+import QuickClinicChat from '@/components/public/QuickClinicChat';
 
 /**
  * Digital Healthcare Space — CANONICAL public space route (Phase E).
@@ -171,6 +174,19 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   }
   const reviews = await loadReviews(space.clinicId);
 
+  const servicesTable =
+    space.activityType === 'imaging_center' ? 'imaging_services' :
+    space.activityType === 'dental_lab' ? 'lab_services' :
+    'clinic_services';
+
+  const { data: services } = await supabaseAdmin
+    .from(servicesTable)
+    .select('name, price, price_min, price_max, duration_minutes, description')
+    .eq('clinic_id', space.clinicId)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .limit(6);
+
   const jsonLd = buildSpaceJsonLd(space, reviews);
   const schemaScript = (
     <script
@@ -189,8 +205,13 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
+          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
           <ImagingPublicSpace space={space} />
+          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
+          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
+          <QuickClinicChat clinicId={space.clinicId} mode="inline" />
+          <QuickClinicChat clinicId={space.clinicId} mode="floating" />
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -198,8 +219,13 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
+          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
           <DentalLabPublicSpace space={space} />
+          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
+          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
+          <QuickClinicChat clinicId={space.clinicId} mode="inline" />
+          <QuickClinicChat clinicId={space.clinicId} mode="floating" />
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -207,8 +233,13 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
+          <PublicServicesCard services={services ?? []} activityType={space.activityType} />
           <ClinicPublicSpace space={space} />
+          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
+          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
+          <QuickClinicChat clinicId={space.clinicId} mode="inline" />
+          <QuickClinicChat clinicId={space.clinicId} mode="floating" />
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );

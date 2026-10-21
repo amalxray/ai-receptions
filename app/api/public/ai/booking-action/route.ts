@@ -56,12 +56,27 @@ export async function POST(request: Request) {
       loadClinicProfile(clinic.id),
     ]);
     if (!state) return NextResponse.json({ error: 'تعذر تحميل بيانات الحجز.' }, { status: 500 });
+    const toConfirmationCard = (appointmentId: string) => {
+      const serviceId = state.booking.service_id ?? state.recommended_service_id;
+      const service = operatingData.services.find((item) => item.id === serviceId);
+      const slot = state.booking.slot ?? state.booking.scheduled_at ?? '';
+      const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(slot);
+      return {
+        appointment_id: appointmentId,
+        service: service?.name ?? 'موعد',
+        appointment_date: match ? `${match[1]} — ${match[2]}` : slot,
+        patient_name: state.booking.patient_name ?? '',
+        clinic_name: clinic.name,
+        clinic_phone: clinic.phone,
+      };
+    };
     if (state.booking.appointment_id) {
       return NextResponse.json({
         ok: true,
         appointment_id: state.booking.appointment_id,
         status: state.booking.appointment_status,
         message: bookingMessage(state.booking.appointment_status),
+        confirmation: toConfirmationCard(state.booking.appointment_id),
       });
     }
 
@@ -198,6 +213,14 @@ export async function POST(request: Request) {
       message: resultMessage,
       appointment_id: result.appointment.id,
       status: result.appointment.status,
+      confirmation: {
+        appointment_id: result.appointment.id,
+        service: confirmation.data.service,
+        appointment_date: `${confirmation.data.date} — ${confirmation.data.time}`,
+        patient_name: confirmation.data.patient_name,
+        clinic_name: clinic.name,
+        clinic_phone: clinic.phone,
+      },
     });
   } catch (error) {
     logEvent('public_ai_booking_action_error', {
