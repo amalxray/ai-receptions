@@ -166,13 +166,30 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
   if (details.appointment_id) {
     const { data: existing, error } = await supabaseAdmin
       .from('appointments')
-      .select('id, status')
+      .select('id, status, google_event_id')
       .eq('clinic_id', details.clinic_id)
       .eq('provider_id', details.provider_id)
       .eq('id', details.appointment_id)
       .is('deleted_at', null)
       .maybeSingle();
     if (error || !existing) throw new Error('Appointment not found for this clinic and provider.');
+
+    if (existing.google_event_id) {
+      await supabaseAdmin
+        .from('appointments')
+        .update({ needs_google_sync: false, google_sync_blocked_at: null })
+        .eq('clinic_id', details.clinic_id)
+        .eq('id', existing.id);
+      return {
+        id: existing.id,
+        patient_name: details.patient_name,
+        patient_phone: details.patient_phone,
+        appointment_time: appointmentTime.toISOString(),
+        google_event_id: existing.google_event_id,
+        status: existing.status,
+        calendar_connected: true,
+      };
+    }
 
     const schedule = await loadProviderSchedule(details.clinic_id, details.provider_id);
     if (!schedule) throw new Error('Provider not found for this clinic');
@@ -303,6 +320,8 @@ async function createEventAndConfirm(
       patient_phone: details.patient_phone.trim(),
       appointment_time: startTime.toISOString(),
       status: 'confirmed',
+      needs_google_sync: false,
+      google_sync_blocked_at: null,
     })
     .eq('clinic_id', details.clinic_id)
     .eq('provider_id', details.provider_id)
