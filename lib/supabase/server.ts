@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getSupabaseEnvConfig } from '@/lib/config';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 
 export function createSupabaseServerClient() {
   const cookieStore = cookies();
@@ -10,15 +11,16 @@ export function createSupabaseServerClient() {
     supabaseUrl!,
     anonKey!,
     {
+      cookieOptions: supabaseCookieOptions,
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          cookieStore.set({ name, value, ...options, ...supabaseCookieOptions });
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
+          cookieStore.set({ name, value: '', ...options, ...supabaseCookieOptions });
         },
       },
     }

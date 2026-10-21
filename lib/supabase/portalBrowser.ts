@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { getSupabaseEnvConfig } from '@/lib/config';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
@@ -9,7 +10,9 @@ let client: ReturnType<typeof createBrowserClient> | null = null;
 export function getSupabasePortalBrowserClient() {
   if (!client) {
     const { supabaseUrl, anonKey } = getSupabaseEnvConfig();
-    client = createBrowserClient(supabaseUrl!, anonKey!);
+    client = createBrowserClient(supabaseUrl!, anonKey!, {
+      cookieOptions: supabaseCookieOptions,
+    });
   }
   return client;
 }

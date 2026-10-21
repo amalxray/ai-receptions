@@ -3,20 +3,22 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { z } from 'zod';
 import * as patientService from '@/lib/services/patientService';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 
 const createRouteHandlerClient = (cookieStore: any) => createServerClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   {
+    cookieOptions: supabaseCookieOptions,
     cookies: {
       get(name: string) {
         return cookieStore.get(name)?.value;
       },
       set(name: string, value: string, options: any) {
-        cookieStore.set({ name, value, ...options });
+        cookieStore.set({ name, value, ...options, ...supabaseCookieOptions });
       },
       remove(name: string, options: any) {
-        cookieStore.set({ name, value: '', ...options });
+        cookieStore.set({ name, value: '', ...options, ...supabaseCookieOptions });
       },
     },
   }

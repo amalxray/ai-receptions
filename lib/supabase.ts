@@ -1,5 +1,6 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { getSupabaseEnvConfig } from '@/lib/config';
+import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 
 const config = getSupabaseEnvConfig();
 
@@ -16,5 +17,6 @@ export const isSupabaseConfigured = Boolean(config.supabaseUrl && config.anonKey
  */
 export const supabase = createBrowserClient(
   config.supabaseUrl || 'https://example.supabase.co',
-  config.anonKey || 'invalid-anon-key'
+  config.anonKey || 'invalid-anon-key',
+  { cookieOptions: supabaseCookieOptions }
 );
