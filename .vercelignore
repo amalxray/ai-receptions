@@ -8,4 +8,7 @@ LM_Studio.AppImage
 # silently dropped the patients page, its API routes and the payments panel
 # from deployments (the 404 + missing "إضافة دفعة" root cause).
 /Patients/
+/.worktrees/
+/artifacts/
+/.next/
 
