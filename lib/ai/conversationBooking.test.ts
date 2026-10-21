@@ -42,12 +42,10 @@ const mocks = vi.hoisted(() => {
     isValidBookingPhone: vi.fn(
       (value: unknown) => typeof value === 'string' && /\d/.test(value) && value.trim().length >= 5
     ),
-    createGoogleCalendarBooking: vi.fn(async (_params: Record<string, unknown>) => ({
-      id: 'appt-1',
-      google_event_id: 'event-1',
-      status: 'confirmed',
-      calendar_connected: true,
-    })),
+    queueGoogleCalendarSync: vi.fn(async () => undefined),
+    syncGoogleCalendarAppointment: vi.fn(async () => 'synced'),
+    createInAppNotification: vi.fn(async () => ({ id: 'notification-1' })),
+    getClinicSlugById: vi.fn(async () => 'test-clinic'),
   };
 });
 
@@ -57,7 +55,13 @@ vi.mock('@/lib/services/bookingService', () => ({
   createBooking: mocks.createBooking,
   isValidBookingPhone: mocks.isValidBookingPhone,
 }));
-vi.mock('@/lib/services/googleCalendarBooking', () => ({ bookAppointment: mocks.createGoogleCalendarBooking }));
+vi.mock('@/lib/services/googleCalendarSync', () => ({
+  queueGoogleCalendarSync: mocks.queueGoogleCalendarSync,
+  syncGoogleCalendarAppointment: mocks.syncGoogleCalendarAppointment,
+}));
+vi.mock('@/lib/notifications/inAppNotifier', () => ({ createInAppNotification: mocks.createInAppNotification }));
+vi.mock('@/lib/services/tenantAccess', () => ({ getClinicSlugById: mocks.getClinicSlugById }));
+vi.mock('@/lib/services/dashboardPaths', () => ({ tenantDashboardUrl: () => '/dashboard/test-clinic/appointments' }));
 
 const operatingData: ClinicOperatingData = {
   services: [
@@ -266,7 +270,7 @@ describe('attemptConversationBooking', () => {
     ['amal-clinic', '11111111-1111-1111-1111-111111111111'],
     ['hala-clinic', '22222222-2222-2222-2222-222222222222'],
     ['amal-x-ray-center', '33333333-3333-3333-3333-333333333333'],
-  ])('%s chat booking creates a tenant-scoped Google Calendar event after consent', async (_slug, clinicId) => {
+  ])('%s chat booking queues a tenant-scoped Google Calendar sync after consent', async (_slug, clinicId) => {
     const result = await attemptConversationBooking({
       clinicId,
       conversationId: 'conv-1',
@@ -276,7 +280,6 @@ describe('attemptConversationBooking', () => {
       operatingData,
       requirePhone: true,
       googleCalendar: true,
-      clinicName: _slug,
       timeZone: 'Asia/Hebron',
     });
 
@@ -284,25 +287,14 @@ describe('attemptConversationBooking', () => {
     expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({
       initialStatus: 'pending_confirmation',
     }));
-    expect(mocks.createGoogleCalendarBooking).toHaveBeenCalledWith(expect.objectContaining({
-      clinic_id: clinicId,
-      provider_id: 'prov-1',
-      clinic_name: _slug,
-      patient_name: baseBooking.patient_name,
-      patient_phone: baseBooking.phone,
-      service: 'تصوير بانوراما',
-      status: 'confirmed',
+    expect(mocks.queueGoogleCalendarSync).toHaveBeenCalledWith('appt-1', clinicId, expect.any(String));
+    expect(mocks.syncGoogleCalendarAppointment).toHaveBeenCalledWith('appt-1');
+    expect(mocks.createInAppNotification).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId, appointmentId: 'appt-1', patientId: 'patient-1', event: 'appointment_new',
     }));
   });
 
-  it('keeps the database booking when Google Calendar is not configured', async () => {
-    mocks.createGoogleCalendarBooking.mockResolvedValueOnce({
-      id: 'appt-1',
-      google_event_id: null,
-      status: 'pending_confirmation',
-      calendar_connected: false,
-    });
-
+  it('keeps the database booking when calendar sync is queued', async () => {
     const result = await attemptConversationBooking({
       clinicId: 'clinic-1',
       conversationId: 'conv-1',
@@ -319,7 +311,7 @@ describe('attemptConversationBooking', () => {
       action: 'booked',
       appointment: { id: 'appt-1', status: 'pending_confirmation' },
     });
-    expect(mocks.supabaseAdmin.from).toHaveBeenCalledTimes(1);
+    expect(mocks.queueGoogleCalendarSync).toHaveBeenCalledWith('appt-1', 'clinic-1', expect.any(String));
   });
 
   it('saves chat bookings as pending confirmation when Google Calendar is disabled', async () => {
@@ -341,7 +333,7 @@ describe('attemptConversationBooking', () => {
     expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({
       initialStatus: 'pending_confirmation',
     }));
-    expect(mocks.createGoogleCalendarBooking).not.toHaveBeenCalled();
+    expect(mocks.queueGoogleCalendarSync).not.toHaveBeenCalled();
   });
 });
 

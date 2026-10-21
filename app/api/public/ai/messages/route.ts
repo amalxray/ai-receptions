@@ -10,7 +10,10 @@ import { logEvent } from '@/lib/server/logging';
 import { buildPendingBookingContext } from '@/lib/ai/bookingContextBridge';
 import { buildChatInteractive } from '@/lib/ai/chatInteractive';
 import { buildBookingConfirmation } from '@/lib/ai/bookingConfirmation';
-import { loadClinicOperatingData, loadReceptionistConversationState } from '@/lib/ai/clinicDataContext';
+import { containsConfirmationWord, attemptConversationBooking } from '@/lib/ai/conversationBooking';
+import { getChatBookingPolicy } from '@/lib/ai/chatBookingPolicy';
+import { loadClinicOperatingData, loadClinicProfile, loadReceptionistConversationState } from '@/lib/ai/clinicDataContext';
+import { saveMessage } from '@/lib/services/messageService';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 
@@ -40,6 +43,7 @@ const postLimiter = new RateLimiter(POST_RATE_MAX, POST_RATE_WINDOW_MS);
 // History reads are cheap DB queries but still public: 30 / minute / IP.
 const getLimiter = new RateLimiter(30, 60_000);
 const SOURCE_CITATION_PATTERN = /\[Source:[^\]]+\]/g;
+const CHAT_BOOKING_PENDING_MESSAGE = '\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u0645\u0648\u0639\u062f\u0643 \u0641\u064a \u0642\u0627\u0639\u062f\u0629 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0639\u064a\u0627\u062f\u0629 \u0648\u0647\u0648 \u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629.';
 
 function stripSourceCitations(content: string): string {
   return content.replace(SOURCE_CITATION_PATTERN, '').replace(/[ \t]{2,}/g, ' ').trim();
@@ -114,18 +118,82 @@ export async function POST(req: Request) {
     const safeAssistant = assistantMessage ?? {
       id: '', role: 'assistant', content: 'عذراً، حدثت مشكلة مؤقتة. سيتابع فريق العيادة معك قريباً.', created_at: new Date().toISOString(),
     };
-    const updatedConversation = await getConversationById(convId, clinic.id);
-    const metadata = (updatedConversation as any)?.metadata ?? {};
-    const conversationState = (updatedConversation as any)?.conversation_state ?? null;
+    let updatedConversation = await getConversationById(convId, clinic.id);
+    let metadata = (updatedConversation as any)?.metadata ?? {};
+    let conversationState = (updatedConversation as any)?.conversation_state ?? null;
     // STEP 7: canonical booking projection derived from one source. The UI
     // reflects only these server-verified fields (service/provider ids from
     // operating data, and slot from real availability) — never invents.
     // STEP 10C: suppress entirely once the conversation is handed off to staff.
-    const bookingContext = buildPendingBookingContext(metadata, { conversationState });
-    const [receptionState, operatingData] = await Promise.all([
+    let [receptionState, operatingData] = await Promise.all([
       loadReceptionistConversationState(clinic.id, convId),
       loadClinicOperatingData(clinic.id),
     ]);
+    let confirmedByMessage = false;
+    if (
+      metadata.handoff !== true &&
+      receptionState?.state === 'BOOKING' &&
+      !receptionState.booking.appointment_id &&
+      containsConfirmationWord(text) &&
+      (receptionState.booking.service_id ?? receptionState.recommended_service_id) &&
+      (receptionState.booking.provider_id ?? receptionState.recommended_provider_id) &&
+      receptionState.booking.slot &&
+      receptionState.booking.patient_name?.trim() &&
+      receptionState.booking.phone?.trim()
+    ) {
+      let googleCalendar = false;
+      try {
+        googleCalendar = (await getChatBookingPolicy(clinic.id)).createGoogleCalendarEvent;
+      } catch (error) {
+        logEvent('public_ai_booking_policy_failed', {
+          clinic_id: clinic.id,
+          conversation_id: convId,
+          error: error instanceof Error ? error.message : String(error),
+        }, 'warn');
+      }
+      const profile = await loadClinicProfile(clinic.id);
+      const attempt = await attemptConversationBooking({
+        clinicId: clinic.id,
+        conversationId: convId,
+        state: receptionState.state,
+        patientConfirmedBooking: true,
+        booking: {
+          ...receptionState.booking,
+          service_id: receptionState.booking.service_id ?? receptionState.recommended_service_id,
+          provider_id: receptionState.booking.provider_id ?? receptionState.recommended_provider_id,
+        },
+        operatingData,
+        requirePhone: true,
+        googleCalendar,
+        timeZone: profile.timezone,
+      });
+      if (attempt.action === 'booked' || attempt.action === 'already_booked') {
+        confirmedByMessage = true;
+        try {
+          await saveMessage({
+            conversation_id: convId,
+            clinic_id: clinic.id,
+            role: 'assistant',
+            content: CHAT_BOOKING_PENDING_MESSAGE,
+          });
+        } catch (error) {
+          logEvent('public_ai_booking_confirmation_message_failed', {
+            clinic_id: clinic.id,
+            conversation_id: convId,
+            appointment_id: attempt.action === 'booked' ? attempt.appointment.id : attempt.appointment_id,
+            error: error instanceof Error ? error.message : String(error),
+          }, 'warn');
+        }
+        updatedConversation = await getConversationById(convId, clinic.id);
+        metadata = (updatedConversation as any)?.metadata ?? {};
+        conversationState = (updatedConversation as any)?.conversation_state ?? null;
+        [receptionState, operatingData] = await Promise.all([
+          loadReceptionistConversationState(clinic.id, convId),
+          loadClinicOperatingData(clinic.id),
+        ]);
+      }
+    }
+    const bookingContext = buildPendingBookingContext(metadata, { conversationState });
     const bookingConfirmation = metadata.handoff === true
       ? null
       : buildBookingConfirmation(clinic, receptionState, operatingData);
@@ -146,7 +214,9 @@ export async function POST(req: Request) {
       receptionState?.state === 'BOOKING' &&
       Boolean(receptionState.booking.slot) &&
       !receptionState.booking.appointment_id;
-    const responseAssistant = bookingConfirmation
+    const responseAssistant = confirmedByMessage
+      ? { ...safeAssistant, content: CHAT_BOOKING_PENDING_MESSAGE }
+      : bookingConfirmation
       ? { ...safeAssistant, content: 'راجعي تفاصيل الموعد في البطاقة، ثم اضغطي «تأكيد الحجز» لإتمامه أو «تعديل» لتغيير البيانات.' }
       : hasCompleteBookingDetails && !metadata.handoff
         ? { ...safeAssistant, content: 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.' }

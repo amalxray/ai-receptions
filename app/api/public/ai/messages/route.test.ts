@@ -8,7 +8,13 @@ const mocks = vi.hoisted(() => ({
   getSupabaseEnvConfig: vi.fn(),
   from: vi.fn(),
   loadClinicOperatingData: vi.fn(),
+  loadClinicProfile: vi.fn(),
   loadReceptionistConversationState: vi.fn(),
+  containsConfirmationWord: vi.fn(),
+  attemptConversationBooking: vi.fn(),
+  getChatBookingPolicy: vi.fn(),
+  saveMessage: vi.fn(),
+  logEvent: vi.fn(),
 }));
 
 vi.mock('@/lib/services/clinics', () => ({
@@ -20,6 +26,15 @@ vi.mock('@/lib/services/conversationService', () => ({
 }));
 vi.mock('@/lib/services/messageService', () => ({
   receivePatientMessage: mocks.receivePatientMessage,
+  saveMessage: mocks.saveMessage,
+}));
+vi.mock('@/lib/ai/conversationBooking', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/ai/conversationBooking')>(),
+  containsConfirmationWord: mocks.containsConfirmationWord,
+  attemptConversationBooking: mocks.attemptConversationBooking,
+}));
+vi.mock('@/lib/ai/chatBookingPolicy', () => ({
+  getChatBookingPolicy: mocks.getChatBookingPolicy,
 }));
 vi.mock('@/lib/config', () => ({
   getSupabaseEnvConfig: mocks.getSupabaseEnvConfig,
@@ -29,6 +44,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 vi.mock('@/lib/ai/clinicDataContext', () => ({
   loadClinicOperatingData: mocks.loadClinicOperatingData,
+  loadClinicProfile: mocks.loadClinicProfile,
   loadReceptionistConversationState: mocks.loadReceptionistConversationState,
 }));
 vi.mock('@/lib/notifications/inAppNotifier', () => ({
@@ -39,14 +55,14 @@ vi.mock('@/lib/services/gateway/security/rate-limiter', () => ({
   getClientId: () => 'test-client',
 }));
 vi.mock('@/lib/server/logging', () => ({
-  logEvent: vi.fn(),
+  logEvent: mocks.logEvent,
 }));
 vi.mock('@/lib/services/dashboardPaths', () => ({
   tenantDashboardUrl: () => '/dashboard/test/conversations',
 }));
 
 const clinic = { id: 'clinic-1', slug: 'test-clinic' };
-const completeState = {
+const completeState: any = {
   state: 'BOOKING',
   recommended_service_id: 'service-1',
   recommended_provider_id: 'provider-1',
@@ -92,6 +108,8 @@ async function getMessages() {
 describe('public AI messages booking responses and history restoration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    completeState.booking.appointment_id = null;
+    completeState.booking.appointment_status = null;
     mocks.resolvePublicClinic.mockResolvedValue(clinic);
     mocks.createConversation.mockResolvedValue({ id: 'conversation-1' });
     mocks.getConversationById.mockResolvedValue({
@@ -107,6 +125,14 @@ describe('public AI messages booking responses and history restoration', () => {
     mocks.getSupabaseEnvConfig.mockReturnValue({ isConfigured: true });
     mocks.loadReceptionistConversationState.mockResolvedValue(completeState);
     mocks.loadClinicOperatingData.mockResolvedValue(operatingData);
+    mocks.loadClinicProfile.mockResolvedValue({ timezone: 'Asia/Hebron' });
+    mocks.containsConfirmationWord.mockReturnValue(false);
+    mocks.getChatBookingPolicy.mockResolvedValue({ createGoogleCalendarEvent: false });
+    mocks.attemptConversationBooking.mockResolvedValue({
+      action: 'booked',
+      appointment: { id: 'appointment-1', status: 'pending_confirmation', scheduled_at: '2026-10-12T10:00:00.000Z' },
+    });
+    mocks.saveMessage.mockResolvedValue({ id: 'assistant-booking-1' });
     const query = {
       select: vi.fn(),
       eq: vi.fn(),
@@ -127,7 +153,6 @@ describe('public AI messages booking responses and history restoration', () => {
   it('POST returns the booking confirmation card when all verified details are available', async () => {
     const response = await postMessage();
     const payload = await response.json();
-
     expect(response.status).toBe(200);
     expect(payload.assistant_message.content).toContain('تأكيد الحجز');
     expect(payload.interactive.booking_confirmation).toMatchObject({
@@ -139,6 +164,34 @@ describe('public AI messages booking responses and history restoration', () => {
       },
       actions: ['confirm', 'edit'],
     });
+  });
+
+  it('creates an appointment when the patient gives explicit consent in chat', async () => {
+    mocks.containsConfirmationWord.mockReturnValue(true);
+    mocks.attemptConversationBooking.mockImplementation(async () => {
+      completeState.booking.appointment_id = 'appointment-1';
+      completeState.booking.appointment_status = 'pending_confirmation';
+      return {
+        action: 'booked',
+        appointment: { id: 'appointment-1', status: 'pending_confirmation', scheduled_at: '2026-10-12T10:00:00.000Z' },
+      };
+    });
+
+    const response = await postMessage();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.booking_completed).toBe(true);
+    expect(mocks.attemptConversationBooking).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId: clinic.id,
+      patientConfirmedBooking: true,
+      requirePhone: true,
+    }));
+    expect(mocks.saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+      clinic_id: clinic.id,
+      conversation_id: 'conversation-1',
+      role: 'assistant',
+    }));
   });
 
   it('POST streams generated text and sends booking metadata as the final event', async () => {

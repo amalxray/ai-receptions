@@ -82,7 +82,7 @@ export async function POST(req: Request) {
     }
     if (shouldSyncCalendar) {
       // Persist the retry marker before starting best-effort work. Vercel may
-      // stop the request process after the response, so the hourly cron is the
+      // stop the request process after the response, so the scheduled cron is the
       // durable fallback if this immediate attempt is interrupted.
       try {
         await queueGoogleCalendarSync(appointment.id, clinic_id);

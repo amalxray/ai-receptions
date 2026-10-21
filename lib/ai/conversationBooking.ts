@@ -1,9 +1,11 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { findOrCreatePatient, createBooking, isValidBookingPhone } from '@/lib/services/bookingService';
-import { cancelAppointmentReminders } from '@/lib/services/reminderEngine';
-import { bookAppointment as createGoogleCalendarBooking } from '@/lib/services/googleCalendarBooking';
 import { clinicLocalToInstant } from '@/lib/services/clinicClock';
+import { queueGoogleCalendarSync, syncGoogleCalendarAppointment } from '@/lib/services/googleCalendarSync';
+import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { getClinicSlugById } from '@/lib/services/tenantAccess';
 import type { ClinicOperatingData, ClinicServiceForAI } from './clinicDataContext';
 import { persistReceptionistSlot } from './clinicDataContext';
 
@@ -121,10 +123,9 @@ export async function attemptConversationBooking(params: {
   serviceNameHint?: string | null;
   requirePhone?: boolean;
   googleCalendar?: boolean;
-  clinicName?: string | null;
   timeZone?: string | null;
 }): Promise<BookingAttemptResult> {
-  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, clinicName, timeZone } = params;
+  const { clinicId, conversationId, state, patientConfirmedBooking, booking, operatingData, serviceNameHint, requirePhone = false, googleCalendar = false, timeZone } = params;
 
   if (state !== 'BOOKING' || !patientConfirmedBooking) {
     return { action: 'not_ready', state };
@@ -215,30 +216,24 @@ export async function attemptConversationBooking(params: {
       // chat-originated appointment by the UTC offset.
     });
 
-    let googleCalendarConnected = false;
     if (googleCalendar) {
-      // Fire-and-forget: Google Calendar sync must never fail the booking.
-      // The DB appointment is the source of truth; sync errors are logged only.
-      createGoogleCalendarBooking({
-        clinic_id: clinicId,
-        provider_id: booking.provider_id as string,
-        clinic_name: clinicName ?? undefined,
-        appointment_id: created.id,
-        patient_id: patientId,
-        patient_name: (booking.patient_name as string).trim(),
-        patient_phone: phone ?? '',
-        service: service.name,
-        appointment_time: clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem').toISOString(),
-        timezone: timeZone ?? 'Asia/Jerusalem',
-        duration_minutes: service.duration_minutes ?? undefined,
-        status: 'confirmed',
-      }).catch((err) => {
-        logEvent('conversation_google_calendar_booking_failed', {
+      const appointmentTime = clinicLocalToInstant(date, time, timeZone ?? 'Asia/Jerusalem').toISOString();
+      try {
+        await queueGoogleCalendarSync(created.id, clinicId, appointmentTime);
+      } catch (err) {
+        logEvent('conversation_google_calendar_queue_failed', {
           clinic_id: clinicId,
           conversation_id: conversationId,
           appointment_id: created.id,
           error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
+        }, 'error');
+      }
+      void syncGoogleCalendarAppointment(created.id).catch((err) => {
+        logEvent('conversation_google_calendar_sync_failed', {
+          clinic_id: clinicId,
+          conversation_id: conversationId,
+          appointment_id: created.id,
+          error: err instanceof Error ? err.message : String(err),
         }, 'error');
       });
     }
@@ -250,6 +245,26 @@ export async function attemptConversationBooking(params: {
       appointment_status: created.status,
       scheduled_at: created.scheduled_at,
     });
+
+    try {
+      const clinicSlug = await getClinicSlugById(clinicId);
+      await createInAppNotification({
+        clinicId,
+        patientId,
+        appointmentId: created.id,
+        event: 'appointment_new',
+        title: '\u062d\u062c\u0632 \u0645\u0648\u0639\u062f \u062c\u062f\u064a\u062f',
+        body: `\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u0645\u0648\u0639\u062f \u062c\u062f\u064a\u062f \u0644\u0644\u0645\u0631\u064a\u0636 ${(booking.patient_name as string).trim()} \u0628\u062a\u0627\u0631\u064a\u062e ${date} \u0627\u0644\u0633\u0627\u0639\u0629 ${time} (${service.name}).`,
+        link: tenantDashboardUrl(clinicSlug ?? clinicId, 'appointments'),
+      });
+    } catch (error) {
+      logEvent('conversation_booking_notification_failed', {
+        clinic_id: clinicId,
+        conversation_id: conversationId,
+        appointment_id: created.id,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'warn');
+    }
 
     logEvent('conversation_booking_created', {
       clinic_id: clinicId,
