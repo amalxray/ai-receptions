@@ -224,6 +224,9 @@ const EXACT_CANCEL = unicodePhrasePattern('إلغاء|الغاء|الغي|الغ
 const EXACT_BOOKING = unicodePhrasePattern('احجزلي|احجزي|احجزنا|احجزها|احجزله|احجزهم|ابدي احجز|بدي احجز|بدي حجز|بدي موعد|اريد حجز|أريد حجز|حجز موعد|احجز|بدي اتصور|بديتصور|أتصور|بدي تصوير|اريد تصوير|أريد تصوير|بدي اعمل تصوير|بدي صورة|صورة اشعة|صورة أشعة|book|booking|appointment');
 const EXACT_RESCHEDULE = unicodePhrasePattern('تأجيل الموعد|تاجيل الموعد|تغيير الموعد|تعديل الموعد|بدي اغير موعدي|بدي أغير موعدي|بدي اجدد موعدي|بدي أجدد موعدي|reschedule|change appointment');
 const EXACT_HANDOFF = unicodePhrasePattern('بدي احكي مع موظفة|بدي احكي مع موظف|بدي احكي مع الدكتور|بدي حدى من العيادة|بدي حدا من العيادة|مش فاهم|مش فاهمة|human|agent|staff|call me');
+const CLEAR_BOOKING_REQUEST = /(?:^|[\s،,])(?:بدي\s+(?:احجز|حجز|موعد|اتصور|تصوير|اعمل\s+تصوير|صورة)|(?:أريد|اريد)\s+(?:احجز|حجز|موعد|تصوير)|احجز(?:لي|لنا)?(?:\s+موعد)?|book\s+me|i\s+(?:want|need|would\s+like)\s+(?:to\s+book|an?\s+appointment)|(?:please\s+)?book\s+an?\s+appointment|make\s+an?\s+appointment|schedule\s+an?\s+appointment)(?:$|[\s،,.!?؟])/i;
+const NEGATED_BOOKING_REQUEST = /(?:مش|مو|ما|لا|لن)\s+(?:بدي|اريد|أريد|احجز|حجز)|(?:don't|do not|not)\s+(?:want\s+to\s+)?book/i;
+const SHORT_AFFIRMATIVE_REPLY = /^(?:نعم|اجل|اي|اه|اكيد|اكد|موافق|موافقة|اوافق|تمام|حسنا|yes|yep|yeah|ok|okay|sure)[.!؟،\s]*$/i;
 // Explicit operational questions can be answered from clinic-scoped structured
 // data without the semantic-classifier LLM or a knowledge-base retrieval.
 const FAST_PRICE_INQUIRY = /(?:\b(?:price|pricing|cost|fee)\b|\bhow\s+much\b|\u0633\u0639\u0631|\u0627\u0644\u062a\u0643\u0644\u0641\u0629|\u0628\u0643\u0645|\u0642\u062f\u064a\u0634)/i;
@@ -340,6 +343,19 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
   if (FAST_CLINIC_CONTACT.test(t)) {
     return fastResult(SEMANTIC_INTENTS.CLINIC_INFORMATION, 0.85, {}, 'location');
   }
+  if (CLEAR_BOOKING_REQUEST.test(t) && !NEGATED_BOOKING_REQUEST.test(t)) {
+    return fastResult(SEMANTIC_INTENTS.APPOINTMENT_BOOKING, 0.9);
+  }
+
+  const normalizedShortReply = t
+    .normalize('NFKC')
+    .replace(/[\u064B-\u0652\u0670ـ]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .toLowerCase();
+  if (SHORT_AFFIRMATIVE_REPLY.test(normalizedShortReply)) {
+    return fastResult(SEMANTIC_INTENTS.UNKNOWN, 0.8);
+  }
 
   return null;
 }
@@ -372,7 +388,10 @@ export async function classifyIntent(text: string): Promise<SemanticIntentResult
     fastSmallTalk &&
     (fastSmallTalk.intent === SEMANTIC_INTENTS.GREETING ||
       fastSmallTalk.intent === SEMANTIC_INTENTS.GOODBYE ||
-      fastOperationalIntent)
+      fastOperationalIntent ||
+      (fastSmallTalk.intent === SEMANTIC_INTENTS.APPOINTMENT_BOOKING &&
+        CLEAR_BOOKING_REQUEST.test(text.trim()) && !NEGATED_BOOKING_REQUEST.test(text.trim())) ||
+      (fastSmallTalk.intent === SEMANTIC_INTENTS.UNKNOWN && fastSmallTalk.fastPath === true))
   ) {
     return fastSmallTalk;
   }

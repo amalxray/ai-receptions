@@ -26,7 +26,7 @@ import {
   type ClinicProfile,
 } from '@/lib/ai/clinicDataContext';
 import { matchServiceByName } from '@/lib/ai/conversationBooking';
-import { extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
+import { classifyIntentFastPath, extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
 import { extractPatientNameFromBookingReply } from '@/lib/ai/intelligence';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
@@ -114,12 +114,13 @@ const FAST_STRUCTURED_RAG_INTENTS = new Set([
   'goodbye',
   'pricing_inquiry',
   'clinic_hours',
+  'appointment_booking',
 ]);
 const FAST_INFORMATIONAL_RAG_INTENTS = new Set(['services_inquiry', 'location', 'appointment_booking']);
 
 function shouldSkipClinicRag(intent: string, semanticFastPath?: boolean): boolean {
   return FAST_STRUCTURED_RAG_INTENTS.has(intent) ||
-    (semanticFastPath === true && FAST_INFORMATIONAL_RAG_INTENTS.has(intent));
+    (semanticFastPath === true && (FAST_INFORMATIONAL_RAG_INTENTS.has(intent) || intent === 'unknown'));
 }
 
 async function generateChatReply(
@@ -127,11 +128,11 @@ async function generateChatReply(
   preferredProviderId?: string | null,
   onToken?: (chunk: string) => void,
 ) {
-  if (!onToken) return generateWithFailover({ prompt, preferredProviderId });
+  if (!onToken) return generateWithFailover({ prompt, preferredProviderId, maxTokens: 320 });
 
   let streamedText = '';
   try {
-    const { stream, providerId } = await openStreamWithFailover({ prompt, preferredProviderId, maxTokens: 512 });
+    const { stream, providerId } = await openStreamWithFailover({ prompt, preferredProviderId, maxTokens: 320 });
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     while (true) {
@@ -173,7 +174,7 @@ async function generateChatReply(
 
   // Providers without a streaming endpoint, or an empty stream, retain the
   // existing resilient generation path and reveal its completed text at once.
-  const result = await generateWithFailover({ prompt, preferredProviderId });
+  const result = await generateWithFailover({ prompt, preferredProviderId, maxTokens: 320 });
   if (result.text) onToken(result.text);
   return result;
 }
@@ -364,32 +365,61 @@ export async function handleIncomingMessage(opts: {
   }
 
   try {
-    // Persist incoming message
-    const { data: userMsg, error: userMsgError } = await withTiming('messages.insert_patient', clinicId, () =>
-      supabaseAdmin.from('messages').insert([
-        {
-          conversation_id: conversationId,
-          clinic_id: clinicId,
-          role: 'patient',
-          sender_id: userId,
-          content: text,
-        },
-      ]).select('*').single()
-    );
+    // Persist the message and read AI settings independently so their database
+    // round-trips do not add to the patient-visible wait in series.
+    const [userMessageResult, settingsResult] = await Promise.all([
+      withTiming('messages.insert_patient', clinicId, () =>
+        supabaseAdmin.from('messages').insert([
+          {
+            conversation_id: conversationId,
+            clinic_id: clinicId,
+            role: 'patient',
+            sender_id: userId,
+            content: text,
+          },
+        ]).select('*').single()
+      ),
+      withTiming('clinic_ai_settings.select', clinicId, () =>
+        supabaseAdmin.from('clinic_ai_settings').select('*').eq('clinic_id', clinicId).limit(1).single()
+      ),
+    ]);
+    const { data: userMsg, error: userMsgError } = userMessageResult;
     if (userMsgError) throw userMsgError;
 
-    // Retrieve clinic settings and context
-    const { data: settingsData } = await withTiming('clinic_ai_settings.select', clinicId, () =>
-      supabaseAdmin.from('clinic_ai_settings').select('*').eq('clinic_id', clinicId).limit(1).single()
+    const { data: settingsData } = settingsResult;
+    const confidenceThreshold = Number(
+      settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? 0.65
     );
-    const intelligence = await withTiming('analyzeAndPersistMessage', clinicId, () =>
-      analyzeAndPersistMessage(supabaseAdmin, {
-        clinicId,
-        conversationId,
-        text,
-        confidenceThreshold: Number(settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? 0.65),
-      })
+    const probableFastIntent = classifyIntentFastPath(text);
+    const probableFastSkipRag = Boolean(
+      probableFastIntent && (
+        shouldSkipClinicRag(probableFastIntent.intent, probableFastIntent.fastPath) ||
+        probableFastIntent.intent === 'urgent_signal' ||
+        probableFastIntent.intent === 'human_handoff'
+      )
     );
+    // On turns that need both semantic classification and knowledge retrieval,
+    // overlap those independent jobs instead of making RAG wait for the model.
+    const prefetchedContextPromise = probableFastSkipRag
+      ? Promise.resolve(null)
+      : withTiming('retrieveContext.prefetch', clinicId, () => retrieveContext(
+          clinicId,
+          text,
+          5,
+          MAX_CONTEXT_TOKENS,
+          Number(settingsData?.confidence_threshold ?? settingsData?.safety_controls?.confidence_threshold ?? HALLUCINATION_CONFIDENCE_THRESHOLD),
+        ));
+    const [intelligence, prefetchedContext] = await Promise.all([
+      withTiming('analyzeAndPersistMessage', clinicId, () =>
+        analyzeAndPersistMessage(supabaseAdmin, {
+          clinicId,
+          conversationId,
+          text,
+          confidenceThreshold,
+        })
+      ),
+      prefetchedContextPromise,
+    ]);
 
     // --- Handoff Integrity Check ---
     if (intelligence.shouldHandoff) {
@@ -935,7 +965,7 @@ export async function handleIncomingMessage(opts: {
           truncated: false,
           hasConflictingContext: false,
         } as AssembledContext)
-      : await withTiming('retrieveContext', clinicId, () => retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold));
+      : prefetchedContext ?? await withTiming('retrieveContext', clinicId, () => retrieveContext(clinicId, text, 5, MAX_CONTEXT_TOKENS, configuredConfidenceThreshold));
     // When the active provider has no embedding support (e.g. local Ollama),
     // keyword-only retrieval scores are naturally lower, so lower the
     // effective threshold to match contextRetrieval's behavior.

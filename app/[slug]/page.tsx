@@ -172,20 +172,22 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   if (!space) {
     notFound();
   }
-  const reviews = await loadReviews(space.clinicId);
-
   const servicesTable =
     space.activityType === 'imaging_center' ? 'imaging_services' :
     space.activityType === 'dental_lab' ? 'lab_services' :
     'clinic_services';
 
-  const { data: services } = await supabaseAdmin
-    .from(servicesTable)
-    .select('name, price, price_min, price_max, duration_minutes, description')
-    .eq('clinic_id', space.clinicId)
-    .eq('active', true)
-    .order('sort_order', { ascending: true })
-    .limit(6);
+  const [reviews, servicesResult] = await Promise.all([
+    loadReviews(space.clinicId),
+    supabaseAdmin
+      .from(servicesTable)
+      .select('name, price, price_min, price_max, duration_minutes, description')
+      .eq('clinic_id', space.clinicId)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .limit(6),
+  ]);
+  const { data: services } = servicesResult;
 
   const jsonLd = buildSpaceJsonLd(space, reviews);
   const schemaScript = (

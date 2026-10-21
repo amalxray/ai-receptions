@@ -228,21 +228,53 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     if (!sectionOrder.includes(key)) sectionOrder.push(key);
   }
 
-  const [imagingServices, labServices] =
-    activityType === 'imaging_center'
-      ? [await readDomainCatalog(clinic.id, 'imaging_services'), []]
-      : activityType === 'dental_lab'
-        ? [[], await readDomainCatalog(clinic.id, 'lab_services')]
-        : [[], []];
+  const domainCatalogPromise = activityType === 'imaging_center'
+    ? readDomainCatalog(clinic.id, 'imaging_services')
+    : activityType === 'dental_lab'
+      ? readDomainCatalog(clinic.id, 'lab_services')
+      : Promise.resolve([] as ActivityDomainService[]);
+  // The public content tables are independent once the tenant id is known.
+  // Resolve them together so one slow table no longer holds up every later read.
+  const [domainCatalog, mediaResult, contentResults, beforeAfterResult, badgesResult, pageUrl] = await Promise.all([
+    domainCatalogPromise,
+    supabaseAdmin
+      .from('clinic_public_media')
+      .select('id, media_type, public_url, title, caption, alt_text, category')
+      .eq('clinic_id', clinic.id)
+      .eq('enabled', true)
+      .order('display_order', { ascending: true })
+      .limit(24),
+    Promise.all([
+      supabaseAdmin.from('clinic_achievements').select('id, title, value, icon, background_color, font_size')
+        .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(25),
+      supabaseAdmin.from('clinic_testimonials').select('id, patient_name, content, rating, image_url')
+        .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(25),
+      supabaseAdmin.from('clinic_articles').select('id, title, category, image_url, published_at')
+        .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(12),
+      supabaseAdmin.from('clinic_news_ticker').select('id, text, link, speed, background_color, text_color')
+        .eq('clinic_id', clinic.id).eq('enabled', true).order('priority', { ascending: true }).limit(20),
+    ]),
+    supabaseAdmin
+      .from('clinic_before_after')
+      .select('id, title, description, before_url, after_url')
+      .eq('clinic_id', clinic.id)
+      .eq('enabled', true)
+      .order('display_order', { ascending: true })
+      .limit(12),
+    supabaseAdmin
+      .from('clinic_badges')
+      .select('id, type, title, issuer, year, icon_url, verify_url')
+      .eq('clinic_id', clinic.id)
+      .eq('enabled', true)
+      .order('display_order', { ascending: true })
+      .limit(24),
+    resolveTenantPublicUrl(profile.slug),
+  ]);
+  const imagingServices = activityType === 'imaging_center' ? domainCatalog : [];
+  const labServices = activityType === 'dental_lab' ? domainCatalog : [];
 
   // Owner-managed public gallery — enabled rows only (presentation-only).
-  const { data: mediaRows } = await supabaseAdmin
-    .from('clinic_public_media')
-    .select('id, media_type, public_url, title, caption, alt_text, category')
-    .eq('clinic_id', clinic.id)
-    .eq('enabled', true)
-    .order('display_order', { ascending: true })
-    .limit(24);
+  const { data: mediaRows } = mediaResult;
   const media = (mediaRows ?? []).map((m) => ({
     id: m.id,
     media_type: m.media_type as 'image' | 'video',
@@ -254,16 +286,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   }));
 
   // PHASE L — owner-managed public content (enabled rows only, ordered).)
-  const [{ data: achievementRows }, { data: testimonialRows }, { data: articleRows }, { data: newsRows }] = await Promise.all([
-    supabaseAdmin.from('clinic_achievements').select('id, title, value, icon, background_color, font_size')
-      .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(25),
-    supabaseAdmin.from('clinic_testimonials').select('id, patient_name, content, rating, image_url')
-      .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(25),
-    supabaseAdmin.from('clinic_articles').select('id, title, category, image_url, published_at')
-      .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(12),
-    supabaseAdmin.from('clinic_news_ticker').select('id, text, link, speed, background_color, text_color')
-      .eq('clinic_id', clinic.id).eq('enabled', true).order('priority', { ascending: true }).limit(20),
-  ]);
+  const [{ data: achievementRows }, { data: testimonialRows }, { data: articleRows }, { data: newsRows }] = contentResults;
   const achievements = (achievementRows ?? []).map((a) => ({
     id: a.id,
     title: a.title,
@@ -296,13 +319,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   }));
 
   // Phase 4 — enabled before/after cases (patient consent enforced at creation).
-  const { data: baRows } = await supabaseAdmin
-    .from('clinic_before_after')
-    .select('id, title, description, before_url, after_url')
-    .eq('clinic_id', clinic.id)
-    .eq('enabled', true)
-    .order('display_order', { ascending: true })
-    .limit(12);
+  const { data: baRows } = beforeAfterResult;
   const beforeAfter = (baRows ?? []).map((c) => ({
     id: c.id,
     title: c.title,
@@ -312,13 +329,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   }));
 
   // Phase 5 — enabled verifiable achievement badges (text/URL rendering only).
-  const { data: badgeRows } = await supabaseAdmin
-    .from('clinic_badges')
-    .select('id, type, title, issuer, year, icon_url, verify_url')
-    .eq('clinic_id', clinic.id)
-    .eq('enabled', true)
-    .order('display_order', { ascending: true })
-    .limit(24);
+  const { data: badgeRows } = badgesResult;
   const badges = (badgeRows ?? []).map((b) => ({
     id: b.id,
     type: b.type,
@@ -354,7 +365,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     // Readiness-aware: the tenant subdomain when it is registered on the Vercel
     // project, otherwise the reachable `/c/{slug}` page (P1 fallback). Never a
     // host that would fail its TLS handshake.
-    pageUrl: await resolveTenantPublicUrl(profile.slug),
+    pageUrl,
     legacyPageUrl: legacyClinicUrl(profile.slug),
     services: profile.services,
     providers: profile.providers,

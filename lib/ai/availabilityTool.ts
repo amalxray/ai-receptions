@@ -1,4 +1,4 @@
-import { getAvailableSlots, getActiveServiceById, getActiveProviders, isClinicHoliday, loadProviderSchedule } from '@/lib/services/bookingService';
+import { getAvailableSlots, getAvailableSlotsForDates, getActiveServiceById, getActiveProviders, isClinicHoliday, loadProviderSchedule } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { getClinicHours, clinicLocalToInstant, timeToMinutes, zonedParts } from '@/lib/services/clinicHours';
 import { dateInTimeZone, timeInTimeZone, addDaysIso } from '@/lib/ai/understanding';
@@ -292,11 +292,13 @@ async function describeUnavailableRequestedDay(params: {
 }): Promise<{ dayStatus: 'closed' | 'holiday' | 'fully_booked'; nextAvailable?: { date: string; time: string; slot: string } }> {
   let dayStatus: 'closed' | 'holiday' | 'fully_booked' = 'fully_booked';
   try {
-    const holiday = await isClinicHoliday(params.clinicId, params.requestedDate);
+    const [holiday, schedule] = await Promise.all([
+      isClinicHoliday(params.clinicId, params.requestedDate),
+      loadProviderSchedule(params.clinicId, params.providerId),
+    ]);
     if (holiday) {
       dayStatus = 'holiday';
     } else {
-      const schedule = await loadProviderSchedule(params.clinicId, params.providerId);
       const weekday = new Date(`${params.requestedDate}T00:00:00Z`).getUTCDay();
       const day = schedule?.days?.find((item) => item.weekday === weekday);
       const onVacation = schedule?.vacationDates?.includes(params.requestedDate) ?? false;
@@ -308,14 +310,17 @@ async function describeUnavailableRequestedDay(params: {
 
   let nextAvailable: { date: string; time: string; slot: string } | undefined;
   try {
-    for (let i = 1; i <= params.lookaheadDays; i += 1) {
-      const nextDay = addDaysIso(params.requestedDate, i);
-      const [providerSlots, calendarBusy] = await Promise.all([
-        getAvailableSlots(params.clinicId, params.providerId, nextDay, 20, params.serviceId),
+    const nextDays = Array.from({ length: params.lookaheadDays }, (_, index) =>
+      addDaysIso(params.requestedDate, index + 1)
+    );
+    const slotsByDay = await getSlotsForDates(params.clinicId, params.providerId, nextDays, 20, params.serviceId);
+    for (const nextDay of nextDays) {
+      const [providerSlots, calendarBusy] = [
+        slotsByDay.get(nextDay) ?? [],
         params.checkGoogleCalendar
-          ? getGoogleCalendarBusyIntervalsOrEmpty(nextDay, params.timeZone, params)
-          : Promise.resolve([]),
-      ]);
+          ? await getGoogleCalendarBusyIntervalsOrEmpty(nextDay, params.timeZone, params)
+          : [],
+      ];
       const slots = (providerSlots ?? []).filter((slot) =>
         isFreeInGoogleCalendar(slot, params.durationMinutes ?? 30, calendarBusy)
       );
@@ -334,6 +339,24 @@ async function describeUnavailableRequestedDay(params: {
   }
 
   return { dayStatus, nextAvailable };
+}
+
+/** Compatibility fallback for isolated callers that mock the single-day service. */
+async function getSlotsForDates(
+  clinicId: string,
+  providerId: string,
+  dates: string[],
+  limit: number,
+  serviceId: string,
+): Promise<Map<string, string[]>> {
+  if (typeof getAvailableSlotsForDates === 'function') {
+    return getAvailableSlotsForDates(clinicId, providerId, dates, limit, serviceId);
+  }
+  const entries: Array<readonly [string, string[]]> = [];
+  for (const date of dates) {
+    entries.push([date, await getAvailableSlots(clinicId, providerId, date, limit, serviceId)]);
+  }
+  return new Map(entries);
 }
 
 function pad2(n: number): string {
@@ -445,7 +468,31 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
   const days: string[] = preferredDate
     ? [preferredDate]
     : Array.from({ length: lookaheadDays }, (_, i) => addDaysIso(todayLocal, i));
-  let failedScheduleDays = 0;
+
+  let slotsByDay: Map<string, string[]>;
+  try {
+    slotsByDay = await getSlotsForDates(clinicId, providerId, days, limitPerDay, serviceId);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    if (errorMessage.includes('Provider is not assigned to this service')) {
+      return { found: false, reason: 'error', message: 'provider not assigned to service', failureSource: 'local_scheduling' };
+    }
+    for (const day of days) {
+      logEvent('availability_tool_date_error', {
+        clinic_id: clinicId,
+        provider_id: providerId,
+        service_id: serviceId,
+        date: day,
+        error: errorMessage,
+      }, 'warn');
+    }
+    return {
+      found: false,
+      reason: 'error',
+      message: 'The local scheduling system failed while checking availability.',
+      failureSource: 'local_scheduling',
+    };
+  }
 
   for (const day of days) {
     let calendarBusy: Array<{ start: string; end: string }> = [];
@@ -459,65 +506,41 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         throw err;
       }
     }
-    try {
-      const providerSlots = await getAvailableSlots(clinicId, providerId, day, limitPerDay, serviceId);
-      const slots = (providerSlots ?? []).filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, calendarBusy));
-      if (!slots || slots.length === 0) continue;
+    const providerSlots = slotsByDay.get(day) ?? [];
+    const slots = providerSlots.filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, calendarBusy));
+    if (slots.length === 0) continue;
 
-      for (const slot of slots) {
-        if (!slotMatchesConstraints(slot, constraints)) continue;
-        const m = slot.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
-        if (!m) continue;
-        const slotDate = m[1];
-        const slotTime = m[2];
+    for (const slot of slots) {
+      if (!slotMatchesConstraints(slot, constraints)) continue;
+      const m = slot.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+      if (!m) continue;
+      const slotDate = m[1];
+      const slotTime = m[2];
 
-        const endTime = addMinutesToTime(slotTime, service.duration_minutes);
-        // Fix [3]: collect the rest of THIS day's matching slots as verified
-        // alternatives (morning + afternoon), then stop scanning later days.
-        const alternatives: string[] = [];
-        for (const other of slots) {
-          if (other === slot) continue;
-          if (!slotMatchesConstraints(other, constraints)) continue;
-          alternatives.push(other);
-          // P1: enough room for a FULL day (16+ slots) instead of 4 visible times.
-          if (alternatives.length >= 15) break;
-        }
-        return {
-          found: true,
-          slot,
-          slotStart: slot,
-          slotEnd: `${slotDate}T${endTime}:00.000Z`,
-          date: slotDate,
-          time: slotTime,
-          providerId,
-          serviceId,
-          alternatives,
-          ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
-        };
+      const endTime = addMinutesToTime(slotTime, service.duration_minutes);
+      // Fix [3]: collect the rest of THIS day's matching slots as verified
+      // alternatives (morning + afternoon), then stop scanning later days.
+      const alternatives: string[] = [];
+      for (const other of slots) {
+        if (other === slot) continue;
+        if (!slotMatchesConstraints(other, constraints)) continue;
+        alternatives.push(other);
+        // P1: enough room for a FULL day (16+ slots) instead of 4 visible times.
+        if (alternatives.length >= 15) break;
       }
-    } catch (err) {
-      failedScheduleDays += 1;
-      // A single day failing (e.g. malformed schedule) must not abort the scan.
-      logEvent('availability_tool_date_error', {
-        clinic_id: clinicId,
-        provider_id: providerId,
-        service_id: serviceId,
-        date: day,
-        error: err instanceof Error ? err.message : String(err),
-      }, 'warn');
-      if (String(err?.message ?? err).includes('Provider is not assigned to this service')) {
-        return { found: false, reason: 'error', message: 'provider not assigned to service', failureSource: 'local_scheduling' };
-      }
+      return {
+        found: true,
+        slot,
+        slotStart: slot,
+        slotEnd: `${slotDate}T${endTime}:00.000Z`,
+        date: slotDate,
+        time: slotTime,
+        providerId,
+        serviceId,
+        alternatives,
+        ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
+      };
     }
-  }
-
-  if (failedScheduleDays > 0) {
-    return {
-      found: false,
-      reason: 'error',
-      message: 'The local scheduling system failed while checking availability.',
-      failureSource: 'local_scheduling',
-    };
   }
 
   // FIX-A: the patient's day was searched first and had NOTHING. Explain why
