@@ -41,8 +41,8 @@ export const heroContentSchema = z.object({
   stats: z.array(z.object({
     value: nonEmptyText(30),
     label: nonEmptyText(80),
-  })).min(1).max(6),
-}).strict();
+  }).passthrough()).min(1).max(6),
+}).passthrough();
 
 export type ValidatedHeroContent = z.infer<typeof heroContentSchema>;
 
@@ -54,7 +54,7 @@ const featureCardSchema = z.object({
   desc: nonEmptyText(500),
   href: safeHref,
   cta: z.string().trim().max(100).optional(),
-}).strict();
+}).passthrough();
 
 export const featuresContentSchema = z.object({
   eyebrow: nonEmptyText(100),
@@ -62,21 +62,21 @@ export const featuresContentSchema = z.object({
   titleAccent: nonEmptyText(100),
   subtitle: nonEmptyText(500),
   cards: z.array(featureCardSchema).min(1).max(12),
-}).strict();
+}).passthrough();
 
 const faqItemSchema = z.preprocess((item: unknown) => {
   if (typeof item !== 'object' || item === null || Array.isArray(item)) return item;
   const value = item as Record<string, unknown>;
-  return { q: value.q ?? value.question, a: value.a ?? value.answer };
+  return { ...value, q: value.q ?? value.question, a: value.a ?? value.answer };
 }, z.object({
   q: nonEmptyText(300),
   a: nonEmptyText(2000),
-}).strict());
+}).passthrough());
 
 export const faqContentSchema = z.object({
   title: nonEmptyText(160),
   items: z.array(faqItemSchema).min(1).max(30),
-}).strict();
+}).passthrough();
 
 export const testimonialsContentSchema = z.object({
   title: nonEmptyText(160),
@@ -87,8 +87,8 @@ export const testimonialsContentSchema = z.object({
     specialty: nonEmptyText(120),
     rating: z.number().int().min(1).max(5),
     image_url: safeMediaUrl.optional().default(''),
-  }).strict()).min(1).max(30),
-}).strict();
+  }).passthrough()).min(1).max(30),
+}).passthrough();
 
 const billingPlanIdSchema = z.enum(['basic', 'advanced', 'center']);
 
@@ -114,7 +114,7 @@ export const pricingContentSchema = z.object({
     features: z.array(nonEmptyText(160)).min(1).max(30),
     highlighted: z.boolean(),
     buttonText: nonEmptyText(100),
-  }).strict()).min(1).max(3),
+  }).passthrough()).min(1).max(3),
 }).superRefine((pricing, context) => {
   const ids = pricing.tiers.map((tier) => tier.id);
   if (new Set(ids).size !== ids.length) {
@@ -129,27 +129,27 @@ export const urgencyBarContentSchema = z.object({
   backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   tickerSpeed: z.enum(['off', 'slow', 'normal', 'fast']),
-}).strict();
+}).passthrough();
 
 export const landingColorsContentSchema = z.object({
   primary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   secondary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   cta: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-}).strict();
+}).passthrough();
 
 export const landingSeoContentSchema = z.object({
   title: nonEmptyText(180),
   description: nonEmptyText(320),
   og_image: safeMediaUrl,
-}).strict();
+}).passthrough();
 
 export const gallerySettingsContentSchema = z.object({
   gallerySizePx: z.number().int().min(200).max(1200).default(400),
   gallerySpeed: z.enum(['slow', 'normal', 'fast']).default('normal'),
   galleryFit: z.enum(['contain', 'cover']).default('contain'),
   size: z.enum(['small', 'medium', 'large']).default('large'),
-}).strict();
+}).passthrough();
 
 export const siteIdentityContentSchema = z.object({
   faviconUrl: safeMediaUrl.optional().default(''),
-}).strict();
+}).passthrough();
