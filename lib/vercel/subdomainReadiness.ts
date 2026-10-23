@@ -85,7 +85,6 @@ async function fetchDomainNames(): Promise<ReadonlySet<string> | null> {
       // The response contains only the project's domain names. Reuse that
       // non-sensitive list for the same short window as the in-memory cache so
       // public pages can use ISR instead of becoming dynamic on this fetch.
-      cache: 'force-cache',
       next: { revalidate: TTL_MS / 1000 },
     });
     if (!res.ok) return null;
