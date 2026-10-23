@@ -29,10 +29,13 @@ export type LightboxMedia = {
 export default function PublicGalleryLightbox({
   media,
   gapClassName = 'gap-4',
+  itemClassName = 'w-[85vw] md:w-[400px]',
 }: {
   media: LightboxMedia[];
   /** Gallery spacing control (owner display.gallery_spacing → approved classes). */
   gapClassName?: string;
+  /** Optional card width for dedicated horizontal galleries. */
+  itemClassName?: string;
 }) {
   if (!media.length) return null;
 
@@ -42,7 +45,7 @@ export default function PublicGalleryLightbox({
         <MorphingDialog key={item.id} transition={{ type: 'spring', stiffness: 200, damping: 24 }}>
           <MorphingDialogTrigger
             style={{ borderRadius: '16px' }}
-            className="group relative flex-none snap-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm w-[85vw] md:w-[400px] aspect-[4/3]"
+            className={`group relative flex-none snap-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm aspect-[4/3] ${itemClassName}`}
           >
             {item.media_type === 'video' ? (
               <VideoPoster title={item.title ?? undefined} className="h-full w-full transition-transform duration-500 group-hover:scale-105" />
