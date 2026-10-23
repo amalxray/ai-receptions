@@ -53,6 +53,7 @@ export default function ReviewsSection({
   items,
   viewAllHref,
   hideViewAll = false,
+  maxItems = 3,
 }: {
   clinicName: string;
   /** Tenant slug for the permanent review form (source='public'). Missing → button hidden (fail-silent). */
@@ -63,8 +64,11 @@ export default function ReviewsSection({
   viewAllHref?: string;
   /** Phase 3b — the full page reuses this section; it hides its own link. */
   hideViewAll?: boolean;
+  /** Maximum number of review cards shown in this section. */
+  maxItems?: number;
 }) {
   const hasReviews = stats && stats.total > 0;
+  const visibleItems = items.slice(0, maxItems);
 
   return (
     <section
@@ -73,9 +77,12 @@ export default function ReviewsSection({
     >
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 id="reviews-heading" className="text-2xl font-bold text-slate-900">
-            تقييمات المرضى — {clinicName}
-          </h2>
+          <div>
+            <h2 id="reviews-heading" className="text-2xl font-bold text-slate-900">
+              ماذا يقول مرضانا
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">آراء مراجعي {clinicName}</p>
+          </div>
           {clinicSlug ? <ReviewsPageClient clinicSlug={clinicSlug} /> : null}
         </div>
 
@@ -114,12 +121,12 @@ export default function ReviewsSection({
         </div>
 
         {/* Latest reviews */}
-        {items.length > 0 && (
-          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="آخر التقييمات">
-            {items.map((item) => (
+        {visibleItems.length > 0 && (
+          <ul className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" aria-label="آخر التقييمات">
+            {visibleItems.map((item) => (
               <li
                 key={item.id}
-                className="flex flex-col gap-2 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                className="flex h-full min-w-0 flex-col gap-2 overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
               >
                 <div className="flex items-center justify-between">
                   <Stars rating={item.rating} className="text-amber-500" />
@@ -132,7 +139,7 @@ export default function ReviewsSection({
                   </time>
                 </div>
                 {item.comment && (
-                  <p className="text-sm leading-relaxed text-slate-700">{item.comment}</p>
+                  <p className="break-words text-sm leading-relaxed text-slate-700">{item.comment}</p>
                 )}
                 <div className="mt-auto flex items-center gap-2 pt-1">
                   <span className="text-sm font-semibold text-slate-800">{item.author_name}</span>

@@ -82,7 +82,7 @@ export default async function ClinicReviewsPage({ params, searchParams }: PagePr
         </div>
 
         <div className="mt-6">
-          <ReviewsSection clinicName={space.name} stats={stats} items={items} hideViewAll />
+          <ReviewsSection clinicName={space.name} stats={stats} items={items} hideViewAll maxItems={PAGE_SIZE} />
         </div>
 
         {stats.total === 0 && (

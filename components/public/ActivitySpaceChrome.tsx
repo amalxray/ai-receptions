@@ -4,6 +4,7 @@ import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, us
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { CalendarCheck } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
@@ -17,7 +18,6 @@ import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
-import TestimonialsCarousel from '@/components/public/TestimonialsCarousel';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
 const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
@@ -323,7 +323,6 @@ export function ActivitySpaceChrome({
     (item) => item.media_type === 'video' && item.public_url?.trim()
   );
   const tickerNews = uniquePublicNewsItems(space.news ?? []);
-  const testimonials = cleanPublicTestimonials(space.testimonials ?? []);
   const mapsUrl = clinicMapsUrl({
     name: displayName,
     city: space.city,
@@ -358,7 +357,26 @@ export function ActivitySpaceChrome({
   // via the FloatingChatWidget (embedded ChatInterface) — never a redirect to
   // /chat. The widget keeps clinic scope from the same `space.clinicId`.
   const [chatSignal, setChatSignal] = useState(0);
+  const [ownerAuthenticated, setOwnerAuthenticated] = useState(false);
   const openChat = () => setChatSignal((n) => n + 1);
+  useEffect(() => {
+    let mounted = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setOwnerAuthenticated(Boolean(session?.user));
+    });
+
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (mounted) setOwnerAuthenticated(Boolean(user));
+    }).catch(() => {
+      if (mounted) setOwnerAuthenticated(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     const onOpenChat = () => setChatSignal((n) => n + 1);
     window.addEventListener('clinic-chat:open', onOpenChat as EventListener);
@@ -377,16 +395,17 @@ export function ActivitySpaceChrome({
         <span className="absolute top-[12%] left-[38%] h-2.5 w-2.5 rounded-full bg-cyan-400/30 animate-drift" style={{ animationDelay: '4s' }} />
       </div>
 
-      {/* Sticky owner dashboard entry; the booking CTA lives in the hero. */}
-      <div className="sticky top-3 z-20 mx-auto flex w-fit flex-wrap items-center justify-center gap-3 px-4">
-        <a
-          href={ownerLoginUrl(space.slug)}
-          className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan/60 hover:text-brand-cyan"
-          style={{ color: linkColor }}
-        >
-          لوحة التحكم / دخول المالك
-        </a>
-      </div>
+      {ownerAuthenticated && (
+        <div className="sticky top-3 z-20 mx-auto flex w-fit flex-wrap items-center justify-center gap-3 px-4">
+          <a
+            href={ownerLoginUrl(space.slug)}
+            className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan/60 hover:text-brand-cyan"
+            style={{ color: linkColor }}
+          >
+            لوحة التحكم / دخول المالك
+          </a>
+        </div>
+      )}
 
       <main className="flex flex-col">
         {/* PHASE L — ticker follows the owner-saved page order. */}
@@ -665,14 +684,8 @@ export function ActivitySpaceChrome({
         {/* Content */}
         <div className="contents">{orderedActivitySections}</div>
 
-        {/* PHASE L — testimonials + articles (social proof + education, after content) */}
-        {on('testimonials') && testimonials.length > 0 && (
-          <div style={{ order: sectionPosition('testimonials') }}>
-            <RevealSection>
-              <TestimonialsCarousel items={testimonials} />
-            </RevealSection>
-          </div>
-        )}
+        {/* PHASE L — articles (education, after content). Patient reviews are
+            combined with their average and rating distribution below the page. */}
         {on('articles') && space.articles.length > 0 && (
           <section className="mx-auto w-full max-w-7xl px-4 pb-14" style={{ order: sectionPosition('articles') }}>
             <h2 className="mb-6 text-center text-xl font-bold text-slate-800">مقالات ومنشورات</h2>
