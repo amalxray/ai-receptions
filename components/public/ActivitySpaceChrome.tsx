@@ -18,7 +18,6 @@ import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
-import ClickToPlayVideo from '@/components/public/ClickToPlayVideo';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
 const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
@@ -565,22 +564,12 @@ export function ActivitySpaceChrome({
               <h2 className="text-2xl font-bold text-slate-800">معرض الفيديو</h2>
               <p className="mt-2 text-sm text-slate-500">شاهد مركزنا وخدماتنا عن قرب</p>
             </div>
-            <div className="mx-auto max-w-5xl px-4 grid grid-cols-1 gap-8">
-              {galleryVideos.map((vid, i) => (
-                <div
-                  key={`vid-${vid.id || i}`}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-xl"
-                >
-                  <ClickToPlayVideo
-                    src={vid.public_url}
-                    title={vid.title ?? undefined}
-                    className="h-80 w-full md:h-[500px]"
-                  />
-                  {vid.title && (
-                    <p className="p-4 text-base font-semibold text-slate-800 bg-white">{vid.title}</p>
-                  )}
-                </div>
-              ))}
+            <div className="mx-auto max-w-7xl px-4">
+              <PublicGalleryLightbox
+                media={galleryVideos}
+                gapClassName="gap-4"
+                itemClassName="w-[85vw] min-w-[280px] md:w-[400px] md:min-w-[350px]"
+              />
             </div>
           </section>
         )}
