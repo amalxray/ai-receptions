@@ -264,12 +264,16 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
     colors: landingCopy.colors,
   };
   const cmsOverrides: string[] = [];
+  const hiddenSections: string[] = [];
   try {
     const rows = await getAllLandingSections();
     for (const row of rows) {
       if (!row || typeof row.section_key !== 'string') continue;
+      if (row.is_visible === false) {
+        hiddenSections.push(row.section_key);
+        continue;
+      }
       if (row.legacySeed) continue;
-      if (row.is_visible === false) continue;
       if (STATIC_COPY_LOCKED_SECTIONS.has(row.section_key)) continue;
       const copyKey = SECTION_TO_COPY_KEY[row.section_key] ?? row.section_key;
       merged = deepMerge(merged, { [copyKey]: row.content }) as Record<string, unknown>;
@@ -279,5 +283,6 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
     // DB unavailable → pure static copy (never break the landing page).
   }
   merged.__cmsOverrides = cmsOverrides;
+  merged.__hiddenSections = hiddenSections;
   return merged;
 }

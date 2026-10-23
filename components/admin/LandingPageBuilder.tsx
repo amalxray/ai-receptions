@@ -63,7 +63,7 @@ function SortableSectionCard({ section, isSelected, onSelect, onToggleVisibility
             <a href="/admin/gallery" className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-violet-400 hover:text-violet-300">✏️ تحرير</a>
           )}
           {section.section_key === 'site_identity' && (
-            <a href="/admin/site-identity" className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-violet-400 hover:text-violet-300">M-bM-^@M-^EM-XM-*M-XM--M-XM-1M-YM-^JM-XM-1</a>
+            <a href="/admin/site-identity" className="rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-violet-400 hover:text-violet-300">تحرير</a>
           )}
           <button type="button" aria-label={`اسحب لترتيب ${section.label}`} className="touch-none cursor-grab rounded-full border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 active:cursor-grabbing" {...attributes} {...listeners}>
             Drag

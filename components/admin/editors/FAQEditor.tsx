@@ -14,8 +14,17 @@ const inputClass = 'mt-1 w-full rounded-xl border border-slate-300 bg-white px-3
 
 function normalize(content: Record<string, unknown> | null): FAQContent {
   const value = { ...defaults, ...(content ?? {}) } as FAQContent;
-  const items = Array.isArray(value.items) ? value.items : defaults.items;
-  return { ...value, items: items.map((item) => ({ q: String(item.q ?? ''), a: String(item.a ?? '') })) };
+  const items = Array.isArray(value.items) && value.items.length > 0 ? value.items : defaults.items;
+  return {
+    ...value,
+    items: items.map((item) => {
+      const legacyItem = item as FaqItem & { question?: string; answer?: string };
+      return {
+        q: String(legacyItem.q ?? legacyItem.question ?? ''),
+        a: String(legacyItem.a ?? legacyItem.answer ?? ''),
+      };
+    }),
+  };
 }
 
 export default function FAQEditor({ initialContent, onClose, onSaved }: Props) {

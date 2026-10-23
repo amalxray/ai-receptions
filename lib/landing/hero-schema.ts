@@ -64,12 +64,18 @@ export const featuresContentSchema = z.object({
   cards: z.array(featureCardSchema).min(1).max(12),
 }).strict();
 
+const faqItemSchema = z.preprocess((item: unknown) => {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return item;
+  const value = item as Record<string, unknown>;
+  return { q: value.q ?? value.question, a: value.a ?? value.answer };
+}, z.object({
+  q: nonEmptyText(300),
+  a: nonEmptyText(2000),
+}).strict());
+
 export const faqContentSchema = z.object({
   title: nonEmptyText(160),
-  items: z.array(z.object({
-    q: nonEmptyText(300),
-    a: nonEmptyText(2000),
-  }).strict()).min(1).max(30),
+  items: z.array(faqItemSchema).min(1).max(30),
 }).strict();
 
 export const testimonialsContentSchema = z.object({
