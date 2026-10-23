@@ -42,7 +42,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'صيغة JSON غير صالحة' }, { status: 400 });
     }
 
-    const parsed = z.object({ order: z.array(z.string().trim().min(1)).min(1).max(LANDING_SECTION_KEYS.length) }).strict().safeParse(body);
+    const parsed = z.object({ order: z.array(z.string().trim().min(1)).min(1).max(LANDING_SECTION_KEYS.length) }).passthrough().safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'order يجب أن يكون مصفوفة غير فارغة من مفاتيح الأقسام النصية', issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) },
