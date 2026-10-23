@@ -76,17 +76,11 @@ export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPubl
                     {service.description && (
                       <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{service.description}</p>
                     )}
-                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                      {service.duration_minutes != null && (
+                    {service.duration_minutes != null && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                         <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-600">⏱ {service.duration_minutes} دقيقة</span>
-                      )}
-                      <a
-                        href={space.bookingUrl}
-                        className="mr-auto rounded-full bg-brand-cyan/10 px-4 py-2 font-semibold text-brand-cyan transition duration-300 hover:scale-105 hover:bg-brand-cyan hover:text-white hover:shadow-lg hover:shadow-cyan-500/25"
-                      >
-                        احجز
-                      </a>
-                    </div>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -134,14 +128,8 @@ export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPubl
           <section className="rounded-3xl border border-brand-cyan/30 bg-gradient-to-l from-brand-cyan/15 via-white to-slate-50 p-6 text-center">
             <h2 className="text-xl font-bold text-slate-800">جاهز للخطوة التالية؟</h2>
             <p className="mt-2 text-sm text-slate-500">
-              اختر الوقت المناسب لك عبر الحجز المباشر، أو اسأل الاستقبال الذكي عن أي خدمة أولًا.
+              استخدم زر «احجز موعدًا» أعلى الصفحة، أو اسأل الاستقبال الذكي عن أي خدمة.
             </p>
-            <a
-              href={space.bookingUrl}
-              className="mt-4 inline-flex rounded-full bg-brand-cyan px-6 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-cyan/90"
-            >
-              احجز موعدًا الآن
-            </a>
           </section>
         </>
       }
