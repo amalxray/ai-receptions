@@ -377,23 +377,8 @@ export function ActivitySpaceChrome({
         <span className="absolute top-[12%] left-[38%] h-2.5 w-2.5 rounded-full bg-cyan-400/30 animate-drift" style={{ animationDelay: '4s' }} />
       </div>
 
-      {/* Sticky CTA row: booking + owner dashboard entry */}
+      {/* Sticky owner dashboard entry; the booking CTA lives in the hero. */}
       <div className="sticky top-3 z-20 mx-auto flex w-fit flex-wrap items-center justify-center gap-3 px-4">
-        {showBooking && (
-          <a
-            href={space.bookingUrl}
-            className="mt-3 inline-flex items-center gap-2 rounded-full bg-brand-cyan px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-cyan/25 backdrop-blur transition hover:-translate-y-0.5 hover:bg-brand-cyan/90"
-            style={{
-              backgroundColor: space.theme?.primary_color,
-              borderRadius: themeRadius(space.theme?.button_shape),
-              padding: `${themePadSize(space.theme?.button_size).py}px ${themePadSize(space.theme?.button_size).px}px`,
-              fontSize: themePadSize(space.theme?.button_size).fontSize,
-              boxShadow: space.theme?.button_shadow === false ? 'none' : undefined,
-            }}
-          >
-            {ctaLabel} ←
-          </a>
-        )}
         <a
           href={ownerLoginUrl(space.slug)}
           className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan/60 hover:text-brand-cyan"
@@ -812,8 +797,8 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
             </a>
           )}
           {space.socialLinks?.website && (
-            <a href={space.socialLinks.website} target="_blank" rel="noopener noreferrer" aria-label="الموقع الإلكتروني" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:text-cyan-700 hover:shadow-[0_0_22px_rgba(6,182,212,0.2)]" dir="ltr">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-cyan-50 text-xl transition group-hover:bg-cyan-600 group-hover:text-white">🌐</span><span>الموقع الإلكتروني</span>
+            <a href={space.socialLinks.website} target="_blank" rel="noopener noreferrer" aria-label="موقعنا على خرائط جوجل" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:text-cyan-700 hover:shadow-[0_0_22px_rgba(6,182,212,0.2)]" dir="ltr">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-cyan-50 text-xl transition group-hover:bg-cyan-600 group-hover:text-white">🌐</span><span>موقعنا على خرائط جوجل</span>
             </a>
           )}
           {space.socialLinks?.facebook && (
@@ -833,24 +818,6 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
           )}
         </div>
       )}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <a
-          href={space.bookingUrl}
-          className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-cyan/90"
-        >
-          احجز الآن
-        </a>
-        {/* زر المحادثة الحية مخفي مؤقتاً في صفحة العيادة العامة — الكود محفوظ أدناه بدون حذف
-        {space.sections?.aiCta !== false && (
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('clinic-chat:open'))}
-            className="rounded-full border border-cyan-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-cyan hover:bg-white"
-          >
-            استشارة
-          </button>
-        ) */}
-      </div>
     </div>
   );
 }

@@ -16,8 +16,6 @@ import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
 import InstallPWA from '@/components/pwa/InstallPWA';
 import PublicServicesCard from '@/components/public/PublicServicesCard';
-import BookIn30Button from '@/components/public/BookIn30Button';
-import QuickClinicChat from '@/components/public/QuickClinicChat';
 
 /**
  * Digital Healthcare Space — CANONICAL public space route (Phase E).
@@ -225,11 +223,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ImagingPublicSpace space={space} servicesCard={servicesCard} />
-          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
-          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
-          <QuickClinicChat clinicId={space.clinicId} mode="inline" />
-          <QuickClinicChat clinicId={space.clinicId} mode="floating" />
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -238,11 +232,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <DentalLabPublicSpace space={space} servicesCard={servicesCard} />
-          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
-          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
-          <QuickClinicChat clinicId={space.clinicId} mode="inline" />
-          <QuickClinicChat clinicId={space.clinicId} mode="floating" />
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -251,11 +241,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={space} servicesCard={servicesCard} />
-          <div className="text-center"><BookIn30Button clinicId={space.clinicId} /></div>
-          <QuickClinicChat clinicId={space.clinicId} mode="compact" />
           {reviewsSection}
-          <QuickClinicChat clinicId={space.clinicId} mode="inline" />
-          <QuickClinicChat clinicId={space.clinicId} mode="floating" />
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
