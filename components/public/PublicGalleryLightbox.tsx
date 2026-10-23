@@ -15,6 +15,7 @@ import {
   MorphingDialogClose,
   MorphingDialogContainer,
 } from '@/components/ui/morphing-dialog';
+import ClickToPlayVideo, { VideoPoster } from '@/components/public/ClickToPlayVideo';
 
 export type LightboxMedia = {
   id: string;
@@ -44,13 +45,7 @@ export default function PublicGalleryLightbox({
             className="group relative flex-none snap-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm w-[85vw] md:w-[400px] aspect-[4/3]"
           >
             {item.media_type === 'video' ? (
-              <video
-                src={item.public_url}
-                muted
-                playsInline
-                preload="metadata"
-                className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
-              />
+              <VideoPoster title={item.title ?? undefined} className="h-full w-full transition-transform duration-500 group-hover:scale-105" />
             ) : (
               <MorphingDialogImage
                 src={item.public_url}
@@ -77,7 +72,11 @@ export default function PublicGalleryLightbox({
             >
               <div className="p-4">
                 {item.media_type === 'video' ? (
-                  <video src={item.public_url} controls className="max-h-[80vh] w-auto object-contain mx-auto rounded-lg bg-black" />
+                  <ClickToPlayVideo
+                    src={item.public_url}
+                    title={item.title ?? undefined}
+                    className="mx-auto aspect-video max-h-[80vh] w-full max-w-2xl rounded-lg"
+                  />
                 ) : (
                   <MorphingDialogImage
                     src={item.public_url}

@@ -7,6 +7,9 @@ import {
 } from '@/lib/services/clinicAuthorization';
 import {
   buildMediaStoragePath,
+  CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE,
+  countClinicPublicVideos,
+  MAX_CLINIC_PUBLIC_VIDEOS,
   MEDIA_BUCKET,
   validateMediaFile,
 } from '@/lib/services/clinicPublicMedia';
@@ -39,6 +42,13 @@ export async function POST(req: Request) {
     const validation = validateMediaFile({ name: filename, type: contentType, size: fileSize });
     if ('message' in validation) {
       return NextResponse.json({ error: validation.message }, { status: 400 });
+    }
+
+    if (
+      validation.mediaType === 'video' &&
+      (await countClinicPublicVideos(clinicId)) >= MAX_CLINIC_PUBLIC_VIDEOS
+    ) {
+      return NextResponse.json({ error: CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE }, { status: 400 });
     }
 
     const path = buildMediaStoragePath(clinicId, validation.ext);
