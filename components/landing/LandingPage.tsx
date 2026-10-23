@@ -77,6 +77,7 @@ function LandingFooter() {
 export default function LandingPage({ galleryImages = [], galleryVideos = [], sectionOrder = DEFAULT_SECTION_ORDER }: LandingPageProps) {
   const copy = useLandingCopy();
   const orderedSections = sectionOrder.length ? sectionOrder : DEFAULT_SECTION_ORDER;
+  const hiddenSections = new Set<string>(Array.isArray(copy.__hiddenSections) ? copy.__hiddenSections : []);
 
   const sectionMap: Record<string, React.ReactNode> = {
     hero: <><Hero /><SocialProof /></>,
@@ -101,10 +102,10 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
   return (
     <>
       <Navbar />
-      <UrgencyBar />
+      {!hiddenSections.has('urgency_bar') && <UrgencyBar />}
       <main className="bg-landing-bg text-landing-text">
         {orderedSections
-          .filter((key) => key in sectionMap && key !== 'footer')
+          .filter((key) => key in sectionMap && key !== 'footer' && !hiddenSections.has(key))
           .map((key) => (
             <div key={key}>{sectionMap[key]}</div>
           ))}
@@ -115,7 +116,7 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
         <LeadForm />
       </main>
 
-      {orderedSections.includes('footer') && <LandingFooter />}
+      {orderedSections.includes('footer') && !hiddenSections.has('footer') && <LandingFooter />}
 
 
       {/* Floating action button (FAB) — bottom-left in RTL */}

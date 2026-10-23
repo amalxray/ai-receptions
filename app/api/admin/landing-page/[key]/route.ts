@@ -41,7 +41,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
     if (body.content !== undefined && body.content !== null && (typeof body.content !== 'object' || Array.isArray(body.content))) {
       return NextResponse.json({ error: 'content يجب أن يكون كائن JSON' }, { status: 400 });
     }
-    let content = body.content === undefined || body.content === null ? null : body.content as Record<string, unknown>;
+    const hasContent = body.content !== undefined && body.content !== null;
+    let content = hasContent ? body.content as Record<string, unknown> : null;
     const contentSchemas = {
       hero: heroContentSchema,
       features: featuresContentSchema,
@@ -54,8 +55,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       site_identity: siteIdentityContentSchema,
     } as const;
     const schema = contentSchemas[key as keyof typeof contentSchemas];
-    if (schema) {
-      const parsed = schema.safeParse(body.content);
+    if (schema && hasContent) {
+      const parsed = schema.safeParse(content);
       if (!parsed.success) {
         return NextResponse.json(
           { error: `بيانات قسم ${key} غير صالحة`, issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) },
@@ -65,8 +66,14 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       content = parsed.data as Record<string, unknown>;
     }
 
-    if (content !== null || isVisible !== undefined) {
-      await upsertLandingSection(key, content, gate.admin.user_id, isVisible);
+    if (hasContent || isVisible !== undefined) {
+      const current = await getLandingSection(key);
+      await upsertLandingSection(
+        key,
+        hasContent ? content : current?.content ?? null,
+        gate.admin.user_id,
+        isVisible ?? current?.is_visible ?? true,
+      );
     }
     revalidatePath('/');
     logEvent('admin_landing_section_updated', { key, by: gate.admin.email, is_visible: isVisible });
