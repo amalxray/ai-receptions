@@ -18,6 +18,7 @@ import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
+import ClickToPlayVideo from '@/components/public/ClickToPlayVideo';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
 const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
@@ -309,10 +310,10 @@ export function ActivitySpaceChrome({
     d?.body_text === 'small' ? ' text-sm' : d?.body_text === 'large' ? ' text-lg' : ' text-base';
   const headingCls =
     d?.heading === 'small'
-      ? 'text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl'
+      ? 'text-3xl font-extrabold tracking-tight sm:text-4xl'
       : d?.heading === 'large'
-        ? 'text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl'
-        : 'text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl';
+        ? 'text-5xl font-extrabold tracking-tight sm:text-6xl'
+        : 'text-4xl font-extrabold tracking-tight sm:text-5xl';
   const themeTextColor = space.theme?.text_color ?? '#0f172a';
   const linkColor = space.theme?.link_color ?? '#0f766e';
   const uniqueMedia = uniquePublicMediaItems(space.media ?? []);
@@ -384,7 +385,7 @@ export function ActivitySpaceChrome({
   }, []);
 
   return (
-    <div dir="rtl" className={`min-h-screen${bodyScale}`} style={{ backgroundColor: space.theme?.background_color ?? '#f6f8ff', color: themeTextColor }} >
+    <div dir="rtl" className={`public-clinic-page min-h-screen${bodyScale}`} style={{ backgroundColor: '#f8fafc', color: themeTextColor }} >
       {/* Floating wellness blobs + bubbles (calm, reduced-motion safe) */}
       <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-32 right-[-5%] h-[28rem] w-[28rem] rounded-full bg-brand-cyan/15 blur-3xl animate-float-slow" />
@@ -474,7 +475,7 @@ export function ActivitySpaceChrome({
               </p>
             </StaggerReveal>
             <StaggerReveal delay={140}>
-              <h1 className={headingCls}>{displayName}</h1>
+              <h1 className={`${headingCls} bg-gradient-to-l from-cyan-700 via-teal-700 to-emerald-700 bg-clip-text text-transparent`}>{displayName}</h1>
               {space.tagline && <p className="mt-3 text-lg font-medium text-brand-cyan/90">{space.tagline}</p>}
             </StaggerReveal>
             <StaggerReveal delay={200}>
@@ -568,17 +569,12 @@ export function ActivitySpaceChrome({
               {galleryVideos.map((vid, i) => (
                 <div
                   key={`vid-${vid.id || i}`}
-                  className="rounded-2xl overflow-hidden border border-slate-200 bg-black shadow-xl"
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-xl"
                 >
-                  <video
+                  <ClickToPlayVideo
                     src={vid.public_url}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    controls
-                    className="w-full h-80 md:h-[500px] bg-black object-contain"
-                    preload="metadata"
+                    title={vid.title ?? undefined}
+                    className="h-80 w-full md:h-[500px]"
                   />
                   {vid.title && (
                     <p className="p-4 text-base font-semibold text-slate-800 bg-white">{vid.title}</p>

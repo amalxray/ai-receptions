@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { VideoPoster } from '@/components/public/ClickToPlayVideo';
 
 /**
  * CLINIC PUBLIC MEDIA MANAGER — owner upload/preview/reorder/visibility/delete.
@@ -61,6 +62,7 @@ const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
 const IMAGE_SIZE_LIMIT_MB = 25;
 const VIDEO_SIZE_LIMIT_MB = 100;
+const VIDEO_COUNT_LIMIT = 3;
 
 function uploadToSignedUrl(
   signedUrl: string,
@@ -111,6 +113,8 @@ export default function PublicMediaManager() {
   const [uploadCategory, setUploadCategory] = useState<MediaCategory>('clinic');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const videoCount = (items ?? []).filter((item) => item.media_type === 'video').length;
+  const videoLimitReached = videoCount >= VIDEO_COUNT_LIMIT;
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -141,7 +145,11 @@ export default function PublicMediaManager() {
   const uploadFiles = async (files: File[]) => {
     if (!clinicId) return;
     if (files.length === 0) return;
-    const validFiles = files.filter((file) => {
+    if (!items) {
+      setError('جارٍ تحميل الوسائط، حاول مرة أخرى بعد اكتمال التحميل');
+      return;
+    }
+    const withinSizeLimit = files.filter((file) => {
       const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
       return file.size <= limitMb * 1024 * 1024;
     });
@@ -154,8 +162,14 @@ export default function PublicMediaManager() {
         const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
         return `${file.name}: الحد الأقصى ${limitMb}MB`;
       });
+    const requestedVideos = withinSizeLimit.filter((file) => file.type.startsWith('video/'));
+    const allowedVideos = requestedVideos.slice(0, Math.max(0, VIDEO_COUNT_LIMIT - videoCount));
+    const validFiles = withinSizeLimit.filter((file) => !file.type.startsWith('video/')).concat(allowedVideos);
+    if (requestedVideos.length > allowedVideos.length) {
+      failedFiles.push('لقد وصلت للحد الأقصى (3 فيديوهات)');
+    }
     if (validFiles.length === 0) {
-      setError(failedFiles.join('، '));
+      if (failedFiles.length > 0) setError(failedFiles.join('، '));
       return;
     }
     setBusy(true);
@@ -368,7 +382,7 @@ export default function PublicMediaManager() {
           title="اسحب لإعادة الترتيب"
         >
           {item.media_type === 'video' ? (
-            <video src={item.public_url} preload="none" tabIndex={-1} className="pointer-events-none h-full w-full object-contain" />
+            <VideoPoster title={item.title ?? undefined} className="pointer-events-none h-full w-full" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.public_url} alt={item.alt_text || item.title || 'صورة'} className="pointer-events-none h-full w-full object-cover" />
@@ -435,7 +449,7 @@ export default function PublicMediaManager() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h3 className="text-base font-semibold text-slate-800">معرض الصور والوسائط</h3>
       <p className="mt-0.5 text-sm text-slate-500">
-        ارفع صورًا وفيديو تظهر في «معرض الأعمال» بالصفحة العامة. الحد الأقصى 25MB للصور و500MB للفيديو (JPG/PNG/WebP/GIF — MP4/WebM/MOV).
+        ارفع صورًا أو حتى 3 فيديوهات لتظهر في «معرض الأعمال» بالصفحة العامة. الحد الأقصى 25MB للصور و100MB للفيديو (JPG/PNG/WebP/GIF — MP4/WebM/MOV).
       </p>
 
       {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
@@ -494,20 +508,26 @@ export default function PublicMediaManager() {
             }}
           />
         </label>
-        <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50">
-          {busy ? 'جارٍ الرفع…' : '⬆ ارفع فيديو (MP4 أو WebM)'}
-          <input
-            type="file"
-            accept={VIDEO_ACCEPT}
-            disabled={busy}
-            className="sr-only"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void uploadFiles([file]);
-              e.target.value = '';
-            }}
-          />
-        </label>
+        {videoLimitReached ? (
+          <p className="flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-semibold text-amber-800" role="status">
+            لقد وصلت للحد الأقصى (3 فيديوهات)
+          </p>
+        ) : (
+          <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50">
+            {busy ? 'جارٍ الرفع…' : `⬆ ارفع فيديو (${videoCount}/${VIDEO_COUNT_LIMIT})`}
+            <input
+              type="file"
+              accept={VIDEO_ACCEPT}
+              disabled={busy || loading}
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadFiles([file]);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        )}
       </div>
       {uploadProgress !== null && (
         <div className="mt-3" aria-live="polite">

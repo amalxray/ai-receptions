@@ -46,7 +46,7 @@ html {
     /* base gradient */ linear-gradient(180deg, #020617 0%, #0f172a 100%);
 
   /* Typography */
-  --font-body: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-tajawal), var(--font-plex-arabic), ui-sans-serif, system-ui, sans-serif;
   --font-size-base: 1rem;
 }
 
@@ -55,6 +55,13 @@ body {
   @apply min-h-screen text-slate-100 antialiased overflow-x-hidden;
   font-family: var(--font-body);
   background: var(--grad-hero);
+}
+
+/* The public clinic page uses a light, neutral medical surface even though
+   application dashboards retain the platform's dark background. */
+.public-clinic-page {
+  color-scheme: light;
+  background-color: #f8fafc;
 }
 
 * {

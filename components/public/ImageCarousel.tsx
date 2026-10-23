@@ -15,6 +15,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import type { LightboxMedia } from './PublicGalleryLightbox';
+import ClickToPlayVideo, { VideoPoster } from './ClickToPlayVideo';
 
 const SWIPE_THRESHOLD = 60;
 
@@ -54,13 +55,16 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
     exit: (d: number) => ({ opacity: 0, scale: 0.94, x: d > 0 ? -60 : 60 }),
   };
 
-  const renderMedia = (item: LightboxMedia, rounded: string) =>
+  const renderMedia = (item: LightboxMedia, rounded: string, playable = false) =>
     item.media_type === 'video' ? (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video src={item.public_url} controls className={`${rounded} h-full w-full bg-black object-contain`} />
+      playable ? (
+        <ClickToPlayVideo src={item.public_url} title={item.title ?? undefined} className={`${rounded} max-h-[80vh] w-auto`} />
+      ) : (
+        <VideoPoster title={item.title ?? undefined} className={`${rounded} h-full w-full`} />
+      )
     ) : (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={item.public_url} alt={item.alt_text || item.title || 'صورة من المعرض'} className={`${rounded} h-full w-full object-cover`} />
+      <img src={item.public_url} alt={item.alt_text || item.title || 'صورة من المعرض'} className={`${rounded} h-full w-full bg-slate-100 object-contain`} />
     );
 
   return (
@@ -149,7 +153,7 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
                   }}
                   className="flex max-h-full w-full items-center justify-center"
                 >
-                  {renderMedia(current, 'rounded-xl')}
+                  {renderMedia(current, 'rounded-xl', true)}
                 </motion.div>
               </AnimatePresence>
               {count > 1 && (
@@ -165,7 +169,7 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
                       <span className="grid h-full w-full place-items-center bg-slate-800 text-2xl">▶</span>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.public_url} alt="" className="h-full w-full object-cover" />
+                      <img src={item.public_url} alt="" className="h-full w-full bg-slate-100 object-contain" />
                     )}
                   </button>
                 ))}

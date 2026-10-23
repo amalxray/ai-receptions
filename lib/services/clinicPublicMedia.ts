@@ -50,6 +50,9 @@ export type MediaMetaPatch = {
 export const MEDIA_BUCKET = 'clinic-public-media';
 export const MEDIA_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
 export const MEDIA_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+export const MAX_CLINIC_PUBLIC_VIDEOS = 3;
+export const CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE = 'لقد وصلت للحد الأقصى (3 فيديوهات)';
+const VIDEO_LIMIT_DATABASE_ERROR = 'clinic_public_video_limit_reached';
 
 const MEDIA_MIME_MAP: Record<string, { type: MediaType; ext: string }> = {
   'image/jpeg': { type: 'image', ext: '.jpg' },
@@ -107,6 +110,16 @@ export function mediaPublicUrl(path: string): string {
   return `${base}/storage/v1/object/public/${MEDIA_BUCKET}/${path}`;
 }
 
+export async function countClinicPublicVideos(clinicId: string): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from('clinic_public_media')
+    .select('id', { count: 'exact', head: true })
+    .eq('clinic_id', clinicId)
+    .eq('media_type', 'video');
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 export async function listClinicMedia(clinicId: string): Promise<PublicMediaItem[]> {
   const { data, error } = await supabaseAdmin
     .from('clinic_public_media')
@@ -129,6 +142,12 @@ export async function createClinicMedia(
 ): Promise<{ ok: true; item: PublicMediaItem } | { ok: false; message: string }> {
   const validation = validateMediaFile(input.file);
   if ('message' in validation) return validation;
+  if (
+    validation.mediaType === 'video' &&
+    (await countClinicPublicVideos(clinicId)) >= MAX_CLINIC_PUBLIC_VIDEOS
+  ) {
+    return { ok: false, message: CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE };
+  }
   const category = MEDIA_CATEGORIES.includes(input.category as MediaCategory)
     ? (input.category as MediaCategory)
     : 'other';
@@ -160,6 +179,9 @@ export async function createClinicMedia(
   if (error) {
     // Roll back the orphan object so no dangling storage remains.
     await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([path]);
+    if (error.message.includes(VIDEO_LIMIT_DATABASE_ERROR)) {
+      return { ok: false, message: CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE };
+    }
     return { ok: false, message: `تعذر حفظ بيانات الملف: ${error.message}` };
   }
   return { ok: true, item: data as PublicMediaItem };
@@ -214,6 +236,14 @@ export async function createClinicMediaRecordFromUpload(
     return { ok: false, message: 'امتداد الملف لا يطابق نوعه' };
   }
 
+  if (
+    validation.mediaType === 'video' &&
+    (await countClinicPublicVideos(clinicId)) >= MAX_CLINIC_PUBLIC_VIDEOS
+  ) {
+    await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([input.path]);
+    return { ok: false, message: CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE };
+  }
+
   const category = MEDIA_CATEGORIES.includes(input.category as MediaCategory)
     ? (input.category as MediaCategory)
     : 'other';
@@ -235,6 +265,9 @@ export async function createClinicMediaRecordFromUpload(
     .single();
   if (error) {
     await supabaseAdmin.storage.from(MEDIA_BUCKET).remove([input.path]);
+    if (error.message.includes(VIDEO_LIMIT_DATABASE_ERROR)) {
+      return { ok: false, message: CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE };
+    }
     return { ok: false, message: `تعذر حفظ بيانات الملف: ${error.message}` };
   }
   return { ok: true, item: data as PublicMediaItem };
