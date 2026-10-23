@@ -14,12 +14,17 @@ import InstallPWA from '@/components/pwa/InstallPWA';
  *
  * This surface must render the same dynamic activity-space content as the
  * canonical public route so the saved theme and media values are reflected in
- * the served HTML instead of hardcoded legacy styling.
+ * the served HTML instead of hardcoded legacy styling. Cache the HTML for a
+ * short window so compatibility links do not rebuild the full page each visit.
  */
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
+export const revalidate = 30;
 
 export type ClinicPublicPageProps = { params: { slug: string } };
+
+/** Build compatibility pages on first visit and cache each slug independently. */
+export async function generateStaticParams(): Promise<ClinicPublicPageProps['params'][]> {
+  return [];
+}
 
 const loadSpace = requestCache(getActivityPublicSpace);
 

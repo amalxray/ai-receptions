@@ -33,21 +33,31 @@ import QuickClinicChat from '@/components/public/QuickClinicChat';
  * Domain catalogs (imaging_services/lab_services) are additive & tenant-scoped.
  */
 
-export const revalidate = 0;
+/**
+ * Public tenant profiles change occasionally and are slow to assemble from
+ * several database reads. Serve cached HTML and refresh it at most every
+ * 30 seconds, matching the platform landing page's freshness window.
+ */
+export const revalidate = 30;
 
 export type ActivitySpacePageProps = { params: { slug: string } };
+
+/** Build tenant pages on first visit and cache each slug independently. */
+export async function generateStaticParams(): Promise<ActivitySpacePageProps['params'][]> {
+  return [];
+}
 
 /**
  * Request-scoped memoization (`lib/server/requestCache`) — `generateMetadata`,
  * `generateViewport` and the page render in ONE request, and the space costs
- * several queries. Without it the resolver runs three times per visit (the module
- * is `force-no-store`, so nothing else dedupes it).
+ * several queries. Without it the resolver runs three times while generating a
+ * page, even though the generated HTML is cached between visits.
  */
 const loadSpace = requestCache(getActivityPublicSpace);
 
 /**
  * PHASE 2 — reviews (stats + latest items) memoized for ONE request; the
- * service itself keeps a 5-min TTL cache, so ISR (revalidate=60) stays cheap.
+ * service itself keeps a 5-min TTL cache, so ISR (revalidate=30) stays cheap.
  */
 const loadReviews = requestCache(async (clinicId: string) => {
   const [stats, items] = await Promise.all([
