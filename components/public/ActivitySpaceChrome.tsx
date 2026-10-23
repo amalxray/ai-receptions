@@ -2,6 +2,8 @@
 
 import { Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
+import { motion } from 'framer-motion';
+import { CalendarCheck } from 'lucide-react';
 import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
@@ -298,8 +300,6 @@ export function ActivitySpaceChrome({
   const locationBits = [space.city, space.area].filter(Boolean) as string[];
   const hasAddress = Boolean(space.address);
   const displayHeadline = displayPublicClinicName(headline, space.activityType);
-  // Rebrand: «اطلب خدمة» → «احجز موعد» (revert: space.activityType === 'clinic' ? 'احجز موعدًا' : 'اطلب خدمة')
-  const ctaLabel = space.activityType === 'clinic' ? 'احجز موعدًا' : 'احجز موعد';
   /** Section visibility toggle (default: visible when unset) — owner-controlled. */
   const on = (key: string) => space.sections?.[key] !== false;
   const showBooking = on('bookingCta');
@@ -479,19 +479,23 @@ export function ActivitySpaceChrome({
             <StaggerReveal delay={320}>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 {showBooking && (
-                  <a
+                  <motion.a
                     href={space.bookingUrl}
-                    className="inline-flex items-center justify-center rounded-full bg-brand-cyan px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-cyan/25 transition hover:-translate-y-0.5 hover:bg-brand-cyan/90 active:translate-y-0"
-                    style={{
-                      backgroundColor: space.theme?.primary_color,
-                      borderRadius: themeRadius(space.theme?.button_shape),
-                      padding: `${themePadSize(space.theme?.button_size).py}px ${themePadSize(space.theme?.button_size).px}px`,
-                      fontSize: themePadSize(space.theme?.button_size).fontSize,
-                      boxShadow: space.theme?.button_shadow === false ? 'none' : undefined,
+                    animate={{
+                      boxShadow: [
+                        '0 0 20px rgba(34,211,238,0.4)',
+                        '0 0 40px rgba(34,211,238,0.8)',
+                        '0 0 20px rgba(34,211,238,0.4)',
+                      ],
                     }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    whileHover={{ scale: 1.05, boxShadow: '0 0 50px rgba(34,211,238,0.9)' }}
+                    whileTap={{ scale: 0.98 }}
+                    className="inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-l from-cyan-500 via-emerald-400 to-cyan-500 px-8 py-4 text-lg font-black text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-transform hover:scale-105 hover:shadow-[0_0_50px_rgba(34,211,238,0.9)]"
                   >
-                    {ctaLabel}
-                  </a>
+                    <CalendarCheck className="h-5 w-5" aria-hidden="true" />
+                    احجز الآن ⚡
+                  </motion.a>
                 )}
                 {showAi && (
                   <button
