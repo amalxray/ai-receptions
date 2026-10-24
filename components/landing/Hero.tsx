@@ -260,8 +260,8 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
                 className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm"
               >
                 <div className="text-2xl font-black text-slate-900 md:text-3xl">
-                  {/^[0-9]/.test(s.value) ? <NumberTicker value={parseInt(s.value, 10) || 0} /> : s.value}
-                  {s.value === '24/7' ? '/7' : s.value.includes('%') ? '%' : s.value === '<3s' ? 's' : ''}
+                  {/^[0-9]/.test(s.value) ? <NumberTicker value={parseInt(s.value, 10) || 0} startValue={parseInt(s.value, 10) || 0} /> : s.value}
+                  {s.value === '24/7' ? '/7' : s.value.endsWith('%') ? '%' : ''}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">{s.label}</div>
               </motion.div>
