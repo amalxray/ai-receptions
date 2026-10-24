@@ -326,17 +326,7 @@ export function ClinicAds() {
     return <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-16 lg:py-20"><div className="mx-auto max-w-6xl px-4 animate-pulse"><div className="h-64 rounded-3xl bg-slate-200" /></div></section>;
   }
 
-  if (error || ads.length === 0) {
-    return (
-      <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-16 lg:py-20">
-        <div className="mx-auto max-w-3xl px-4 text-center">
-          <p className="text-4xl">📢</p>
-          <h2 className="mt-4 font-heading text-2xl font-black text-landing-text">لا توجد إعلانات متاحة حالياً</h2>
-          <p className="mt-2 text-sm text-landing-text/60">سيظهر هنا عرض العيادة عند إضافته.</p>
-        </div>
-      </section>
-    );
-  }
+  if (error || ads.length === 0) return null;
 
   return (
     <section id="clinic-ads" className="relative isolate overflow-hidden bg-[#FAFBFC] py-20 lg:py-28">

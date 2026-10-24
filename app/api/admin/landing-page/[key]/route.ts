@@ -7,7 +7,8 @@ import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColo
 
 const ALLOWED_KEYS = new Set([
   'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
-  'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'footer', 'urgency_bar', 'seo', 'colors', 'site_identity',
+  'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'results', 'imaging', 'clinic_ads', 'lead_form',
+  'footer', 'urgency_bar', 'seo', 'colors', 'site_identity',
 ]);
 
 /** GET /api/admin/landing-page/[key] — one section (null content = static default). */
@@ -70,7 +71,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
       const current = await getLandingSection(key);
       await upsertLandingSection(
         key,
-        hasContent ? content : current?.content ?? null,
+        hasContent ? content : current?.content ?? {},
         gate.admin.user_id,
         isVisible ?? current?.is_visible ?? true,
       );

@@ -25,7 +25,7 @@ type LandingPageProps = {
   sectionOrder?: string[];
 };
 
-const DEFAULT_SECTION_ORDER = ['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'footer'];
+const DEFAULT_SECTION_ORDER = ['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'results', 'imaging', 'clinic_ads', 'lead_form', 'footer'];
 
 function SocialProof() {
   return (
@@ -96,6 +96,10 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
       />
     ),
     cta: <FinalCTASection key="cta" />,
+    results: <ResultsSection key="results" />,
+    imaging: <Imaging key="imaging" />,
+    clinic_ads: <ClinicAds key="clinic_ads" />,
+    lead_form: <LeadForm key="lead_form" />,
     footer: <LandingFooter key="footer" />,
   };
 
@@ -105,18 +109,11 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
       {!hiddenSections.has('urgency_bar') && <UrgencyBar />}
       <main className="bg-landing-bg text-landing-text">
         {orderedSections
-          .filter((key) => key in sectionMap && key !== 'footer' && !hiddenSections.has(key))
+          .filter((key) => key in sectionMap && !hiddenSections.has(key))
           .map((key) => (
             <div key={key}>{sectionMap[key]}</div>
           ))}
-
-        <ResultsSection />
-        <Imaging />
-        <ClinicAds />
-        <LeadForm />
       </main>
-
-      {orderedSections.includes('footer') && !hiddenSections.has('footer') && <LandingFooter />}
 
 
       {/* Floating action button (FAB) — bottom-left in RTL */}
