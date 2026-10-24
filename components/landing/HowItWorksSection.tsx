@@ -1,6 +1,5 @@
 ﻿'use client';
 
-import Link from 'next/link';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
 import { MessageCircle, Bot, CalendarCheck, type LucideIcon } from 'lucide-react';
@@ -91,9 +90,9 @@ export default function HowItWorksSection() {
         <BlurFade delay={0.4} inView>
           <div className="mt-16 flex justify-center">
             <Magnetic>
-              <Link href="/register" aria-label="ابدأ الآن مجاناً">
+              <a href="mailto:support@ai-receptions.com?subject=%D8%A7%D8%B4%D8%AA%D8%B1%D8%A7%D9%83%20%D9%81%D9%8A%20AI-Receptions" target="_blank" rel="noopener noreferrer" aria-label="ابدأ الآن مجاناً">
                 <ShimmerButton className="px-8 py-4 text-lg">ابدأ الآن مجاناً</ShimmerButton>
-              </Link>
+              </a>
             </Magnetic>
           </div>
         </BlurFade>

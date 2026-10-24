@@ -9,6 +9,8 @@ import { ShimmerButton } from '@/components/ui/shimmer-button';
 import { ShineBorder } from '@/components/ui/shine-border';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 
+const SUBSCRIBE_MAILTO = 'mailto:support@ai-receptions.com?subject=%D8%A7%D8%B4%D8%AA%D8%B1%D8%A7%D9%83%20%D9%81%D9%8A%20AI-Receptions';
+
 /**
  * Public pricing grid — v2 catalog (USD).
  *
@@ -112,9 +114,9 @@ export default function PricingSection() {
                   ))}
                 </ul>
                 <Magnetic>
-                  <Link href={`/register?plan=${planIdFor(tier.id, interval)}`} className="block">
+                  <a href={SUBSCRIBE_MAILTO} target="_blank" rel="noopener noreferrer" className="block">
                     <ShimmerButton style={{ background: tier.highlighted ? 'linear-gradient(90deg, var(--landing-primary), var(--landing-secondary))' : 'var(--landing-cta)' }} className={`w-full py-4 text-lg transition hover:scale-[1.02] hover:shadow-[0_0_22px_rgba(139,92,246,0.25)] motion-reduce:transform-none motion-reduce:transition-none ${tier.highlighted ? 'animate-pulse motion-reduce:animate-none' : ''}`}>{tier.buttonText}</ShimmerButton>
-                  </Link>
+                  </a>
                 </Magnetic>
               </div>
             </BlurFade>
@@ -132,9 +134,4 @@ export default function PricingSection() {
       </div>
     </section>
   );
-}
-
-/** Plan id sent to the register flow for the selected billing interval. */
-function planIdFor(tierId: string, interval: Interval): string {
-  return interval === 'year' ? `${tierId}_yearly` : tierId;
 }
