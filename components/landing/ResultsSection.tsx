@@ -1,8 +1,7 @@
 'use client';
 
 import { BlurFade } from '@/components/ui/blur-fade';
-import { motion, useInView } from 'framer-motion';
-import { useRef, useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Clock, Star, type LucideIcon } from 'lucide-react';
 
 /**
@@ -57,33 +56,8 @@ const RESULTS: Result[] = [
 ];
 
 export default function ResultsSection() {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { amount: 0.3, once: true });
-  const [counts, setCounts] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    if (!isInView) return;
-    const timers: ReturnType<typeof setInterval>[] = [];
-    RESULTS.forEach((item) => {
-      const key = item.label;
-      const target = item.value;
-      let current = 0;
-      const step = target / 60; // animar en ~60 frames
-      const timer = setInterval(() => {
-        current += step;
-        if (current >= target) {
-          current = target;
-          clearInterval(timer);
-        }
-        setCounts((prev) => ({ ...prev, [key]: current }));
-      }, 16);
-      timers.push(timer);
-    });
-    return () => timers.forEach((t) => clearInterval(t));
-  }, [isInView]);
-
   return (
-    <section ref={ref} className="relative overflow-hidden bg-slate-950 py-24 text-white">
+    <section id="results" className="relative overflow-hidden bg-slate-950 py-24 text-white">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div className="absolute left-[18%] top-[20%] h-72 w-72 rounded-full bg-blue-500/15 blur-[120px]" />
         <div className="absolute bottom-[10%] right-[18%] h-72 w-72 rounded-full bg-violet-600/20 blur-[120px]" />
@@ -118,7 +92,7 @@ export default function ResultsSection() {
                 >
                   {item.prefix}
                   {Number.isInteger(item.value)
-                    ? counts[item.label]?.toFixed(0) ?? 0
+                    ? item.value.toFixed(0)
                     : item.value.toFixed(1)}
                   <span>{item.suffix}</span>
                 </div>

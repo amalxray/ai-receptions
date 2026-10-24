@@ -34,6 +34,10 @@ export const LANDING_SECTION_KEYS = [
   'testimonials',
   'gallery',
   'cta',
+  'results',
+  'imaging',
+  'clinic_ads',
+  'lead_form',
   'footer',
   'urgency_bar',
   'seo',
@@ -72,6 +76,10 @@ const ARABIC_LABELS: Record<string, string> = {
   testimonials: 'آراء الأطباء',
   gallery: 'معرض الصور 🖼️',
   cta: 'الدعوة النهائية لاتخاذ إجراء',
+  results: 'النتائج',
+  imaging: 'الأشعة والملف الطبي',
+  clinic_ads: 'إعلانات العيادات',
+  lead_form: 'نموذج التواصل',
   footer: 'تذييل الصفحة',
   urgency_bar: 'شريط العرض العاجل',
   seo: 'إعدادات SEO',
@@ -176,8 +184,19 @@ export async function getLandingPageOrder(): Promise<string[]> {
     const saved = (data ?? [])
       .map((row) => String(row.section_key))
       .filter((key) => LANDING_SECTION_KEYS.includes(key as LandingSectionKey));
+    const completeOrder = Array.from(new Set(saved));
 
-    return Array.from(new Set([...saved, ...LANDING_SECTION_KEYS]));
+    // Keep existing editor order while inserting newly supported sections
+    // before their next default-order neighbor (for example, before footer).
+    LANDING_SECTION_KEYS.forEach((key, index) => {
+      if (completeOrder.includes(key)) return;
+      const nextKey = LANDING_SECTION_KEYS.slice(index + 1).find((candidate) => completeOrder.includes(candidate));
+      const insertAt = nextKey ? completeOrder.indexOf(nextKey) : -1;
+      if (insertAt === -1) completeOrder.push(key);
+      else completeOrder.splice(insertAt, 0, key);
+    });
+
+    return completeOrder;
   } catch {
     return [...LANDING_SECTION_KEYS];
   }

@@ -374,7 +374,7 @@ export const landingCopy = {
   },
 
   footer: {
-    copyright: 'AI-Receptions © الجديد — كل الحقوق محفوظة',
+    copyright: 'AI-Receptions © 2026 — كل الحقوق محفوظة',
     fabTooltip: 'احكي معنا الآن',
   },
 };
