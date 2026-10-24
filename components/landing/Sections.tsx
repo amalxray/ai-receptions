@@ -488,6 +488,33 @@ const PATIENT_FILE_HOTSPOTS = [
   { id: 'tooth', x: '76%', y: '66%', title: 'تفاصيل السن', description: 'حالة كل سن، العلاجات السابقة، والملاحظات السريرية في مكان واحد.' },
 ];
 
+function DentalXrayIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="mx-auto h-7 w-7 text-landing-indigo"
+      viewBox="0 0 32 32"
+      fill="none"
+    >
+      <path
+        d="M8 7.5c2-2.2 4.6-2 8-.7 3.4-1.3 6-1.5 8 .7 1.7 1.9 1.1 5.1-.1 8.5-.9 2.7-1.7 7-3.5 7-1.5 0-1.1-7.3-4.4-7.3s-2.9 7.3-4.4 7.3c-1.8 0-2.6-4.3-3.5-7C6.9 12.6 6.3 9.4 8 7.5Z"
+        fill="currentColor"
+        fillOpacity="0.12"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="m4.3 8.2 1.9.9M3.7 14h2M25.8 9.1l1.9-.9m-1.3 5.8h2"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
 export function Imaging() {
   const copy = useLandingCopy();
   const [tab, setTab] = useState(0);
@@ -610,7 +637,7 @@ export function Imaging() {
               variants={staggerItem}
               className="rounded-2xl border border-landing-indigo/10 bg-white p-5 text-center shadow-sm"
             >
-              <span className="text-2xl">🩻</span>
+              <DentalXrayIcon />
               <p className="mt-2 text-sm font-semibold text-landing-text">{feature}</p>
             </motion.div>
           ))}
