@@ -223,23 +223,23 @@ export const landingCopy = {
 
   pricing: {
     title: 'اختر الخطة التي تناسب نمو عيادتك',
-    badge: '🔒 الأعضاء المؤسسون • مقاعد محدودة فعلياً',
-    highlightedLabel: '⭐ الأعضاء المؤسسون',
+    badge: 'خطط واضحة تناسب حجم عملك',
+    highlightedLabel: '⭐ مناسبة للعيادات',
     monthlyLabel: 'شهري',
     yearlyLabel: 'سنوي (شهران مجاناً)',
     trialTitle: 'جرّب 30 يوماً مجاناً',
-    trialDescription: 'كل ميزات "متقدمة" — بدون بطاقة ائتمانية',
+    trialDescription: 'كل ميزات المنصة — بدون بطاقة ائتمانية',
     trialCta: 'ابدأ الآن',
-    footerText: 'تبدأ بالتجربة المجانية 30 يوماً بكل ميزات المتقدمة.',
+    footerText: 'تبدأ بالتجربة المجانية 30 يوماً بكل ميزات المنصة.',
     footerLinkText: 'ابدأ التجربة المجانية',
     tiers: [
-      { id: 'basic', title: 'أساسية', monthly: '$39', yearly: '$399', note: 'عيادة واحدة — للممارسة الفردية', features: ['عيادة واحدة', 'حتى 500 مريض', 'مستخدم واحد', 'محادثات AI غير محدودة'], highlighted: false, buttonText: 'اشترك الآن 🚀' },
-      { id: 'advanced', title: 'الأعضاء المؤسسون', monthly: '$69', yearly: '$699', note: 'مقاعد محدودة فعلياً • السعر يبقى لك للأبد', features: ['عيادات متعددة', 'مرضى غير محدود', '4 مستخدمين', 'فواتير ومدفوعات', 'واتساب + إشعارات', 'تقارير'], highlighted: true, buttonText: 'اشترك الآن 🚀' },
-      { id: 'center', title: 'مركز', monthly: '$119', yearly: '$1199', note: 'لمراكز الأشعة والمختبرات والسلاسل', features: ['عيادات غير محدودة', '10 مستخدمين', 'قبل/بعد Gallery', 'شارات إنجازات', 'تحليلات متقدمة', 'أولوية الدعم'], highlighted: false, buttonText: 'اشترك الآن 🚀' },
+      { id: 'basic', title: 'طبيب', monthly: '$39', yearly: '$399', note: 'عيادة واحدة، طبيب واحد، كل الميزات', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'صفحة عامة ومراجعات', 'CRM وإدارة مالية', 'Google Calendar والتنبيهات'], highlighted: false, buttonText: 'اشترك الآن 🚀' },
+      { id: 'advanced', title: 'عيادة', monthly: '$69', yearly: '$699', note: 'عيادة واحدة، حتى 3 أطباء، كل الميزات', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'صفحة عامة ومراجعات', 'CRM وإدارة مالية', 'Google Calendar والتنبيهات'], highlighted: true, buttonText: 'اشترك الآن 🚀' },
+      { id: 'center', title: 'مركز', monthly: '$119', yearly: '$1199', note: 'عيادات متعددة، أطباء غير محدودين، أولوية Ask', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'صفحة عامة ومراجعات', 'CRM وإدارة مالية', 'Google Calendar والتنبيهات'], highlighted: false, buttonText: 'اشترك الآن 🚀' },
     ],
     /** Yearly discount honoured by every paid tier (2 months free). */
-    yearlyNote: 'أسعار بالدولار الأمريكي • لا تحتاج إلى التزام سريع • السعر يبقى لك للأبد إذا سجلت مبكراً',
-    trialNote: 'جرّب 30 يوماً مجاناً • كل ميزات المتقدمة — بدون بطاقة',
+    yearlyNote: 'أسعار بالدولار الأمريكي • جرّب المنصة 30 يوماً مجاناً',
+    trialNote: 'جرّب 30 يوماً مجاناً • كل ميزات المنصة — بدون بطاقة',
     slotsRemaining: '⏳ باقي',
     slotsSuffix: 'مكان بس من أصل 100',
     featuresTable: [
