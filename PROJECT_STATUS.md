@@ -1,6 +1,69 @@
 # Project Status
 
-_This file is being updated as part of the Clinic Registration & Authentication Verification task and the AI-Receptions Landing Page build._
+_Chronological project status. The latest verified release update is recorded first; older sections below are historical snapshots._
+
+## 2026-10-25 — Active plan IDs unified (Option A)
+
+- The owner manually applied `db/migrations/20261025_unify_active_plans.sql`; result: **Success. No rows returned**.
+- Verification `SELECT` returned **8 rows** with the expected state: `basic`, `advanced`, and `center` are active and public; `solo_39`, `clinic_69`, and `center_119` are inactive and non-public.
+- Live subscriptions (`founding` ×2 and `center` ×1) were not modified. `founding` and `limited` remain unchanged; no plan rows were deleted.
+- Owner decision: `founding` remains visible in the UI despite `is_public = false`.
+- Follow-up review: one active `founding` subscription has `billing_status = yearly`, while the `founding` catalog row is monthly. This discrepancy is recorded for later review and was not addressed here.
+- Separate monitoring item: Supabase displayed the warning **"Organization exceeded its quota in the previous billing cycle. Projects will be restricted from 21 Nov, 2026..."**. Monitor the organization quota; no quota changes were made here.
+
+## 2026-10-25 — PR #187: Legal pages and legacy-plan sync
+
+### Release record
+
+| Item | Status | Evidence / details |
+|---|---|---|
+| `/terms` | ✅ Complete and production checked | Added Arabic service terms with entity `AI-Receptions`, address `فلسطين - نابلس`, and `support@ai-receptions.com`. Direct production request returned HTTP 200. |
+| `/privacy` | ✅ Complete and production checked | Added Arabic privacy policy with a section titled `المسؤول عن البيانات` and the same entity/contact details. Direct production request returned HTTP 200. |
+| Landing footer links | ✅ Complete and production checked | Homepage footer links to `/terms` and `/privacy`; both hrefs were present in the production page. |
+| Legacy-plan migration | ✅ Applied manually; result verified | `db/migrations/20261025_sync_legacy_plans.sql` updates `advanced` to Clinic / 3 users / 6900 / ask_boost 0 and `center` to Center / unlimited users / 11900 / ask_boost 1. The verification query filtered to those two IDs returned `migration_ok = true` for both. No plan rows are deleted. |
+| PR and commits | ✅ Merged | [PR #187](https://github.com/amalxray/ai-receptions/pull/187). Feature commit: `6d7a7c3`; merge commit on `main`: `07b74ad`. |
+| Vercel deployment | ✅ Ready | Vercel Preview passed; Vercel Production is Ready for commit `07b74ad`. |
+| Production build | ✅ PASS | `npm run build` completed with exit code 0 after the legal entity details were added. |
+| Automated test suite | ❌ Run 2026-10-25; failures recorded below | `npm test -- --run`: 250 test files passed, 21 failed; 2,769 tests passed, 70 failed, 1 skipped (2,840 total). No failures were changed. |
+
+### Remaining work
+
+| Task | Status | Notes |
+|---|---|---|
+| Old `/ask` legal links | 🟡 Local correction complete; production pending | The `/ask` footer and homepage security card now link to `/terms` and `/privacy`; `/ask/terms` and `/ask/privacy` remain as permanent redirects. The CMS security-card override is normalized in application code. These changes have not been deployed. The sitemap still emits the legacy aliases, and a historical seed migration still contains `/ask/privacy`; both references were retained. |
+| Production link verification | ⏳ Pending approved deployment | After an approved deployment, verify the `/ask` footer, CMS-backed homepage security link, and permanent redirects. Production was not changed by this task. |
+| Billing-plan counts | ✅ Read-only count completed; expected policy needs confirmation | Production has 15 rows total, 9 active, 10 public, and 7 both active and public. The seven active/public IDs are `free_trial`, `solo_39`, `clinic_69`, `center_119`, `basic_yearly`, `advanced_yearly`, and `center_yearly`. The two `migration_ok` rows are only the checked legacy IDs, not the whole catalog. Confirm that this active/public set is intended. |
+| Pricing/catalog IDs | ⏳ Owner decision and reconciliation required | Landing copy and checkout schema use `basic` / `advanced` / `center` plus their yearly IDs. The active monthly DB catalog instead uses `solo_39` / `clinic_69` / `center_119`; `canonicalCatalogPlanId` does not map these new IDs to the old IDs. No pricing or plan logic was changed. Confirm intended checkout IDs and annual counterparts before changing code. |
+| Legal review | ⏳ Required | Legal review remains necessary for processor/vendor names, data-processing locations, retention periods, and governing law/jurisdiction. |
+| Migration history | ✅ Manual application documented | `db/migrations/APPLIED_MIGRATIONS.md` records the user-confirmed manual application date and `migration_ok = true` for `advanced` and `center`; the SQL migration itself was not edited. |
+| Test failures | ⏳ Reported; fixes await review | The full suite has 70 failures across 21 files; details are listed below. A failure also reports that `privacy` and `terms` are missing from `RESERVED_PUBLIC_SLUGS`; review the route-reservation behavior before addressing it. |
+
+### Post-PR #187 audit — 2026-10-25
+
+#### Legacy legal references found
+
+- `components/ask/AskFooter.tsx` and `lib/landing/landing-copy.ts` contained the old links and now point to the canonical pages.
+- `app/ask/terms/page.tsx` and `app/ask/privacy/page.tsx` remain in place and permanently redirect to the canonical pages; they were not deleted.
+- `app/sitemap.ts` generates `/ask/terms` and `/ask/privacy` aliases. The aliases remain valid through redirects; sitemap cleanup can be considered separately.
+- `db/migrations/20261005_sync_landing_section_editor_defaults.sql` contains a historical `/ask/privacy` seed value and was not edited.
+- The current production CMS override still required code-level normalization; the local implementation is not live until an approved deployment.
+
+#### Full test run
+
+Command: `npm test -- --run` on 2026-10-25. Result: **271 files, 250 passed, 21 failed; 2,769 tests passed, 70 failed, 1 skipped (2,840 total).** No failing tests were repaired.
+
+Failed files: `tests/unit/orchestrator.test.ts`, `tests/unit/promptManager.test.ts`, `app/api/public/ai/messages/route.test.ts`, `tests/unit/nav-bento-n29.test.ts`, `tests/unit/appointment-reschedule-b52.test.ts`, `tests/unit/booking-communications.test.ts`, `tests/unit/invoice-service-id-b50.test.ts`, `tests/unit/tenant-subdomains.test.ts`, `tests/unit/availability-receptionist.test.ts`, `tests/unit/service-catalog-activity-routing.test.ts`, `tests/unit/clinic-catalog-api.test.ts`, `tests/unit/booking-form-google-sync.test.ts`, `tests/unit/google-calendar-oauth.test.ts`, `tests/unit/database-audit.test.ts`, `tests/integration/knowledge-upload.test.ts`, `tests/unit/production-readiness-gate.test.ts`, `tests/unit/tenant-dashboard-routing.test.ts`, `tests/unit/supabase-config-gating-contract.test.ts`, `tests/integration/knowledge-document-actions.test.ts`, `tests/unit/services-pricing.test.ts`, and `tests/unit/global-receptionist-avatar.test.ts`.
+
+Observed failure themes include changed prompt/booking text expectations, mocked Supabase query/API mismatches, service/catalog endpoints returning 500 instead of expected success, static-route reservation expectations, dashboard module registration, and migration-sequence/readiness assertions. See the test output for per-test assertions. These failures were not attributed to this task without further investigation.
+
+This entry records the state confirmed on 2026-10-25. The `migration_ok` result applies only to `advanced` and `center`, not to the full billing-plan catalog.
+
+## 2026-10-25 — Reserved static slugs follow-up
+
+- Added `privacy`, `terms`, `test-ai-analysis`, `test-detect`, and `ui-lab` to `RESERVED_PUBLIC_SLUGS` in `lib/services/activityTypes.ts`; existing values and their order were preserved.
+- Owner confirmed that `privacy` and `terms` are canonical legal pages, and that `test-ai-analysis`, `test-detect`, and `ui-lab` are experimental and unofficial.
+- Focused verification: `npm test -- --run tests/unit/tenant-subdomains.test.ts` passed (**1 file, 22 tests**).
+- Remaining before final launch: **إخفاء/حماية الصفحات التجريبية (ui-lab, test-*) عن العامة قبل الإطلاق النهائي** — not addressed here.
 
 ## 2026-10-10 — Roadmap reconciliation + Google Calendar local verification
 
@@ -633,3 +696,14 @@ or remediation is planned for this issue at this time.
    - **مستأجر تجريبي** (عيادة/مركز وهمي) بدل بيانات عميل حقيقي.
 3. توكن **Supabase Management API** في `.env.local` غير مُصرَّح (يعيد `401 Unauthorized`) → مسار «تنفيذ SQL» غير متاح حالياً.
 4. أي كتابة إنتاجية لأغراض الاختبار = **موافقة صريحة مسبقة** من المالك.
+
+---
+
+## 🧪 حالة تصنيف الاختبارات — 2026-10-25
+
+- اختبارات النطاق (`tenant-subdomains`, `activity-space`, `seo-foundations`, `seo-phase-5`): **42/42 ناجحة**.
+- لم يظهر أي فشل مرتبط بتغييرات PR #187 أو توحيد الخطط أو تغييرات sitemap/robots/noindex.
+- رُصدت **34 حالة فشل** في التشغيل الجزئي؛ صُنّفت جميعها **غير محددة** لعدم توفر دليل يثبت أنها جديدة أو baseline.
+- الأسباب الظاهرة: كود AI (`orchestrator`, `promptManager`, `messages`)، كود UI (`nav-bento`, `appointment-reschedule`)، mock DB ناقص (`booking-communications`)، ونص مصدر قديم (`invoice-service-id`).
+- لم يُجرَ إصلاح ضمن هذا النطاق؛ تُسجّل الإخفاقات كدين تقني لاحق.
+- لم تكتمل **هذه المحاولة** لتشغيل مجموعة الاختبارات؛ أُوقفت بعد ظهور الإخفاقات، لذا أرقامها جزئية، وهي منفصلة عن سجل التشغيل الكامل الموثق أعلاه.
