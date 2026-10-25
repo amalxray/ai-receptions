@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     const path = `clinic/${clinicId}/public-content/${randomUUID()}${validation.ext}`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from(MEDIA_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false });
+      .upload(path, file, { cacheControl: '31536000', contentType: file.type, upsert: false });
     if (uploadError) {
       logEvent('public_content_upload_error', { clinicId, error: uploadError.message }, 'error');
       return NextResponse.json({ error: `تعذر رفع الملف إلى التخزين: ${uploadError.message}` }, { status: 500 });

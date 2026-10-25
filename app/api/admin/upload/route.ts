@@ -9,7 +9,7 @@ const MIME_EXT: Record<string, string> = {
   'image/webp': '.webp',
   'image/gif': '.gif',
 };
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024;
 
 /** POST /api/admin/upload — multipart file → public bucket, returns url. */
 export async function POST(req: Request) {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const path = `platform/ask/${randomUUID()}${ext}`;
     const { error: upErr } = await supabaseAdmin.storage
       .from('clinic-public-media')
-      .upload(path, file, { contentType: file.type ?? 'application/octet-stream', upsert: false });
+      .upload(path, file, { cacheControl: '31536000', contentType: file.type ?? 'application/octet-stream', upsert: false });
     if (upErr) return NextResponse.json({ error: `upload failed: ${upErr.message}` }, { status: 400 });
     const publicUrl = `https://ixlsrurenboseoelwixs.supabase.co/storage/v1/object/public/clinic-public-media/${path}`;
     return NextResponse.json({ data: { url: publicUrl, path } }, { status: 201 });

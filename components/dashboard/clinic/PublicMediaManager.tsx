@@ -20,6 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { VideoPoster } from '@/components/public/ClickToPlayVideo';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 /**
  * CLINIC PUBLIC MEDIA MANAGER — owner upload/preview/reorder/visibility/delete.
@@ -60,7 +61,7 @@ type MediaItem = {
 
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
-const IMAGE_SIZE_LIMIT_MB = 25;
+const IMAGE_SIZE_LIMIT_MB = 5;
 const VIDEO_SIZE_LIMIT_MB = 100;
 const VIDEO_COUNT_LIMIT = 3;
 
@@ -72,7 +73,7 @@ function uploadToSignedUrl(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const body = new FormData();
-    body.append('cacheControl', '3600');
+    body.append('cacheControl', '31536000');
     body.append('', file);
 
     xhr.open('PUT', signedUrl);
@@ -149,11 +150,14 @@ export default function PublicMediaManager() {
       setError('جارٍ تحميل الوسائط، حاول مرة أخرى بعد اكتمال التحميل');
       return;
     }
-    const withinSizeLimit = files.filter((file) => {
+    const preparedFiles = await Promise.all(
+      files.map((file) => file.type.startsWith('image/') ? optimizeImageForUpload(file) : file)
+    );
+    const withinSizeLimit = preparedFiles.filter((file) => {
       const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
       return file.size <= limitMb * 1024 * 1024;
     });
-    const failedFiles = files
+    const failedFiles = preparedFiles
       .filter((file) => {
         const limitMb = file.type.startsWith('video/') ? VIDEO_SIZE_LIMIT_MB : IMAGE_SIZE_LIMIT_MB;
         return file.size > limitMb * 1024 * 1024;
@@ -385,7 +389,7 @@ export default function PublicMediaManager() {
             <VideoPoster title={item.title ?? undefined} className="pointer-events-none h-full w-full" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.public_url} alt={item.alt_text || item.title || 'صورة'} className="pointer-events-none h-full w-full object-cover" />
+            <img src={item.public_url} alt={item.alt_text || item.title || 'صورة'} loading="lazy" className="pointer-events-none h-full w-full object-cover" />
           )}
           <span className="pointer-events-none absolute top-2 left-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
             ⠿ {index + 1}

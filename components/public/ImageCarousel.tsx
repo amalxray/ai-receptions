@@ -64,7 +64,7 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
       )
     ) : (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={item.public_url} alt={item.alt_text || item.title || 'صورة من المعرض'} className={`${rounded} h-full w-full bg-slate-100 object-contain`} />
+      <img src={item.public_url} alt={item.alt_text || item.title || 'صورة من المعرض'} loading="lazy" className={`${rounded} h-full w-full bg-slate-100 object-contain`} />
     );
 
   return (
@@ -169,7 +169,7 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
                       <span className="grid h-full w-full place-items-center bg-slate-800 text-2xl">▶</span>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.public_url} alt="" className="h-full w-full bg-slate-100 object-contain" />
+                      <img src={item.public_url} alt="" loading="lazy" className="h-full w-full bg-slate-100 object-contain" />
                     )}
                   </button>
                 ))}

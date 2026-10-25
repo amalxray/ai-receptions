@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
 import PanoramaAiAnalysis from '@/components/dashboard/patients/PanoramaAiAnalysis';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 export type MedicalFileRow = {
   id: string;
@@ -290,15 +291,20 @@ export default function PatientMedicalFilesTab({
   const handleSmartUpload = async (file: File, overrideCategory?: MedicalCategory) => {
     if (!file || !clinicId || !patientId) return;
 
-    const mimeType = file.type || inferMimeFromFilename(file.name);
-    const selectedCategory = overrideCategory ?? detectFileCategory(file.type, file.name, mimeType);
-    const selectedFileType = resolveUploadFileType(selectedCategory, file.name, mimeType);
+    const originalMimeType = file.type || inferMimeFromFilename(file.name);
+    const detectedCategory = detectFileCategory(file.type, file.name, originalMimeType);
+    const selectedCategory = overrideCategory ?? detectedCategory;
+    const preservesRadiologySource = ['panorama', 'cbct', 'dicom'].includes(detectedCategory)
+      || ['panorama', 'cbct', 'dicom'].includes(selectedCategory);
+    const fileToUpload = preservesRadiologySource ? file : await optimizeImageForUpload(file);
+    const mimeType = fileToUpload.type || inferMimeFromFilename(fileToUpload.name);
+    const selectedFileType = resolveUploadFileType(selectedCategory, fileToUpload.name, mimeType);
     const seq = (uploadSeqRef.current += 1);
 
     setErr(null);
     setInfoMsg(null);
-    setUploadFileName(file.name);
-    setUploadFileSize(file.size);
+    setUploadFileName(fileToUpload.name);
+    setUploadFileSize(fileToUpload.size);
     setUploadProgress(1);
     setUploadStatusText('جارٍ طلب تصريح رفع مباشر...');
 
@@ -314,9 +320,9 @@ export default function PatientMedicalFilesTab({
         body: JSON.stringify({
           clinic_id: clinicId,
           patient_id: patientId,
-          filename: file.name,
+          filename: fileToUpload.name,
           mime_type: mimeType,
-          size_bytes: file.size,
+          size_bytes: fileToUpload.size,
           file_type: selectedFileType,
           medical_category: selectedCategory,
         }),
@@ -333,6 +339,9 @@ export default function PatientMedicalFilesTab({
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         uploadXhrRef.current = xhr;
+        const uploadBody = new FormData();
+        uploadBody.append('cacheControl', '3600');
+        uploadBody.append('', fileToUpload);
 
         xhr.upload.onprogress = (evt) => {
           if (evt.lengthComputable) {
@@ -361,8 +370,7 @@ export default function PatientMedicalFilesTab({
         };
 
         xhr.open('PUT', upload_url, true);
-        xhr.setRequestHeader('Content-Type', mimeType);
-        xhr.send(file);
+        xhr.send(uploadBody);
       });
 
       setUploadProgress(98);
@@ -379,8 +387,8 @@ export default function PatientMedicalFilesTab({
           patient_id: patientId,
           storage_path,
           mime_type: mimeType,
-          size_bytes: file.size,
-          filename: file.name,
+          size_bytes: fileToUpload.size,
+          filename: fileToUpload.name,
           file_type: file_type || selectedFileType,
         }),
       });
@@ -392,7 +400,7 @@ export default function PatientMedicalFilesTab({
 
       setUploadProgress(100);
       setUploadStatusText('اكتمل الرفع بنجاح!');
-      setInfoMsg(`تم إرفاق "${file.name}" بنجاح في ملف المريض.`);
+      setInfoMsg(`تم إرفاق "${fileToUpload.name}" بنجاح في ملف المريض.`);
 
       await loadFiles();
     } catch (e: unknown) {

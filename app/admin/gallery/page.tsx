@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Save } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 import { reorderGalleryItems } from '@/lib/galleryOrder';
 
 type GalleryItem = {
@@ -150,7 +151,7 @@ export default function AdminGalleryPage() {
     setNotice(null);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', await optimizeImageForUpload(file));
       const up = await fetch('/api/admin/upload', { method: 'POST', body: fd });
       const upJson = await up.json();
       if (!up.ok) throw new Error(upJson.error ?? 'فشل رفع الصورة');

@@ -6,6 +6,7 @@ import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import { useClinicContext } from '@/lib/useClinicContext';
 import BeforeAfterSlider from '@/components/public/BeforeAfterSlider';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 /**
  * BEFORE/AFTER GALLERY — owner management (Phase 4).
@@ -86,8 +87,8 @@ export default function BeforeAfterPage() {
       form.append('title', title.trim());
       form.append('description', description.trim());
       form.append('patient_consent', 'true');
-      form.append('before', beforeFile);
-      form.append('after', afterFile);
+      form.append('before', await optimizeImageForUpload(beforeFile));
+      form.append('after', await optimizeImageForUpload(afterFile));
       const res = await fetch(`/api/clinic/before-after?clinic_id=${encodeURIComponent(clinicId)}`, {
         method: 'POST',
         headers,

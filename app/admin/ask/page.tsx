@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Save } from 'lucide-react';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 type Settings = {
   hero: { title: string; subtitle: string; logo: string; assistant_name: string };
@@ -137,7 +138,7 @@ function AskMediaGallerySection() {
     setNotice(null);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', await optimizeImageForUpload(file));
       const uploadRes = await fetch('/api/admin/upload', { method: 'POST', body: fd });
       const uploadJson = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadJson?.error ?? 'فشل رفع الملف');

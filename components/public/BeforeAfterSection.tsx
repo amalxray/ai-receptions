@@ -51,12 +51,12 @@ function ComparisonCard({ item }: { item: BeforeAfterItem }) {
     <div className="group overflow-hidden rounded-[28px] border border-slate-200 bg-white p-3 shadow-[0_20px_60px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(8,145,178,0.18)]">
       <div className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-slate-100">
         <div className="relative aspect-[4/3] overflow-hidden">
-          <img src={item.before_url} alt={`${item.title ?? 'قبل'} — قبل`} className="h-full w-full object-cover" />
+          <img src={item.before_url} alt={`${item.title ?? 'قبل'} — قبل`} loading="lazy" className="h-full w-full object-cover" />
           <div
             className="absolute inset-0 overflow-hidden"
             style={{ width: `${value}%` }}
           >
-            <img src={item.after_url} alt={`${item.title ?? 'بعد'} — بعد`} className="h-full w-full object-cover" />
+            <img src={item.after_url} alt={`${item.title ?? 'بعد'} — بعد`} loading="lazy" className="h-full w-full object-cover" />
           </div>
 
           <div className="absolute inset-y-0 left-0 flex items-center" style={{ width: `${value}%` }}>
