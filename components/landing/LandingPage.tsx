@@ -66,6 +66,8 @@ function LandingFooter() {
           <a href="/login" className="text-sm text-slate-600 transition hover:text-slate-900">تسجيل الدخول</a>
           <a href="/register" className="text-sm text-slate-600 transition hover:text-slate-900">إنشاء حساب</a>
           <a href="#faq" className="text-sm text-slate-600 transition hover:text-slate-900">الأسئلة الشائعة</a>
+          <a href="/terms" className="text-sm text-slate-600 transition hover:text-slate-900">شروط الخدمة</a>
+          <a href="/privacy" className="text-sm text-slate-600 transition hover:text-slate-900">الخصوصية</a>
           <a href="mailto:support@ai-receptions.com" className="text-sm text-slate-600 transition hover:text-slate-900">تواصل معنا</a>
         </nav>
         <p className="text-sm text-slate-500">{copy.footer.copyright}</p>
