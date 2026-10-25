@@ -7,8 +7,18 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 
+function mapFeaturedImage(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(mapFeaturedImage);
+  if (!value || typeof value !== 'object') return value;
+
+  const image = value as Record<string, unknown>;
+  return {
+    ...image,
+    image_url: localStorageImageUrl(typeof image.image_url === 'string' ? image.image_url : null),
+  };
+}
+
 function mapArticleImages(article: Record<string, unknown>): Record<string, unknown> {
-  const featuredImage = article.featured_image;
   const content = article.content;
 
   return {
@@ -16,17 +26,7 @@ function mapArticleImages(article: Record<string, unknown>): Record<string, unkn
     featured_image_url: localStorageImageUrl(
       typeof article.featured_image_url === 'string' ? article.featured_image_url : null,
     ),
-    featured_image:
-      featuredImage && typeof featuredImage === 'object' && !Array.isArray(featuredImage)
-        ? {
-            ...(featuredImage as Record<string, unknown>),
-            image_url: localStorageImageUrl(
-              typeof (featuredImage as Record<string, unknown>).image_url === 'string'
-                ? String((featuredImage as Record<string, unknown>).image_url)
-                : null,
-            ),
-          }
-        : featuredImage,
+    featured_image: mapFeaturedImage(article.featured_image),
     content:
       typeof content === 'string'
         ? content.replace(/https?:\/\/[^\s"'<>]+/g, (url) => localStorageImageUrl(url) ?? url)

@@ -39,11 +39,11 @@ export async function getAskPageData() {
   const articles = (articlesRes.data ?? []).map((article) => ({
     ...article,
     featured_image_url: localStorageImageUrl(article.featured_image_url),
-    featured_image: article.featured_image
-      ? {
-          ...article.featured_image,
-          image_url: localStorageImageUrl(article.featured_image.image_url),
-        }
+    featured_image: Array.isArray(article.featured_image)
+      ? article.featured_image.map((image) => ({
+          ...image,
+          image_url: localStorageImageUrl(image.image_url) ?? image.image_url,
+        }))
       : article.featured_image,
   }));
   return {
