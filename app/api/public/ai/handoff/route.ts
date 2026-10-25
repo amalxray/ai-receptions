@@ -7,6 +7,7 @@ import { persistHandoffReply } from '@/lib/ai/handoffMessages';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { RateLimiter, getClientId } from '@/lib/services/gateway/security/rate-limiter';
 import { logEvent } from '@/lib/server/logging';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 const bodySchema = z.object({
   clinic_slug: z.string().min(1).max(200).optional(),
@@ -48,6 +49,11 @@ export async function POST(req: Request) {
     const conversation = await getConversationById(conversationId, clinic.id);
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found for this clinic' }, { status: 404 });
+    }
+
+    const access = await getClinicSubscriptionAccess(clinic.id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
     }
 
     await updateConversationState(conversationId, 'awaiting_staff', clinic.id);

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getActiveServiceById, getAvailableSlots, loadProviderSchedule } from '@/lib/services/bookingService';
 import { getGoogleCalendarBusyIntervals, type GoogleCalendarBusyInterval } from '@/lib/services/googleCalendarBooking';
 import { logEvent } from '@/lib/server/logging';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 const availabilitySchema = z.object({
   clinic_id: z.string().uuid(),
@@ -31,6 +32,11 @@ export async function GET(req: Request) {
     }
 
     const { clinic_id, provider_id, date, service_id, limit } = parsed.data;
+
+    const access = await getClinicSubscriptionAccess(clinic_id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
+    }
 
     const slots = await getAvailableSlots(clinic_id, provider_id, date, limit, service_id);
 

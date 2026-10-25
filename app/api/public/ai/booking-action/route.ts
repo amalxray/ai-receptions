@@ -10,6 +10,7 @@ import { getConversationById } from '@/lib/services/conversationService';
 import { saveMessage } from '@/lib/services/messageService';
 import { logEvent } from '@/lib/server/logging';
 import { RateLimiter, getClientId } from '@/lib/services/gateway/security/rate-limiter';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 const requestSchema = z.object({
   clinic_slug: z.string().min(1).max(200).optional(),
@@ -49,6 +50,11 @@ export async function POST(request: Request) {
     clinicIdForLogging = clinic.id;
     const conversation = await getConversationById(input.conversation_id, clinic.id);
     if (!conversation) return NextResponse.json({ error: 'المحادثة غير موجودة لهذه العيادة.' }, { status: 404 });
+
+    const access = await getClinicSubscriptionAccess(clinic.id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
+    }
 
     const [state, operatingData, profile] = await Promise.all([
       loadReceptionistConversationState(clinic.id, input.conversation_id),

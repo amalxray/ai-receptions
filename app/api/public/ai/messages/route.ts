@@ -16,6 +16,7 @@ import { loadClinicOperatingData, loadClinicProfile, loadReceptionistConversatio
 import { saveMessage } from '@/lib/services/messageService';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 // AI generation on the Free Tier can legitimately take 10–30s (measured up to
 // 25s); the platform default (~10s on serverless) was cutting successful
@@ -101,6 +102,11 @@ export async function POST(req: Request) {
     const { clinic_slug, clinic_id, conversation_id, text } = parsed.data;
     const clinic = await resolvePublicClinic({ id: clinic_id, slug: clinic_slug });
     if (!clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+
+    const access = await getClinicSubscriptionAccess(clinic.id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
+    }
 
     let convId = conversation_id || null;
     if (convId) {
@@ -348,6 +354,11 @@ export async function GET(req: Request) {
       if (!conv) return NextResponse.json({ error: 'Conversation not found for this clinic' }, { status: 404 });
     } catch {
       return NextResponse.json({ error: 'Conversation not found for this clinic' }, { status: 404 });
+    }
+
+    const access = await getClinicSubscriptionAccess(clinic.id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
     }
 
     // Load real message history for this conversation
