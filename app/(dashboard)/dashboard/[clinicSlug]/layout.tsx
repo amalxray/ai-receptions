@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { resolveTenantAccess } from '@/lib/services/tenantAccess';
 import { TenantProvider } from '@/lib/tenantContext';
+import SubscriptionBanner from '@/components/dashboard/SubscriptionBanner';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +55,7 @@ export default async function TenantDashboardLayout({
         role: result.role,
       }}
     >
-      {children}
+      <SubscriptionBanner>{children}</SubscriptionBanner>
     </TenantProvider>
   );
 }
