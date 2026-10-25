@@ -1,5 +1,9 @@
 ﻿import DentalImageDetector from '@/components/DentalImageDetector';
 
+export const metadata = {
+  robots: { index: false, follow: false },
+};
+
 export default function TestDetectPage() {
   return (
     <div className="p-8 max-w-5xl mx-auto" dir="rtl">

@@ -119,7 +119,7 @@ export const landingCopy = {
         icon: '🔒',
         title: 'الأمان وعزل البيانات',
         desc: 'عزل متعدد المستأجرين (multi-tenant) مع تشفير كامل — كل عيادة ترى بياناتها فقط.',
-        href: '/ask/privacy',
+        href: '/privacy',
         cta: 'اعرف أكثر',
       },
     ],

@@ -11,6 +11,7 @@ import ImageMotionShowcase from '@/components/ui-lab/ImageMotionShowcase';
 export const metadata: Metadata = {
   title: 'مختبر التصميم | AI-Receptions',
   description: 'معاينة تفاعلية لخيارات مكونات الواجهة قبل اعتماد أسلوب التصميم.',
+  robots: { index: false, follow: false },
 };
 
 const sections = [

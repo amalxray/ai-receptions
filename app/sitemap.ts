@@ -35,9 +35,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // /ask public surfaces (Digital Care Assistant)
   const askBase = `${base}/ask`;
   entries.push({ url: askBase, changeFrequency: 'daily', priority: 1 });
-  for (const p of ['/articles', '/stories', '/tips', '/faq', '/about', '/contact', '/privacy', '/terms']) {
+  for (const p of ['/articles', '/stories', '/tips', '/faq', '/about', '/contact']) {
     entries.push({ url: `${askBase}${p}`, changeFrequency: 'weekly', priority: 0.7 });
   }
+  entries.push({ url: `${base}/privacy`, changeFrequency: 'weekly', priority: 0.7 });
+  entries.push({ url: `${base}/terms`, changeFrequency: 'weekly', priority: 0.7 });
 
   // Published /ask articles
   try {
