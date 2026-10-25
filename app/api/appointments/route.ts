@@ -7,6 +7,7 @@ import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { getCalendarRange } from '@/lib/services/scheduling';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { createDemoAppointment, getDemoAppointments, demoFallbackAllowed } from '@/lib/demoState';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 /**
  * B51-D — fail-closed answer when the deployment has no Supabase env: in-memory
@@ -141,6 +142,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
+    const access = await getClinicSubscriptionAccess(clinicId);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
+    }
+
     const view = url.searchParams.get('view') as 'day' | 'week' | 'month' | null;
     const date = url.searchParams.get('date');
     const status = url.searchParams.get('status');
@@ -215,6 +221,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
 
+    const access = await getClinicSubscriptionAccess(clinic_id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
+    }
+
     // B23 — the chosen time must actually be persisted: `scheduled_at` is what the
     // agenda, the reminders and the patient profile all read. A caller that sends
     // no time keeps the old NULL behaviour (no scheduled_at key at all).
@@ -263,6 +274,11 @@ export async function PATCH(req: Request) {
     const authorization = await authorizeClinicRequest(req, clinicId);
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
+    }
+
+    const access = await getClinicSubscriptionAccess(clinicId);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
     }
 
     const body = await req.json();

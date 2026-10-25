@@ -6,6 +6,7 @@ import { persistReceptionistSlot } from '@/lib/ai/clinicDataContext';
 import { getAvailableSlots } from '@/lib/services/bookingService';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 /**
  * STEP 7 — Persist Booking UI selections INTO the canonical conversation state.
@@ -62,6 +63,11 @@ export async function POST(req: Request) {
     const conv = await getConversationById(conversation_id, clinic.id).catch(() => null);
     if (!conv) {
       return NextResponse.json({ error: 'Conversation not found for this clinic' }, { status: 404 });
+    }
+
+    const access = await getClinicSubscriptionAccess(clinic.id);
+    if (!access.allowed) {
+      return NextResponse.json({ error: EXPIRED_TRIAL_MESSAGE, expired: true }, { status: 402 });
     }
 
     // Slot integrity: never persist an invented/new slot. If a slot is supplied
