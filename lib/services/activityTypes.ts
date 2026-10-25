@@ -79,4 +79,9 @@ export const RESERVED_PUBLIC_SLUGS = new Set([
   // must be reserved here (the filesystem invariant in
   // `tests/unit/tenant-subdomains.test.ts` enforces this list).
   'manifest.json',
+  'privacy',
+  'terms',
+  'test-ai-analysis',
+  'test-detect',
+  'ui-lab',
 ]);
