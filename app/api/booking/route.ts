@@ -7,6 +7,7 @@ import { logEvent } from '@/lib/server/logging';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import { getClinicSlugById } from '@/lib/services/tenantAccess';
+import { EXPIRED_TRIAL_MESSAGE, getClinicSubscriptionAccess } from '@/lib/subscription/access';
 
 const bookingSchema = z.object({
   clinic_id: z.string().uuid(),
@@ -40,6 +41,14 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: 'A valid phone number is required to place an appointment' },
         { status: 400 },
+      );
+    }
+
+    const access = await getClinicSubscriptionAccess(clinic_id);
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: EXPIRED_TRIAL_MESSAGE, expired: true },
+        { status: 402 },
       );
     }
 

@@ -88,7 +88,7 @@ export default function SubscriptionBanner({ children }: { children: React.React
             </div>
           ) : (
             <div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 font-bold text-sky-950">
-              ✓ مشترك في باقة {planName}
+              ✓ مشترك في {planName}
             </div>
           )}
         </div>
