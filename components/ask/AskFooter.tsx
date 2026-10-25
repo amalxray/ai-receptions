@@ -7,7 +7,7 @@ export default function AskFooter() {
     { title: 'المنصة', links: [['عن المنصة', '/ask/about'], ['تواصل معنا', '/ask/contact']] },
     { title: 'المحتوى', links: [['📝 المقالات', '/ask/articles'], ['💚 قصص النجاح', '/ask/stories'], ['💡 النصائح', '/ask/tips'], ['❓ الأسئلة الشائعة', '/ask/faq']] },
     { title: 'للمرضى', links: [['ابحث عن طبيب', '/ask'], ['📱 بطاقة QR', '/ask/qr']] },
-    { title: 'قانوني', links: [['الخصوصية', '/ask/privacy'], ['الشروط', '/ask/terms']] },
+    { title: 'قانوني', links: [['الخصوصية', '/privacy'], ['الشروط', '/terms']] },
   ];
   return (
     <footer className="border-t border-slate-200 bg-white pb-24 pt-12">

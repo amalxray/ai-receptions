@@ -163,6 +163,21 @@ function resolveLegacyHeroRow(row: LandingSectionRow): LandingSectionRow {
     : row;
 }
 
+function canonicalizeLegacyPrivacyLink(content: unknown): unknown {
+  if (!isPlainObject(content) || !Array.isArray(content.cards)) return content;
+
+  let changed = false;
+  const cards = content.cards.map((card) => {
+    if (!isPlainObject(card) || card.title !== 'الأمان وعزل البيانات' || card.href !== '/ask/privacy') {
+      return card;
+    }
+    changed = true;
+    return { ...card, href: '/privacy' };
+  });
+
+  return changed ? { ...content, cards } : content;
+}
+
 function deepMerge(base: unknown, override: unknown): unknown {
   if (!isPlainObject(base) || !isPlainObject(override)) return override ?? base;
   const out: Record<string, unknown> = { ...base };
@@ -295,7 +310,8 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
       if (row.legacySeed) continue;
       if (STATIC_COPY_LOCKED_SECTIONS.has(row.section_key)) continue;
       const copyKey = SECTION_TO_COPY_KEY[row.section_key] ?? row.section_key;
-      merged = deepMerge(merged, { [copyKey]: row.content }) as Record<string, unknown>;
+      const content = copyKey === 'features' ? canonicalizeLegacyPrivacyLink(row.content) : row.content;
+      merged = deepMerge(merged, { [copyKey]: content }) as Record<string, unknown>;
       cmsOverrides.push(copyKey);
     }
   } catch {
