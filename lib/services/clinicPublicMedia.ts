@@ -48,7 +48,7 @@ export type MediaMetaPatch = {
 };
 
 export const MEDIA_BUCKET = 'clinic-public-media';
-export const MEDIA_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+export const MEDIA_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const MEDIA_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 export const MAX_CLINIC_PUBLIC_VIDEOS = 3;
 export const CLINIC_PUBLIC_VIDEO_LIMIT_MESSAGE = 'لقد وصلت للحد الأقصى (3 فيديوهات)';
@@ -155,7 +155,7 @@ export async function createClinicMedia(
   const path = buildMediaStoragePath(clinicId, validation.ext);
   const { error: uploadError } = await supabaseAdmin.storage
     .from(MEDIA_BUCKET)
-    .upload(path, input.file, { contentType: input.file.type, upsert: false });
+    .upload(path, input.file, { cacheControl: '31536000', contentType: input.file.type, upsert: false });
   if (uploadError) {
     return { ok: false, message: `تعذر رفع الملف إلى التخزين: ${uploadError.message}` };
   }

@@ -29,16 +29,16 @@ const MIME_MAP: Record<string, { type: MedicalFileType; ext: string }> = {
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.mp4', '.webm', '.mov', '.dcm'];
 
 /** Per-type byte limits (medical files need large allowances for radiology).
- *  CONFIGURABLE server-side: each limit may be overridden by env var
- *  MEDICAL_MAX_<TYPE>_BYTES (e.g. MEDICAL_MAX_MEDICAL_IMAGE_BYTES=4294967296).
+ *  Configurable server-side; environment overrides may lower, but not exceed,
+ *  the per-type policy below.
  *  There is deliberately NO small hardcoded ceiling in the UI — the server
  *  authoritative limits below are the real gate. */
 const DEFAULT_MEDICAL_SIZE_LIMITS: Record<MedicalFileType, number> = {
   image: 50 * 1024 * 1024, // 50 MiB
   video: 1024 * 1024 * 1024, // 1 GiB (clinical video)
-  pdf: 200 * 1024 * 1024, // 200 MiB (reports/archives)
+  pdf: 50 * 1024 * 1024, // 50 MiB (reports/archives)
   document: 50 * 1024 * 1024,
-  medical_report: 200 * 1024 * 1024,
+  medical_report: 50 * 1024 * 1024,
   medical_image: 2 * 1024 * 1024 * 1024, // 2 GiB (CBCT/CT/DICOM studies)
 };
 
@@ -52,7 +52,9 @@ function resolveLimit(type: MedicalFileType): number {
     medical_image: process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES,
   };
   const v = overrides[type];
-  if (v && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  if (v && Number.isFinite(Number(v)) && Number(v) > 0) {
+    return Math.min(Number(v), DEFAULT_MEDICAL_SIZE_LIMITS[type]);
+  }
   return DEFAULT_MEDICAL_SIZE_LIMITS[type];
 }
 
@@ -160,7 +162,7 @@ export async function uploadMedicalFile(input: {
   const path = buildMedicalFileStoragePath(input.patientClinicId, input.patientId, validation.ext);
   const { error: upError } = await supabaseAdmin.storage
     .from(MEDICAL_BUCKET)
-    .upload(path, input.file, { contentType: input.file.type, upsert: false });
+    .upload(path, input.file, { cacheControl: '3600', contentType: input.file.type, upsert: false });
   if (upError) return { ok: false, message: `تعذر رفع الملف إلى التخزين: ${upError.message}` };
 
   const { data, error } = await supabaseAdmin

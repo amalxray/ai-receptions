@@ -61,6 +61,7 @@ export default function ImageMorphViewer({
           <motion.img
             src={viewing.src}
             alt={viewing.alt}
+            loading="lazy"
             className="object-contain shadow-2xl"
             style={{ position: 'fixed', objectFit: 'contain' }}
             initial={{

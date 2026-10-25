@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 /**
  * PHASE I — Unified patient financial + medical file panel.
@@ -492,11 +493,12 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const uploadFile = async (file: File) => {
     if (!clinicId) return;
+    const fileToUpload = await optimizeImageForUpload(file);
     // F — حد جسم الطلب على Vercel هو 4.5MB: نرفض مبكراً برسالة عربية واضحة
     // بدلاً من 413 نصيّ من الحافة كان يفجّر res.json() ("Unexpected token 'R'").
     const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setActionError(`الملف كبير جداً (${(file.size / 1024 / 1024).toFixed(1)}MB) — الحد الأقصى 4MB، ارفع نسخة أصغر أو مضغوطة`);
+    if (fileToUpload.size > MAX_UPLOAD_BYTES) {
+      setActionError(`الملف كبير جداً (${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB) — الحد الأقصى 4MB، ارفع نسخة أصغر أو مضغوطة`);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -505,7 +507,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     setActionSuccess(null);
     try {
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', fileToUpload);
       form.append('patient_id', patientId);
       const headers = await authHeaders();
       const res = await fetch(`/api/clinic/medical-files?clinic_id=${clinicId}&patient_id=${patientId}`, {

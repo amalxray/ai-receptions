@@ -21,7 +21,7 @@ export type BeforeAfterCase = {
   created_at: string | null;
 };
 
-export const BA_MAX_BYTES = 10 * 1024 * 1024;
+export const BA_MAX_BYTES = 5 * 1024 * 1024;
 
 const IMAGE_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -83,11 +83,13 @@ export async function createClinicBeforeAfter(
   const afterPath = `clinic/${clinicId}/before-after/${randomUUID()}${afterImg.ext}`;
 
   const { error: upErr } = await supabaseAdmin.storage.from('clinic-public-media').upload(beforePath, input.beforeFile, {
+    cacheControl: '31536000',
     contentType: input.beforeFile.type,
     upsert: false,
   });
   if (upErr) return { ok: false, message: `تعذر رفع صورة «قبل»: ${upErr.message}` };
   const { error: upErr2 } = await supabaseAdmin.storage.from('clinic-public-media').upload(afterPath, input.afterFile, {
+    cacheControl: '31536000',
     contentType: input.afterFile.type,
     upsert: false,
   });

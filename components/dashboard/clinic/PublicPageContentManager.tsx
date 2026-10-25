@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 import {
   DndContext,
   closestCenter,
@@ -447,9 +448,10 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
     if (!api.clinicId || !file) return null;
     setUploading(true);
     try {
+      const fileToUpload = await optimizeImageForUpload(file);
       const headers = await api.authHeaders();
       const body = new FormData();
-      body.append('file', file);
+      body.append('file', fileToUpload);
       const res = await fetch(`/api/clinic/public-content/upload?clinic_id=${encodeURIComponent(api.clinicId)}`, {
         method: 'POST',
         headers,

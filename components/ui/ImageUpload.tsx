@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 interface Props {
   value: string | null;
@@ -90,6 +91,8 @@ export default function ImageUpload({ value, onChange, label, aspect = 'square',
       if (convertToSquarePng) {
         const png = await toSquarePng(file, 512);
         if (png) fileToUpload = png;
+      } else {
+        fileToUpload = await optimizeImageForUpload(fileToUpload);
       }
       const headers = await authHeaders();
       const formData = new FormData();

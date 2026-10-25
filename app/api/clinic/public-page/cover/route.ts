@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     storagePath = buildMediaStoragePath(clinicId, validation.ext);
     const { error: uploadError } = await supabaseAdmin.storage
       .from(MEDIA_BUCKET)
-      .upload(storagePath, file, { contentType: file.type, upsert: false });
+      .upload(storagePath, file, { cacheControl: '31536000', contentType: file.type, upsert: false });
     if (uploadError) {
       logEvent('public_page_cover_upload_error', { clinicId, error: uploadError.message }, 'error');
       return NextResponse.json({ error: `تعذر رفع صورة الغلاف إلى التخزين: ${uploadError.message}` }, { status: 500 });

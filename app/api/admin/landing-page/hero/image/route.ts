@@ -8,7 +8,7 @@ import { logEvent } from '@/lib/server/logging';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const BUCKET = 'landing-page-media';
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     storagePath = `hero/${randomUUID()}.${extension}`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET)
-      .upload(storagePath, file, { contentType: file.type, upsert: false });
+      .upload(storagePath, file, { cacheControl: '31536000', contentType: file.type, upsert: false });
     if (uploadError) throw new Error(`تعذر رفع الصورة إلى التخزين: ${uploadError.message}`);
 
     const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(storagePath);

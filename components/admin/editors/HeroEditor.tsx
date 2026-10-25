@@ -3,6 +3,7 @@
 import { useState, type ChangeEvent } from 'react';
 import Hero, { type HeroContent } from '@/components/landing/Hero';
 import { landingCopy } from '@/lib/landing/landing-copy';
+import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
 const defaultHero = landingCopy.hero as HeroContent;
 
@@ -53,7 +54,7 @@ export default function HeroEditor({ initialContent, onClose, onSaved, onImageSa
     setSuccess(null);
     try {
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', await optimizeImageForUpload(file));
       const response = await fetch('/api/admin/landing-page/hero/image', { method: 'POST', body: form });
       const body = await response.json().catch(() => null) as { error?: string; data?: { url?: string } } | null;
       if (!response.ok || !body?.data?.url) throw new Error(body?.error ?? 'تعذر رفع صورة الغلاف وحفظها');

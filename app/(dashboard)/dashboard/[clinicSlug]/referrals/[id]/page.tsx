@@ -300,10 +300,12 @@ export default function ReferralDetailPage() {
         const start = ((await startRes.json())?.data ?? {}) as Record<string, string | number>;
 
         // 2) the binary goes straight to storage (no server buffering).
+        const uploadBody = new FormData();
+        uploadBody.append('cacheControl', '3600');
+        uploadBody.append('', file);
         const put = await fetch(String(start.upload_url), {
           method: 'PUT',
-          headers: { 'content-type': file.type },
-          body: file,
+          body: uploadBody,
         });
         if (!put.ok) throw new Error(`تعذر رفع ${file.name} إلى المخزن`);
 

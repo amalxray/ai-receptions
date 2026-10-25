@@ -24,12 +24,13 @@ export default function BeforeAfterSlider({
       <div dir="ltr" className="relative aspect-[4/3] select-none">
         {/* قبل — base layer, fills everything */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={before} alt={`${title} — قبل`} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+        <img src={before} alt={`${title} — قبل`} loading="lazy" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
         {/* بعد — clipped from the right edge; pos% visible from the left */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={after}
           alt={`${title} — بعد`}
+          loading="lazy"
           className="absolute inset-0 h-full w-full object-cover"
           style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
           draggable={false}

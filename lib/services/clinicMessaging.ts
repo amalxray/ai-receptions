@@ -247,7 +247,7 @@ export async function uploadMessageFile(
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from('medical-files')
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, file, { cacheControl: '3600', contentType: file.type, upsert: false });
 
   if (uploadError) {
     return { ok: false, message: `خطأ في رفع الملف: ${uploadError.message}` };
