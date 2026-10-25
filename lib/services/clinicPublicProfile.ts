@@ -5,6 +5,7 @@ import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrl } from '@/lib/vercel/tenantLinks';
 import { logEvent } from '@/lib/server/logging';
 import { readDisplaySettings, readTheme, type PublicDisplaySettings, type PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
+import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 
 /**
  * STEP 15D — Public Clinic Profile projection.
@@ -356,11 +357,11 @@ export async function getPublicClinicProfile(
     public_id: clinicRow.public_id ?? null,
     slug: clinicRow.slug,
     name: clinicRow.name,
-    logo: clinicRow.logo ?? readPublicProfileLogo(settings),
+    logo: localStorageImageUrl(clinicRow.logo ?? readPublicProfileLogo(settings)),
     description,
     tagline,
     about,
-    cover_url: coverUrl,
+    cover_url: localStorageImageUrl(coverUrl),
     social_links: socialLinks,
     sections,
     city: clinicRow.city ?? null,

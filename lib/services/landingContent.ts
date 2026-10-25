@@ -11,6 +11,7 @@
 import { landingCopy } from '@/lib/landing/landing-copy';
 import { describeLandingOrderDatabaseError, getLandingOrderDatabaseErrorFields, normalizeLandingPageOrder } from '@/lib/landing/landing-order';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 
 export type LandingSectionRow = {
   id: string;
@@ -317,6 +318,16 @@ export async function getLandingPageContent(): Promise<Record<string, unknown>> 
   } catch {
     // DB unavailable → pure static copy (never break the landing page).
   }
+
+  const hero = merged.hero;
+  if (isPlainObject(hero) && typeof hero.image === 'string') {
+    merged.hero = { ...hero, image: localStorageImageUrl(hero.image) ?? hero.image };
+  }
+  const seo = merged.seo;
+  if (isPlainObject(seo) && typeof seo.og_image === 'string') {
+    merged.seo = { ...seo, og_image: localStorageImageUrl(seo.og_image) ?? seo.og_image };
+  }
+
   merged.__cmsOverrides = cmsOverrides;
   merged.__hiddenSections = hiddenSections;
   return merged;
