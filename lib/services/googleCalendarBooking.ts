@@ -77,6 +77,14 @@ export async function getGoogleCalendarBusyIntervals(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date must be in YYYY-MM-DD format.');
   const client = await withCalendarTimeout(getClinicGoogleCalendarClient(clinicId), 'connection lookup');
   if (!client) return [];
+  return getGoogleCalendarBusyIntervalsForClient(client, date, timezone);
+}
+
+async function getGoogleCalendarBusyIntervalsForClient(
+  client: GoogleCalendarConfig,
+  date: string,
+  timezone: string,
+): Promise<GoogleCalendarBusyInterval[]> {
   const { calendar, calendarId } = client;
   const timeMin = clinicLocalToInstant(date, '00:00', timezone);
   const timeMax = clinicLocalToInstant(nextDate(date), '00:00', timezone);
@@ -221,7 +229,7 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
         calendar_connected: false,
       };
     }
-    const calendarConflicts = await getGoogleCalendarBusyIntervals(details.clinic_id, requestedLocal.date, timezone);
+    const calendarConflicts = await getGoogleCalendarBusyIntervalsForClient(client, requestedLocal.date, timezone);
     if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
       throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
     }
@@ -230,7 +238,7 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
 
   const client = await getClinicGoogleCalendarClient(details.clinic_id);
   if (client) {
-    const calendarConflicts = await getGoogleCalendarBusyIntervals(details.clinic_id, requestedLocal.date, timezone);
+    const calendarConflicts = await getGoogleCalendarBusyIntervalsForClient(client, requestedLocal.date, timezone);
     if (calendarConflicts.some((busy) => requestedStartKey < busy.end && requestedEndKey > busy.start)) {
       throw new Error('Double booking prevention triggered: Google Calendar is busy at the requested time.');
     }

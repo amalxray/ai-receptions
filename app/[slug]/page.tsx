@@ -4,6 +4,7 @@ import { getActivityPublicSpace, type ActivityPublicSpace } from '@/lib/services
 import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import { requestCache } from '@/lib/server/requestCache';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getClinicSubscriptionAccess } from '@/lib/subscription/access';
 import { buildClinicSchema, sanitizePublicSocialLinks } from '@/lib/services/doctorJsonLd';
 import {
   buildClinicReviewsJsonLd,
@@ -185,7 +186,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
     space.activityType === 'dental_lab' ? 'lab_services' :
     'clinic_services';
 
-  const [reviews, servicesResult] = await Promise.all([
+  const [reviews, servicesResult, subscriptionAccess] = await Promise.all([
     loadReviews(space.clinicId),
     supabaseAdmin
       .from(servicesTable)
@@ -194,8 +195,10 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       .eq('active', true)
       .order('sort_order', { ascending: true })
       .limit(6),
+    getClinicSubscriptionAccess(space.clinicId),
   ]);
   const { data: services } = servicesResult;
+  const publicSpace = { ...space, subscriptionExpired: subscriptionAccess.expired };
 
   const jsonLd = buildSpaceJsonLd(space, reviews);
   const schemaScript = (
@@ -222,7 +225,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <ImagingPublicSpace space={space} servicesCard={servicesCard} />
+          <ImagingPublicSpace space={publicSpace} servicesCard={servicesCard} />
           {reviewsSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
@@ -231,7 +234,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <DentalLabPublicSpace space={space} servicesCard={servicesCard} />
+          <DentalLabPublicSpace space={publicSpace} servicesCard={servicesCard} />
           {reviewsSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
@@ -240,7 +243,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       return (
         <>
           {schemaScript}
-          <ClinicPublicSpace space={space} servicesCard={servicesCard} />
+          <ClinicPublicSpace space={publicSpace} servicesCard={servicesCard} />
           {reviewsSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>

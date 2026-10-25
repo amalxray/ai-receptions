@@ -12,7 +12,7 @@ import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark
  * behind `prefers-reduced-motion` in globals.css.
  */
 
-export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace; servicesCard?: ReactNode }) {
+export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace & { subscriptionExpired?: boolean }; servicesCard?: ReactNode }) {
   const hasServices = space.services.length > 0;
   const hasProviders = space.providers.length > 0;
   const hasAds = space.ads.length > 0;

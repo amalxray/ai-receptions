@@ -292,7 +292,7 @@ export function ActivitySpaceChrome({
   headline,
   children,
 }: {
-  space: ActivityPublicSpace;
+  space: ActivityPublicSpace & { subscriptionExpired?: boolean };
   headline: string;
   children: React.ReactNode;
 }) {
@@ -304,6 +304,7 @@ export function ActivitySpaceChrome({
   const on = (key: string) => space.sections?.[key] !== false;
   const showBooking = on('bookingCta');
   const showAi = on('aiCta');
+  const subscriptionExpired = space.subscriptionExpired === true;
   const d = space.display;
   const bodyScale =
     d?.body_text === 'small' ? ' text-sm' : d?.body_text === 'large' ? ' text-lg' : ' text-base';
@@ -498,31 +499,46 @@ export function ActivitySpaceChrome({
             <StaggerReveal delay={320}>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 {showBooking && (
-                  <motion.a
-                    href={space.bookingUrl}
-                    animate={{
-                      boxShadow: [
-                        '0 0 20px rgba(34,211,238,0.4)',
-                        '0 0 40px rgba(34,211,238,0.8)',
-                        '0 0 20px rgba(34,211,238,0.4)',
-                      ],
-                    }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    whileHover={{ scale: 1.05, boxShadow: '0 0 50px rgba(34,211,238,0.9)' }}
-                    whileTap={{ scale: 0.98 }}
-                    className="inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-l from-cyan-500 via-emerald-400 to-cyan-500 px-8 py-4 text-lg font-black text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-transform hover:scale-105 hover:shadow-[0_0_50px_rgba(34,211,238,0.9)]"
-                  >
-                    <CalendarCheck className="h-5 w-5" aria-hidden="true" />
-                    احجز الآن ⚡
-                  </motion.a>
+                  subscriptionExpired ? (
+                    <motion.button
+                      type="button"
+                      disabled
+                      title="الحجز غير متاح حالياً"
+                      aria-disabled="true"
+                      className="inline-flex cursor-not-allowed items-center justify-center gap-3 rounded-2xl bg-gradient-to-l from-cyan-500 via-emerald-400 to-cyan-500 px-8 py-4 text-lg font-black text-slate-950 opacity-60 shadow-[0_0_30px_rgba(34,211,238,0.5)]"
+                    >
+                      <CalendarCheck className="h-5 w-5" aria-hidden="true" />
+                      الحجز غير متاح حالياً
+                    </motion.button>
+                  ) : (
+                    <motion.a
+                      href={space.bookingUrl}
+                      animate={{
+                        boxShadow: [
+                          '0 0 20px rgba(34,211,238,0.4)',
+                          '0 0 40px rgba(34,211,238,0.8)',
+                          '0 0 20px rgba(34,211,238,0.4)',
+                        ],
+                      }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      whileHover={{ scale: 1.05, boxShadow: '0 0 50px rgba(34,211,238,0.9)' }}
+                      whileTap={{ scale: 0.98 }}
+                      className="inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-l from-cyan-500 via-emerald-400 to-cyan-500 px-8 py-4 text-lg font-black text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-transform hover:scale-105 hover:shadow-[0_0_50px_rgba(34,211,238,0.9)]"
+                    >
+                      <CalendarCheck className="h-5 w-5" aria-hidden="true" />
+                      احجز الآن ⚡
+                    </motion.a>
+                  )
                 )}
                 {showAi && (
                   <button
                     type="button"
                     onClick={openChat}
-                    className="inline-flex items-center justify-center rounded-full border border-cyan-300 bg-white/70 px-8 py-3.5 text-base font-semibold text-slate-700 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan hover:bg-white"
+                    disabled={subscriptionExpired}
+                    title={subscriptionExpired ? 'المحادثة غير متاحة حالياً' : undefined}
+                    className="inline-flex items-center justify-center rounded-full border border-cyan-300 bg-white/70 px-8 py-3.5 text-base font-semibold text-slate-700 backdrop-blur transition hover:-translate-y-0.5 hover:border-brand-cyan hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    💬 تحدث مع مساعد العيادة
+                    {subscriptionExpired ? 'المحادثة غير متاحة حالياً' : '💬 تحدث مع مساعد العيادة'}
                   </button>
                 )}
               </div>
@@ -707,7 +723,7 @@ export function ActivitySpaceChrome({
         </footer>
       </main>
 
-      {showAi && <FloatingChatWidget clinicId={space.clinicId} clinicSlug={space.slug} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
+      {showAi && !subscriptionExpired && <FloatingChatWidget clinicId={space.clinicId} clinicSlug={space.slug} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
 
     </div>
   );
