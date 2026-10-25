@@ -233,9 +233,9 @@ export const landingCopy = {
     footerText: 'تبدأ بالتجربة المجانية 30 يوماً بكل ميزات المنصة.',
     footerLinkText: 'ابدأ التجربة المجانية',
     tiers: [
-      { id: 'basic', title: 'طبيب', monthly: '$39', yearly: '$399', note: 'عيادة واحدة، طبيب واحد، كل الميزات', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'صفحة عامة ومراجعات', 'CRM وإدارة مالية', 'Google Calendar والتنبيهات'], highlighted: false, buttonText: 'تواصل معنا للاشتراك' },
-      { id: 'advanced', title: 'عيادة', monthly: '$69', yearly: '$699', note: 'عيادة واحدة، حتى 3 أطباء، كل الميزات', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'صفحة عامة ومراجعات', 'CRM وإدارة مالية', 'Google Calendar والتنبيهات'], highlighted: true, buttonText: 'تواصل معنا للاشتراك' },
-      { id: 'center', title: 'مركز', monthly: '$119', yearly: '$1199', note: 'عيادات متعددة، أطباء غير محدودين، أولوية Ask', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'صفحة عامة ومراجعات', 'CRM وإدارة مالية', 'Google Calendar والتنبيهات'], highlighted: false, buttonText: 'تواصل معنا للاشتراك' },
+      { id: 'basic', title: 'طبيب', monthly: '$39', yearly: '$399', note: 'عيادة واحدة، طبيب واحد', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'الصفحة العامة', 'التقييمات', 'CRM', 'الإدارة المالية', 'Google Calendar', 'الإشعارات'], highlighted: false, buttonText: 'تواصل معنا للاشتراك' },
+      { id: 'advanced', title: 'عيادة', monthly: '$69', yearly: '$699', note: 'عيادة واحدة، حتى 3 أطباء', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'الصفحة العامة', 'التقييمات', 'CRM', 'الإدارة المالية', 'Google Calendar', 'الإشعارات', 'حتى 3 أطباء'], highlighted: true, buttonText: 'تواصل معنا للاشتراك' },
+      { id: 'center', title: 'مركز', monthly: '$119', yearly: '$1199', note: 'عيادات متعددة، أطباء غير محدودين، أولوية Ask', features: ['الاستقبال الذكي بالذكاء الاصطناعي', 'الحجز الإلكتروني', 'الصفحة العامة', 'التقييمات', 'CRM', 'الإدارة المالية', 'Google Calendar', 'الإشعارات', 'عيادات متعددة', 'أطباء غير محدودين', 'أولوية Ask'], highlighted: false, buttonText: 'تواصل معنا للاشتراك' },
     ],
     /** Yearly discount honoured by every paid tier (2 months free). */
     yearlyNote: 'أسعار بالدولار الأمريكي • جرّب المنصة 30 يوماً مجاناً',

@@ -31,7 +31,13 @@ export default function GalleryGrid({
   display = {},
 }: GalleryGridProps) {
   const items: GalleryItem[] = [
-    ...images.map((item) => ({ ...item, media_type: 'image' as const }))
+    ...images.map((item) => ({
+      ...item,
+      media_type: item.media_type === 'video' || item.video_url ? 'video' as const : 'image' as const,
+    })),
+    ...videos
+      .filter((item) => item.video_url && !images.some((image) => image.id === item.id))
+      .map((item) => ({ ...item, media_type: 'video' as const })),
   ];
 
   if (!items.length) return null;
@@ -80,23 +86,22 @@ export default function GalleryGrid({
         <div className="relative mx-auto max-w-7xl px-4">
           <p className="mb-3 text-center text-sm font-bold uppercase tracking-[0.3em] text-cyan-300">المعرض</p>
           <h2 className="mb-2 text-center text-2xl font-black text-white md:text-3xl">معرض الصور والفيديو</h2>
-          <p className="mx-auto mb-8 max-w-xl text-center text-sm text-slate-400">اضغط أي صورة لتكبيرها وإعادة ترتيب الكولاج — واضغط أيقونة التكبير لفتحها بالحجم الكامل.</p>
+          <p className="mx-auto mb-8 max-w-xl text-center text-sm text-slate-400">اضغط على صورة أو معاينة فيديو لعرضها بالحجم الكامل وتشغيل الفيديو.</p>
           <div className="grid auto-rows-[112px] grid-cols-2 gap-2.5 sm:auto-rows-[132px] md:grid-cols-4">
             {items.map((item, index) => {
               const isExpanded = expandedId === item.id;
-              const src = item.media_type === 'video' ? null : (item.image_url ?? null);
+              const src = item.image_url ?? null;
               return (
                 <motion.button
                   key={item.id}
                   type="button"
                   layout
-                  onClick={() => toggleExpand(item.id)}
+                  onClick={() => item.media_type === 'video' ? openLightbox(index) : toggleExpand(item.id)}
                   onDoubleClick={() => openLightbox(index)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') toggleExpand(item.id); }}
                   role="button"
                   tabIndex={0}
-                  aria-pressed={isExpanded}
-                  aria-label={item.title}
+                  aria-pressed={item.media_type === 'video' ? undefined : isExpanded}
+                  aria-label={item.media_type === 'video' ? `تشغيل الفيديو: ${item.title}` : item.title}
                   transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 260, damping: 28 }}
                   className={`group relative cursor-pointer overflow-hidden rounded-xl border text-right transition-colors ${isExpanded ? 'col-span-2 row-span-2 border-cyan-300/50' : 'border-white/10 hover:border-cyan-400/30'} bg-slate-900`}
                 >
@@ -112,7 +117,7 @@ export default function GalleryGrid({
                   )}
                   <span className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
                   <span className={`absolute bottom-2 right-2 font-semibold text-white ${isExpanded ? 'text-sm' : 'text-[10px] sm:text-xs'}`}>{item.title}</span>
-                  {item.media_type === 'video' && (
+                  {item.media_type === 'video' && src && (
                     <span className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white"><Play className="h-4 w-4" aria-hidden="true" /></span>
                   )}
                   <span role="button" tabIndex={0} aria-label={`تكبير ${item.title} وفتحها بالحجم الكامل`} onClick={(e) => { e.stopPropagation(); openLightbox(index); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); openLightbox(index); } }} className="absolute left-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"><Maximize2 className="h-4 w-4" aria-hidden="true" /></span>
