@@ -22,12 +22,13 @@ import {
   loadClinicProfile,
   persistReceptionistSlot,
   OPERATIVE_CONVERSATION_INTENTS,
+  type ClinicOperatingData,
   type ReceptionistConversationState,
   type ClinicProfile,
 } from '@/lib/ai/clinicDataContext';
-import { matchServiceByName } from '@/lib/ai/conversationBooking';
+import { containsConfirmationWord, matchServiceByName } from '@/lib/ai/conversationBooking';
 import { classifyIntentFastPath, extractRequestedServiceFromText } from '@/lib/ai/intentClassifier';
-import { extractPatientNameFromBookingReply } from '@/lib/ai/intelligence';
+import { detectConversationIntelligence, extractPatientNameFromBookingReply } from '@/lib/ai/intelligence';
 import { findEarliestAvailableSlot, findClinicLevelSlots, resolveFirstProviderForService, resolveServiceByName, resolveProviderByName } from '@/lib/ai/availabilityTool';
 import { ARABIC_WEEKDAYS, clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
 import { format12h } from '@/lib/time/format';
@@ -107,6 +108,36 @@ function saveConversationContextTimed(
   return withTiming('saveConversationContext', clinicId, () =>
     saveConversationContext(clinicId, conversationId, context)
   );
+}
+
+function resolveBookingServiceHint(
+  hint: string | null | undefined,
+  services: ClinicOperatingData['services'],
+) {
+  if (!hint?.trim()) return undefined;
+  const directMatch = matchServiceByName(hint, services);
+  if (directMatch) return directMatch;
+
+  // Imaging patients use “تصوير طبقية” for a CBCT scan while the catalog may
+  // use “تصوير طبقي CBCT”. Only resolve this alias when the clinic has one
+  // matching modality, so ambiguous catalogs still require clarification.
+  if (!/(?:\bcbct\b|سي\s*بي\s*سي\s*تي|طبقي|طبقية|مقطعي|مقطعية)/i.test(hint)) return undefined;
+  const modalityMatches = services.filter((service) => /(?:\bcbct\b|طبقي|مقطعي)/i.test(service.name));
+  return modalityMatches.length === 1 ? modalityMatches[0] : undefined;
+}
+
+function normalizeBookingPatientName(value: string | null | undefined): string | null {
+  const name = value
+    ?.replace(/\s+(?:تلفون|الهاتف|هاتف|رقم(?:\s*(?:الهاتف|تلفون|هاتف))?|جوال|واتساب|phone|mobile)[\s\S]*$/i, '')
+    .replace(/[،,;]+$/g, '')
+    .trim();
+  if (!name || /\d/.test(name) || /(?:تلفون|الهاتف|هاتف|جوال|رقم)/.test(name)) return null;
+  return name;
+}
+
+function assistantAskedForBookingConsent(text: string): boolean {
+  return /(?:نعم|موافق|تؤكد|تأكدي|توافق|confirm|agree|yes)/i.test(text) &&
+    /(?:حجز|موعد|booking|appointment)/i.test(text);
 }
 
 const FAST_STRUCTURED_RAG_INTENTS = new Set([
@@ -483,15 +514,37 @@ export async function handleIncomingMessage(opts: {
     // so all three run concurrently instead of three sequential DB round-trips
     // across the US↔EU hop. The booking flow is unchanged — same values, just
     // fetched in parallel.
-    const [workingHours, receptionState, bookingPolicy] = await Promise.all([
+    const [workingHours, receptionState, bookingPolicy, rawHistory] = await Promise.all([
       withTiming('loadClinicWorkingHours', clinicId, () => loadClinicWorkingHours(clinicId, clinicProfile.timezone)),
       withTiming('loadReceptionistConversationState', clinicId, () => loadReceptionistConversationState(clinicId, conversationId)),
       withTiming('getChatBookingPolicy', clinicId, () => getChatBookingPolicy(clinicId)),
+      withTiming('getConversationHistory', clinicId, () => getConversationHistory(conversationId, 10)),
     ]);
 
     // ─── STEP 2→3 bridge: understand this message, merge into the reception
     //     state, persist incrementally, and resolve names → REAL ids. ───
     let currentState = receptionState;
+    const explicitBookingThisTurn =
+      intelligence.intent === 'appointment_booking' || intelligence.intent === 'appointment_reschedule';
+    const patientMessages = rawHistory.filter((message) => message.role === 'patient');
+    let lastBookingRequestIndex = -1;
+    patientMessages.forEach((message, index) => {
+      if (classifyIntentFastPath(message.content)?.intent === 'appointment_booking') {
+        lastBookingRequestIndex = index;
+      }
+    });
+    const lastAssistantReply = [...rawHistory].reverse().find((message) => message.role === 'assistant')?.content ?? '';
+    const affirmativeFollowUpToBooking = Boolean(
+      containsConfirmationWord(text) &&
+      lastBookingRequestIndex >= 0 &&
+      assistantAskedForBookingConsent(lastAssistantReply)
+    );
+    const activeBookingContext = Boolean(
+      explicitBookingThisTurn ||
+      currentState?.booking_intent ||
+      ['BOOKING', 'AWAITING_BOOKING_CONFIRMATION'].includes(currentState?.state ?? '') ||
+      affirmativeFollowUpToBooking
+    );
     let availabilityPreferencesChangedThisTurn = false;
     const availabilityTimesInquiryThisTurn = isAvailabilityTimesInquiry(text);
     // STEP 5 — discovery intent is PER-TURN: only this message's explicit ask
@@ -506,6 +559,7 @@ export async function handleIncomingMessage(opts: {
       });
       turnDiscoveryAgreed = understanding.network_discovery_agreed ?? null;
       currentState = applyUnderstandingToState(currentState, understanding);
+      if (activeBookingContext) currentState.booking_intent = true;
       if (
         availabilityTimesInquiryThisTurn &&
         !understanding.preferred_time_range &&
@@ -529,10 +583,19 @@ export async function handleIncomingMessage(opts: {
           patient_confirmed_booking: false,
         });
       }
-      if (Object.keys(understanding).length > 0) {
-        await saveConversationContextTimed(clinicId, conversationId, understanding as unknown as ConversationContext);
+      if (Object.keys(understanding).length > 0 || activeBookingContext) {
+        await saveConversationContextTimed(clinicId, conversationId, {
+          ...understanding,
+          ...(activeBookingContext ? { booking_intent: true } : {}),
+        } as unknown as ConversationContext);
       }
-      const explicitlyNamedService = matchServiceByName(text, operatingData.services);
+      const explicitServiceHint =
+        extractRequestedServiceFromText(text) ??
+        intelligence.appointment?.requestedService ??
+        currentState.requested_service;
+      const explicitlyNamedService =
+        matchServiceByName(text, operatingData.services) ??
+        (activeBookingContext ? resolveBookingServiceHint(explicitServiceHint, operatingData.services) : undefined);
       if (
         explicitlyNamedService &&
         (currentState.booking.service_id !== explicitlyNamedService.id ||
@@ -541,18 +604,65 @@ export async function handleIncomingMessage(opts: {
         const selectedServiceChanged = currentState.booking.service_id !== explicitlyNamedService.id;
         currentState.recommended_service_id = explicitlyNamedService.id;
         currentState.booking.service_id = explicitlyNamedService.id;
+        currentState.requested_service = explicitlyNamedService.name;
         if (selectedServiceChanged) currentState.booking.slot = null;
         await persistReceptionistSlotTimed(clinicId, conversationId, {
           service_id: explicitlyNamedService.id,
           ...(selectedServiceChanged ? { slot: null } : {}),
           patient_confirmed_booking: false,
         });
+        await saveConversationContextTimed(clinicId, conversationId, {
+          requested_service: explicitlyNamedService.name,
+          booking_intent: true,
+        });
       }
+
+      // Recover fields from the recent patient turns when older conversations
+      // contain the details in chat history but the receptionist state missed
+      // them. This remains gated by an explicit booking context/consent question;
+      // availability is rechecked below before the existing booking action runs.
+      if (activeBookingContext) {
+        const recoveryMessages = lastBookingRequestIndex >= 0
+          ? patientMessages.slice(lastBookingRequestIndex)
+          : explicitBookingThisTurn
+            ? [{ role: 'patient' as const, content: text }]
+            : [];
+        for (const message of recoveryMessages) {
+          const historicalUnderstanding = understandMessage(message.content, {
+            now: new Date(),
+            timeZone: clinicProfile?.timezone ?? undefined,
+          });
+          currentState = applyUnderstandingToState(currentState, historicalUnderstanding);
+
+          const historicalAppointment = detectConversationIntelligence(message.content).appointment;
+          const historicalName = normalizeBookingPatientName(historicalAppointment.patientName) ??
+            normalizeBookingPatientName(extractPatientNameFromBookingReply(message.content));
+          if (historicalName) currentState.booking.patient_name = historicalName;
+          if (historicalAppointment.phone) currentState.booking.phone = historicalAppointment.phone;
+          if (historicalAppointment.email) currentState.booking.email = historicalAppointment.email;
+
+          const historicalServiceHint =
+            extractRequestedServiceFromText(message.content) ?? historicalAppointment.requestedService;
+          const historicalService = resolveBookingServiceHint(historicalServiceHint, operatingData.services);
+          if (historicalService) {
+            currentState.booking.service_id = historicalService.id;
+            currentState.recommended_service_id = historicalService.id;
+            currentState.requested_service = historicalService.name;
+          }
+        }
+        currentState.booking_intent = true;
+      }
+
       // Resolve requested names against THIS clinic's real operating data.
       // null = no match or ambiguous → the assistant asks for clarification.
       if (!currentState.recommended_service_id && currentState.requested_service) {
-        const svc = resolveServiceByName(currentState.requested_service, operatingData);
-        if (svc) currentState.recommended_service_id = svc.id;
+        const svc = resolveBookingServiceHint(currentState.requested_service, operatingData.services) ??
+          resolveServiceByName(currentState.requested_service, operatingData);
+        if (svc) {
+          currentState.booking.service_id = svc.id;
+          currentState.recommended_service_id = svc.id;
+          currentState.requested_service = svc.name;
+        }
       }
       if (!currentState.recommended_provider_id && currentState.preferred_provider) {
         const prov = resolveProviderByName(currentState.preferred_provider, operatingData);
@@ -565,13 +675,15 @@ export async function handleIncomingMessage(opts: {
       // here so availability and the confirmation capsule share the same id.
       if (!currentState.recommended_service_id) {
         const serviceHint =
-          intelligence.appointment?.requestedService ??
-          currentState.requested_service ??
           extractRequestedServiceFromText(text) ??
+          currentState.requested_service ??
+          intelligence.appointment?.requestedService ??
           null;
-        const svc = serviceHint ? matchServiceByName(serviceHint, operatingData.services) : undefined;
+        const svc = serviceHint ? resolveBookingServiceHint(serviceHint, operatingData.services) : undefined;
         if (svc) {
+          currentState.booking.service_id = svc.id;
           currentState.recommended_service_id = svc.id;
+          currentState.requested_service = svc.name;
           await persistReceptionistSlotTimed(clinicId, conversationId, { service_id: svc.id });
           logEvent('receptionist_service_resolved_by_name', {
             clinic_id: clinicId,
@@ -591,9 +703,6 @@ export async function handleIncomingMessage(opts: {
     let availabilityFailureSource: string | null = null;
     // An active pending state means the patient already agreed to book and has
     // a service selected. It is deliberately ignored for informational intents.
-    const explicitBookingThisTurn =
-      intelligence.intent === 'appointment_booking' ||
-      intelligence.intent === 'appointment_reschedule';
     const pendingFollowUpIntent =
       intelligence.intent === 'unknown' ||
       intelligence.intent === 'appointment_booking' ||
@@ -886,8 +995,10 @@ export async function handleIncomingMessage(opts: {
         )
           ? extractPatientNameFromBookingReply(text)
           : null;
-      if (appointment?.patientName || bookingReplyName) {
-        postTurnState.booking.patient_name = appointment?.patientName ?? bookingReplyName;
+      const normalizedPatientName = normalizeBookingPatientName(appointment?.patientName) ??
+        normalizeBookingPatientName(bookingReplyName);
+      if (!postTurnState.booking.patient_name && normalizedPatientName) {
+        postTurnState.booking.patient_name = normalizedPatientName;
       }
       if (appointment?.phone) postTurnState.booking.phone = appointment.phone;
       if (appointment?.email) postTurnState.booking.email = appointment.email;
@@ -936,7 +1047,6 @@ export async function handleIncomingMessage(opts: {
       : null;
 
     // Retrieve conversation history and summarize if needed
-    const rawHistory = await withTiming('getConversationHistory', clinicId, () => getConversationHistory(conversationId, 10));
     const history = summarizeHistory(rawHistory, MAX_HISTORY_TOKENS);
 
     // Check for repeated questions

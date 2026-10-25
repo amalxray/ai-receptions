@@ -314,6 +314,16 @@ export function extractRequestedServiceFromText(text: string | null | undefined)
   return service.length >= 2 ? service : null;
 }
 
+/** Keep explicit booking requests structured even when the semantic model is unavailable. */
+function bookingFastPathResult(text: string, confidence: number): SemanticIntentResult {
+  const requestedService = extractRequestedServiceFromText(text);
+  return fastResult(
+    SEMANTIC_INTENTS.APPOINTMENT_BOOKING,
+    confidence,
+    requestedService ? { requested_service: requestedService } : {},
+  );
+}
+
 export function classifyIntentFastPath(text: string): SemanticIntentResult | null {
   const t = text.trim();
 
@@ -322,7 +332,7 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
   }
   if (EXACT_CANCEL.test(t)) return fastResult(SEMANTIC_INTENTS.APPOINTMENT_CANCELLATION, 0.95);
   if (EXACT_RESCHEDULE.test(t)) return fastResult(SEMANTIC_INTENTS.APPOINTMENT_RESCHEDULE, 0.9);
-  if (EXACT_BOOKING.test(t)) return fastResult(SEMANTIC_INTENTS.APPOINTMENT_BOOKING, 0.85);
+  if (EXACT_BOOKING.test(t)) return bookingFastPathResult(t, 0.85);
   if (EXACT_HANDOFF.test(t)) return fastResult(SEMANTIC_INTENTS.HUMAN_HANDOFF, 0.95);
   if (EXACT_GREETING.test(t)) return fastResult(SEMANTIC_INTENTS.GREETING, 0.9);
   if (EXACT_GOODBYE.test(t)) return fastResult(SEMANTIC_INTENTS.GOODBYE, 0.9);
@@ -344,7 +354,7 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
     return fastResult(SEMANTIC_INTENTS.CLINIC_INFORMATION, 0.85, {}, 'location');
   }
   if (CLEAR_BOOKING_REQUEST.test(t) && !NEGATED_BOOKING_REQUEST.test(t)) {
-    return fastResult(SEMANTIC_INTENTS.APPOINTMENT_BOOKING, 0.9);
+    return bookingFastPathResult(t, 0.9);
   }
 
   const normalizedShortReply = t
@@ -354,6 +364,8 @@ export function classifyIntentFastPath(text: string): SemanticIntentResult | nul
     .replace(/ى/g, 'ي')
     .toLowerCase();
   if (SHORT_AFFIRMATIVE_REPLY.test(normalizedShortReply)) {
+    // A bare affirmative is context-dependent: the server treats it as consent
+    // only after the orchestrator has persisted a complete, verified booking.
     return fastResult(SEMANTIC_INTENTS.UNKNOWN, 0.8);
   }
 
