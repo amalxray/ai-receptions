@@ -9,6 +9,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import StatusPill from '@/components/dashboard/StatusPill';
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog';
 import WaitlistManager from '@/components/dashboard/clinic/WaitlistManager';
+import { useSubscriptionExpired } from '@/components/dashboard/SubscriptionBanner';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { dashboardStatus } from '@/lib/i18n';
 import { getWeekDays, localIsoDate, mondayIndex, type WeekDay } from '@/lib/calendar/weeks';
@@ -52,6 +53,7 @@ const dayAccents = [
 
 export default function AppointmentsPage() {
   const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const subscriptionExpired = useSubscriptionExpired() === true;
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -232,7 +234,7 @@ export default function AppointmentsPage() {
 
   async function handleCreateAppointment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!clinicId) return;
+    if (!clinicId || subscriptionExpired) return;
     setSubmitting(true);
     setDropFeedback(null);
     try {
@@ -483,7 +485,15 @@ export default function AppointmentsPage() {
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => setView('week')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${view === 'week' ? 'bg-cyan-500 text-slate-950' : 'border border-slate-700 text-slate-300 hover:border-cyan-500/70'}`}>عرض الأسبوع</button>
           <button type="button" onClick={() => setView('day')} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${view === 'day' ? 'bg-cyan-500 text-slate-950' : 'border border-slate-700 text-slate-300 hover:border-cyan-500/70'}`}>عرض اليوم</button>
-          <button type="button" onClick={() => setIsFormOpen((current) => !current)} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950">إنشاء موعد</button>
+          <button
+            type="button"
+            onClick={() => setIsFormOpen((current) => !current)}
+            disabled={subscriptionExpired}
+            title={subscriptionExpired ? 'اشترك للاستمرار' : undefined}
+            className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            إنشاء موعد
+          </button>
         </div>
 
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3">
@@ -659,7 +669,7 @@ export default function AppointmentsPage() {
               <input type="time" value={formState.appointment_time} onChange={(event) => setFormState((current) => ({ ...current, appointment_time: event.target.value }))} className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" required />
             </div>
             <div className="mt-4 flex gap-3">
-              <button type="submit" disabled={submitting || services.length === 0} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">{submitting ? 'جارٍ الحفظ...' : 'حفظ الموعد'}</button>
+              <button type="submit" disabled={subscriptionExpired || submitting || services.length === 0} title={subscriptionExpired ? 'اشترك للاستمرار' : undefined} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? 'جارٍ الحفظ...' : 'حفظ الموعد'}</button>
               <button type="button" onClick={() => setIsFormOpen(false)} className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300">إلغاء</button>
             </div>
             {error && <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}

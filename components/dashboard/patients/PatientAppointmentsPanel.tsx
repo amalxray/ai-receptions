@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, CalendarDays, CheckCircle2, Clock3, Loader2, Plus, User, X } from 'lucide-react';
 import { appointmentStatusAr, formatTimeAr } from '@/lib/dashboard/labels-ar';
 import { addDaysIso, dateFromIso, localIsoDate } from '@/lib/calendar/weeks';
+import { useSubscriptionExpired } from '@/components/dashboard/SubscriptionBanner';
 
 /**
  * B23 — patient appointment panel.
@@ -161,6 +162,7 @@ export default function PatientAppointmentsPanel({
   variant = 'full',
   onCreated,
 }: PatientAppointmentsPanelProps) {
+  const subscriptionExpired = useSubscriptionExpired() === true;
   const [services, setServices] = useState<string[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [providers, setProviders] = useState<{ id: string; name: string; title?: string | null }[]>([]);
@@ -237,7 +239,7 @@ export default function PatientAppointmentsPanel({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!clinicId || saving) return;
+    if (!clinicId || saving || subscriptionExpired) return;
     if (!form.service.trim()) {
       setError('اختر الخدمة أولاً');
       return;
@@ -317,8 +319,10 @@ export default function PatientAppointmentsPanel({
             setOpen((current) => !current);
             setError(null);
           }}
+          disabled={subscriptionExpired}
+          title={subscriptionExpired ? 'اشترك للاستمرار' : undefined}
           aria-expanded={open}
-          className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-3.5 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-400"
+          className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-3.5 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {open ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
           {open ? 'إغلاق' : 'إضافة موعد'}
@@ -430,7 +434,8 @@ export default function PatientAppointmentsPanel({
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   type="submit"
-                  disabled={saving || services.length === 0}
+                  disabled={subscriptionExpired || saving || services.length === 0}
+                  title={subscriptionExpired ? 'اشترك للاستمرار' : undefined}
                   className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
