@@ -56,6 +56,13 @@ export async function POST(req: Request) {
 
     if (updateError) throw new Error(updateError.message);
 
+    const { error: clinicUpdateError } = await supabaseAdmin
+      .from('clinics')
+      .update({ subscription_status: 'active' })
+      .eq('id', clinicId);
+
+    if (clinicUpdateError) throw new Error(clinicUpdateError.message);
+
     logEvent('subscription_resumed', {
       clinic_id: clinicId,
       subscription_id: subscription.id,
