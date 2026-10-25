@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { FOUNDING_SLOTS_TOTAL } from '@/lib/landing/landing-copy';
+import { TRIAL_DAYS } from '@/lib/subscription/plans';
 import { addClinicSubdomain } from '@/lib/vercel/domains';
 import { persistClinicProvisioning } from '@/lib/services/clinicProvisioning';
 
@@ -32,13 +33,14 @@ const registerSchema = z.object({
  *   1. an auth.users row (confirmed → can log in immediately)
  *   2. a `clinics` row
  *   3. a `clinic_users` owner membership
+ *   4. a 30-day `free_trial` subscription
  *
  * Founding-members offer: if fewer than FOUNDING_SLOTS_TOTAL clinics are
  * already founding members, this new clinic locks the founding price
  * (is_founding_member=true, founding_price_locked_at=now()).
  *
- * Rollback: if clinic or membership creation fails, the created auth user is
- * deleted so no half-registered accounts remain.
+ * Rollback: if clinic, subscription, or membership creation fails, the clinic
+ * and auth user are deleted so no half-registered accounts remain.
  */
 export async function POST(req: Request) {
   try {
@@ -87,6 +89,12 @@ export async function POST(req: Request) {
     }
 
     const userId = created.user.id;
+    interface ClinicRow {
+      id: string;
+      name: string;
+      slug: string;
+    }
+    let clinic: ClinicRow | null = null;
 
     try {
       // Founding-members offer: if fewer than FOUNDING_SLOTS_TOTAL clinics are
@@ -114,12 +122,6 @@ export async function POST(req: Request) {
       // Create the clinic. If the founding-member columns are not yet present
       // (migration 20260821 not applied), the insert falls back to the base
       // columns so registration is never blocked by the migration state.
-      interface ClinicRow {
-        id: string;
-        name: string;
-        slug: string;
-      }
-      let clinic: ClinicRow | null = null;
       let clinicError: { message: string } | null = null;
 
       const foundingInsert = await supabaseAdmin
@@ -154,6 +156,28 @@ export async function POST(req: Request) {
       }
 
       if (clinicError) throw new Error(clinicError.message);
+      if (!clinic) throw new Error('Clinic creation returned no row');
+
+      // Every new clinic starts with the canonical 30-day trial plan.
+      const trialStartedAt = new Date();
+      const trialEndsAt = new Date(trialStartedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+      const trialEndsAtIso = trialEndsAt.toISOString();
+      const { error: subError } = await supabaseAdmin.from('subscriptions').insert({
+        clinic_id: clinic.id,
+        plan_id: 'free_trial',
+        billing_status: 'trial',
+        status: 'trialing',
+        current_period_start: trialStartedAt.toISOString(),
+        current_period_end: trialEndsAtIso,
+        trial_end: trialEndsAtIso,
+        cancel_at_period_end: false,
+        deleted_at: null,
+      });
+
+      if (subError) {
+        logEvent('trial_subscription_failed', { clinic_id: clinic.id, error: subError.message }, 'error');
+        throw new Error('TRIAL_SUBSCRIPTION_FAILED');
+      }
 
       // Create owner membership
       const { error: memberError } = await supabaseAdmin.from('clinic_users').insert({
@@ -200,8 +224,22 @@ export async function POST(req: Request) {
 
       return NextResponse.json({ data: clinic }, { status: 201 });
     } catch (err) {
-      // Rollback: remove the created auth user so no orphaned account remains
+      // Roll back clinic data before removing the auth user so a failed
+      // subscription or membership insert cannot leave a partial registration.
       const message = err instanceof Error ? err.message : String(err);
+      if (clinic) {
+        const { error: clinicRollbackError } = await supabaseAdmin
+          .from('clinics')
+          .delete()
+          .eq('id', clinic.id);
+        if (clinicRollbackError) {
+          logEvent('clinic_register_rollback_failed', {
+            clinic_id: clinic.id,
+            error: clinicRollbackError.message,
+          }, 'error');
+        }
+      }
+
       const { error: rollbackError } = await supabaseAdmin.auth.admin.deleteUser(userId);
       if (rollbackError) {
         logEvent('auth_register_rollback_failed', {
@@ -214,6 +252,9 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('auth_register_error', { error: message }, 'error');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: message === 'TRIAL_SUBSCRIPTION_FAILED' ? 'تعذر إنشاء التجربة' : 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
