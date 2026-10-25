@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
     const { data: subscription, error: subscriptionError } = await supabaseAdmin
       .from('subscriptions')
-      .select('id, clinic_id, stripe_subscription_id, status, cancel_at_period_end')
+      .select('id, clinic_id, stripe_subscription_id, status, cancel_at_period_end, current_period_end')
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
       .maybeSingle();
@@ -52,11 +52,28 @@ export async function POST(req: Request) {
       .update({
         status: 'canceled',
         cancel_at_period_end: true,
+        cancelled_at: new Date().toISOString(),
       })
       .eq('clinic_id', clinicId)
       .is('deleted_at', null);
 
     if (updateError) throw new Error(updateError.message);
+
+    // Keep clinic access active through the paid period. The database freeze
+    // trigger changes this to `frozen` when Stripe reports period-end deletion.
+    const effectivePeriodEnd = cancelAt !== null
+      ? cancelAt * 1000
+      : subscription.current_period_end
+        ? new Date(subscription.current_period_end).getTime()
+        : Number.POSITIVE_INFINITY;
+    const nextClinicStatus = effectivePeriodEnd <= Date.now() ? 'frozen' : 'cancelled';
+
+    const { error: clinicUpdateError } = await supabaseAdmin
+      .from('clinics')
+      .update({ subscription_status: nextClinicStatus })
+      .eq('id', clinicId);
+
+    if (clinicUpdateError) throw new Error(clinicUpdateError.message);
 
     logEvent('subscription_cancel_scheduled', {
       clinic_id: clinicId,
