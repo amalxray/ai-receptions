@@ -317,7 +317,7 @@ export function buildFastClinicPrompt(
     buildCompactOperatingDataSection(options?.operatingData),
     buildWorkingHoursSection(options?.workingHours),
     buildCompactBookingState(options?.receptionistState, options?.operatingData, options?.intent),
-    'BOOKING CONSENT: A clear affirmative reply to the selected appointment is consent to submit it. The server creates the booking after validating the required details and availability. Never tell the patient to click a confirmation button, and never claim success before the server confirms it.',
+    'BOOKING CONSENT: A clear affirmative reply to a complete, selected appointment causes the server to submit that booking during this same chat request after validating details and real availability. Do not replace that action with “I will send a request” or “we will get back to you soon”. Never tell the patient to click a confirmation button, and never claim success before the server confirms it.',
     history.length > 0
       ? `Recent conversation:\n${history.slice(-6).map((message) => `${message.role === 'patient' ? 'Patient' : 'Assistant'}: ${message.content}`).join('\n')}`
       : '',
@@ -616,7 +616,7 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   if (isImagingCenter) {
     lines.push('- IMAGING CENTER TONE: Speak warmly, professionally, and diplomatically in Arabic. Use natural phrases such as «سلامتك»، «أستاذ/سيدتي»، and «يسعدنا خدمتك» when appropriate; do not force them into every reply. Acknowledge the patient once and do not repeat greetings or already answered questions.');
     lines.push('- IMAGING BOOKING ORDER (mandatory): first resolve the requested imaging service and the patient-requested clinic-local date/time against real availability for that exact date. Never skip the requested date and never suggest an alternative until that exact day has been checked. Then collect the patient name, then a contact phone number (required for this imaging workflow), one question at a time.');
-    lines.push('- After the service, verified slot, name, and phone are known, ask for consent once. A clear «نعم» or «موافق» in the chat submits the booking immediately; never tell the patient to click a confirmation button. The card is shown after the server saves the appointment. Never claim an appointment or Calendar event was saved before that result.');
+    lines.push('- After the service, verified slot, name, and phone are known, ask for consent once. A clear «نعم» or «موافق» in the chat submits the booking in this same request; do not answer with a promise to send a request or follow up later. Never tell the patient to click a confirmation button. The card is shown only after the server saves the appointment. Never claim an appointment or Calendar event was saved before that result.');
     lines.push('- If the requested date has no real Google Calendar availability, explain that result first and only then offer the verified alternative date/time provided by the availability system. If calendar lookup fails, say availability could not be checked; do not guess or book.');
     lines.push('- Imaging staff are radiology technicians. Do not describe the appointment as a dental treatment or imply that an imaging slot is a medical diagnosis.');
   }
@@ -694,7 +694,7 @@ function buildReceptionistModeSection(receptionistState?: ReceptionistConversati
   lines.push('- REAL AVAILABILITY ONLY: NEVER invent a date or time for an appointment. If the booking note / REAL AVAILABILITY above provides a concrete slot, present exactly that day and time only when the patient is choosing a time. If no real slot is provided, do NOT invent one — say availability needs to be confirmed and offer to hand off to the clinic reception.');
   // A chat affirmative is consent, while only a successful server result proves
   // persistence. The confirmation card is a receipt after that point.
-  lines.push('- BOOKING CONFIRMATION RULE: a clear affirmative chat reply (for example «نعم» or «موافق») is consent to submit a complete booking. The server performs the final availability check and creates it. Never say the patient must press a button; never invent a booking id, [BOOKING_SAVED] marker, or claim that a booking or Calendar event was saved before a successful server result.');
+  lines.push('- BOOKING CONFIRMATION RULE: a clear affirmative chat reply (for example «نعم» or «موافق») is consent to submit a complete booking. The server performs the final availability check and creates it during this request. Do not substitute a textual promise such as “we will get back to you” for the server action. Never say the patient must press a button; never invent a booking id, [BOOKING_SAVED] marker, or claim that a booking or Calendar event was saved before a successful server result.');
   lines.push('- PROVIDERS: only list doctors that appear in Clinic Operating Data, with exactly their recorded title. Do not invent credentials or specialties.');
 
   return lines.join('\n');
