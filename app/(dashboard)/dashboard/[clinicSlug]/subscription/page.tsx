@@ -56,6 +56,7 @@ type AccessData = {
 const STATUS_AR: Record<string, string> = {
   active: 'نشط',
   trialing: 'نسخة تجريبية',
+  expired: 'انتهت التجربة',
   past_due: 'متأخر الدفع',
   canceled: 'ملغى',
   unpaid: 'غير مدفوع',
@@ -82,7 +83,7 @@ const PLAN_NAME_AR: Record<string, string> = {
 function statusTone(status: string | null, degraded: boolean): 'success' | 'warning' | 'danger' | 'neutral' {
   if (degraded) return 'warning';
   if (status === 'active' || status === 'trialing') return 'success';
-  if (status === 'past_due' || status === 'unpaid' || status === 'canceled') return 'danger';
+  if (status === 'expired' || status === 'past_due' || status === 'unpaid' || status === 'canceled') return 'danger';
   return 'neutral';
 }
 
