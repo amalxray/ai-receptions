@@ -5,6 +5,34 @@
  * is bounded/paginated server-side.
  */
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { localStorageImageUrl } from '@/lib/media/localStorageImages';
+
+function mapFeaturedImage(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(mapFeaturedImage);
+  if (!value || typeof value !== 'object') return value;
+
+  const image = value as Record<string, unknown>;
+  return {
+    ...image,
+    image_url: localStorageImageUrl(typeof image.image_url === 'string' ? image.image_url : null),
+  };
+}
+
+function mapArticleImages(article: Record<string, unknown>): Record<string, unknown> {
+  const content = article.content;
+
+  return {
+    ...article,
+    featured_image_url: localStorageImageUrl(
+      typeof article.featured_image_url === 'string' ? article.featured_image_url : null,
+    ),
+    featured_image: mapFeaturedImage(article.featured_image),
+    content:
+      typeof content === 'string'
+        ? content.replace(/https?:\/\/[^\s"'<>]+/g, (url) => localStorageImageUrl(url) ?? url)
+        : content,
+  };
+}
 
 export async function listPublishedArticles(opts: { category?: string | null; limit?: number; offset?: number }) {
   const limit = Math.min(Math.max(opts.limit ?? 10, 1), 50);
@@ -19,7 +47,7 @@ export async function listPublishedArticles(opts: { category?: string | null; li
   if (opts.category) q = q.eq('category', opts.category);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((article) => mapArticleImages(article as Record<string, unknown>));
 }
 
 export async function getPublishedArticle(slug: string) {
@@ -30,7 +58,7 @@ export async function getPublishedArticle(slug: string) {
     .eq('status', 'published')
     .maybeSingle();
   if (err) throw new Error(err.message);
-  return article as Record<string, unknown> | null;
+  return article ? mapArticleImages(article as Record<string, unknown>) : null;
 }
 
 export async function incrementArticleViews(id: string): Promise<void> {

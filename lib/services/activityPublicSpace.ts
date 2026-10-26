@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 import { resolvePublicClinic } from '@/lib/services/clinics';
 import { getPublicClinicProfile, legacyClinicUrl } from '@/lib/services/clinicPublicProfile';
 import {
@@ -278,7 +279,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   const media = (mediaRows ?? []).map((m) => ({
     id: m.id,
     media_type: m.media_type as 'image' | 'video',
-    public_url: m.public_url,
+    public_url: localStorageImageUrl(m.public_url) ?? m.public_url,
     title: m.title ?? null,
     caption: m.caption ?? null,
     alt_text: m.alt_text ?? null,

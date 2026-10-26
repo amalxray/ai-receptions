@@ -4,6 +4,7 @@ import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrls } from '@/lib/vercel/tenantLinks';
 import { prioritizeAskClinics } from '@/lib/services/askClinicDirectory';
 import { readPublicProfileLogo } from '@/lib/services/askClinicPresentation';
+import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 
 export async function getAskPageData() {
   const [settingsRes, tipsRes, articlesRes, storiesRes, faqRes, clinicsRes, galleryRes, clinicsCount, patientsCount, citiesCount] = await Promise.all([
@@ -32,17 +33,30 @@ export async function getAskPageData() {
   const clinicUrls = await resolveTenantPublicUrls(clinics.map((row) => row.slug));
   const clinicsWithLinks = clinics.map((row) => ({
     ...row,
-    logo: readPublicProfileLogo(row.settings),
+    logo: localStorageImageUrl(readPublicProfileLogo(row.settings)),
     booking_url: clinicUrls.get(row.slug) ?? clinicSpaceUrl(row.slug),
+  }));
+  const articles = (articlesRes.data ?? []).map((article) => ({
+    ...article,
+    featured_image_url: localStorageImageUrl(article.featured_image_url),
+    featured_image: Array.isArray(article.featured_image)
+      ? article.featured_image.map((image) => ({
+          ...image,
+          image_url: localStorageImageUrl(image.image_url) ?? image.image_url,
+        }))
+      : article.featured_image,
   }));
   return {
     settings,
     tips: tipsRes.data ?? [],
-    articles: articlesRes.data ?? [],
+    articles,
     stories: storiesRes.data ?? [],
     faq: faqRes.data ?? [],
     clinics: clinicsWithLinks,
-    gallery: galleryRes.data ?? [],
+    gallery: (galleryRes.data ?? []).map((item) => ({
+      ...item,
+      image_url: localStorageImageUrl(item.image_url) ?? item.image_url,
+    })),
     stats: {
       clinics_count: clinicsCount.count ?? 0,
       patients_count: patientsCount.count ?? 0,

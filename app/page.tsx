@@ -3,6 +3,7 @@ import LandingPage from '@/components/landing/LandingPage';
 import { LandingContentProvider } from '@/components/landing/LandingContent';
 import { getLandingPageContent, getLandingPageOrder } from '@/lib/services/landingContent';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 
 /** ISR — CMS edits from /admin/landing-page go live within 30 seconds. */
 export const revalidate = 30;
@@ -40,7 +41,9 @@ export default async function Home() {
     getLandingPageOrder(),
   ]);
 
-  const galleryImages = (galleryRows ?? []).filter((it) => (it.media_type ?? 'image') === 'image' && it.image_url);
+  const galleryImages = (galleryRows ?? [])
+    .filter((it) => (it.media_type ?? 'image') === 'image' && it.image_url)
+    .map((it) => ({ ...it, image_url: localStorageImageUrl(it.image_url) ?? it.image_url }));
   const galleryVideos = (galleryRows ?? []).filter((it) => it.media_type === 'video' && it.video_url);
 
   return (
