@@ -139,8 +139,26 @@ function cleanPatientName(raw: string | undefined): string | null {
   return value;
 }
 
+const PATIENT_NAME_STOPWORDS = new Set([
+  'اليوم', 'يوم', 'بكرة', 'بكره', 'بكرا', 'غدا', 'غداً', 'غدًا',
+  'الساعة', 'الساعه', 'ساعة', 'وقت', 'بتاريخ', 'تاريخ', 'بعد', 'قبل',
+  'صباحا', 'صباحاً', 'صباحًا', 'مساء', 'مساءً', 'الظهر', 'العصر',
+  'today', 'tomorrow', 'at', 'on', 'am', 'pm', 'phone', 'mobile', 'رقم', 'الهاتف', 'هاتف', 'تلفون', 'جوال',
+]);
+
+function trimPatientNameAtContext(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const nameParts: string[] = [];
+  for (const part of raw.trim().split(/\s+/)) {
+    const token = part.replace(/^[،,;:!?؟.()]+|[،,;:!?؟.()]+$/g, '').toLocaleLowerCase();
+    if (!token || /[0-9٠-٩]/.test(token) || PATIENT_NAME_STOPWORDS.has(token)) break;
+    nameParts.push(part);
+  }
+  return nameParts.join(' ').slice(0, 60).trim() || undefined;
+}
+
 const NON_NAME_REPLY_WORDS = new Set([
-  'نعم', 'اه', 'آه', 'اكيد', 'أكيد', 'تمام', 'طيب', 'موافق', 'موافقة',
+  'نعم', 'لا', 'اه', 'آه', 'اكيد', 'أكيد', 'تمام', 'طيب', 'موافق', 'موافقة', 'شكرا', 'شكراً',
   'موعد', 'يوم', 'بكرة', 'بكره', 'غدا', 'غداً', 'اليوم', 'الاحد', 'الأحد',
   'الاثنين', 'الثلاثاء', 'الاربعاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت',
   'الساعة', 'الساعه', 'صباحا', 'مساء', 'ظهرا', 'الظهر', 'العصر',
@@ -149,21 +167,26 @@ const NON_NAME_REPLY_WORDS = new Set([
 ]);
 
 /**
- * A bare full name is accepted only by the caller when it is already waiting
- * for the patient's name in an active booking. Unlabelled one-word replies
- * remain ambiguous and are deliberately not treated as names.
+ * A bare name is accepted only when the caller confirms the assistant had
+ * just asked for it. Explicitly introduced names (e.g. «باسم طارق») are
+ * accepted without that extra context.
  */
-export function extractPatientNameFromBookingReply(text: string): string | null {
+function extractExplicitPatientName(text: string): string | null {
   const explicitName = text.match(
-    /(?:my name is|i am|this is|اسمي|أنا|انا|باسم|بسم)\s+([^,.\n]{2,60})/i,
+    /(?:my name is|i am|this is|اسمي|أنا|انا|باسم|بسم)\s+([^,.\n]{1,60})/i,
   )?.[1];
-  const cleanedExplicitName = cleanPatientName(explicitName);
+  const cleanedExplicitName = cleanPatientName(trimPatientNameAtContext(explicitName));
+  return cleanedExplicitName;
+}
+
+export function extractPatientNameFromBookingReply(text: string, allowSingleWordReply = false): string | null {
+  const cleanedExplicitName = extractExplicitPatientName(text);
   if (cleanedExplicitName) return cleanedExplicitName;
 
-  const candidate = text.trim().replace(/[،,؛;.!؟?]+$/g, '');
+  const candidate = trimPatientNameAtContext(text.trim().replace(/[،,؛;.!؟?]+$/g, '')) ?? '';
   const parts = candidate.split(/\s+/);
   if (
-    parts.length < 2 ||
+    parts.length < (allowSingleWordReply ? 1 : 2) ||
     parts.length > 5 ||
     parts.some((part) =>
       NON_NAME_REPLY_WORDS.has(part.toLocaleLowerCase()) ||
@@ -184,9 +207,7 @@ function extractAppointment(text: string): AppointmentExtraction {
   // ("نعم باسم طلال ابو جميل") and were missing here, so the name the patient
   // DID give never reached `booking.patient_name` → the booking gate returned
   // `need_more_info` and nothing was saved.
-  const name = cleanPatientName(
-    text.match(/(?:my name is|i am|this is|اسمي|أنا|انا|باسم|بسم)\s+([^,.\n]{2,60})/i)?.[1]
-  );
+  const name = extractExplicitPatientName(text);
   const service = text.match(/(?:for|need|service|لـ|اريد|أريد)\s+(?:to\s+book\s+)?(?:an?\s+)?([^,.\n]{2,40}?)(?=\s+(?:on|at|my|and|يوم|بتاريخ|الساعة)|[,.]|$)/i)?.[1]?.trim()
     ?? text.match(/\bbook\s+(?:an?\s+)?([^,.\n]{2,40}?)(?=\s+(?:on|at|my|and)|[,.]|$)/i)?.[1]?.trim()
     // Service-request phrasing ("بدي اتصور بانوراما يوم الاحد") → "بانوراما".
