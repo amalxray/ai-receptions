@@ -9,6 +9,7 @@ import { DatePicker } from '@/components/booking/DatePicker';
 import { formatArabicDate, monthKey, startOfDay, toISODate } from '@/lib/booking/calendar';
 import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
+import { supabase } from '@/lib/supabase';
 
 type Service = { id: string; name: string; description: string | null; duration_minutes: number; price: number | null };
 type Provider = { id: string; name: string; title: string | null };
@@ -61,6 +62,9 @@ function BookingForm() {
   const [lifecycleLoading, setLifecycleLoading] = useState<'confirm' | 'cancel' | null>(null);
   // Phase 3a — post-booking review prompt (display only; booking logic untouched).
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewPromptClosed, setReviewPromptClosed] = useState(false);
+  const [googleSignInLoading, setGoogleSignInLoading] = useState(false);
+  const [googleSignInError, setGoogleSignInError] = useState<string | null>(null);
   // Step 3 calendar: the visible month (controlled) + the days the provider
   // cannot work on, fetched per month from /api/booking/calendar.
   const [calendarMonth, setCalendarMonth] = useState('');
@@ -424,6 +428,19 @@ function BookingForm() {
     }
   };
 
+  const signInWithGoogle = async () => {
+    setGoogleSignInLoading(true);
+    setGoogleSignInError(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: 'https://dentairec.com/auth/callback' },
+    });
+    if (error) {
+      setGoogleSignInError('تعذر بدء التسجيل عبر Google. حاول مرة أخرى.');
+      setGoogleSignInLoading(false);
+    }
+  };
+
   const handleConfirmBooking = async () => {
     if (!bookingResult || !clinicId) return;
     setLifecycleLoading('confirm');
@@ -577,6 +594,20 @@ function BookingForm() {
                 </div>
               )}
 
+              {reviewPromptClosed && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={signInWithGoogle}
+                    disabled={googleSignInLoading}
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full border border-slate-700 bg-white px-6 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:opacity-60"
+                  >
+                    {googleSignInLoading ? 'جارٍ التوجيه إلى Google...' : 'سجل عبر Google'}
+                  </button>
+                  {googleSignInError && <p role="alert" className="mt-2 text-sm text-red-300">{googleSignInError}</p>}
+                </div>
+              )}
+
               {bookingResult.status === 'tentative' && (
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                   <button
@@ -654,7 +685,10 @@ function BookingForm() {
                   clinicSlug={clinic.clinic.slug}
                   source="form"
                   patientName={patientInfo.name}
-                  onClose={() => setShowReviewModal(false)}
+                  onClose={() => {
+                    setShowReviewModal(false);
+                    setReviewPromptClosed(true);
+                  }}
                 />
               )}
             </div>
