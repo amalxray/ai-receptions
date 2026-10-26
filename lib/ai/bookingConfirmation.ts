@@ -15,7 +15,7 @@ export function buildBookingConfirmation(
 
   const service_id = state.booking.service_id ?? state.recommended_service_id;
   const provider_id = state.booking.provider_id ?? state.recommended_provider_id;
-  const { slot, patient_name, phone } = state.booking;
+  const { slot, patient_name, phone, email } = state.booking;
   if (!service_id || !provider_id || !slot || !patient_name?.trim() || !phone?.trim()) return null;
 
   const service = operatingData.services.find((item) => item.id === service_id && item.active);
@@ -40,6 +40,7 @@ export function buildBookingConfirmation(
       time: match[2],
       patient_name: patient_name.trim(),
       phone: phone.trim(),
+      email: email?.trim() || null,
       service_options: operatingData.services
         .filter((item) => item.active)
         .map((item) => ({ id: item.id, name: item.name })),

@@ -8,6 +8,7 @@ type GoogleSignInButtonProps = {
   label?: string;
   onVisible?: () => void;
   showAccountStatus?: boolean;
+  clinicId?: string;
 };
 
 export default function GoogleSignInButton({
@@ -15,6 +16,7 @@ export default function GoogleSignInButton({
   label = 'التسجيل عبر Google',
   onVisible,
   showAccountStatus = false,
+  clinicId,
 }: GoogleSignInButtonProps) {
   const [sessionStatus, setSessionStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [portalStatus, setPortalStatus] = useState<'checking' | 'available' | 'unavailable' | 'error'>('checking');
@@ -57,9 +59,14 @@ export default function GoogleSignInButton({
     let mounted = true;
     setPortalStatus('checking');
     void fetch('/api/portal/identity', { credentials: 'include', cache: 'no-store' })
-      .then((response) => {
+      .then(async (response) => {
         if (!mounted) return;
-        setPortalStatus(response.ok ? 'available' : response.status >= 500 ? 'error' : 'unavailable');
+        if (response.status >= 500) {
+          setPortalStatus('error');
+          return;
+        }
+        const payload = await response.json().catch(() => null) as { linked?: boolean } | null;
+        setPortalStatus(response.ok && payload?.linked === true ? 'available' : 'unavailable');
       })
       .catch(() => {
         if (mounted) setPortalStatus('error');
@@ -82,9 +89,14 @@ export default function GoogleSignInButton({
     setError(null);
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dentairec.com';
+      const callbackUrl = new URL('/auth/callback', origin);
+      if (clinicId) {
+        const isUuid = /^[0-9a-fA-F-]{36}$/.test(clinicId);
+        callbackUrl.searchParams.set(isUuid ? 'clinic_id' : 'clinic_slug', clinicId);
+      }
       const { error: signInError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${origin}/auth/callback` },
+        options: { redirectTo: callbackUrl.toString() },
       });
       if (signInError) throw signInError;
     } catch {
