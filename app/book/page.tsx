@@ -431,9 +431,10 @@ function BookingForm() {
   const signInWithGoogle = async () => {
     setGoogleSignInLoading(true);
     setGoogleSignInError(null);
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dentairec.com';
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: 'https://dentairec.com/auth/callback' },
+      options: { redirectTo: `${origin}/auth/callback` },
     });
     if (error) {
       setGoogleSignInError('تعذر بدء التسجيل عبر Google. حاول مرة أخرى.');
