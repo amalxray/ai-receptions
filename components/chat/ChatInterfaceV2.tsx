@@ -681,6 +681,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           className="mt-4"
                           label="تسجيل الدخول عبر Google"
                           onVisible={scrollMessagesToBottom}
+                          showAccountStatus
                         />
                       </div>
                     )}
