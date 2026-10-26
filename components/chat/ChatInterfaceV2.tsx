@@ -136,9 +136,13 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
   const storageKey = `${STORAGE_KEY_PREFIX}${clinicId}`;
 
   // Scroll to bottom on new messages
+  const scrollMessagesToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isSubmitting]);
+    scrollMessagesToBottom();
+  }, [messages, isSubmitting, scrollMessagesToBottom]);
 
   // Accessibility: Esc = إيقاف قراءة الصوت فوراً
   useEffect(() => {
@@ -673,7 +677,11 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           clinicName={message.bookingConfirmation.clinic_name}
                           clinicPhone={message.bookingConfirmation.clinic_phone}
                         />
-                        <GoogleSignInButton className="mt-4" label="تسجيل الدخول عبر Google" />
+                        <GoogleSignInButton
+                          className="mt-4"
+                          label="تسجيل الدخول عبر Google"
+                          onVisible={scrollMessagesToBottom}
+                        />
                       </div>
                     )}
                     {index === messages.length - 1 && isReceptionist && message.interactive ? (

@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabase';
 type GoogleSignInButtonProps = {
   className?: string;
   label?: string;
+  onVisible?: () => void;
 };
 
 export default function GoogleSignInButton({
   className = '',
   label = 'التسجيل عبر Google',
+  onVisible,
 }: GoogleSignInButtonProps) {
   const [sessionStatus, setSessionStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [loading, setLoading] = useState(false);
@@ -41,6 +43,10 @@ export default function GoogleSignInButton({
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (sessionStatus === 'signed-out') onVisible?.();
+  }, [onVisible, sessionStatus]);
 
   const signIn = async () => {
     setLoading(true);
