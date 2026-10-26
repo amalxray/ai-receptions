@@ -104,6 +104,11 @@ describe('time range extraction (constraints, not slots)', () => {
   it('بعد الساعة 3 → from 15:00', () => {
     expect(extractPreferredTimeRange('بعد الساعة 3')).toEqual({ from: '15:00', to: '23:59' });
   });
+  it('understands explicit morning and evening markers while keeping the PM default', () => {
+    expect(extractPreferredTimeRange('10 صباحاً')).toEqual({ from: '10:00', to: '23:59' });
+    expect(extractPreferredTimeRange('10 مساءً')).toEqual({ from: '22:00', to: '23:59' });
+    expect(extractPreferredTimeRange('الساعة 10')).toEqual({ from: '22:00', to: '23:59' });
+  });
   it('من 1 للـ4 → 13:00-16:00', () => {
     expect(extractPreferredTimeRange('من 1 للـ4')).toEqual({ from: '13:00', to: '16:00' });
   });

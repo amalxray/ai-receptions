@@ -242,11 +242,27 @@ function extractBareHour(t: string): { from: string; to: string } | undefined {
   if (CLOCK_QUESTION_RE.test(t)) return undefined;
   // Trailing lookahead avoids consuming the "1 أو 4" style options list and the
   // minutes of a "الساعة 2:30" (handled explicitly below).
-  const m = t.match(/(?:الساعة|الساعه)\s*(\d{1,2})(?::([0-5]\d))?(?!\s*(?:أو|او|ولا))/i);
+  const labelledHour = t.match(
+    /(?:الساعة|الساعه)\s*(\d{1,2})(?::([0-5]\d))?(?:\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm))?(?!\s*(?:أو|او|ولا))/i,
+  );
+  // A meridiem marker also makes a bare number unambiguous: "10 صباحاً".
+  // Without a marker, keep requiring الساعة/الساعه so dates and other numbers
+  // in a sentence are not accidentally treated as appointment times.
+  const markedBareHour = labelledHour ? null : t.match(
+    /(?:^|\s)(\d{1,2})(?::([0-5]\d))?\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm)(?=$|[\s،,.!?؟])/i,
+  );
+  const m = labelledHour ?? markedBareHour;
   if (!m) return undefined;
   const hour = Number(m[1]);
   if (!Number.isInteger(hour) || hour < 1 || hour > 23) return undefined;
-  const hour24 = hour >= 13 ? hour : hour === 12 ? 12 : hour + 12;
+  const marker = m[3]?.toLowerCase();
+  const isMorning = marker ? /^(?:صباح|am)/i.test(marker) : false;
+  const hasExplicitMeridiem = Boolean(marker);
+  const hour24 = hasExplicitMeridiem && hour <= 12
+    ? isMorning
+      ? (hour === 12 ? 0 : hour)
+      : (hour === 12 ? 12 : hour + 12)
+    : hour >= 13 ? hour : hour === 12 ? 12 : hour + 12;
   const from = `${String(hour24).padStart(2, '0')}:${m[2] ?? '00'}`;
   return { from, to: '23:59' };
 }
