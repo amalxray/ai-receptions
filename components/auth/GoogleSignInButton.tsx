@@ -7,14 +7,17 @@ type GoogleSignInButtonProps = {
   className?: string;
   label?: string;
   onVisible?: () => void;
+  showAccountStatus?: boolean;
 };
 
 export default function GoogleSignInButton({
   className = '',
   label = 'التسجيل عبر Google',
   onVisible,
+  showAccountStatus = false,
 }: GoogleSignInButtonProps) {
   const [sessionStatus, setSessionStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
+  const [portalStatus, setPortalStatus] = useState<'checking' | 'available' | 'unavailable' | 'error'>('checking');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,8 +48,34 @@ export default function GoogleSignInButton({
   }, []);
 
   useEffect(() => {
-    if (sessionStatus === 'signed-out') onVisible?.();
-  }, [onVisible, sessionStatus]);
+    if (!showAccountStatus || sessionStatus === 'checking') return;
+    if (sessionStatus === 'signed-out') {
+      setPortalStatus('unavailable');
+      return;
+    }
+
+    let mounted = true;
+    setPortalStatus('checking');
+    void fetch('/api/portal/identity', { credentials: 'include', cache: 'no-store' })
+      .then((response) => {
+        if (!mounted) return;
+        setPortalStatus(response.ok ? 'available' : response.status >= 500 ? 'error' : 'unavailable');
+      })
+      .catch(() => {
+        if (mounted) setPortalStatus('error');
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [sessionStatus, showAccountStatus]);
+
+  useEffect(() => {
+    const stateResolved = showAccountStatus
+      ? sessionStatus === 'signed-out' || (sessionStatus === 'signed-in' && portalStatus !== 'checking')
+      : sessionStatus === 'signed-out';
+    if (stateResolved) onVisible?.();
+  }, [onVisible, portalStatus, sessionStatus, showAccountStatus]);
 
   const signIn = async () => {
     setLoading(true);
@@ -63,6 +92,44 @@ export default function GoogleSignInButton({
       setLoading(false);
     }
   };
+
+  if (showAccountStatus && (sessionStatus === 'checking' || (sessionStatus === 'signed-in' && portalStatus === 'checking'))) {
+    return (
+      <div className={className} role="status" aria-live="polite">
+        <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-600">
+          جارٍ التحقق من حالة تسجيل الدخول...
+        </p>
+      </div>
+    );
+  }
+
+  if (showAccountStatus && sessionStatus === 'signed-in') {
+    return (
+      <div className={className} role="status" aria-live="polite">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center">
+          <p className="text-sm font-semibold text-emerald-900">
+            {portalStatus === 'available'
+              ? 'أهلاً بك مجدداً، يمكنك متابعة مواعيدك من حسابك.'
+              : 'أهلاً بك مجدداً، تم تسجيل الدخول عبر Google.'}
+          </p>
+          {portalStatus === 'available' ? (
+            <a
+              href="/portal"
+              className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-full bg-emerald-700 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-800"
+            >
+              عرض مواعيدي
+            </a>
+          ) : (
+            <p className="mt-2 text-xs text-emerald-800">
+              {portalStatus === 'error'
+                ? 'تعذّر التحقق من بوابة المريض الآن.'
+                : 'لا يظهر لهذه الجلسة ملف مريض مرتبط حالياً.'}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (sessionStatus !== 'signed-out') return null;
 
