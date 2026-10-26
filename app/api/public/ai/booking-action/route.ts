@@ -23,6 +23,7 @@ const requestSchema = z.object({
   time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   patient_name: z.string().max(200).optional(),
   phone: z.string().max(30).optional(),
+  email: z.string().trim().email().max(320).nullable().optional(),
 });
 
 const BOOKING_SUCCESS = '✅ تم تأكيد الحجز';
@@ -122,6 +123,7 @@ export async function POST(request: Request) {
         slot: selectedSlot,
         patient_name: patientName,
         phone,
+        ...(input.email !== undefined ? { email: input.email } : {}),
         state: 'BOOKING',
         patient_confirmed_booking: false,
       });
@@ -137,6 +139,7 @@ export async function POST(request: Request) {
     if (!confirmation) return NextResponse.json({ error: 'بيانات الحجز غير مكتملة. أرسل الخدمة والطبيب والتاريخ والوقت والاسم والهاتف.' }, { status: 409 });
 
     await persistReceptionistSlot(clinic.id, input.conversation_id, {
+      ...(input.email !== undefined ? { email: input.email } : {}),
       state: 'BOOKING',
       patient_confirmed_booking: true,
     });

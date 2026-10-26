@@ -43,6 +43,7 @@ export type BookingConfirmationData = {
   time: string;
   patient_name: string;
   phone: string;
+  email?: string | null;
   service_options: Array<{ id: string; name: string }>;
   provider_options: Array<{ id: string; name: string }>;
 };
