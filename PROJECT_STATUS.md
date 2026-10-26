@@ -2,6 +2,15 @@
 
 _Chronological project status. The latest verified release update is recorded first; older sections below are historical snapshots._
 
+## 2026-10-26 — Future Feature: Chat Image Upload for Prescription Analysis
+
+- Idea (deferred): Allow the patient to upload or photograph the doctor's prescription within the chat, so the AI can analyze it and extract the image type (CBCT/panorama) and the name (if present), easing booking and reducing questions.
+- Proposed free solution: Gemini 1.5 Flash (Vision).
+- Image handling: The image is deleted immediately after information extraction; it is not stored in Storage/DB.
+- Status: Deferred (idea). No code changes.
+
+---
+
 ## 2026-10-25 — Active plan IDs unified (Option A)
 
 - The owner manually applied `db/migrations/20261025_unify_active_plans.sql`; result: **Success. No rows returned**.
