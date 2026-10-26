@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 type GoogleSignInButtonProps = {
@@ -12,8 +12,35 @@ export default function GoogleSignInButton({
   className = '',
   label = 'التسجيل عبر Google',
 }: GoogleSignInButtonProps) {
+  const [sessionStatus, setSessionStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    let receivedAuthEvent = false;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      receivedAuthEvent = true;
+      if (!mounted) return;
+
+      setSessionStatus(session?.user ? 'signed-in' : 'signed-out');
+      setLoading(false);
+    });
+
+    void supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+      if (!mounted || receivedAuthEvent) return;
+
+      setSessionStatus(!sessionError && session?.user ? 'signed-in' : 'signed-out');
+    }).catch(() => {
+      if (mounted && !receivedAuthEvent) setSessionStatus('signed-out');
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const signIn = async () => {
     setLoading(true);
@@ -30,6 +57,8 @@ export default function GoogleSignInButton({
       setLoading(false);
     }
   };
+
+  if (sessionStatus !== 'signed-out') return null;
 
   return (
     <div className={className}>
