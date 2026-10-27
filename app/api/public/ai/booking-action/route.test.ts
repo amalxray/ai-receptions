@@ -93,7 +93,12 @@ beforeEach(() => {
 });
 
 describe('public chat booking action', () => {
-  it('creates the booking only on explicit confirmation and persists pending status without Google', async () => {
+  it.each(['بانوراما', 'CBCT'])('creates a pending %s booking only on explicit confirmation without Google', async (serviceName) => {
+    mocks.loadClinicOperatingData.mockResolvedValue({
+      services: [{ id: 'service-1', name: serviceName, active: true, duration_minutes: 30 }],
+      providers: [{ id: 'provider-1', name: 'د. حلا' }],
+      providerServiceIds: [{ service_id: 'service-1', provider_id: 'provider-1' }],
+    });
     const request = new Request('http://localhost/api/public/ai/booking-action', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -109,6 +114,7 @@ describe('public chat booking action', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({ ok: true, status: 'pending_confirmation', appointment_id: 'appointment-1' });
+    expect(payload.confirmation).toMatchObject({ service: serviceName, patient_name: 'هادي جاد الله' });
     expect(payload.message).toContain('\u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629');
     expect(mocks.saveMessage).toHaveBeenCalledWith(expect.objectContaining({
       content: expect.stringContaining('\u0628\u0627\u0646\u062a\u0638\u0627\u0631 \u062a\u0623\u0643\u064a\u062f \u0627\u0644\u0639\u064a\u0627\u062f\u0629'),
