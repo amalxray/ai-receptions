@@ -41,6 +41,58 @@ describe('appointment scheduling', () => {
     expect(overlap).toMatchObject({ available: false, reason: 'overlap' });
   });
 
+  it('allows up to three short imaging bookings in the same hour', () => {
+    const imagingSchedule = { ...schedule, appointmentDurationMinutes: 5 };
+    const existing = [{
+      startsAt: '2026-07-20T10:00:00.000Z',
+      durationMinutes: 5,
+      status: 'confirmed',
+      serviceName: 'تصوير بانوراما',
+    }];
+
+    expect(checkSlotAvailability({
+      startsAt: '2026-07-20T10:00:00.000Z',
+      durationMinutes: 5,
+      schedule: imagingSchedule,
+      existingAppointments: existing,
+      allowImagingOverlap: true,
+    })).toMatchObject({ available: true, reason: 'available' });
+
+    const twoExisting = [...existing, {
+      startsAt: '2026-07-20T10:00:00.000Z',
+      durationMinutes: 5,
+      status: 'confirmed',
+      serviceName: 'تصوير طبقي CBCT',
+    }];
+    expect(checkSlotAvailability({
+      startsAt: '2026-07-20T10:00:00.000Z',
+      durationMinutes: 5,
+      schedule: imagingSchedule,
+      existingAppointments: [...twoExisting, {
+        startsAt: '2026-07-20T10:00:00.000Z',
+        durationMinutes: 5,
+        status: 'confirmed',
+        serviceName: 'تصوير بانوراما',
+      }],
+      allowImagingOverlap: true,
+    })).toMatchObject({ available: false, reason: 'overlap' });
+  });
+
+  it('does not relax overlap rules for ordinary services', () => {
+    expect(checkSlotAvailability({
+      startsAt: '2026-07-20T10:00:00.000Z',
+      durationMinutes: 30,
+      schedule,
+      existingAppointments: [{
+        startsAt: '2026-07-20T10:00:00.000Z',
+        durationMinutes: 30,
+        status: 'confirmed',
+        serviceName: 'تنظيف أسنان',
+      }],
+      allowImagingOverlap: true,
+    })).toMatchObject({ available: false, reason: 'overlap' });
+  });
+
   it('suggests available slots while respecting working hours', () => {
     const slots = suggestFreeSlots({ date: '2026-07-20', schedule, limit: 3 });
     expect(slots).toEqual([
