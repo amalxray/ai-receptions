@@ -55,7 +55,7 @@ describe('ReviewPromptModal (Phase 3a)', () => {
     const payload = { clinic_slug: 'amal-x-ray-center', rating: 5, author_name: 'أحمد', comment: null, source: 'form' };
     expect(payload.rating).toBeGreaterThanOrEqual(1);
     expect(payload.rating).toBeLessThanOrEqual(5);
-    expect(['form', 'chat', 'cron', 'public']).toContain(payload.source);
+    expect(['form', 'chat', 'booking', 'cron', 'public']).toContain(payload.source);
     expect(payload.clinic_slug.length).toBeGreaterThan(0);
   });
 });

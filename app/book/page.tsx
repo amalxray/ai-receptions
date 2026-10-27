@@ -580,7 +580,7 @@ function BookingForm() {
               )}
 
               {reviewPromptClosed && (
-                <GoogleSignInButton className="mt-6" label="تسجيل الدخول عبر Google" />
+                <GoogleSignInButton className="mt-6" label="تسجيل الدخول عبر Google" clinicId={clinic.clinic.id} />
               )}
 
               {bookingResult.status === 'tentative' && (
