@@ -17,6 +17,8 @@ import type { ReceptionistConversationState } from '@/lib/ai/clinicDataContext';
 
 export const understandingResultSchema = z.object({
   requested_service: z.string().max(200).optional(),
+  /** Patient phone extracted from their own message and saved with the chat booking. */
+  patient_phone: z.string().max(30).optional(),
   preferred_provider: z.string().max(200).optional(),
   /** ISO date YYYY-MM-DD in the clinic timezone. */
   preferred_date: z.string().max(20).optional(),
@@ -113,6 +115,19 @@ export function extractRequestedService(text: string): string | undefined {
   const t = toLatinDigits(text);
   for (const { re, label } of SERVICES) {
     if (re.test(t)) return label;
+  }
+  return undefined;
+}
+
+/** Extracts a Palestinian mobile number in local or international format. */
+export function extractPatientPhone(text: string): string | undefined {
+  const normalizedText = toLatinDigits(text);
+  const candidates = normalizedText.match(/(?<![\d+])(?:\+970|00970|05)(?:[\s().-]*\d){5,13}(?!\d)/g) ?? [];
+
+  for (const candidate of candidates) {
+    const compact = candidate.replace(/[\s().-]/g, '');
+    const digits = compact.replace(/\D/g, '');
+    if (digits.length >= 10 && digits.length <= 15) return compact;
   }
   return undefined;
 }
@@ -345,6 +360,7 @@ export function understandMessage(text: string, options: UnderstandingOptions = 
   const timeZone = options.timeZone ?? 'UTC';
 
   const requested_service = extractRequestedService(text);
+  const patient_phone = extractPatientPhone(text);
   const preferred_provider = extractPreferredProvider(text);
   const preferred_date = extractPreferredDate(text, now, timeZone);
   const preferred_time_range = extractPreferredTimeRange(text);
@@ -356,6 +372,7 @@ export function understandMessage(text: string, options: UnderstandingOptions = 
 
   const parsed = understandingResultSchema.safeParse({
     ...(requested_service ? { requested_service } : {}),
+    ...(patient_phone ? { patient_phone } : {}),
     ...(preferred_provider ? { preferred_provider } : {}),
     ...(preferred_date ? { preferred_date } : {}),
     ...(preferred_time_range ? { preferred_time_range } : {}),
@@ -382,6 +399,7 @@ export function applyUnderstandingToState(
   const next: ReceptionistConversationState = { ...state };
 
   if (result.requested_service) next.requested_service = result.requested_service;
+  if (result.patient_phone) next.booking.phone = result.patient_phone;
   if (result.preferred_provider) next.preferred_provider = result.preferred_provider;
   if (result.preferred_date) next.preferred_date = result.preferred_date;
   if (result.preferred_time_range) next.preferred_time_range = result.preferred_time_range;

@@ -11,7 +11,69 @@ export const dynamic = 'force-dynamic';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** Exchange the OAuth code, then optionally link one exact clinic-scoped email match. */
+function normalizePalestinianPhone(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+  const latin = value.replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)));
+  const compact = latin.trim().replace(/[\s().-]/g, '');
+  if (!/^(?:05|\+970|00970)/.test(compact)) return null;
+
+  const digits = compact.replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 15) return null;
+  if (compact.startsWith('00970')) return `0${digits.slice(5)}`;
+  if (compact.startsWith('+970')) return `0${digits.slice(3)}`;
+  return digits;
+}
+
+/** Find a unique clinic patient matching the phone on this clinic's booking. */
+async function findUniqueBookingPhonePatient(clinicId: string, appointmentId: string): Promise<string | null> {
+  const { data: appointment, error: appointmentError } = await supabaseAdmin
+    .from('appointments')
+    .select('patient_id')
+    .eq('id', appointmentId)
+    .eq('clinic_id', clinicId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (appointmentError) throw new Error(appointmentError.message);
+  if (typeof appointment?.patient_id !== 'string') return null;
+
+  const { data: bookingPatient, error: bookingPatientError } = await supabaseAdmin
+    .from('patients')
+    .select('phone_number')
+    .eq('id', appointment.patient_id)
+    .eq('clinic_id', clinicId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (bookingPatientError) throw new Error(bookingPatientError.message);
+  const bookingPhone = normalizePalestinianPhone(bookingPatient?.phone_number);
+  if (!bookingPhone) return null;
+
+  const matches: string[] = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data: patients, error: patientsError } = await supabaseAdmin
+      .from('patients')
+      .select('id, phone_number')
+      .eq('clinic_id', clinicId)
+      .is('deleted_at', null)
+      .not('phone_number', 'is', null)
+      .order('id')
+      .range(offset, offset + pageSize - 1);
+    if (patientsError) throw new Error(patientsError.message);
+
+    for (const patient of patients ?? []) {
+      if (normalizePalestinianPhone(patient.phone_number) === bookingPhone) {
+        matches.push(patient.id);
+        if (matches.length > 1) break;
+      }
+    }
+    if (matches.length > 1 || (patients ?? []).length < pageSize) break;
+  }
+
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** Exchange the OAuth code, then link one exact clinic-scoped email or phone match. */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
@@ -22,6 +84,7 @@ export async function GET(request: Request) {
     if (!error) {
       const clinicIdParam = searchParams.get('clinic_id');
       const clinicSlugParam = searchParams.get('clinic_slug');
+      const appointmentIdParam = searchParams.get('appointment_id');
       const hasClinicContext = Boolean(clinicIdParam || clinicSlugParam);
       if (!hasClinicContext) return NextResponse.redirect(new URL('/', origin));
 
@@ -67,10 +130,21 @@ export async function GET(request: Request) {
             if (matches.length > 1 || (patients ?? []).length < pageSize) break;
           }
 
-          if (matches.length === 1) {
+          let patientIdToLink: string | null = matches.length === 1 ? matches[0].id : null;
+          // A phone fallback is used only when the clinic has no email match.
+          // Multiple email matches remain ambiguous and must not be guessed.
+          if (
+            matches.length === 0 &&
+            appointmentIdParam &&
+            UUID_PATTERN.test(appointmentIdParam)
+          ) {
+            patientIdToLink = await findUniqueBookingPhonePatient(clinic.id, appointmentIdParam);
+          }
+
+          if (patientIdToLink) {
             await provisionPatientIdentity({
               clinicId: clinic.id,
-              patientId: matches[0].id,
+              patientId: patientIdToLink,
               email: normalizedGoogleEmail,
               userId: user.id,
             });
@@ -78,7 +152,7 @@ export async function GET(request: Request) {
               .from('clinic_patient_identities')
               .select('id')
               .eq('clinic_id', clinic.id)
-              .eq('patient_id', matches[0].id)
+              .eq('patient_id', patientIdToLink)
               .eq('user_id', user.id)
               .eq('status', 'active')
               .is('deleted_at', null)
