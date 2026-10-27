@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePublicClinic } from '@/lib/services/clinics';
 import { provisionPatientIdentity } from '@/lib/services/patientPortal';
 import { logEvent } from '@/lib/server/logging';
+import { clinicSpaceUrl } from '@/lib/vercel/domains';
+import { isSubdomainReady } from '@/lib/vercel/subdomainReadiness';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,12 +26,20 @@ export async function GET(request: Request) {
       if (!hasClinicContext) return NextResponse.redirect(new URL('/', origin));
 
       let linked = false;
+      let clinicReturnOrigin: string | null = null;
       try {
         const clinic = clinicIdParam && UUID_PATTERN.test(clinicIdParam)
           ? await resolvePublicClinic({ id: clinicIdParam })
           : !clinicIdParam && clinicSlugParam
             ? await resolvePublicClinic({ slug: clinicSlugParam })
             : null;
+        if (
+          clinic &&
+          process.env.VERCEL_ENV === 'production' &&
+          await isSubdomainReady(clinic.slug)
+        ) {
+          clinicReturnOrigin = new URL(clinicSpaceUrl(clinic.slug)).origin;
+        }
         const { data: authData, error: userError } = await supabase.auth.getUser();
         const user = authData?.user;
         const normalizedGoogleEmail = user?.email?.trim().toLowerCase();
@@ -84,7 +94,11 @@ export async function GET(request: Request) {
         }, 'warn');
       }
 
-      const destination = new URL('/portal', origin);
+      // In production, return to this clinic's canonical tenant origin. The
+      // callback itself can be reached through www when the auth redirect
+      // allowlist falls back to the platform host; a clinic-scoped URL keeps
+      // the patient's journey on the clinic domain without a fixed SITE_URL.
+      const destination = new URL('/portal', clinicReturnOrigin ?? origin);
       destination.searchParams.set('link', linked ? 'linked' : 'unlinked');
       return NextResponse.redirect(destination);
     }

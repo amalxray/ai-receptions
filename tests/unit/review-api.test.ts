@@ -18,6 +18,7 @@ const h = vi.hoisted(() => {
     reviewResult: { data: null as any, error: null as any },
     insertResult: { data: null as any, error: null as any },
     updateResult: { data: null as any, error: null as any },
+    insertResults: [] as Array<{ data: any; error: any }>,
     listResult: { data: [] as any[], error: null as any, count: null as number | null },
     lastInsert: null as any,
     lastUpdate: null as any,
@@ -34,7 +35,9 @@ const h = vi.hoisted(() => {
     list: () => st.listResult,
   };
   function chainFor(key: string) {
-    const result = results[key]!;
+    const result = () => key === 'insert' && st.insertResults.length > 0
+      ? st.insertResults.shift()!
+      : results[key]!();
     const q: any = { __eqs: [] as any[][], __range: null as number[] | null };
     q.select = vi.fn(() => q);
     q.insert = vi.fn((payload: any) => { st.lastInsert = payload; return q; });
@@ -95,6 +98,7 @@ beforeEach(() => {
   h.clinicResult = { data: { id: CID }, error: null };
   h.reviewResult = { data: { id: RID, clinic_id: CID, deleted_at: null }, error: null };
   h.insertResult = { data: { id: 'rev-1', is_published: true, flagged_medical: false }, error: null };
+  h.insertResults = [];
   h.updateResult = { data: { id: RID, is_published: true }, error: null };
   h.listResult = { data: [], error: null, count: 0 };
   h.lastInsert = null;
@@ -157,6 +161,20 @@ describe('POST /api/public/reviews', () => {
     expect(h.lastInsert.comment).not.toContain('059');
     expect(h.lastInsert.flag_reason).toBe('PII تم إخفاؤه');
     expect(h.lastInsert.is_published).toBe(true); // PII لا يحجب
+  });
+
+  it('7. source=booking falls back to legacy-safe chat when the database check is outdated', async () => {
+    h.queue = ['clinic', 'insert', 'insert'];
+    h.insertResults = [
+      { data: null, error: { code: '23514', message: 'violates check constraint "clinic_reviews_source_check"' } },
+      { data: { id: 'rev-compat', is_published: true, flagged_medical: false }, error: null },
+    ];
+
+    const res = await publicPOST(postReq({ ...baseBody, source: 'booking' }));
+
+    expect(res.status).toBe(201);
+    expect(h.lastInsert.source).toBe('chat');
+    expect(h.logEvent.mock.calls.some((call) => call[0] === 'review_booking_source_compat_fallback')).toBe(true);
   });
 });
 
