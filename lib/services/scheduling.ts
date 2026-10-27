@@ -41,10 +41,14 @@ export type AvailabilityResult = { available: boolean; reason: AvailabilityReaso
 const ACTIVE_STATUSES = new Set(['scheduled', 'tentative', 'pending_confirmation', 'confirmed']);
 const IMAGING_SERVICE_PATTERN = /تصوير|بانوراما|cbct|أشعة|اشعة|x[- ]?ray|xray|opg|سيفال|مقطعي|طبقي/i;
 export const MAX_IMAGING_APPOINTMENTS_PER_HOUR = 3;
+const MAX_IMAGING_DURATION_MINUTES = 60;
 
-/** Imaging sessions are short and intentionally share a provider hour. */
-export function isShortImagingService(serviceName: string | null | undefined, durationMinutes: number): boolean {
-  return durationMinutes > 0 && durationMinutes <= 5 && IMAGING_SERVICE_PATTERN.test(serviceName ?? '');
+/** Imaging sessions can share an hour when their combined duration fits its capacity. */
+export function isImagingServiceWithinHourlyCapacity(serviceName: string | null | undefined, durationMinutes: number): boolean {
+  return Number.isInteger(durationMinutes)
+    && durationMinutes > 0
+    && durationMinutes <= MAX_IMAGING_DURATION_MINUTES
+    && IMAGING_SERVICE_PATTERN.test(serviceName ?? '');
 }
 
 function minutes(time: string) {
@@ -111,6 +115,8 @@ export function checkSlotAvailability(params: {
   /** Allow short imaging sessions to share an hour, up to the configured cap. */
   allowImagingOverlap?: boolean;
   maxImagingAppointmentsPerHour?: number;
+  /** Name of the service being booked — used to decide if the NEW slot is imaging. */
+  serviceName?: string | null;
 }): AvailabilityResult {
   const start = parseLocalDateTime(params.startsAt);
   const duration = params.durationMinutes;
@@ -160,9 +166,9 @@ export function checkSlotAvailability(params: {
     };
     const sameHour = existing.filter((appointment) => hourKey(parseLocalDateTime(appointment.startsAt)) === hourKey(start));
     const imagingOverlapAllowed = params.allowImagingOverlap === true
-      && isShortImagingService('تصوير', duration)
+      && isImagingServiceWithinHourlyCapacity(params.serviceName ?? 'تصوير', duration)
       && sameHour.length < (params.maxImagingAppointmentsPerHour ?? MAX_IMAGING_APPOINTMENTS_PER_HOUR)
-      && sameHour.every((appointment) => isShortImagingService(appointment.serviceName, appointment.durationMinutes))
+      && sameHour.every((appointment) => isImagingServiceWithinHourlyCapacity(appointment.serviceName, appointment.durationMinutes))
       && sameHour.reduce((total, appointment) => total + appointment.durationMinutes, duration) <= 60;
     if (!imagingOverlapAllowed) return { available: false, reason: 'overlap', endsAt };
   }
@@ -196,6 +202,7 @@ export function suggestFreeSlots(params: {
   timeZone?: string;
   allowImagingOverlap?: boolean;
   maxImagingAppointmentsPerHour?: number;
+  serviceName?: string | null;
 }) {
   const day = params.schedule.days.find((item) => item.weekday === new Date(`${params.date}T00:00:00Z`).getUTCDay());
   if (!day?.enabled) return [];
@@ -228,6 +235,7 @@ export function suggestFreeSlots(params: {
         timeZone: params.timeZone,
         allowImagingOverlap: params.allowImagingOverlap,
         maxImagingAppointmentsPerHour: params.maxImagingAppointmentsPerHour,
+        serviceName: params.serviceName,
       });
       if (result.available) slots.push(startsAt);
       if (slots.length >= limit) break;

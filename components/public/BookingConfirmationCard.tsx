@@ -20,10 +20,8 @@ export default function BookingConfirmationCard({
   patientName,
   appointmentStatus,
 }: Props) {
-  const isPending = appointmentStatus !== undefined && appointmentStatus !== 'confirmed';
-  const statusTitle = appointmentStatus === undefined || appointmentStatus === 'confirmed'
-    ? 'تم تأكيد الحجز'
-    : 'تم استلام طلب الحجز';
+  const isPending = appointmentStatus !== 'confirmed';
+  const statusTitle = isPending ? 'تم استلام طلب الحجز' : 'تم تأكيد الحجز';
 
   const copyId = async () => {
     try {

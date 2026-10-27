@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       time,
       patientId,
       durationMinutes: duration_minutes,
+      initialStatus: 'tentative',
       conversationId: conversation_id ?? null,
     });
 
