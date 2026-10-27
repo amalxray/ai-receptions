@@ -9,6 +9,7 @@ type GoogleSignInButtonProps = {
   onVisible?: () => void;
   showAccountStatus?: boolean;
   clinicId?: string;
+  appointmentId?: string;
 };
 
 export default function GoogleSignInButton({
@@ -17,6 +18,7 @@ export default function GoogleSignInButton({
   onVisible,
   showAccountStatus = false,
   clinicId,
+  appointmentId,
 }: GoogleSignInButtonProps) {
   const [sessionStatus, setSessionStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [portalStatus, setPortalStatus] = useState<'checking' | 'available' | 'unavailable' | 'error'>('checking');
@@ -93,6 +95,9 @@ export default function GoogleSignInButton({
       if (clinicId) {
         const isUuid = /^[0-9a-fA-F-]{36}$/.test(clinicId);
         callbackUrl.searchParams.set(isUuid ? 'clinic_id' : 'clinic_slug', clinicId);
+      }
+      if (appointmentId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(appointmentId)) {
+        callbackUrl.searchParams.set('appointment_id', appointmentId);
       }
       const { error: signInError } = await supabase.auth.signInWithOAuth({
         provider: 'google',

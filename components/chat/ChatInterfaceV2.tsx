@@ -690,6 +690,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           onVisible={scrollMessagesToBottom}
                           showAccountStatus
                           clinicId={clinicId}
+                          appointmentId={message.bookingConfirmation.appointment_id}
                         />
                       </div>
                     )}
