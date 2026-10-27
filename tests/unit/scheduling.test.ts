@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkSlotAvailability, getCalendarRange, suggestFreeSlots, type ProviderSchedule } from '@/lib/services/scheduling';
+import { checkSlotAvailability, getCalendarRange, isImagingServiceWithinHourlyCapacity, suggestFreeSlots, type ProviderSchedule } from '@/lib/services/scheduling';
 
 const schedule: ProviderSchedule = {
   providerId: 'provider-1',
@@ -41,40 +41,59 @@ describe('appointment scheduling', () => {
     expect(overlap).toMatchObject({ available: false, reason: 'overlap' });
   });
 
-  it('allows up to three short imaging bookings in the same hour', () => {
-    const imagingSchedule = { ...schedule, appointmentDurationMinutes: 5 };
+  it('allows 9:00 and 10:00 CBCT overlaps and caps imaging at three per hour', () => {
+    const imagingSchedule = { ...schedule, days: [{ ...schedule.days[0], weekday: 3 }], appointmentDurationMinutes: 10 };
     const existing = [{
-      startsAt: '2026-07-20T10:00:00.000Z',
+      startsAt: '2026-10-28T09:00:00.000Z',
       durationMinutes: 5,
       status: 'confirmed',
       serviceName: 'تصوير بانوراما',
     }];
 
+    expect(isImagingServiceWithinHourlyCapacity('تصوير طبقي cbct', 10)).toBe(true);
+    expect(isImagingServiceWithinHourlyCapacity('تنظيف أسنان', 10)).toBe(false);
+    expect(isImagingServiceWithinHourlyCapacity('تصوير طبقي cbct', 61)).toBe(false);
+
     expect(checkSlotAvailability({
-      startsAt: '2026-07-20T10:00:00.000Z',
-      durationMinutes: 5,
+      startsAt: '2026-10-28T09:00:00.000Z',
+      durationMinutes: 10,
       schedule: imagingSchedule,
       existingAppointments: existing,
-      allowImagingOverlap: true,
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity('تصوير طبقي cbct', 10),
+      serviceName: 'تصوير طبقي CBCT',
+    })).toMatchObject({ available: true, reason: 'available' });
+
+    expect(checkSlotAvailability({
+      startsAt: '2026-10-28T10:00:00.000Z',
+      durationMinutes: 10,
+      schedule: imagingSchedule,
+      existingAppointments: [{
+        startsAt: '2026-10-28T10:00:00.000Z',
+        durationMinutes: 5,
+        status: 'confirmed',
+        serviceName: 'تصوير طبقي CBCT',
+      }],
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity('تصوير طبقي cbct', 10),
+      serviceName: 'تصوير طبقي CBCT',
     })).toMatchObject({ available: true, reason: 'available' });
 
     const twoExisting = [...existing, {
-      startsAt: '2026-07-20T10:00:00.000Z',
-      durationMinutes: 5,
+      startsAt: '2026-10-28T09:00:00.000Z',
+      durationMinutes: 10,
       status: 'confirmed',
       serviceName: 'تصوير طبقي CBCT',
     }];
     expect(checkSlotAvailability({
-      startsAt: '2026-07-20T10:00:00.000Z',
-      durationMinutes: 5,
+      startsAt: '2026-10-28T09:00:00.000Z',
+      durationMinutes: 10,
       schedule: imagingSchedule,
       existingAppointments: [...twoExisting, {
-        startsAt: '2026-07-20T10:00:00.000Z',
-        durationMinutes: 5,
+        startsAt: '2026-10-28T09:00:00.000Z',
+        durationMinutes: 10,
         status: 'confirmed',
         serviceName: 'تصوير بانوراما',
       }],
-      allowImagingOverlap: true,
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity('تصوير طبقي cbct', 10),
     })).toMatchObject({ available: false, reason: 'overlap' });
   });
 
@@ -90,6 +109,7 @@ describe('appointment scheduling', () => {
         serviceName: 'تنظيف أسنان',
       }],
       allowImagingOverlap: true,
+      serviceName: 'تنظيف أسنان',
     })).toMatchObject({ available: false, reason: 'overlap' });
   });
 

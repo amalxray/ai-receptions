@@ -10,7 +10,6 @@ const h = vi.hoisted(() => ({
   logEvent: vi.fn(),
   patients: [] as Array<{ id: string; email: string | null }>,
   identityResult: null as { data: { id: string } | null; error: { message: string } | null } | null,
-  isSubdomainReady: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -34,10 +33,6 @@ vi.mock('@/lib/server/logging', () => ({ logEvent: h.logEvent }));
 vi.mock('@/lib/vercel/domains', () => ({
   clinicSpaceUrl: (slug: string) => `https://${slug}.dentairec.com`,
 }));
-vi.mock('@/lib/vercel/subdomainReadiness', () => ({
-  isSubdomainReady: h.isSubdomainReady,
-}));
-
 const clinic = { id: '11111111-1111-4111-8111-111111111111', slug: 'amal-x-ray-center' };
 const user = {
   id: 'user-1',
@@ -64,7 +59,6 @@ beforeEach(() => {
   h.provisionPatientIdentity.mockResolvedValue({ id: 'identity-1' });
   h.patients = [{ id: 'patient-1', email: ' Patient@Example.com ' }];
   h.identityResult = { data: { id: 'identity-1' }, error: null };
-  h.isSubdomainReady.mockResolvedValue(true);
   h.from.mockImplementation((table: string) => createAdminQuery(table));
 });
 
@@ -97,13 +91,11 @@ describe('GET /auth/callback', () => {
     expect(response.headers.get('location')).toBe('https://amal-x-ray-center.dentairec.com/portal?link=unlinked');
   });
 
-  it('keeps the callback origin if the clinic subdomain is not registered', async () => {
-    h.isSubdomainReady.mockResolvedValue(false);
-
+  it('returns to the clinic tenant even when OAuth callback arrived on www', async () => {
     const response = await GET(new Request(
       `https://www.dentairec.com/auth/callback?code=oauth-code&clinic_id=${clinic.id}`,
     ));
 
-    expect(response.headers.get('location')).toBe('https://www.dentairec.com/portal?link=linked');
+    expect(response.headers.get('location')).toBe('https://amal-x-ray-center.dentairec.com/portal?link=linked');
   });
 });

@@ -414,7 +414,7 @@ function BookingForm() {
         service: body.data.service,
         provider_id: body.data.provider_id,
         patient_name: submittedPatientName,
-        status: body.data.status,
+        status: 'tentative',
         booking_token: body.data.booking_token,
       });
       setStep('success');

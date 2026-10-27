@@ -5,7 +5,6 @@ import { resolvePublicClinic } from '@/lib/services/clinics';
 import { provisionPatientIdentity } from '@/lib/services/patientPortal';
 import { logEvent } from '@/lib/server/logging';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
-import { isSubdomainReady } from '@/lib/vercel/subdomainReadiness';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,11 +95,7 @@ export async function GET(request: Request) {
           : !clinicIdParam && clinicSlugParam
             ? await resolvePublicClinic({ slug: clinicSlugParam })
             : null;
-        if (
-          clinic &&
-          process.env.VERCEL_ENV === 'production' &&
-          await isSubdomainReady(clinic.slug)
-        ) {
+        if (clinic) {
           clinicReturnOrigin = new URL(clinicSpaceUrl(clinic.slug)).origin;
         }
         const { data: authData, error: userError } = await supabase.auth.getUser();

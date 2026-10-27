@@ -4,7 +4,7 @@ import { logEvent } from '@/lib/server/logging';
 import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 import { sendBookingConfirmationEmail } from '@/lib/communications/email/bookingConfirmation';
-import { checkSlotAvailability, suggestFreeSlots, isShortImagingService, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
+import { checkSlotAvailability, suggestFreeSlots, isImagingServiceWithinHourlyCapacity, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
 import { channelsForNotificationType, filterEnabledChannels, getClinicCommunicationSettings } from '@/lib/communications/settings';
 
 /**
@@ -388,7 +388,8 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
     // 09:10 … down to closing. The service duration still defines the session
     // end and the overlap/holiday/break validation — nothing else changes.
     hourlyOnly: true,
-    allowImagingOverlap: isShortImagingService(service?.name, durationMinutes),
+    allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
+    serviceName: service?.name ?? null,
   });
 }
 
@@ -468,7 +469,8 @@ export async function getAvailableSlotsForDates(
       holiday: holidayDates.has(date),
       limit,
       hourlyOnly: true,
-      allowImagingOverlap: isShortImagingService(service?.name, durationMinutes),
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
+      serviceName: service?.name ?? null,
     }));
   }
 
@@ -745,7 +747,8 @@ export async function createBooking(params: {
     existingAppointments,
     holiday,
     timeZone,
-    allowImagingOverlap: isShortImagingService(service, resolvedDuration),
+    allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service, resolvedDuration),
+    serviceName: service,
   });
 
   if (!availability.available) {

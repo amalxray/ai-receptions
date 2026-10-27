@@ -152,6 +152,7 @@ describe('POST /api/booking', () => {
       time: '09:00',
       patientId: 'patient-1',
       durationMinutes: undefined,
+      initialStatus: 'tentative',
     });
   });
 
