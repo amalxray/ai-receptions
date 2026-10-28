@@ -1,5 +1,27 @@
 # Project Status
 
+## ✅ B64: /ask UX Cleanup (Modals, Icons, Ticker, AI Prompt, Stories Fix) — 2026-10-28
+
+- **إصلاح stories**: إضافة معالجة الأخطاء في صفحة `/ask/stories` مع تصميم أنيق للحالة الفارغة.
+- **أيقونات SVG احترافية**: استبدال الإيموجي بـ lucide-react (Building2, Users, MapPin, Clock, AlertCircle, Sparkles, Smile, PlusCircle, AlertTriangle, Camera).
+- **شريط الأخبار**: تحويل العناصر إلى روابط قابلة للنقر مع تأثير hover، موجهة للمقالات/أخبار.
+- **تحسين AI Prompt**: إضافة تعليمات لمنع اقتراح المواقع والعيادات إلا عند الطلب الصريح، والترحيب فقط عند التحية العامة.
+- **تحسينات UI**: إضافة شريط تمرير مخصص رقيق وشفاف للشات، تحسين أزرار الخدمات.
+- **الملفات المعدلة**: `app/ask/stories/page.tsx`, `components/ask/StatsSection.tsx`, `components/ask/AskClient.tsx`, `components/ask/AskChat.tsx`, `lib/services/askAssistant.ts`, `app/globals.css`
+- **الاختبارات**: `npm run build` = ✅ / `npx tsc --noEmit` = ✅
+
+
+## ✅ B63: /ask Premium UI/UX Redesign (Glassmorphism, 3D Tilt, Animated AI Background) — 2026-10-28
+
+- **التصميم الجديد**: خلفية جزيئات متحركة (CSS/Canvas)، تأثيرات Glassmorphism، عناصر 3D، أزرار CTA متوهجة مع Pulse animation.
+- **Hero Section**: توحيد مع نموذج Tooth 3D SVG مع ظلال وإضاءة، بطاقات إحصائيات زجاجية، أزرار متوهجة.
+- **بطاقات العيادات**: تأثير 3D Tilt عند التمرير، شارات ملونة، صور افتراضية، تصميم زجاجي مع حدود متوهجة.
+- **الشات**: إعادة تصميم بواجهة زجاجية، رأس متوهج مع مؤشر متاح، حقل إدخال محسّن، زر إرسال متوهج.
+- **شريط الأخبار (Ticker)**: نقل من منتصف الصفحة إلى أعلى الصفحة مباشرة أسفل Hero لتحسين التدفق البصري.
+- **الملفات المعدلة**: `components/ask/AskBackground.tsx` (جديد), `components/ask/AskClient.tsx`, `components/ask/StatsSection.tsx`, `components/ask/DoctorCard.tsx`, `components/ask/AskChat.tsx`
+- **الاختبارات**: `npm run build` = ✅ / `npx tsc --noEmit` = ✅ (أخطاء الاختبارات الموجودة فقط، لا أخطاء في الملفات المعدلة)
+
+
 _Chronological project status. The latest verified release update is recorded first; older sections below are historical snapshots._
 
 ## 2026-10-26 — Future Feature: Chat Image Upload for Prescription Analysis
