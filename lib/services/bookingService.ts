@@ -4,7 +4,7 @@ import { logEvent } from '@/lib/server/logging';
 import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 import { sendBookingConfirmationEmail } from '@/lib/communications/email/bookingConfirmation';
-import { checkSlotAvailability, suggestFreeSlots, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
+import { checkSlotAvailability, suggestFreeSlots, isImagingServiceWithinHourlyCapacity, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
 import { channelsForNotificationType, filterEnabledChannels, getClinicCommunicationSettings } from '@/lib/communications/settings';
 
 /**
@@ -101,7 +101,7 @@ export async function loadExistingAppointments(clinicId: string, providerId: str
   previousDate.setUTCDate(previousDate.getUTCDate() - 1);
   const { data, error } = await supabaseAdmin
     .from('appointments')
-    .select('id, provider_id, scheduled_at, duration_minutes, status')
+    .select('id, provider_id, scheduled_at, duration_minutes, status, service')
     .eq('clinic_id', clinicId)
     .eq('provider_id', providerId)
     .gte('appointment_date', previousDate.toISOString().slice(0, 10))
@@ -118,6 +118,7 @@ export async function loadExistingAppointments(clinicId: string, providerId: str
     startsAt: row.scheduled_at,
     durationMinutes: row.duration_minutes,
     status: row.status,
+    serviceName: row.service ?? null,
   }));
 }
 
@@ -387,6 +388,8 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
     // 09:10 … down to closing. The service duration still defines the session
     // end and the overlap/holiday/break validation — nothing else changes.
     hourlyOnly: true,
+    allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
+    serviceName: service?.name ?? null,
   });
 }
 
@@ -423,7 +426,7 @@ export async function getAvailableSlotsForDates(
       .in('holiday_date', orderedDates),
     supabaseAdmin
       .from('appointments')
-      .select('id, provider_id, scheduled_at, duration_minutes, status, appointment_date')
+      .select('id, provider_id, scheduled_at, duration_minutes, status, appointment_date, service')
       .eq('clinic_id', clinicId)
       .eq('provider_id', providerId)
       .gte('appointment_date', firstAppointmentDate)
@@ -447,6 +450,7 @@ export async function getAvailableSlotsForDates(
       startsAt: row.scheduled_at,
       durationMinutes: row.duration_minutes,
       status: row.status,
+      serviceName: row.service ?? null,
     } satisfies ScheduledAppointment,
   }));
   const result = new Map<string, string[]>();
@@ -465,6 +469,8 @@ export async function getAvailableSlotsForDates(
       holiday: holidayDates.has(date),
       limit,
       hourlyOnly: true,
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
+      serviceName: service?.name ?? null,
     }));
   }
 
@@ -741,6 +747,8 @@ export async function createBooking(params: {
     existingAppointments,
     holiday,
     timeZone,
+    allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service, resolvedDuration),
+    serviceName: service,
   });
 
   if (!availability.available) {

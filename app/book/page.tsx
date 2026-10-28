@@ -56,13 +56,12 @@ function BookingForm() {
   const [patientInfo, setPatientInfo] = useState({ name: '', phone: '', email: '' });
   const [loading, setLoading] = useState<'services' | 'providers' | 'slots' | 'booking' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [bookingResult, setBookingResult] = useState<{ appointment_id: string; date: string; time: string; service: string; provider_id: string; status: string; booking_token: string } | null>(null);
+  const [bookingResult, setBookingResult] = useState<{ appointment_id: string; date: string; time: string; service: string; provider_id: string; patient_name: string; status: string; booking_token: string } | null>(null);
   const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [lifecycleLoading, setLifecycleLoading] = useState<'confirm' | 'cancel' | null>(null);
   // Phase 3a — post-booking review prompt (display only; booking logic untouched).
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewPromptClosed, setReviewPromptClosed] = useState(false);
   // Step 3 calendar: the visible month (controlled) + the days the provider
   // cannot work on, fetched per month from /api/booking/calendar.
   const [calendarMonth, setCalendarMonth] = useState('');
@@ -376,6 +375,7 @@ function BookingForm() {
     }
     setLoading('booking');
     setError(null);
+    const submittedPatientName = patientInfo.name.trim();
     try {
       const res = await fetch('/api/booking', {
         method: 'POST',
@@ -387,7 +387,7 @@ function BookingForm() {
           service_id: selectedService!.id,
           date: selectedDate,
           time: formatTimeApi(selectedSlot),
-          patient_name: patientInfo.name.trim(),
+          patient_name: submittedPatientName,
           phone: patientInfo.phone.trim(),
           email: patientInfo.email.trim() || undefined,
         }),
@@ -413,12 +413,12 @@ function BookingForm() {
         time: body.data.time,
         service: body.data.service,
         provider_id: body.data.provider_id,
-        status: body.data.status,
+        patient_name: submittedPatientName,
+        status: 'tentative',
         booking_token: body.data.booking_token,
       });
       setStep('success');
-      // Phase 3a — prompt for a review once per successful booking.
-      setShowReviewModal(true);
+      setShowReviewModal(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ أثناء الحجز. يرجى المحاولة لاحقًا.');
     } finally {
@@ -486,6 +486,7 @@ function BookingForm() {
     setSelectedSlot('');
     setPatientInfo({ name: '', phone: '', email: '' });
     setBookingResult(null);
+    setShowReviewModal(false);
     setCalendarMonth('');
     setClosedDays([]);
     setWorkingWeekdays(null);
@@ -560,12 +561,22 @@ function BookingForm() {
                 appointmentId={bookingResult.appointment_id}
                 serviceName={bookingResult.service}
                 appointmentDate={`${formatArabicDate(bookingResult.date) || bookingResult.date} — ${bookingResult.time}`}
-                patientName={patientInfo.name}
+                patientName={bookingResult.patient_name}
+                appointmentStatus={bookingResult.status}
                 clinicName={clinic.clinic.name}
                 clinicPhone={clinic.clinic.phone}
               />
               <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-right">
-                <Row label="الحالة" value={bookingResult.status === 'tentative' ? 'قيد الانتظار' : bookingResult.status === 'confirmed' ? 'مؤكد' : bookingResult.status === 'cancelled' ? 'ملغي' : bookingResult.status} />
+                <Row
+                  label="الحالة"
+                  value={['tentative', 'pending', 'pending_confirmation'].includes(bookingResult.status)
+                    ? 'قيد الانتظار'
+                    : bookingResult.status === 'confirmed'
+                      ? 'مؤكد'
+                      : bookingResult.status === 'cancelled'
+                        ? 'ملغي'
+                        : bookingResult.status}
+                />
               </div>
 
               {lifecycleMessage && (
@@ -579,9 +590,20 @@ function BookingForm() {
                 </div>
               )}
 
-              {reviewPromptClosed && (
-                <GoogleSignInButton className="mt-6" label="تسجيل الدخول عبر Google" />
-              )}
+              <div className="mt-6 flex flex-col gap-3">
+                <GoogleSignInButton
+                  label="تسجيل الدخول عبر Google"
+                  clinicId={clinic.clinic.id}
+                  appointmentId={bookingResult.appointment_id}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowReviewModal(true)}
+                  className="rounded-full border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 hover:border-cyan-500/60"
+                >
+                  تقييم تجربة الحجز
+                </button>
+              </div>
 
               {bookingResult.status === 'tentative' && (
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -659,10 +681,9 @@ function BookingForm() {
                   open={showReviewModal}
                   clinicSlug={clinic.clinic.slug}
                   source="form"
-                  patientName={patientInfo.name}
+                  patientName={bookingResult?.patient_name ?? patientInfo.name}
                   onClose={() => {
                     setShowReviewModal(false);
-                    setReviewPromptClosed(true);
                   }}
                 />
               )}
@@ -807,6 +828,7 @@ function BookingForm() {
                       <label htmlFor="patient-name" className="block text-sm font-medium text-slate-300">الاسم الكامل</label>
                       <input
                         id="patient-name"
+                        name="patient_name"
                         type="text"
                         value={patientInfo.name}
                         onChange={(e) => setPatientInfo((p) => ({ ...p, name: e.target.value }))}

@@ -76,14 +76,14 @@ export async function POST(req: Request) {
       ? filter.reason
       : piiMasked ? 'PII تم إخفاؤه' : null;
 
-    const { data, error } = await supabaseAdmin
+    const insertReview = (source: typeof input.source) => supabaseAdmin
       .from('clinic_reviews')
       .insert({
         clinic_id: clinicId,
         rating: input.rating,
         author_name: input.author_name,
         comment: comment || null,
-        source: input.source,
+        source,
         is_published: isPublished,
         flagged_medical: filter.flagged,
         flag_reason: flagReason,
@@ -93,6 +93,22 @@ export async function POST(req: Request) {
       })
       .select('id, is_published, flagged_medical')
       .single();
+
+    let { data, error } = await insertReview(input.source);
+    // Older production databases may not yet include the additive migration
+    // that permits source='booking'. Keep public review submission working by
+    // retrying that specific check-constraint failure under the legacy-safe
+    // 'chat' source; all other insert errors retain the normal failure path.
+    if (
+      error?.code === '23514' &&
+      error.message.includes('clinic_reviews_source_check') &&
+      input.source === 'booking'
+    ) {
+      ({ data, error } = await insertReview('chat'));
+      if (!error && data) {
+        logEvent('review_booking_source_compat_fallback', { clinic_id: clinicId });
+      }
+    }
 
     if (error || !data) {
       logEvent('review_insert_failed', { clinic_id: clinicId, error: error?.message ?? 'unknown' }, 'error');

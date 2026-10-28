@@ -466,7 +466,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
   }
 
-  async function handleBookingAction(action: 'confirm' | 'edit') {
+  async function handleBookingAction(action: 'confirm' | 'edit', bookingData?: BookingConfirmationData) {
     if (!conversationId) {
       setStatusMessage('تعذر تحديد المحادثة. أرسل رسالة أولاً ثم أعد المحاولة.');
       return;
@@ -474,17 +474,24 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     setIsSubmitting(true);
     setStatusMessage(null);
     try {
+      const currentBooking = bookingData ?? bookingDraft;
+      const email = currentBooking?.email?.trim() ?? '';
+      if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+        setStatusMessage('يرجى إدخال بريد إلكتروني صحيح أو ترك الحقل فارغاً.');
+        return;
+      }
       const requestBody = {
         ...(isUuid ? { clinic_id: clinicId } : { clinic_slug: clinicId }),
         conversation_id: conversationId,
         action,
-        ...(action === 'edit' && bookingDraft ? {
-          service_id: bookingDraft.service_id,
-          provider_id: bookingDraft.provider_id,
-          date: bookingDraft.date,
-          time: bookingDraft.time,
-          patient_name: bookingDraft.patient_name,
-          phone: bookingDraft.phone,
+        ...(currentBooking ? { email: email || null } : {}),
+        ...(action === 'edit' && currentBooking ? {
+          service_id: currentBooking.service_id,
+          provider_id: currentBooking.provider_id,
+          date: currentBooking.date,
+          time: currentBooking.time,
+          patient_name: currentBooking.patient_name,
+          phone: currentBooking.phone,
         } : {}),
       };
       const response = await fetch('/api/public/ai/booking-action', {
@@ -681,6 +688,9 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           className="mt-4"
                           label="تسجيل الدخول عبر Google"
                           onVisible={scrollMessagesToBottom}
+                          showAccountStatus
+                          clinicId={clinicId}
+                          appointmentId={message.bookingConfirmation.appointment_id}
                         />
                       </div>
                     )}
@@ -734,16 +744,26 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                                     ? <input className="rounded-lg border border-slate-300 bg-white px-2 py-2" type="tel" value={draft.phone} onChange={(event) => setBookingDraft({ ...draft, phone: event.target.value })} />
                                     : <span>{booking.phone}</span>}
                                 </label>
+                                <label className="grid gap-1 sm:col-span-2"><strong>البريد الإلكتروني (اختياري) — لربط حجزك بحسابك</strong>
+                                  <input
+                                    className="rounded-lg border border-slate-300 bg-white px-2 py-2"
+                                    type="email"
+                                    autoComplete="email"
+                                    value={draft.email ?? ''}
+                                    onChange={(event) => setBookingDraft({ ...draft, email: event.target.value })}
+                                    placeholder="name@example.com"
+                                  />
+                                </label>
                               </div>
                               <div className="mt-4 flex flex-wrap gap-2">
                                 {editingBooking ? (
                                   <>
-                                    <button type="button" disabled={isSubmitting} onClick={() => { void handleBookingAction('edit'); }} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">حفظ التعديلات</button>
+                                    <button type="button" disabled={isSubmitting} onClick={() => { void handleBookingAction('edit', draft); }} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">حفظ التعديلات</button>
                                     <button type="button" disabled={isSubmitting} onClick={() => { setEditingBooking(false); setBookingDraft(null); }} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">إلغاء</button>
                                   </>
                                 ) : (
                                   <>
-                                    <button type="button" disabled={isSubmitting} onClick={() => { void handleBookingAction('confirm'); }} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">✅ تأكيد الحجز</button>
+                                    <button type="button" disabled={isSubmitting} onClick={() => { void handleBookingAction('confirm', draft); }} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">✅ تأكيد الحجز</button>
                                     <button type="button" disabled={isSubmitting} onClick={() => { setBookingDraft(booking); setEditingBooking(true); }} className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-300 disabled:opacity-50">↩️ تعديل</button>
                                   </>
                                 )}

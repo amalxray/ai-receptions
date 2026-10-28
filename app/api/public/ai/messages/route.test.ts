@@ -39,6 +39,15 @@ vi.mock('@/lib/ai/chatBookingPolicy', () => ({
 vi.mock('@/lib/config', () => ({
   getSupabaseEnvConfig: mocks.getSupabaseEnvConfig,
 }));
+vi.mock('@/lib/subscription/access', () => ({
+  EXPIRED_TRIAL_MESSAGE: 'انتهت تجربتك، ارقّي الآن.',
+  getClinicSubscriptionAccess: vi.fn().mockResolvedValue({
+    allowed: true,
+    expired: false,
+    status: 'active',
+    trialEnd: null,
+  }),
+}));
 vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: { from: mocks.from },
 }));
@@ -79,9 +88,15 @@ const completeState: any = {
   },
 };
 const operatingData = {
-  services: [{ id: 'service-1', name: 'تصوير بانوراما', duration_minutes: 30, active: true }],
+  services: [
+    { id: 'service-1', name: 'تصوير بانوراما', duration_minutes: 30, active: true },
+    { id: 'service-cbct', name: 'تصوير طبقي CBCT', duration_minutes: 30, active: true },
+  ],
   providers: [{ id: 'provider-1', name: 'أ. أمل' }],
-  providerServiceIds: [{ service_id: 'service-1', provider_id: 'provider-1' }],
+  providerServiceIds: [
+    { service_id: 'service-1', provider_id: 'provider-1' },
+    { service_id: 'service-cbct', provider_id: 'provider-1' },
+  ],
 };
 
 async function postMessage(stream = false) {
@@ -108,6 +123,8 @@ async function getMessages() {
 describe('public AI messages booking responses and history restoration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    completeState.recommended_service_id = 'service-1';
+    completeState.recommended_provider_id = 'provider-1';
     completeState.booking.appointment_id = null;
     completeState.booking.appointment_status = null;
     mocks.resolvePublicClinic.mockResolvedValue(clinic);
@@ -135,10 +152,12 @@ describe('public AI messages booking responses and history restoration', () => {
     mocks.saveMessage.mockResolvedValue({ id: 'assistant-booking-1' });
     const query = {
       select: vi.fn(),
+      update: vi.fn(),
       eq: vi.fn(),
       order: vi.fn(),
     };
     query.select.mockReturnValue(query);
+    query.update.mockReturnValue(query);
     query.eq.mockReturnValue(query);
     query.order.mockResolvedValue({
       data: [
@@ -147,6 +166,8 @@ describe('public AI messages booking responses and history restoration', () => {
       ],
       error: null,
     });
+    (query as any).then = (resolve: (value: unknown) => unknown) =>
+      Promise.resolve({ error: null }).then(resolve);
     mocks.from.mockReturnValue(query);
   });
 
@@ -154,7 +175,7 @@ describe('public AI messages booking responses and history restoration', () => {
     const response = await postMessage();
     const payload = await response.json();
     expect(response.status).toBe(200);
-    expect(payload.assistant_message.content).toContain('تأكيد الحجز');
+    expect(payload.assistant_message.content).toContain('تفاصيل الموعد جاهزة');
     expect(payload.interactive.booking_confirmation).toMatchObject({
       type: 'booking_confirmation',
       data: {
@@ -163,6 +184,19 @@ describe('public AI messages booking responses and history restoration', () => {
         patient_name: 'سارة أحمد',
       },
       actions: ['confirm', 'edit'],
+    });
+  });
+
+  it('POST builds a chat confirmation card for CBCT as well as panorama', async () => {
+    completeState.recommended_service_id = 'service-cbct';
+
+    const response = await postMessage();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.interactive.booking_confirmation.data).toMatchObject({
+      service_id: 'service-cbct',
+      service: 'تصوير طبقي CBCT',
     });
   });
 
@@ -187,11 +221,10 @@ describe('public AI messages booking responses and history restoration', () => {
       patientConfirmedBooking: true,
       requirePhone: true,
     }));
-    expect(mocks.saveMessage).toHaveBeenCalledWith(expect.objectContaining({
-      clinic_id: clinic.id,
-      conversation_id: 'conversation-1',
-      role: 'assistant',
-    }));
+    expect(mocks.from).toHaveBeenCalledWith('messages');
+    expect(mocks.from.mock.results[0]?.value.update).toHaveBeenCalledWith({
+      content: expect.stringContaining('تم تسجيل موعدك في قاعدة بيانات العيادة'),
+    });
   });
 
   it('POST streams generated text and sends booking metadata as the final event', async () => {
@@ -212,7 +245,7 @@ describe('public AI messages booking responses and history restoration', () => {
     expect(lines[lines.length - 1]).toMatchObject({
       type: 'done',
       payload: {
-        assistant_message: { content: expect.stringContaining('تأكيد الحجز') },
+        assistant_message: { content: expect.stringContaining('تفاصيل الموعد جاهزة') },
         interactive: { booking_confirmation: { type: 'booking_confirmation' } },
       },
     });
@@ -257,8 +290,8 @@ describe('public AI messages booking responses and history restoration', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.assistant_message.content).toContain('لم يتم تأكيد الحجز بعد');
-    expect(payload.assistant_message.content).toContain('زر «تأكيد الحجز»');
+    expect(payload.assistant_message.content).toContain('لم يتم إنشاء الحجز بعد');
+    expect(payload.assistant_message.content).toContain('أرسل «نعم»');
   });
 
   it('POST strips source citations from the patient-facing assistant response', async () => {
@@ -278,6 +311,21 @@ describe('public AI messages booking responses and history restoration', () => {
     expect(response.status).toBe(200);
     expect(payload.assistant_message.content).toBe('نفتح الساعة التاسعة.');
     expect(payload.assistant_message.content).not.toContain('[Source:');
+  });
+
+  it('POST returns a pricing FAQ response without entering the booking flow', async () => {
+    mocks.loadReceptionistConversationState.mockResolvedValue(null);
+    mocks.receivePatientMessage.mockResolvedValue({
+      userMessage: { id: 'user-1', role: 'patient', content: 'كم سعر الـ CBCT؟' },
+      assistantMessage: { id: 'assistant-1', role: 'assistant', content: 'سعر تصوير CBCT هو 250 شيكل.' },
+    });
+
+    const response = await postMessage();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.assistant_message.content).toContain('250 شيكل');
+    expect(payload.interactive.booking_confirmation).toBeUndefined();
   });
 
   it('POST returns an explicit failure message when complete details cannot form a valid confirmation card', async () => {
@@ -313,10 +361,12 @@ describe('public AI messages booking responses and history restoration', () => {
   it('GET strips source citations from restored assistant messages', async () => {
     const query = {
       select: vi.fn(),
+      update: vi.fn(),
       eq: vi.fn(),
       order: vi.fn(),
     };
     query.select.mockReturnValue(query);
+    query.update.mockReturnValue(query);
     query.eq.mockReturnValue(query);
     query.order.mockResolvedValue({
       data: [
@@ -325,6 +375,8 @@ describe('public AI messages booking responses and history restoration', () => {
       ],
       error: null,
     });
+    (query as any).then = (resolve: (value: unknown) => unknown) =>
+      Promise.resolve({ error: null }).then(resolve);
     mocks.from.mockReturnValue(query);
     mocks.loadReceptionistConversationState.mockResolvedValue(null);
 
@@ -341,7 +393,7 @@ describe('public AI messages booking responses and history restoration', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.data[1].content).toContain('تأكيد الحجز');
+    expect(payload.data[1].content).toContain('أرسلي «نعم» لإنشاء الحجز');
     expect(payload.interactive.booking_confirmation).toMatchObject({
       type: 'booking_confirmation',
       actions: ['confirm', 'edit'],

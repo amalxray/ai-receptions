@@ -17,6 +17,8 @@ import type { ReceptionistConversationState } from '@/lib/ai/clinicDataContext';
 
 export const understandingResultSchema = z.object({
   requested_service: z.string().max(200).optional(),
+  /** Patient phone extracted from their own message and saved with the chat booking. */
+  patient_phone: z.string().max(30).optional(),
   preferred_provider: z.string().max(200).optional(),
   /** ISO date YYYY-MM-DD in the clinic timezone. */
   preferred_date: z.string().max(20).optional(),
@@ -113,6 +115,19 @@ export function extractRequestedService(text: string): string | undefined {
   const t = toLatinDigits(text);
   for (const { re, label } of SERVICES) {
     if (re.test(t)) return label;
+  }
+  return undefined;
+}
+
+/** Extracts a Palestinian mobile number in local or international format. */
+export function extractPatientPhone(text: string): string | undefined {
+  const normalizedText = toLatinDigits(text);
+  const candidates = normalizedText.match(/(?<![\d+])(?:\+970|00970|05)(?:[\s().-]*\d){5,13}(?!\d)/g) ?? [];
+
+  for (const candidate of candidates) {
+    const compact = candidate.replace(/[\s().-]/g, '');
+    const digits = compact.replace(/\D/g, '');
+    if (digits.length >= 10 && digits.length <= 15) return compact;
   }
   return undefined;
 }
@@ -242,11 +257,27 @@ function extractBareHour(t: string): { from: string; to: string } | undefined {
   if (CLOCK_QUESTION_RE.test(t)) return undefined;
   // Trailing lookahead avoids consuming the "1 أو 4" style options list and the
   // minutes of a "الساعة 2:30" (handled explicitly below).
-  const m = t.match(/(?:الساعة|الساعه)\s*(\d{1,2})(?::([0-5]\d))?(?!\s*(?:أو|او|ولا))/i);
+  const labelledHour = t.match(
+    /(?:الساعة|الساعه)\s*(\d{1,2})(?::([0-5]\d))?(?:\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm))?(?!\s*(?:أو|او|ولا))/i,
+  );
+  // A meridiem marker also makes a bare number unambiguous: "10 صباحاً".
+  // Without a marker, keep requiring الساعة/الساعه so dates and other numbers
+  // in a sentence are not accidentally treated as appointment times.
+  const markedBareHour = labelledHour ? null : t.match(
+    /(?:^|\s)(\d{1,2})(?::([0-5]\d))?\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm)(?=$|[\s،,.!?؟])/i,
+  );
+  const m = labelledHour ?? markedBareHour;
   if (!m) return undefined;
   const hour = Number(m[1]);
   if (!Number.isInteger(hour) || hour < 1 || hour > 23) return undefined;
-  const hour24 = hour >= 13 ? hour : hour === 12 ? 12 : hour + 12;
+  const marker = m[3]?.toLowerCase();
+  const isMorning = marker ? /^(?:صباح|am)/i.test(marker) : false;
+  const hasExplicitMeridiem = Boolean(marker);
+  const hour24 = hasExplicitMeridiem && hour <= 12
+    ? isMorning
+      ? (hour === 12 ? 0 : hour)
+      : (hour === 12 ? 12 : hour + 12)
+    : hour >= 13 ? hour : hour === 12 ? 12 : hour + 12;
   const from = `${String(hour24).padStart(2, '0')}:${m[2] ?? '00'}`;
   return { from, to: '23:59' };
 }
@@ -329,6 +360,7 @@ export function understandMessage(text: string, options: UnderstandingOptions = 
   const timeZone = options.timeZone ?? 'UTC';
 
   const requested_service = extractRequestedService(text);
+  const patient_phone = extractPatientPhone(text);
   const preferred_provider = extractPreferredProvider(text);
   const preferred_date = extractPreferredDate(text, now, timeZone);
   const preferred_time_range = extractPreferredTimeRange(text);
@@ -340,6 +372,7 @@ export function understandMessage(text: string, options: UnderstandingOptions = 
 
   const parsed = understandingResultSchema.safeParse({
     ...(requested_service ? { requested_service } : {}),
+    ...(patient_phone ? { patient_phone } : {}),
     ...(preferred_provider ? { preferred_provider } : {}),
     ...(preferred_date ? { preferred_date } : {}),
     ...(preferred_time_range ? { preferred_time_range } : {}),
@@ -366,6 +399,7 @@ export function applyUnderstandingToState(
   const next: ReceptionistConversationState = { ...state };
 
   if (result.requested_service) next.requested_service = result.requested_service;
+  if (result.patient_phone) next.booking.phone = result.patient_phone;
   if (result.preferred_provider) next.preferred_provider = result.preferred_provider;
   if (result.preferred_date) next.preferred_date = result.preferred_date;
   if (result.preferred_time_range) next.preferred_time_range = result.preferred_time_range;

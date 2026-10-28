@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle, Copy } from 'lucide-react';
+import { CheckCircle, Clock3, Copy } from 'lucide-react';
 import { toast } from '@/components/ui/Toast';
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
   serviceName: string;
   appointmentDate: string;
   patientName: string;
+  appointmentStatus?: string;
   clinicPhone?: string | null;
   clinicName?: string | null;
 }
@@ -17,7 +18,11 @@ export default function BookingConfirmationCard({
   serviceName,
   appointmentDate,
   patientName,
+  appointmentStatus,
 }: Props) {
+  const isPending = appointmentStatus !== 'confirmed';
+  const statusTitle = isPending ? 'تم استلام طلب الحجز' : 'تم تأكيد الحجز';
+
   const copyId = async () => {
     try {
       await navigator.clipboard.writeText(appointmentId);
@@ -31,11 +36,17 @@ export default function BookingConfirmationCard({
     <section
       dir="rtl"
       aria-label="تأكيد الحجز"
-      className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 to-slate-900/40 p-5 text-right backdrop-blur-xl"
+      className={`rounded-2xl border bg-gradient-to-br p-5 text-right backdrop-blur-xl ${
+        isPending
+          ? 'border-amber-500/30 from-amber-950/30 to-slate-900/40'
+          : 'border-emerald-500/30 from-emerald-950/40 to-slate-900/40'
+      }`}
     >
       <div className="mb-3 flex items-center gap-3">
-        <CheckCircle className="h-8 w-8 shrink-0 text-emerald-400" aria-hidden="true" />
-        <h3 className="text-lg font-bold text-white">تم تأكيد الحجز</h3>
+        {isPending
+          ? <Clock3 className="h-8 w-8 shrink-0 text-amber-300" aria-hidden="true" />
+          : <CheckCircle className="h-8 w-8 shrink-0 text-emerald-400" aria-hidden="true" />}
+        <h3 className="text-lg font-bold text-white">{statusTitle}</h3>
       </div>
 
       <div className="space-y-2 text-sm">
