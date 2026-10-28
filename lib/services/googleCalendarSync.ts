@@ -1,8 +1,9 @@
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
 import { logEvent } from '@/lib/server/logging';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { bookAppointment } from '@/lib/services/googleCalendarBooking';
+import { bookAppointment, deleteGoogleCalendarEvent } from '@/lib/services/googleCalendarBooking';
 import { clinicLocalToInstant } from '@/lib/services/clinicClock';
+import { getClinicGoogleCalendarClient } from '@/lib/services/googleCalendarOAuth';
 import { getClinicSlugById } from '@/lib/services/tenantAccess';
 
 type SyncAppointmentRow = {
@@ -106,19 +107,83 @@ export async function syncGoogleCalendarAppointment(appointmentId: string): Prom
   if (!data) return 'skipped';
 
   const appointment = data as SyncAppointmentRow;
-  if (appointment.google_event_id) {
-    await updateSyncState(appointment.id, appointment.clinic_id, {
-      needs_google_sync: false,
-      google_sync_blocked_at: null,
-    });
-    return 'synced';
-  }
   if (appointment.status === 'cancelled') {
-    await updateSyncState(appointment.id, appointment.clinic_id, {
-      needs_google_sync: false,
-      google_sync_blocked_at: null,
-    });
+    if (appointment.google_event_id) {
+      try {
+        await deleteGoogleCalendarEvent(appointment.clinic_id, appointment.google_event_id);
+      } catch (deleteError) {
+        logEvent('google_calendar_cancelled_event_delete_failed', {
+          clinic_id: appointment.clinic_id,
+          appointment_id: appointment.id,
+          google_event_id: appointment.google_event_id,
+          reason: deleteError instanceof Error ? deleteError.message : String(deleteError),
+        }, 'warn');
+      }
+    }
+    await supabaseAdmin
+      .from('appointments')
+      .update({
+        google_event_id: null,
+        needs_google_sync: false,
+        google_sync_blocked_at: null,
+      })
+      .eq('id', appointment.id)
+      .eq('clinic_id', appointment.clinic_id);
     return 'skipped';
+  }
+  if (appointment.google_event_id) {
+    const client = await getClinicGoogleCalendarClient(appointment.clinic_id);
+    let shouldRecreate = false;
+    if (client) {
+      try {
+        const eventResponse = await client.calendar.events.get({
+          calendarId: client.calendarId,
+          eventId: appointment.google_event_id,
+        });
+        await client.flushTokenPersistence?.();
+        if (eventResponse.data?.status === 'cancelled') {
+          shouldRecreate = true;
+        }
+      } catch (eventError) {
+        try {
+          await client.flushTokenPersistence?.();
+        } catch {
+          // Best-effort only.
+        }
+        const status =
+          (eventError as { code?: unknown; response?: { status?: unknown } })?.code
+          ?? (eventError as { response?: { status?: unknown } })?.response?.status;
+        if (status === 404 || status === 410) {
+          shouldRecreate = true;
+        } else {
+          await updateSyncState(appointment.id, appointment.clinic_id, {
+            needs_google_sync: false,
+            google_sync_blocked_at: null,
+          });
+          return 'synced';
+        }
+      }
+    }
+    if (!shouldRecreate) {
+      await updateSyncState(appointment.id, appointment.clinic_id, {
+        needs_google_sync: false,
+        google_sync_blocked_at: null,
+      });
+      return 'synced';
+    }
+
+    // Linked Google event is cancelled/missing: clear it and create a fresh one.
+    try {
+      await deleteGoogleCalendarEvent(appointment.clinic_id, appointment.google_event_id);
+    } catch {
+      // Best-effort cleanup only.
+    }
+    await supabaseAdmin
+      .from('appointments')
+      .update({ google_event_id: null })
+      .eq('id', appointment.id)
+      .eq('clinic_id', appointment.clinic_id);
+    appointment.google_event_id = null;
   }
 
   const scheduledWallTime = appointment.scheduled_at?.slice(11, 16);

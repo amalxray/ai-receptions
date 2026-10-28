@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { logEvent } from '@/lib/server/logging';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getClinicGoogleCalendarClient } from '@/lib/services/googleCalendarOAuth';
 import { clinicLocalToInstant, zonedParts } from '@/lib/services/clinicClock';
@@ -372,4 +373,31 @@ async function createEventAndConfirm(
     status: data.status,
     calendar_connected: true,
   };
+}
+
+export async function deleteGoogleCalendarEvent(clinicId: string, googleEventId: string): Promise<void> {
+  if (!clinicId || !googleEventId) return;
+  const client = await getClinicGoogleCalendarClient(clinicId);
+  if (!client) return;
+  try {
+    await client.calendar.events.delete({ calendarId: client.calendarId, eventId: googleEventId });
+    await client.flushTokenPersistence?.();
+  } catch (error) {
+    const status =
+      (error as { code?: unknown; response?: { status?: unknown } })?.code
+      ?? (error as { response?: { status?: unknown } })?.response?.status;
+    if (status !== 404 && status !== 410) {
+      logEvent('google_calendar_event_delete_failed', {
+        clinic_id: clinicId,
+        google_event_id: googleEventId,
+        status: status ?? null,
+        reason: error instanceof Error ? error.message : String(error),
+      }, 'warn');
+    }
+    try {
+      await client.flushTokenPersistence?.();
+    } catch {
+      // Best-effort only.
+    }
+  }
 }

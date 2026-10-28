@@ -899,6 +899,7 @@ export type PublicAppointmentRecord = {
   status: string;
   patient_id: string | null;
   appointment_date: string | null;
+  google_event_id?: string | null;
 };
 
 /** Token-scoped, clinic-scoped appointment read used by confirm/cancel. */
@@ -906,7 +907,7 @@ async function loadPublicAppointment(clinicId: string, appointmentId: string, to
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const { data, error } = await supabaseAdmin
     .from('appointments')
-    .select('id, status, patient_id, appointment_date')
+    .select('id, status, patient_id, appointment_date, google_event_id')
     .eq('clinic_id', clinicId)
     .eq('id', appointmentId)
     .eq('booking_token', tokenHash)
@@ -922,6 +923,7 @@ async function loadPublicAppointment(clinicId: string, appointmentId: string, to
     status: data.status,
     patient_id: data.patient_id ?? null,
     appointment_date: data.appointment_date ?? null,
+    google_event_id: (data as { google_event_id?: string | null }).google_event_id ?? null,
   };
 }
 
@@ -1085,6 +1087,28 @@ export async function cancelPublicBooking(params: { clinicId: string; appointmen
       error: commError instanceof Error ? commError.message : String(commError),
     }, 'error');
   }
+
+  // Delete the linked Google Calendar event (best-effort) so stale events do
+  // not linger after a public cancellation.
+  if (appointment.google_event_id) {
+    try {
+      const { deleteGoogleCalendarEvent } = await import('@/lib/services/googleCalendarBooking');
+      await deleteGoogleCalendarEvent(clinicId, appointment.google_event_id);
+      await supabaseAdmin
+        .from('appointments')
+        .update({ google_event_id: null, needs_google_sync: false, google_sync_blocked_at: null })
+        .eq('clinic_id', clinicId)
+        .eq('id', appointmentId);
+    } catch (deleteError) {
+      logEvent('google_calendar_cancelled_event_delete_failed', {
+        clinic_id: clinicId,
+        appointment_id: appointmentId,
+        google_event_id: appointment.google_event_id,
+        reason: deleteError instanceof Error ? deleteError.message : String(deleteError),
+      }, 'warn');
+    }
+  }
+
 
   // patient_id/appointment_date come from the authorized load above. They are
   // used by the cancel route only to build the clinic-facing in-app notification

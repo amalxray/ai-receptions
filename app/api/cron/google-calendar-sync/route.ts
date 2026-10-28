@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const { data: appointments, error } = await supabaseAdmin
+    const { data: queuedAppointments, error: queuedError } = await supabaseAdmin
       .from('appointments')
       .select('id')
       .eq('needs_google_sync', true)
@@ -20,7 +20,24 @@ export async function GET(req: Request) {
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(50);
-    if (error) throw error;
+    if (queuedError) throw queuedError;
+
+    const { data: cancelledAppointments, error: cancelledError } = await supabaseAdmin
+      .from('appointments')
+      .select('id')
+      .eq('status', 'cancelled')
+      .not('google_event_id', 'is', null)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(50);
+    if (cancelledError) throw cancelledError;
+
+    const seen = new Set<string>();
+    const appointments = [...(queuedAppointments ?? []), ...(cancelledAppointments ?? [])].filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
 
     let synced = 0;
     let blocked = 0;
