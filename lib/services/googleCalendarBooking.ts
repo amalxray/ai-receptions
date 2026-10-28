@@ -10,7 +10,7 @@ import {
   loadExistingAppointments,
   loadProviderSchedule,
 } from '@/lib/services/bookingService';
-import { checkSlotAvailability } from '@/lib/services/scheduling';
+import { checkSlotAvailability, isImagingServiceWithinHourlyCapacity } from '@/lib/services/scheduling';
 
 export type AppointmentStatus = 'pending' | 'pending_confirmation' | 'confirmed' | 'cancelled';
 
@@ -212,6 +212,8 @@ export async function bookAppointment(details: GoogleCalendarBookingDetails) {
       schedule,
       existingAppointments: appointments.filter((appointment) => appointment.id !== details.appointment_id),
       holiday,
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity(details.service, durationMinutes),
+      serviceName: details.service ?? null,
     });
     if (!availability.available) {
       throw new Error(`Slot unavailable: ${availability.reason}`);
