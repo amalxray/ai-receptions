@@ -7,12 +7,20 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'قصص النجاح — AI-Receptions' };
 
 export default async function AskStoriesPage() {
-  const stories = await listActiveStories();
+  let stories: any[] = [];
+  try {
+    stories = await listActiveStories();
+  } catch (error) {
+    console.error('Failed to load stories:', error);
+    stories = [];
+  }
   return (
-    <main className="mx-auto min-h-screen max-w-4xl bg-slate-950 px-4 py-12 text-slate-100" dir="rtl">
-      <h1 className="text-2xl font-black">💚 قصص النجاح</h1>
+    <main className="mx-auto min-h-screen max-w-4xl bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-12 text-slate-100" dir="rtl">
+      <h1 className="text-2xl font-black bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">قصص النجاح</h1>
       {stories.length === 0 ? (
-        <p className="mt-6 text-slate-500">لا توجد قصص بعد.</p>
+        <div className="mt-10 text-center py-12 rounded-2xl border border-white/10 bg-white/5">
+          <p className="text-slate-400">لا توجد قصص بعد.</p>
+        </div>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {(stories as Array<Record<string, unknown>>).map((s) => (

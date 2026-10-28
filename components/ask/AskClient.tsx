@@ -12,6 +12,8 @@ import { Marquee } from '@/components/ui/marquee';
 import { Dock, DockIcon } from '@/components/ui/dock';
 import { LetterReveal } from '@/components/landing/motion';
 import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
+import { AskBackground } from '@/components/ask/AskBackground';
+import { AlertCircle, Sparkles, Smile, PlusCircle, AlertTriangle, Camera } from 'lucide-react';
 
 /** Canonical public origin for structured data — MUST stay the official domain
  *  in SSR output so crawlers never see a stale/preview host in JSON-LD. */
@@ -35,12 +37,12 @@ export type AskClientData = {
 };
 
 const QUICK_CARDS = [
-  { text: 'ألم أسنان', emoji: '😖' },
-  { text: 'تنظيف أسنان', emoji: '✨' },
-  { text: 'تقويم أسنان', emoji: '😁' },
-  { text: 'زراعة أسنان', emoji: '🦷' },
-  { text: 'بانوراما', emoji: '🦷' },
-  { text: 'حالة طارئة', emoji: '🚨' },
+  { text: 'ألم أسنان', icon: AlertCircle },
+  { text: 'تنظيف أسنان', icon: Sparkles },
+  { text: 'تقويم أسنان', icon: Smile },
+  { text: 'زراعة أسنان', icon: PlusCircle },
+  { text: 'بانوراما', icon: Camera },
+  { text: 'حالة طارئة', icon: AlertTriangle },
 ];
 
 const DEFAULT_ASK_SECTION_ORDER = [
@@ -73,25 +75,55 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'سنّي', url: `${SITE}/ask`, logo: `${SITE}/icons/icon-512.png`, description: 'ابحث عن أفضل طبيب أسنان قريب منك' }) }} />
       {/* ═══ HERO ═══ */}
       <section style={{ order: sectionPosition('hero') }} className="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-4 pt-10">
+        {/* Animated AI Background */}
+        <AskBackground />
         {/* Animated playful background blobs */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -top-16 right-10 h-64 w-64 rounded-full bg-blue-400/25 blur-3xl animate-blob-drift" />
-          <div className="absolute top-32 -left-10 h-72 w-72 rounded-full bg-cyan-300/25 blur-3xl animate-float-slower" />
-          <div className="absolute bottom-0 right-1/4 h-56 w-56 rounded-full bg-indigo-300/20 blur-3xl animate-float-slow" />
+          <div className="absolute -top-16 right-10 h-64 w-64 rounded-full bg-gradient-to-br from-indigo-400/30 to-violet-400/30 blur-3xl animate-blob-drift" />
+          <div className="absolute top-32 -left-10 h-72 w-72 rounded-full bg-gradient-to-br from-cyan-300/30 to-blue-400/30 blur-3xl animate-float-slower" />
+          <div className="absolute bottom-0 right-1/4 h-56 w-56 rounded-full bg-gradient-to-br from-violet-300/25 to-indigo-300/25 blur-3xl animate-float-slow" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl text-center">
           <BlurFade>
-            <div className="animate-float flex justify-center text-5xl sm:text-6xl">{hero.logo ?? '🦷'}</div>
+            <div className="flex justify-center">
+              <div className="relative animate-float">
+                <svg width="120" height="120" viewBox="0 0 120 120" className="drop-shadow-[0_0_60px_rgba(99,102,241,0.6)]">
+                  <defs>
+                    <linearGradient id="tooth3d" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="50%" stopColor="#e0e7ff" />
+                      <stop offset="100%" stopColor="#c7d2fe" />
+                    </linearGradient>
+                    <filter id="glow">
+                      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                      <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                  </defs>
+                  <g filter="url(#glow)">
+                    <path d="M60 20 C70 20, 85 25, 85 40 C85 55, 75 70, 60 90 C45 70, 35 55, 35 40 C35 25, 50 20, 60 20 Z" 
+                          fill="url(#tooth3d)" stroke="#6366f1" strokeWidth="2" opacity="0.95"/>
+                    <path d="M60 25 C68 25, 78 29, 78 40 C78 52, 70 65, 60 83 C50 65, 42 52, 42 40 C42 29, 52 25, 60 25 Z" 
+                          fill="none" stroke="#a5b4fc" strokeWidth="1.5" opacity="0.7"/>
+                    <circle cx="55" cy="35" r="2" fill="#6366f1" opacity="0.6"/>
+                    <circle cx="65" cy="32" r="1.5" fill="#6366f1" opacity="0.6"/>
+                  </g>
+                </svg>
+                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-cyan-500/20 rounded-full blur-xl animate-pulse"></div>
+              </div>
+            </div>
           </BlurFade>
           <BlurFade delay={0.15}>
-            <h1 className="mt-4 text-3xl font-black leading-tight text-slate-900 sm:text-4xl md:text-5xl">
+            <h1 className="mt-6 text-3xl font-black leading-tight text-slate-900 sm:text-4xl md:text-5xl">
               <LetterReveal text="لا تنتظر على الهاتف.. احجز موعدك الذكي في 30 ثانية" />
             </h1>
           </BlurFade>
           <BlurFade delay={0.3}>
             <p className="mx-auto mt-4 max-w-3xl text-base leading-8 text-slate-600 md:text-xl">
               مساعدك الذكي «سنّي» متاح الآن 24/7 للإجابة عن أسئلتك، وتوجيهك لأقرب عيادة، وتأكيد حجزك فورًا بكل سهولة.
-              {' '}ابدأ بسؤالك: <TextLoop className="font-bold text-blue-700">
+              {' '}ابدأ بسؤالك: <TextLoop className="font-bold bg-gradient-to-r from-indigo-600 to-cyan-600 bg-clip-text text-transparent">
                 {loopTexts.map((q) => <span key={q}>{q}</span>)}
               </TextLoop>
             </p>
@@ -99,21 +131,49 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
           <BlurFade delay={0.45}>
             <div className="mt-7 flex justify-center">
               <Magnetic>
-                <div className="rounded-xl shadow-glow-coral animate-glow-pulse">
-                  <ShimmerButton onClick={scrollToChat} className="bg-blue-600 px-9 py-4 text-lg hover:bg-blue-700" style={{ background: '#2563eb' }}>ابدأ الدردشة واحجز الآن 🚀</ShimmerButton>
+                <div className="rounded-xl shadow-[0_0_40px_rgba(99,102,241,0.6)] animate-[glow-pulse_2s_ease-in-out_infinite]">
+                  <ShimmerButton onClick={scrollToChat} className="bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-600 px-9 py-4 text-lg hover:scale-105 transition-transform" style={{ background: 'linear-gradient(90deg, #4f46e5, #7c3aed, #06b6d4)' }}>ابدأ الدردشة واحجز الآن 🚀</ShimmerButton>
                 </div>
               </Magnetic>
             </div>
           </BlurFade>
-          <div className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-medium text-slate-600">
-            {['بدون تسجيل', 'رد فوري', 'بياناتك مشفرة'].map((item) => (
-              <span key={item} className="inline-flex items-center gap-1.5">
-                <span className="font-bold text-emerald-600" aria-hidden>✓</span>{item}
-              </span>
-            ))}
-          </div>
+          <BlurFade delay={0.6}>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              {[
+                { icon: '✓', text: 'بدون تسجيل', color: 'emerald' },
+                { icon: '⚡', text: 'رد فوري', color: 'cyan' },
+                { icon: '🔒', text: 'بياناتك مشفرة', color: 'indigo' }
+              ].map((item) => (
+                <div key={item.text} className="backdrop-blur-md bg-white/60 border border-white/40 rounded-full px-4 py-2 shadow-lg">
+                  <span className={`font-bold text-${item.color}-600`} aria-hidden>{item.icon}</span>
+                  <span className="mr-1.5 text-sm font-medium text-slate-700">{item.text}</span>
+                </div>
+              ))}
+            </div>
+          </BlurFade>
         </div>
       </section>
+
+      {/* ═══ TICKER - News bar at top ═══ */}
+      {on('fun_facts') && (
+        <div className="relative z-20 border-y border-indigo-200/50 bg-gradient-to-r from-indigo-50/90 via-white/90 to-cyan-50/90 backdrop-blur-md py-1.5 shadow-sm">
+          <Marquee pauseOnHover className="text-xs font-medium text-indigo-800" repeat={2}>
+            {(funFacts.length > 0
+              ? funFacts.map((t) => ({ id: String(t.id), slug: t.slug, text: String(t.title) }))
+              : [
+                  { id: 'f1', slug: null, text: 'الأسنان أقوى من العظام' },
+                  { id: 'f2', slug: null, text: 'اللعاب يقتل البكتيريا' },
+                  { id: 'f3', slug: null, text: 'بصمة أسنانك فريدة كالبصمة' },
+                  { id: 'f4', slug: null, text: 'افحص أسنانك كل ٦ أشهر' },
+                  { id: 'f5', slug: null, text: 'التفاح ينظف الأسنان' },
+                  { id: 'f6', slug: null, text: 'الماء البارد يخفف الألم' },
+                ]
+            ).map((f) => (
+              <Link key={f.id} href={f.slug ? `/ask/article/${f.slug}` : '/ask/articles'} className="mx-8 hover:text-indigo-600 transition-colors cursor-pointer">✨ {f.text}</Link>
+            ))}
+          </Marquee>
+        </div>
+      )}
 
       {/* ═══ STATS (dynamic from DB) ═══ */}
       {on('stats') && <div style={{ order: sectionPosition('stats') }}><StatsSection stats={stats} /></div>}
@@ -122,14 +182,19 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       <section style={{ order: sectionPosition('quick_questions') }} className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-10">
         {on('quick_questions') && questions.length > 0 && (
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            {QUICK_CARDS.map((q, i) => (
+            {QUICK_CARDS.map((q, i) => {
+              const Icon = q.icon;
+              return (
               <BlurFade key={q.text} delay={i * 0.08} inView>
-                <button type="button" onClick={scrollToChat} className="post-card-btn">
-                  <span className="text-3xl">{q.emoji}</span>
-                  <span className="text-xs font-bold">{q.text}</span>
+                <button type="button" onClick={scrollToChat} className="backdrop-blur-md bg-white/70 border border-white/60 rounded-2xl p-4 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center gap-2">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-cyan-100 flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <span className="text-xs font-bold text-slate-700">{q.text}</span>
                 </button>
               </BlurFade>
-            ))}
+              );
+            })}
           </div>
         )}
         <div ref={chatRef}>
@@ -191,26 +256,7 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
         </section>
       )}
 
-      {/* ═══ FUN FACTS Marquee ═══ */}
-      {on('fun_facts') && (
-        <div style={{ order: sectionPosition('fun_facts') }} className="relative z-10 border-y border-blue-100 bg-blue-50/70 py-2">
-          <Marquee pauseOnHover className="text-sm text-blue-800" repeat={2}>
-            {(funFacts.length > 0
-              ? funFacts.map((t) => ({ id: String(t.id), icon: String(t.icon ?? '✨'), text: String(t.title) }))
-              : [
-                  { id: 'f1', icon: '🦷', text: 'الأسنان أقوى من العظام' },
-                  { id: 'f2', icon: '💧', text: 'اللعاب يقتل البكتيريا' },
-                  { id: 'f3', icon: '🔍', text: 'بصمة أسنانك فريدة كالبصمة' },
-                  { id: 'f4', icon: '⏰', text: 'افحص أسنانك كل ٦ أشهر' },
-                  { id: 'f5', icon: '🍎', text: 'التفاح ينظف الأسنان' },
-                  { id: 'f6', icon: '❄️', text: 'الماء البارد يخفف الألم' },
-                ]
-            ).map((f) => (
-              <span key={f.id} className="mx-8">{f.icon} {f.text}</span>
-            ))}
-          </Marquee>
-        </div>
-      )}
+      {/* ═══ FUN FACTS Marquee - Moved to bottom area ═══ */}
 
       {/* ═══ FAQ ═══ */}
       {on('faq') && faq.length > 0 && (
