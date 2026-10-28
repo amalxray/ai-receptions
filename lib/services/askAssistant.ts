@@ -177,8 +177,8 @@ export async function answerAsk(input: {
   history?: AskConversationMessage[];
 }): Promise<AskReply> {
   const message = (input.message ?? '').trim().slice(0, 1000);
-  const greetingRegex = /^(مرحبا|مرحباً|أهلا|أهلاً|السلام عليكم|هلا|هاي|hello|hi|صباح الخير|مساء الخير)$/i;
-  if (greetingRegex.test(message) && !(input.history ?? []).length) {
+  const SERVICE_KEYWORDS = /(ألم|وجع|سن|أسنان|ضرس|طاحون|تنظيف|تقويم|زراعة|حشو|عصب|خلع|تبييض|تفتيح|حجز|موعد|عيادة|مركز|بانوراما|أشعة|اشعة|تصوير|فحص|كشف|مختبر|تاج|جسر|علاج|صورة)/i;
+  if (!SERVICE_KEYWORDS.test(message) && !(input.history ?? []).length) {
     return {
       reply: 'أهلاً وسهلاً بك! 🦷 كيف يمكنني مساعدتك اليوم؟ هل تبحث عن عيادة، أم تريد حجز موعد، أم لديك سؤال عن صحة أسنانك؟',
       suggested_clinics: [],
@@ -222,7 +222,7 @@ export async function answerAsk(input: {
     };
   }
 
-  if (wantsLocation && !hasLocation) {
+  if (wantsLocation && !hasLocation && serviceIntent) {
     return {
       reply: 'طبعاً! عشان نلاقي أقرب مراكز لك، حط موقعك (📍 حدد موقعي) أو اختر مدينتك من القائمة.',
       suggested_clinics: [],
