@@ -522,7 +522,19 @@ export async function handleIncomingMessage(opts: {
     const [workingHours, receptionState, bookingPolicy, rawHistory] = await Promise.all([
       withTiming('loadClinicWorkingHours', clinicId, () => loadClinicWorkingHours(clinicId, clinicProfile.timezone)),
       withTiming('loadReceptionistConversationState', clinicId, () => loadReceptionistConversationState(clinicId, conversationId)),
-      withTiming('getChatBookingPolicy', clinicId, () => getChatBookingPolicy(clinicId)),
+      withTiming('getChatBookingPolicy', clinicId, async () => {
+        try {
+          return await getChatBookingPolicy(clinicId);
+        } catch {
+          // Policy lookup must never take down the chat turn; fall back to
+          // a local-only policy (no Google Calendar) on failure.
+          return {
+            checkGoogleCalendar: false,
+            requirePhone: true,
+            createGoogleCalendarEvent: false,
+          };
+        }
+      }),
       withTiming('getConversationHistory', clinicId, () => getConversationHistory(conversationId, 10)),
     ]);
 
