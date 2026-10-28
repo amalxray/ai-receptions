@@ -311,7 +311,15 @@ export function extractRequestedServiceFromText(text: string | null | undefined)
 
   if (words.length === 0) return null;
   const service = words.join(' ').trim();
-  return service.length >= 2 ? service : null;
+  if (service.length < 2) return null;
+
+  // Canonicalise patient language for dental imaging before resolving the
+  // clinic's real service. The service resolver still refuses ambiguous
+  // catalogs; this only normalises the requested modality.
+  if (/(?:\bcbct\b|سي\s*بي\s*سي\s*تي|طبقي(?:ة)?|مقطعي(?:ة)?|(?:أشعة|اشعة)\s+مقطعية)/i.test(service)) {
+    return 'CBCT';
+  }
+  return service;
 }
 
 /** Keep explicit booking requests structured even when the semantic model is unavailable. */

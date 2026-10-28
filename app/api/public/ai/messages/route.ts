@@ -71,6 +71,48 @@ function stripSourceCitations(content: string): string {
   return content.replace(SOURCE_CITATION_PATTERN, '').replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+async function persistFinalAssistantReply(
+  clinicId: string,
+  conversationId: string,
+  assistant: { id?: string | null; content?: string | null },
+  content: string,
+) {
+  if (assistant.id) {
+    if (assistant.content === content) return;
+    const { error } = await supabaseAdmin
+      .from('messages')
+      .update({ content })
+      .eq('id', assistant.id)
+      .eq('conversation_id', conversationId)
+      .eq('clinic_id', clinicId)
+      .eq('role', 'assistant');
+    if (error) {
+      logEvent('public_ai_final_assistant_reply_update_failed', {
+        clinic_id: clinicId,
+        conversation_id: conversationId,
+        message_id: assistant.id,
+        error: error.message,
+      }, 'error');
+    }
+    return;
+  }
+
+  try {
+    await saveMessage({
+      conversation_id: conversationId,
+      clinic_id: clinicId,
+      role: 'assistant',
+      content,
+    });
+  } catch (error) {
+    logEvent('public_ai_final_assistant_reply_insert_failed', {
+      clinic_id: clinicId,
+      conversation_id: conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'error');
+  }
+}
+
 export async function POST(req: Request) {
   if (!postLimiter.isAllowed(getClientId(req))) {
     logEvent('public_ai_rate_limited', { route: 'POST /api/public/ai/messages' });
@@ -201,21 +243,6 @@ export async function POST(req: Request) {
       bookingAttemptResult = attempt;
       if (attempt.action === 'booked' || attempt.action === 'already_booked') {
         confirmedByMessage = true;
-        try {
-          await saveMessage({
-            conversation_id: convId,
-            clinic_id: clinic.id,
-            role: 'assistant',
-            content: CHAT_BOOKING_PENDING_MESSAGE,
-          });
-        } catch (error) {
-          logEvent('public_ai_booking_confirmation_message_failed', {
-            clinic_id: clinic.id,
-            conversation_id: convId,
-            appointment_id: attempt.action === 'booked' ? attempt.appointment.id : attempt.appointment_id,
-            error: error instanceof Error ? error.message : String(error),
-          }, 'warn');
-        }
         updatedConversation = await getConversationById(convId, clinic.id);
         metadata = (updatedConversation as any)?.metadata ?? {};
         conversationState = (updatedConversation as any)?.conversation_state ?? null;
@@ -264,6 +291,7 @@ export async function POST(req: Request) {
         ? { ...safeAssistant, content: 'لم يتم إنشاء الحجز بعد. أكمل البيانات المطلوبة، ثم أرسل «نعم» للموافقة على تسجيل الموعد.' }
         : safeAssistant;
     responseAssistant.content = stripSourceCitations(String(responseAssistant.content ?? ''));
+    await persistFinalAssistantReply(clinic.id, convId, safeAssistant, responseAssistant.content);
       return {
         conversation_id: convId,
         user_message: userMessage,

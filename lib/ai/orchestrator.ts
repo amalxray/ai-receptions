@@ -121,8 +121,9 @@ function resolveBookingServiceHint(
   // Imaging patients use “تصوير طبقية” for a CBCT scan while the catalog may
   // use “تصوير طبقي CBCT”. Only resolve this alias when the clinic has one
   // matching modality, so ambiguous catalogs still require clarification.
-  if (!/(?:\bcbct\b|سي\s*بي\s*سي\s*تي|طبقي|طبقية|مقطعي|مقطعية)/i.test(hint)) return undefined;
-  const modalityMatches = services.filter((service) => /(?:\bcbct\b|طبقي|مقطعي)/i.test(service.name));
+  const imagingModality = /(?:\bcbct\b|سي\s*بي\s*سي\s*تي|طبقي(?:ة)?|مقطعي(?:ة)?|(?:أشعة|اشعة)\s+مقطعية)/i;
+  if (!imagingModality.test(hint)) return undefined;
+  const modalityMatches = services.filter((service) => imagingModality.test(service.name));
   return modalityMatches.length === 1 ? modalityMatches[0] : undefined;
 }
 
@@ -131,13 +132,17 @@ function normalizeBookingPatientName(value: string | null | undefined): string |
     ?.replace(/\s+(?:تلفون|الهاتف|هاتف|رقم(?:\s*(?:الهاتف|تلفون|هاتف))?|جوال|واتساب|phone|mobile)[\s\S]*$/i, '')
     .replace(/[،,;]+$/g, '')
     .trim();
-  if (!name || /\d/.test(name) || /(?:تلفون|الهاتف|هاتف|جوال|رقم)/.test(name)) return null;
+  if (!name || /[\d٠-٩]/.test(name) || /(?:تلفون|الهاتف|هاتف|جوال|رقم)/.test(name)) return null;
   return name;
 }
 
 function assistantAskedForBookingConsent(text: string): boolean {
   return /(?:نعم|موافق|تؤكد|تأكدي|توافق|confirm|agree|yes)/i.test(text) &&
     /(?:حجز|موعد|booking|appointment)/i.test(text);
+}
+
+function assistantAskedForPatientName(text: string): boolean {
+  return /(?:الاسم\s+الكامل|ما\s+(?:هو\s+)?(?:الاسم|اسم)|شو\s+اسم|اسمك|اسم\s+المريض|full\s+name|what(?:'s|\s+is)\s+your\s+name)/i.test(text);
 }
 
 const FAST_STRUCTURED_RAG_INTENTS = new Set([
@@ -534,6 +539,7 @@ export async function handleIncomingMessage(opts: {
       }
     });
     const lastAssistantReply = [...rawHistory].reverse().find((message) => message.role === 'assistant')?.content ?? '';
+    const replyingToPatientNameQuestion = assistantAskedForPatientName(lastAssistantReply);
     const affirmativeFollowUpToBooking = Boolean(
       containsConfirmationWord(text) &&
       lastBookingRequestIndex >= 0 &&
@@ -636,7 +642,10 @@ export async function handleIncomingMessage(opts: {
 
           const historicalAppointment = detectConversationIntelligence(message.content).appointment;
           const historicalName = normalizeBookingPatientName(historicalAppointment.patientName) ??
-            normalizeBookingPatientName(extractPatientNameFromBookingReply(message.content));
+            normalizeBookingPatientName(extractPatientNameFromBookingReply(
+              message.content,
+              message.content === text && replyingToPatientNameQuestion,
+            ));
           if (historicalName) currentState.booking.patient_name = historicalName;
           if (historicalAppointment.phone) currentState.booking.phone = historicalAppointment.phone;
           if (historicalAppointment.email) currentState.booking.email = historicalAppointment.email;
@@ -886,7 +895,7 @@ export async function handleIncomingMessage(opts: {
       if (availabilityFailureSource) {
         const patientName = currentState.booking.patient_name?.trim()
           || intelligence.appointment.patientName?.trim()
-          || extractPatientNameFromBookingReply(text)
+          || extractPatientNameFromBookingReply(text, replyingToPatientNameQuestion)
           || '';
         const patientPhone = currentState.booking.phone?.trim() || intelligence.appointment.phone?.trim() || '';
         const requestedServiceId = currentState.recommended_service_id;
@@ -993,7 +1002,7 @@ export async function handleIncomingMessage(opts: {
             )
           )
         )
-          ? extractPatientNameFromBookingReply(text)
+          ? extractPatientNameFromBookingReply(text, replyingToPatientNameQuestion)
           : null;
       const normalizedPatientName = normalizeBookingPatientName(appointment?.patientName) ??
         normalizeBookingPatientName(bookingReplyName);
