@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     // Load the appointment (tenant-scoped) to know the freed slot.
     const { data: appointment, error: loadError } = await supabaseAdmin
       .from('appointments')
-      .select('id, provider_id, service_id, scheduled_at, status')
+      .select('id, provider_id, service_id, scheduled_at, status, google_event_id')
       .eq('id', appointment_id)
       .eq('clinic_id', clinic_id)
       .is('deleted_at', null)
@@ -64,6 +64,28 @@ export async function POST(req: Request) {
       cancelledDate: scheduledAt ? scheduledAt.slice(0, 10) : null,
       cancelledTime: scheduledAt ? scheduledAt.slice(11, 16) : null,
     });
+
+    // Delete the linked Google Calendar event (best-effort) so stale events
+    // do not linger after cancellation.
+    const googleEventId = (appointment as { google_event_id?: string | null }).google_event_id ?? null;
+    if (googleEventId) {
+      try {
+        const { deleteGoogleCalendarEvent } = await import('@/lib/services/googleCalendarBooking');
+        await deleteGoogleCalendarEvent(clinic_id, googleEventId);
+        await supabaseAdmin
+          .from('appointments')
+          .update({ google_event_id: null, needs_google_sync: false, google_sync_blocked_at: null })
+          .eq('id', appointment_id)
+          .eq('clinic_id', clinic_id);
+      } catch (deleteError) {
+        logEvent('google_calendar_cancelled_event_delete_failed', {
+          clinic_id,
+          appointment_id,
+          google_event_id: googleEventId,
+          reason: deleteError instanceof Error ? deleteError.message : String(deleteError),
+        }, 'warn');
+      }
+    }
 
     logEvent('appointment_cancelled_staff', { clinic_id: clinic_id, appointment_id });
     return NextResponse.json({ data: { success: true } });
