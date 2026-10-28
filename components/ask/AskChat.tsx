@@ -117,20 +117,24 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   };
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-lg shadow-slate-200/70" dir="rtl">
+    <div className="relative rounded-3xl backdrop-blur-xl bg-gradient-to-br from-white/90 to-white/70 border border-white/60 p-4 shadow-[0_20px_80px_rgba(99,102,241,0.3)] overflow-hidden" dir="rtl">
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5"></div>
+      <div className="absolute -top-10 -left-10 w-32 h-32 bg-gradient-to-br from-violet-400/20 to-indigo-400/20 rounded-full blur-2xl"></div>
+      
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-        <span className="relative grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-lg text-white shadow-glow animate-pulse-coral">
-          <span className="inline-block animate-wiggle">{logo}</span>
+      <div className="relative flex items-center gap-3 border-b border-slate-200/50 pb-3">
+        <span className="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-600 via-violet-600 to-cyan-600 text-xl text-white shadow-[0_0_30px_rgba(99,102,241,0.6)] animate-[glow-pulse_2s_ease-in-out_infinite]">
+          <span className="inline-block">{logo}</span>
+          <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-white animate-pulse"></div>
         </span>
         <div>
-          <p className="text-sm font-bold text-slate-800">{assistantName}</p>
-          <p className="text-xs font-medium text-emerald-700">● متاح الآن — يرد فوراً</p>
+          <p className="text-sm font-black bg-gradient-to-r from-indigo-600 to-cyan-600 bg-clip-text text-transparent">{assistantName}</p>
+          <p className="text-xs font-semibold text-emerald-600">● متاح الآن — يرد فوراً</p>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="mt-3 max-h-96 min-h-40 space-y-3 overflow-y-auto p-1">
+      <div className="mt-3 max-h-96 min-h-40 space-y-3 overflow-y-auto p-1 chat-scrollbar">
         <AnimatePresence initial={false}>
           {messages.map((m, i) => (
             <motion.div
@@ -252,16 +256,24 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       )}
 
       {/* Input */}
-      <div className="chat-input-container mt-3">
-        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="chat-button" style={{ background: '#2563eb' }}>📍</button>
+      <div className="relative mt-3 flex items-center gap-2 backdrop-blur-md bg-white/60 border border-white/60 rounded-2xl p-1.5 shadow-lg">
+        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(99,102,241,0.6)] hover:scale-105 transition-all duration-300">📍</button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void send(input); }}
           placeholder="أخبرنا بما تشعر به لنساعدك في العثور على موعد مناسب..."
-          className="chat-input"
+          className="flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none"
         />
-        <button type="button" onClick={() => void send(input)} disabled={sending || !input.trim()} className="chat-button" aria-label="إرسال">🚀</button>
+        <button 
+          type="button" 
+          onClick={() => void send(input)} 
+          disabled={sending || !input.trim()} 
+          className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-cyan-600 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(6,182,212,0.6)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          aria-label="إرسال"
+        >
+          {sending ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : '🚀'}
+        </button>
       </div>
     </div>
   );
