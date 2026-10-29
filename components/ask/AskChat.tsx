@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { type SuggestedClinic } from './ClinicCard';
 import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
-import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { sendGAEvent } from '@next/third-parties/google';
 import type { PatientLocation } from './LocationPicker';
 import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
@@ -95,10 +94,6 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     }
   };
 
-  const openBooking = (url: string) => {
-    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* noop */ }
-  };
-
   const closeOnBackdrop = (handler: () => void) => (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) handler();
   };
@@ -168,7 +163,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       {lastSuggestions.length > 0 && (
         <button
           type="button"
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => { console.log('ask modal button clicked, isModalOpen:', isModalOpen); setIsModalOpen(true); } }
           className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-800 transition hover:bg-blue-100 hover:shadow-[0_0_15px_rgba(6,182,212,0.35)]"
         >
           🏥 عرض العيادات
@@ -195,46 +190,22 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       )}
 
       {/* Clinics modal */}
+      {isModalOpen && (() => { console.log('ask modal render, isModalOpen:', isModalOpen); return null; })()}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeOnBackdrop(() => setIsModalOpen(false))}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <motion.div
-            initial={{ scale: 0.9, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.9, y: 20 }}
-            className="relative w-full max-w-2xl bg-white/90 backdrop-blur-xl border border-white/60 rounded-3xl p-6 shadow-2xl mx-4 sm:mx-6 max-h-[90vh] overflow-y-auto"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-slate-800">العيادات القريبة منك</h2>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200">✕</button>
-            </div>
-            <div className="space-y-3">
-              {lastSuggestions.map((c) => {
-                const mapsUrl = clinicMapsUrl(c);
-                const displayName = displayAskClinicName(c.name, c.type);
-                return (
-                  <div key={c.id || c.slug} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                      <div>
-                        <p className="font-bold text-slate-800">{displayName}</p>
-                        {c.city && <p className="text-xs text-slate-500">📍 {c.city}</p>}
-                        {c.distance_km != null && <p className="text-xs text-slate-500">📏 المسافة: {c.distance_km} كم</p>}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {c.phone && (
-                        <a href={`tel:${c.phone}`} dir="ltr" className="rounded-full bg-slate-100 px-3.5 py-1.5 text-xs text-slate-700 transition hover:bg-slate-200">📞 {c.phone}</a>
-                      )}
-                      <button type="button" onClick={() => openBooking(c.booking_url)} className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700">🦷 احجز الآن</button>
-                      {mapsUrl && (
-                        <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="rounded-full bg-slate-100 px-3.5 py-1.5 text-xs text-slate-700 transition hover:bg-slate-200">🗺️ افتح الموقع</a>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', padding: 20, margin: '100px auto', maxWidth: 600, borderRadius: 8 }}>
+            <button onClick={() => setIsModalOpen(false)}>إغلاق</button>
+            <h2>العيادات المقترحة</h2>
+            {lastSuggestions.map((c) => (
+              <div key={c.id || c.slug} style={{ marginTop: 12, padding: 12, border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                <p style={{ fontWeight: 'bold' }}>{displayAskClinicName(c.name, c.type)}</p>
+                {c.city && <p>📍 {c.city}</p>}
+                {c.distance_km != null && <p>📏 المسافة: {c.distance_km} كم</p>}
+                {c.phone && <a href={`tel:${c.phone}`}>📞 {c.phone}</a>}
+                <a href={c.booking_url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8 }}>🦷 احجز الآن</a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
