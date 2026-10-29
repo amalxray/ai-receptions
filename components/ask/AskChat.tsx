@@ -236,16 +236,6 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
                   </div>
                   <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">{displayAskClinicName(c.name, c.type)}</p>
                   {c.city && <p className="mt-1 text-xs text-slate-500">📍 {c.city}</p>}
-                  {c.distance_km != null && <p className="mt-1 text-xs text-slate-500">📏 {c.distance_km} كم</p>}
-                  {c.phone && <p className="mt-1 text-xs text-slate-500">📞 {c.phone}</p>}
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {c.booking_url && (
-                      <a href={c.booking_url} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700">احجز الآن</a>
-                    )}
-                    {c.google_maps_url && (
-                      <a href={c.google_maps_url} target="_blank" rel="noopener noreferrer" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-200">افتح الموقع</a>
-                    )}
-                  </div>
                 </button>
               ))}
             </div>
