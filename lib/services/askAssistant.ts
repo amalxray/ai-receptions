@@ -164,62 +164,11 @@ async function aiReply(message: string, history: AskConversationMessage[] = []):
 
 function extractServiceIntent(message: string, history: AskConversationMessage[] = []): boolean {
   const combined = [message, ...history.map((item) => item.content)].join(' ');
-  return /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان|طاحون|ضرس|وجع.*سن|ألم.*سن)/i.test(combined);
+  return /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان)/i.test(combined);
 }
 
 function isLocationIntent(message: string): boolean {
   return /وين|مكانك|موقعك|عنوانك|أقرب|قريب|مدينتك|مدينتي|حدد موقعي|موقعي/i.test(message);
-}
-
-const SERVICE_KEYWORDS =
-  /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان|طاحون|ضرس|وجع.*سن|ألم.*سن|ابتسامة|لثة|علاج|حشوة|تركيبات|تقويم.*أسنان)/i;
-
-const GREETING_TOKENS = new Set([
-  'مرحبا', 'أهلا', 'أهلاً', 'اهلا', 'هلا', 'السلام', 'عليكم', 'صباح', 'صبح', 'الخير',
-  'مساء', 'النور', 'كيف', 'حالك', 'كيفك', 'هاي', 'هلو', 'الووو', 'hello', 'hi', 'hey',
-  'صبح', 'خير', 'مرحباً',
-]);
-
-function isGreeting(message: string): boolean {
-  const stripped = message.replace(/^[\d\s]+/, '').trim();
-  if (!stripped) return false;
-  const tokens = stripped.split(/\s+/).map((t) => t.replace(/[?؟!,.،]/g, ''));
-  return tokens.length > 0 && tokens.every((t) => GREETING_TOKENS.has(t));
-}
-
-type AskIntent = 'booking' | 'clinic_search' | 'general_question' | 'unrelated';
-
-async function classifyIntent(
-  message: string,
-  history: AskConversationMessage[],
-  provider: any,
-): Promise<AskIntent | null> {
-  if (!provider) return null;
-  try {
-    const system =
-      'Classify the user message intent into exactly one of: booking, clinic_search, general_question, unrelated. ' +
-      'booking: wants to book an appointment or mentions a dental service (panorama, cleaning, pain, implant). ' +
-      'clinic_search: looking for a clinic/center/imaging center/nearby. ' +
-      'general_question: general question about services/prices/how it works. ' +
-      'unrelated: not related to dental clinic (e.g. tomato price). ' +
-      'Reply with only the label.';
-    const historyText = history.length
-      ? `\n\nRecent conversation:\n${history.map((h) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n')}`
-      : '';
-    const res = await generateWithFailover({
-      prompt: `${system}${historyText}\n\nMessage: ${message.substring(0, 500)}\n\nIntent:`,
-      maxTokens: 10,
-      temperature: 0,
-    });
-    const text = (res?.text ?? '').trim().toLowerCase();
-    if (text.includes('clinic_search') || text.includes('clinic search')) return 'clinic_search';
-    if (text.includes('booking')) return 'booking';
-    if (text.includes('general_question') || text.includes('general question')) return 'general_question';
-    if (text.includes('unrelated')) return 'unrelated';
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 export async function answerAsk(input: {
@@ -227,58 +176,35 @@ export async function answerAsk(input: {
   location: AskLocation;
   history?: AskConversationMessage[];
 }): Promise<AskReply> {
-  ensureAIProviders();
   const message = (input.message ?? '').trim().slice(0, 1000);
-
-  // B65: greeting detection first.
-  if (isGreeting(message)) {
+  const SERVICE_KEYWORDS = /(ألم|وجع|سن|أسنان|ضرس|طاحون|تنظيف|تقويم|زراعة|حشو|عصب|خلع|تبييض|تفتيح|حجز|موعد|عيادة|مركز|بانوراما|أشعة|اشعة|تصوير|فحص|كشف|مختبر|تاج|جسر|علاج|صورة)/i;
+  if (!SERVICE_KEYWORDS.test(message) && !(input.history ?? []).length) {
     return {
-      reply: 'أهلاً وسهلاً بك! 🦷 كيف أقدر أساعدك اليوم؟ (حجز، استفسار، عيادة، إلخ)',
+      reply: 'أهلاً وسهلاً بك! 🦷 كيف يمكنني مساعدتك اليوم؟ هل تبحث عن عيادة، أم تريد حجز موعد، أم لديك سؤال عن صحة أسنانك؟',
       suggested_clinics: [],
       needs_location: false,
     };
   }
   const hasLocation = Boolean(input.location?.lat && input.location?.lng);
   const wantsLocation = isLocationIntent(message);
-  const history = input.history ?? [];
-
-  // B65: intent classification via LLM when available.
-  const intent = await classifyIntent(message, history, getProvider());
-  // Narrow suggestions to the single activity that can serve the request = message.replace(/[0-9\s]/g, '');
   // Narrow suggestions to the single activity that can serve the request
   // (imaging for panoramas, clinic for extraction, lab for crowns). `null`
   // → keep showing every activity type, as before. The history is folded in so
   // an activity declared earlier survives a generic location-confirmation turn.
   const activity = classifyActivity(
     message,
-    history.map((h) => h.content),
+    (input.history ?? []).map((h) => h.content),
   );
   // A recognised service activity (e.g. "صورة طبقية") IS a service intent even
   // when the legacy keyword gate misses it — otherwise imaging requests would be
   // turned away before ever reaching the filtered suggestions.
-  const serviceIntent =
-    intent === 'booking' ||
-    intent === 'clinic_search' ||
-    activity !== null ||
-    extractServiceIntent(message, history);
+  const serviceIntent = extractServiceIntent(message, input.history ?? []) || activity !== null;
   const suggestions = serviceIntent && hasLocation ? await nearbySuggestions(input.location, 3, activity) : [];
 
   // AI first, rule-based fallback keeps it alive without a model.
-  const generated = await aiReply(message, history.slice(-12));
+  const generated = await aiReply(message, input.history?.slice(-12) ?? []);
   const base = severityReply(message);
   const reply = generated || base.reply;
-
-  // B65: intent-based branches.
-  if (intent === 'unrelated') {
-    return {
-      reply: 'أنا مساعد طبي، أستطيع مساعدتك في حجز المواعيد والاستفسارات الطبية. هل تبحث عن عيادة أو تريد حجز موعد؟',
-      suggested_clinics: [],
-      needs_location: false,
-    };
-  }
-  if (intent === 'general_question') {
-    return { reply, suggested_clinics: [], needs_location: false };
-  }
 
   if (!serviceIntent && !hasLocation) {
     return {
@@ -290,7 +216,7 @@ export async function answerAsk(input: {
 
   if (serviceIntent && !hasLocation) {
     return {
-      reply: 'عشان ألاقي لك أقرب مركز/عيادة، محتاج أعرف موقعك. اضغط على زر 📍 أو اختر مدينتك.',
+      reply: 'ممتاز! لتحديد أقرب مركز، هل تريد استخدام موقعك الحالي؟ (📍 حدد موقعي) أو أستطيع أن أعمل على مدينتك إذا رغبت.',
       suggested_clinics: [],
       needs_location: true,
     };
@@ -320,8 +246,11 @@ export async function answerAsk(input: {
         needs_location: false,
       };
     }
+    const lines = suggestions.map((c, i) =>
+      `${i + 1}. ${c.name} — ${c.city ?? 'نابلس'} (${c.distance_km != null ? `${c.distance_km} كم` : 'قريب'})`
+    );
     return {
-      reply: 'وجدت لك عيادة قريبة. اضغط على الزر لعرض التفاصيل.',
+      reply: `🎯 وجدت لك أقرب ${suggestions.length} مراكز:\n${lines.join('\n')}\n\nاختر رقمًا للحصول على تفاصيل العيادة المختارة.`,
       suggested_clinics: suggestions,
       needs_location: false,
     };
