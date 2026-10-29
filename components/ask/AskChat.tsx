@@ -27,8 +27,6 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   const [sending, setSending] = useState(false);
   const [location, setLocation] = useState<PatientLocation | null>(null);
   const [showLocPicker, setShowLocPicker] = useState(false);
-  const [showClinicsModal, setShowClinicsModal] = useState(false);
-  const [showLocModal, setShowLocModal] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   // restore saved location for returning visitors
@@ -110,7 +108,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
         ...m,
         { role: 'assistant', content: json.reply ?? 'حصل خطأ، جرّب مرة ثانية.', clinics, needs_location: Boolean(json.needs_location) },
       ]);
-      if (json.needs_location) { setShowLocPicker(true); setShowLocModal(true); }
+      if (json.needs_location) setShowLocPicker(true);
     } catch {
       setMessages((m) => [...m, { role: 'assistant', content: 'حصل خطأ في الاتصال — جرّب مرة ثانية.' }]);
     } finally {
@@ -194,64 +192,48 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       </div>
 
       {lastSuggestions.length > 0 && (
-        <div className="mt-3 flex justify-center">
-          <button
-            type="button"
-            onClick={() => setShowClinicsModal(true)}
-            className="rounded-full bg-gradient-to-r from-indigo-600 to-cyan-600 px-5 py-2 text-sm font-bold text-white shadow-lg transition hover:scale-105"
-          >
-            🏥 عرض العيادات المقترحة ({lastSuggestions.length})
-          </button>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+         {lastSuggestions.map((c, idx) => (
+           <button
+             key={c.id || idx}
+             type="button"
+             onClick={() => handleClinicSelect(idx + 1)}
+             className="group flex flex-col items-start rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-md hover:shadow-blue-900/5 hover:border-blue-200"
+           >
+             <div className="mb-2 flex w-full items-center justify-between">
+               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">
+                 {idx + 1}
+               </span>
+               {c.distance_km != null && (
+                 <span className="text-[10px] font-medium text-slate-500">{c.distance_km} كم</span>
+               )}
+             </div>
+             <div className="mb-2 flex items-center gap-2">
+               {c.logo ? (
+                 // eslint-disable-next-line @next/next/no-img-element
+                 <img src={c.logo} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 object-cover" />
+               ) : (
+                 <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">
+                   {c.type === 'imaging_center' ? '📷' : c.type === 'dental_lab' ? '🦷' : '🏥'}
+                 </span>
+               )}
+             </div>
+             <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">
+               {displayAskClinicName(c.name, c.type)}
+             </p>
+             {c.city && <p className="mt-1 text-xs text-slate-500">📍 {c.city}</p>}
+             <p className="mt-2 text-[11px] font-medium text-blue-600 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+               اضغط لعرض التفاصيل ←
+             </p>
+           </button>
+         ))}
         </div>
       )}
 
-      {showClinicsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowClinicsModal(false)}>
-          <div className="max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-black text-slate-800">🏥 العيادات المقترحة</h3>
-              <button type="button" onClick={() => setShowClinicsModal(false)} className="rounded-full bg-slate-100 px-3 py-1 text-sm hover:bg-slate-200">✕</button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {lastSuggestions.map((c, idx) => (
-                <button
-                  key={c.id || idx}
-                  type="button"
-                  onClick={() => { handleClinicSelect(idx + 1); setShowClinicsModal(false); }}
-                  className="group flex flex-col items-start rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-md hover:shadow-blue-900/5 hover:border-blue-200"
-                >
-                  <div className="mb-2 flex w-full items-center justify-between">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">{idx + 1}</span>
-                    {c.distance_km != null && (<span className="text-[10px] font-medium text-slate-500">{c.distance_km} كم</span>)}
-                  </div>
-                  <div className="mb-2 flex items-center gap-2">
-                    {c.logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.logo} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 object-cover" />
-                    ) : (
-                      <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">
-                        {c.type === 'imaging_center' ? '📷' : c.type === 'dental_lab' ? '🦷' : '🏥'}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">{displayAskClinicName(c.name, c.type)}</p>
-                  {c.city && <p className="mt-1 text-xs text-slate-500">📍 {c.city}</p>}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Location picker Modal */}
-      {showLocModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowLocModal(false)}>
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-black text-slate-800">📍 تحديد موقعي</h3>
-              <button type="button" onClick={() => setShowLocModal(false)} className="rounded-full bg-slate-100 px-3 py-1 text-sm hover:bg-slate-200">✕</button>
-            </div>
-            <LocationPicker value={location} onChange={(loc) => { saveLocation(loc); setShowLocModal(false); }} compact />
-          </div>
+      {/* Location picker (slides in when needed) */}
+      {showLocPicker && (
+        <div className="mt-3">
+          <LocationPicker value={location} onChange={saveLocation} compact />
         </div>
       )}
 
@@ -275,7 +257,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
 
       {/* Input */}
       <div className="relative mt-3 flex items-center gap-2 backdrop-blur-md bg-white/60 border border-white/60 rounded-2xl p-1.5 shadow-lg">
-        <button type="button" onClick={() => setShowLocModal(true)} title="حدد موقعك" className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(99,102,241,0.6)] hover:scale-105 transition-all duration-300">📍</button>
+        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(99,102,241,0.6)] hover:scale-105 transition-all duration-300">📍</button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
