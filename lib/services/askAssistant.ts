@@ -320,11 +320,8 @@ export async function answerAsk(input: {
         needs_location: false,
       };
     }
-    const lines = suggestions.map((c, i) =>
-      `${i + 1}. ${c.name} — ${c.city ?? 'نابلس'} (${c.distance_km != null ? `${c.distance_km} كم` : 'قريب'})`
-    );
     return {
-      reply: `🎯 وجدت لك أقرب ${suggestions.length} مراكز:\n${lines.join('\n')}\n\nاختر رقمًا للحصول على تفاصيل العيادة المختارة.`,
+      reply: 'وجدت لك عيادة قريبة. اضغط على الزر لعرض التفاصيل.',
       suggested_clinics: suggestions,
       needs_location: false,
     };
