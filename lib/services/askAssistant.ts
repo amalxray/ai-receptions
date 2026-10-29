@@ -164,12 +164,15 @@ async function aiReply(message: string, history: AskConversationMessage[] = []):
 
 function extractServiceIntent(message: string, history: AskConversationMessage[] = []): boolean {
   const combined = [message, ...history.map((item) => item.content)].join(' ');
-  return /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان)/i.test(combined);
+  return /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان|طاحون|ضرس|وجع.*سن|ألم.*سن)/i.test(combined);
 }
 
 function isLocationIntent(message: string): boolean {
   return /وين|مكانك|موقعك|عنوانك|أقرب|قريب|مدينتك|مدينتي|حدد موقعي|موقعي/i.test(message);
 }
+
+const SERVICE_KEYWORDS =
+  /(بانوراما|تصوير.*اشعة|صورة.*سن|أشعة.*سن|تبييض|تنظيف|تقويم|حشو|عصب|خلع|زراعة|كشف|فحص|تجميل|مراجعة|رعاية|دراسة|أسنان|طاحون|ضرس|وجع.*سن|ألم.*سن|ابتسامة|لثة|علاج|حشوة|تركيبات|تقويم.*أسنان)/i;
 
 export async function answerAsk(input: {
   message: string;
@@ -187,6 +190,20 @@ export async function answerAsk(input: {
   }
   const hasLocation = Boolean(input.location?.lat && input.location?.lng);
   const wantsLocation = isLocationIntent(message);
+  const hasHistory = (input.history ?? []).length > 0;
+  const strippedForCheck = message.replace(/[0-9\s]/g, '');
+  const hasServiceKeyword = SERVICE_KEYWORDS.test(message) || SERVICE_KEYWORDS.test(strippedForCheck);
+  const isMeaningfulLength = strippedForCheck.length >= 2;
+
+  // بوابة تحية صارمة: منع تصنيف الأرقام وحدها أو رسائل غير ذات معنى كنية خدمة
+  if (!hasServiceKeyword && !hasHistory && !isMeaningfulLength) {
+    return {
+      reply: 'أهلاً وسهلاً بك! 🦷 كيف يمكنني مساعدتك اليوم؟ هل تبحث عن عيادة، أم تريد حجز موعد، أم لديك سؤال عن صحة أسنانك؟',
+      suggested_clinics: [],
+      needs_location: false,
+    };
+  }
+
   // Narrow suggestions to the single activity that can serve the request
   // (imaging for panoramas, clinic for extraction, lab for crowns). `null`
   // → keep showing every activity type, as before. The history is folded in so
@@ -198,7 +215,7 @@ export async function answerAsk(input: {
   // A recognised service activity (e.g. "صورة طبقية") IS a service intent even
   // when the legacy keyword gate misses it — otherwise imaging requests would be
   // turned away before ever reaching the filtered suggestions.
-  const serviceIntent = extractServiceIntent(message, input.history ?? []) || activity !== null;
+  const serviceIntent = hasServiceKeyword || extractServiceIntent(message, input.history ?? []) || activity !== null;
   const suggestions = serviceIntent && hasLocation ? await nearbySuggestions(input.location, 3, activity) : [];
 
   // AI first, rule-based fallback keeps it alive without a model.
