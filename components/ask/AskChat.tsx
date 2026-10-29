@@ -159,15 +159,16 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
         <div ref={endRef} />
       </div>
 
-      {/* Clinics trigger button -> opens the clinics modal */}
-      {lastSuggestions.length > 0 && (
-        <button
-          type="button"
-          onClick={() => { console.log('ask modal button clicked, isModalOpen:', isModalOpen); setIsModalOpen(true); } }
+      {/* Clinics trigger link -> opens the first clinic's booking page directly */}
+      {lastSuggestions.length > 0 && lastSuggestions[0]?.booking_url && (
+        <a
+          href={lastSuggestions[0].booking_url}
+          target="_blank"
+          rel="noopener noreferrer"
           className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-800 transition hover:bg-blue-100 hover:shadow-[0_0_15px_rgba(6,182,212,0.35)]"
         >
-          🏥 عرض العيادات
-        </button>
+          🏥 عرض العيادة
+        </a>
       )}
 
       {/* Location picker modal */}
