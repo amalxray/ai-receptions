@@ -177,13 +177,14 @@ export async function answerAsk(input: {
   history?: AskConversationMessage[];
 }): Promise<AskReply> {
   const message = (input.message ?? '').trim().slice(0, 1000);
-  const SERVICE_KEYWORDS = /(ألم|وجع|سن|أسنان|ضرس|طاحون|تنظيف|تقويم|زراعة|حشو|عصب|خلع|تبييض|تفتيح|حجز|موعد|عيادة|مركز|بانوراما|أشعة|اشعة|تصوير|فحص|كشف|مختبر|تاج|جسر|علاج|صورة)/i;
-  if (!SERVICE_KEYWORDS.test(message) && !(input.history ?? []).length) {
-    return {
-      reply: 'أهلاً وسهلاً بك! 🦷 كيف يمكنني مساعدتك اليوم؟ هل تبحث عن عيادة، أم تريد حجز موعد، أم لديك سؤال عن صحة أسنانك؟',
-      suggested_clinics: [],
-      needs_location: false,
-    };
+
+  // B72: deterministic greeting detection (no LLM).
+  if (/(مرحبا|أهلا|السلام|صباح|مساء|هاي|hello|hi)/i.test(message)) {
+    return { reply: 'أهلاً وسهلاً بك! 🦷 كيف يمكنني مساعدتك اليوم؟ (حجز، استفسار، عيادة، إلخ)', suggested_clinics: [], needs_location: false };
+  }
+  // B72: phone number (10 consecutive digits) → contact follow-up.
+  if (/\d{10}/.test(message.replace(/\s/g, ''))) {
+    return { reply: 'شكراً، سيتم التواصل معك.', suggested_clinics: [], needs_location: false };
   }
   const hasLocation = Boolean(input.location?.lat && input.location?.lng);
   const wantsLocation = isLocationIntent(message);
@@ -206,14 +207,14 @@ export async function answerAsk(input: {
   const base = severityReply(message);
   const reply = generated || base.reply;
 
-  if (!serviceIntent && !hasLocation) {
+  // B72: unrelated → polite redirect.
+  if (!serviceIntent) {
     return {
-      reply: 'تمام! ما نوع الخدمة اللي تحتاجها؟ مثال: "بانوراما"، "تبييض"، "تنظيف"، أو "صورة لسن معين". بعدين أطلب منك الموقع لتحديد الأقرب.',
+      reply: 'أنا مساعد طبي، أستطيع مساعدتك في حجز المواعيد والاستفسارات الطبية. هل تبحث عن عيادة أو تريد حجز موعد؟',
       suggested_clinics: [],
       needs_location: false,
     };
   }
-
   if (serviceIntent && !hasLocation) {
     return {
       reply: 'ممتاز! لتحديد أقرب مركز، هل تريد استخدام موقعك الحالي؟ (📍 حدد موقعي) أو أستطيع أن أعمل على مدينتك إذا رغبت.',
