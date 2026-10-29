@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { type SuggestedClinic } from './ClinicCard';
 import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
+import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { sendGAEvent } from '@next/third-parties/google';
 import type { PatientLocation } from './LocationPicker';
 import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
@@ -15,7 +16,7 @@ const LocationPicker = dynamic(() => import('./LocationPicker'), {
   loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />,
 });
 
-type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean; bookingUrl?: string; logoUrl?: string | null };
+type Msg = { role: 'user' | 'assistant'; content: string; clinics?: SuggestedClinic[]; needs_location?: boolean };
 
 const STORE_KEY = 'patient_location';
 
@@ -27,6 +28,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   const [sending, setSending] = useState(false);
   const [location, setLocation] = useState<PatientLocation | null>(null);
   const [showLocPicker, setShowLocPicker] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   // restore saved location for returning visitors
@@ -39,7 +41,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     }
   }, []);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, showLocPicker]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, showLocPicker, isModalOpen]);
 
   const saveLocation = (loc: PatientLocation | null) => {
     setLocation(loc);
@@ -54,32 +56,9 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
 
   const lastSuggestions = [...messages].reverse().find((m) => (m.clinics ?? []).length)?.clinics ?? [];
 
-  const handleClinicSelect = (num: number) => {
-    const clinic = lastSuggestions[num - 1];
-    if (!clinic) return;
-
-    const displayName = displayAskClinicName(clinic.name, clinic.type);
-    const details = [
-      `🎯 العيادة المختارة: ${displayName}`,
-      clinic.city ? `📍 ${clinic.city}` : '📍 الموقع: غير محدد',
-      clinic.address ? `🏠 ${clinic.address}` : '',
-      clinic.distance_km != null ? `📏 المسافة: ${clinic.distance_km} كم` : '',
-      clinic.phone ? `📞 ${clinic.phone}` : '',
-      `🔗 الحجز: ${clinic.booking_url}`,
-    ].filter(Boolean).join('\n');
-
-    setMessages((m) => [...m, { role: 'user', content: `${num}` }, { role: 'assistant', content: details, bookingUrl: clinic.booking_url, logoUrl: clinic.logo ?? null }]);
-  };
-
   const send = async (text: string, locOverride?: PatientLocation | null) => {
     const message = text.trim();
     if (!message || sending) return;
-
-    const numericSelection = /^\d+$/.test(message) ? Number(message) : null;
-    if (numericSelection && numericSelection >= 1 && lastSuggestions[numericSelection - 1]) {
-      handleClinicSelect(numericSelection);
-      return;
-    }
 
     setInput('');
     setMessages((m) => {
@@ -116,11 +95,19 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
     }
   };
 
+  const openBooking = (url: string) => {
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* noop */ }
+  };
+
+  const closeOnBackdrop = (handler: () => void) => (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) handler();
+  };
+
   return (
     <div className="relative rounded-3xl backdrop-blur-xl bg-gradient-to-br from-white/90 to-white/70 border border-white/60 p-4 shadow-[0_20px_80px_rgba(99,102,241,0.3)] overflow-hidden" dir="rtl">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5"></div>
       <div className="absolute -top-10 -left-10 w-32 h-32 bg-gradient-to-br from-violet-400/20 to-indigo-400/20 rounded-full blur-2xl"></div>
-      
+
       {/* Header */}
       <div className="relative flex items-center gap-3 border-b border-slate-200/50 pb-3">
         <span className="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-600 via-violet-600 to-cyan-600 text-xl text-white shadow-[0_0_30px_rgba(99,102,241,0.6)] animate-[glow-pulse_2s_ease-in-out_infinite]">
@@ -146,23 +133,9 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
               transition={{ type: 'spring', stiffness: 320, damping: 24 }}
               className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
             >
-              {m.role === 'assistant' && m.logoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.logoUrl} alt="" aria-hidden="true" className="mb-2 h-12 w-12 rounded-xl border border-slate-200 object-cover" />
-              )}
               <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white shadow-glow-coral' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
                 {m.content}
               </div>
-              {m.role === 'assistant' && m.bookingUrl && (
-                <a
-                  href={m.bookingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-glow-coral transition hover:bg-blue-700 hover:scale-105 active:scale-95"
-                >
-                  🦷 احجز الآن
-                </a>
-              )}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -191,49 +164,77 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
         <div ref={endRef} />
       </div>
 
+      {/* Clinics trigger button -> opens the clinics modal */}
       {lastSuggestions.length > 0 && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
-         {lastSuggestions.map((c, idx) => (
-           <button
-             key={c.id || idx}
-             type="button"
-             onClick={() => handleClinicSelect(idx + 1)}
-             className="group flex flex-col items-start rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-md hover:shadow-blue-900/5 hover:border-blue-200"
-           >
-             <div className="mb-2 flex w-full items-center justify-between">
-               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">
-                 {idx + 1}
-               </span>
-               {c.distance_km != null && (
-                 <span className="text-[10px] font-medium text-slate-500">{c.distance_km} كم</span>
-               )}
-             </div>
-             <div className="mb-2 flex items-center gap-2">
-               {c.logo ? (
-                 // eslint-disable-next-line @next/next/no-img-element
-                 <img src={c.logo} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 object-cover" />
-               ) : (
-                 <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">
-                   {c.type === 'imaging_center' ? '📷' : c.type === 'dental_lab' ? '🦷' : '🏥'}
-                 </span>
-               )}
-             </div>
-             <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">
-               {displayAskClinicName(c.name, c.type)}
-             </p>
-             {c.city && <p className="mt-1 text-xs text-slate-500">📍 {c.city}</p>}
-             <p className="mt-2 text-[11px] font-medium text-blue-600 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-               اضغط لعرض التفاصيل ←
-             </p>
-           </button>
-         ))}
+        <button
+          type="button"
+          onClick={() => setIsModalOpen(true)}
+          className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-800 transition hover:bg-blue-100 hover:shadow-[0_0_15px_rgba(6,182,212,0.35)]"
+        >
+          🏥 عرض العيادات
+        </button>
+      )}
+
+      {/* Location picker modal */}
+      {showLocPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeOnBackdrop(() => setShowLocPicker(false))}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <motion.div
+            initial={{ scale: 0.95, y: 10 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.95, y: 10 }}
+            className="relative w-full max-w-lg bg-white/95 backdrop-blur-xl border border-white/60 rounded-2xl p-5 shadow-2xl mx-4 max-h-[85vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-slate-800">تحديد الموقع</h3>
+              <button type="button" onClick={() => setShowLocPicker(false)} className="rounded-full bg-slate-100 p-1.5 text-slate-600 hover:bg-slate-200">✕</button>
+            </div>
+            <LocationPicker value={location} onChange={saveLocation} />
+          </motion.div>
         </div>
       )}
 
-      {/* Location picker (slides in when needed) */}
-      {showLocPicker && (
-        <div className="mt-3">
-          <LocationPicker value={location} onChange={saveLocation} compact />
+      {/* Clinics modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeOnBackdrop(() => setIsModalOpen(false))}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <motion.div
+            initial={{ scale: 0.9, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.9, y: 20 }}
+            className="relative w-full max-w-2xl bg-white/90 backdrop-blur-xl border border-white/60 rounded-3xl p-6 shadow-2xl mx-4 sm:mx-6 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-slate-800">العيادات القريبة منك</h2>
+              <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-full bg-slate-100 p-2 text-slate-600 hover:bg-slate-200">✕</button>
+            </div>
+            <div className="space-y-3">
+              {lastSuggestions.map((c) => {
+                const mapsUrl = clinicMapsUrl(c);
+                const displayName = displayAskClinicName(c.name, c.type);
+                return (
+                  <div key={c.id || c.slug} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                      <div>
+                        <p className="font-bold text-slate-800">{displayName}</p>
+                        {c.city && <p className="text-xs text-slate-500">📍 {c.city}</p>}
+                        {c.distance_km != null && <p className="text-xs text-slate-500">📏 المسافة: {c.distance_km} كم</p>}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {c.phone && (
+                        <a href={`tel:${c.phone}`} dir="ltr" className="rounded-full bg-slate-100 px-3.5 py-1.5 text-xs text-slate-700 transition hover:bg-slate-200">📞 {c.phone}</a>
+                      )}
+                      <button type="button" onClick={() => openBooking(c.booking_url)} className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700">🦷 احجز الآن</button>
+                      {mapsUrl && (
+                        <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="rounded-full bg-slate-100 px-3.5 py-1.5 text-xs text-slate-700 transition hover:bg-slate-200">🗺️ افتح الموقع</a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
         </div>
       )}
 
@@ -265,10 +266,10 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
           placeholder="أخبرنا بما تشعر به لنساعدك في العثور على موعد مناسب..."
           className="flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none"
         />
-        <button 
-          type="button" 
-          onClick={() => void send(input)} 
-          disabled={sending || !input.trim()} 
+        <button
+          type="button"
+          onClick={() => void send(input)}
+          disabled={sending || !input.trim()}
           className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-cyan-600 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(6,182,212,0.6)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           aria-label="إرسال"
         >
