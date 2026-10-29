@@ -1,5 +1,6 @@
 'use client';
 
+import L from 'leaflet';
 import { useCallback, useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -9,13 +10,13 @@ export type PatientLocation = { lat: number; lng: number; city?: string | null; 
 type City = { id: string; name_ar: string; latitude: number | null; longitude: number | null };
 
 // Default marker icon (Leaflet's default icons break under bundlers)
-const ICON = {
+const ICON = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41] as [number, number],
-  iconAnchor: [12, 41] as [number, number],
-};
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
 
 function ClickHandler({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
@@ -162,7 +163,7 @@ export default function LocationPicker({
         >
           <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <ClickHandler onPick={pick} />
-          {hasValue && <Marker position={[value!.lat, value!.lng]} icon={ICON as never} draggable eventHandlers={{ dragend: (e) => { const p = (e.target as { getLatLng: () => { lat: number; lng: number } }).getLatLng(); pick(Number(p.lat.toFixed(6)), Number(p.lng.toFixed(6))); } }} />}
+          {hasValue && <Marker position={[value!.lat, value!.lng]} icon={ICON} draggable eventHandlers={{ dragend: (e) => { const p = (e.target as { getLatLng: () => { lat: number; lng: number } }).getLatLng(); pick(Number(p.lat.toFixed(6)), Number(p.lng.toFixed(6))); } }} />}
         </MapContainer>
       </div>
 
