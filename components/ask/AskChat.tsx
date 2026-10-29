@@ -26,7 +26,6 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [location, setLocation] = useState<PatientLocation | null>(null);
-  const [hasLocationThisSession, setHasLocationThisSession] = useState(false);
   const [showLocPicker, setShowLocPicker] = useState(false);
   const [showClinicsModal, setShowClinicsModal] = useState(false);
   const [showLocModal, setShowLocModal] = useState(false);
@@ -47,7 +46,6 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   const saveLocation = (loc: PatientLocation | null) => {
     setLocation(loc);
     if (loc) {
-      setHasLocationThisSession(true);
       try { localStorage.setItem(STORE_KEY, JSON.stringify(loc)); } catch { /* noop */ }
       try { sendGAEvent('event', 'location_set', { category: 'ask', method: loc.city ? 'city' : 'gps' }); } catch { /* noop */ }
       setMessages((m) => [...m, { role: 'user', content: `📍 موقعي: ${loc.address ?? loc.city ?? loc.lat + ', ' + loc.lng}` }]);
@@ -101,7 +99,7 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       const res = await fetch('/api/public/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, location: (hasLocationThisSession ? (locOverride ?? location) : null), history }),
+        body: JSON.stringify({ message, location: locOverride ?? location, history }),
       });
       const json = await res.json();
       const clinics = (json.suggested_clinics ?? []) as SuggestedClinic[];

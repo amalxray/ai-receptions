@@ -290,7 +290,7 @@ export async function answerAsk(input: {
 
   if (serviceIntent && !hasLocation) {
     return {
-      reply: 'عشان ألاقي لك أقرب مركز/عيادة، محتاج أعرف موقعك. اضغط على زر 📍 أو اختر مدينتك.',
+      reply: 'ممتاز! لتحديد أقرب مركز، هل تريد استخدام موقعك الحالي؟ (📍 حدد موقعي) أو أستطيع أن أعمل على مدينتك إذا رغبت.',
       suggested_clinics: [],
       needs_location: true,
     };
