@@ -2,6 +2,7 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { type SuggestedClinic } from './ClinicCard';
@@ -9,7 +10,6 @@ import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 import { sendGAEvent } from '@next/third-parties/google';
 import type { PatientLocation } from './LocationPicker';
 import type { AskConversationMessage } from '@/lib/services/askClinicPresentation';
-
 const LocationPicker = dynamic(() => import('./LocationPicker'), {
   ssr: false,
   loading: () => <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />,
@@ -190,23 +190,55 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
       )}
 
       {/* Clinics modal */}
-      {isModalOpen && (() => { console.log('ask modal render, isModalOpen:', isModalOpen); return null; })()}
-      {isModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', padding: 20, margin: '100px auto', maxWidth: 600, borderRadius: 8 }}>
-            <button onClick={() => setIsModalOpen(false)}>إغلاق</button>
+      {isModalOpen && typeof window !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              padding: 24,
+              borderRadius: 16,
+              maxWidth: 600,
+              maxHeight: '80vh',
+              overflow: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button onClick={() => setIsModalOpen(false)}>✕ إغلاق</button>
             <h2>العيادات المقترحة</h2>
             {lastSuggestions.map((c) => (
-              <div key={c.id || c.slug} style={{ marginTop: 12, padding: 12, border: '1px solid #e2e8f0', borderRadius: 6 }}>
-                <p style={{ fontWeight: 'bold' }}>{displayAskClinicName(c.name, c.type)}</p>
-                {c.city && <p>📍 {c.city}</p>}
-                {c.distance_km != null && <p>📏 المسافة: {c.distance_km} كم</p>}
-                {c.phone && <a href={`tel:${c.phone}`}>📞 {c.phone}</a>}
-                <a href={c.booking_url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8 }}>🦷 احجز الآن</a>
+              <div key={c.id || c.slug} style={{ marginBottom: 16, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
+                <h3 style={{ margin: 0 }}>{displayAskClinicName(c.name, c.type)}</h3>
+                {c.city && <p style={{ margin: 4 }}>📍 {c.city}</p>}
+                {c.distance_km != null && <p style={{ margin: 4 }}>📏 المسافة: {c.distance_km} كم</p>}
+                {c.phone && <a href={`tel:${c.phone}`} style={{ marginRight: 12 }}>📞 {c.phone}</a>}
+                <br />
+                <a
+                  href={c.booking_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: 'inline-block', marginTop: 8, padding: '8px 16px', background: '#4f46e5', color: 'white', borderRadius: 8, textDecoration: 'none' }}
+                >
+                  احجز الآن →
+                </a>
               </div>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Quick replies */}
