@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => {
   const q: Record<string, any> = {
     from: vi.fn(), select: vi.fn(), insert: vi.fn(), eq: vi.fn(), is: vi.fn(),
-    ilike: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn(), single: vi.fn(),
+    ilike: vi.fn(), in: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn(), single: vi.fn(),
   };
   return { q };
 });
@@ -23,8 +23,37 @@ describe('findOrCreatePatient concurrent insert handling', () => {
     db.q.insert.mockReturnValue(db.q);
     db.q.eq.mockReturnValue(db.q);
     db.q.is.mockReturnValue(db.q);
+    db.q.in.mockReturnValue(db.q);
     db.q.ilike.mockReturnValue(db.q);
     db.q.limit.mockReturnValue(db.q);
+  });
+
+  it('matches local and international Palestine numbers to the same patient', async () => {
+    const existingId = '88888888-8888-8888-8888-888888888888';
+    db.q.maybeSingle.mockResolvedValue({ data: { id: existingId }, error: null });
+
+    const localPatientId = await findOrCreatePatient({
+      clinicId: '11111111-1111-1111-1111-111111111111',
+      name: 'Joudat',
+      phone: '0592701077',
+    });
+    const internationalPatientId = await findOrCreatePatient({
+      clinicId: '11111111-1111-1111-1111-111111111111',
+      name: 'Shadi',
+      phone: '+970 59-270-1077',
+    });
+
+    expect(internationalPatientId).toBe(localPatientId);
+
+    const expectedPhoneVariants = [
+      '0592701077',
+      '+970592701077',
+      '00970592701077',
+      '970592701077',
+    ];
+    expect(db.q.in).toHaveBeenNthCalledWith(1, 'phone_number', expectedPhoneVariants);
+    expect(db.q.in).toHaveBeenNthCalledWith(2, 'phone_number', expectedPhoneVariants);
+    expect(db.q.insert).not.toHaveBeenCalled();
   });
 
   it('returns the tenant-scoped patient created by the competing request after a unique conflict', async () => {

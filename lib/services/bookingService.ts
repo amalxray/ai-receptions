@@ -1,5 +1,6 @@
 import { randomBytes, createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { normalizePhone, phoneLookupVariants } from '@/lib/utils/phone';
 import { logEvent } from '@/lib/server/logging';
 import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
@@ -487,7 +488,9 @@ export async function findOrCreatePatient(params: {
   phone?: string | null;
   email?: string | null;
 }): Promise<string> {
-  const { clinicId, name, phone, email } = params;
+  const { clinicId, name, email } = params;
+  const phone = params.phone ? normalizePhone(params.phone) : null;
+  const phoneVariants = phone ? phoneLookupVariants(phone) : [];
 
   const persistEmailForExistingPatient = async (patientId: string): Promise<string> => {
     const normalizedEmail = email?.trim();
@@ -524,7 +527,7 @@ export async function findOrCreatePatient(params: {
         .from('patients')
         .select('id')
         .eq('clinic_id', clinicId)
-        .eq('phone_number', phone)
+        .in('phone_number', phoneVariants)
         .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
@@ -550,7 +553,7 @@ export async function findOrCreatePatient(params: {
       .from('patients')
       .select('id')
       .eq('clinic_id', clinicId)
-      .eq('phone_number', phone)
+      .in('phone_number', phoneVariants)
       .is('deleted_at', null)
       .limit(1)
       .maybeSingle();
