@@ -5,7 +5,7 @@ import { logEvent } from '@/lib/server/logging';
 import { clinicLocalToInstant, normalizeTime, timeToMinutes } from './clinicClock';
 import { createAppointmentReminders, cancelAppointmentReminders } from './reminderEngine';
 import { sendBookingConfirmationEmail } from '@/lib/communications/email/bookingConfirmation';
-import { checkSlotAvailability, suggestFreeSlots, isImagingServiceWithinHourlyCapacity, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
+import { checkSlotAvailability, suggestFreeSlots, isImagingService, isImagingServiceWithinHourlyCapacity, type ProviderSchedule, type ScheduledAppointment } from './scheduling';
 import { channelsForNotificationType, filterEnabledChannels, getClinicCommunicationSettings } from '@/lib/communications/settings';
 
 /**
@@ -348,7 +348,7 @@ export async function getActiveProviders(clinicId: string, serviceId?: string): 
  * Returns available slots for a provider on a given date.
  * If serviceId is provided, uses the service duration for slot calculation.
  */
-export async function getAvailableSlots(clinicId: string, providerId: string, date: string, limit = 10, serviceId?: string): Promise<string[]> {
+export async function getAvailableSlots(clinicId: string, providerId: string, date: string, limit = 20, serviceId?: string): Promise<string[]> {
   const [schedule, service, assigned] = await Promise.all([
     loadProviderSchedule(clinicId, providerId),
     serviceId ? getActiveServiceById(clinicId, serviceId) : Promise.resolve(null),
@@ -384,11 +384,7 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
     existingAppointments,
     holiday,
     limit,
-    // Display contract (Global by Default): patient-facing slots are FULL-HOUR
-    // starts only. A 5-minute catalog duration used to generate 09:00, 09:05,
-    // 09:10 … down to closing. The service duration still defines the session
-    // end and the overlap/holiday/break validation — nothing else changes.
-    hourlyOnly: true,
+    intervalMinutes: isImagingService(service?.name) ? 15 : durationMinutes,
     allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
     serviceName: service?.name ?? null,
   });
@@ -469,7 +465,7 @@ export async function getAvailableSlotsForDates(
       existingAppointments,
       holiday: holidayDates.has(date),
       limit,
-      hourlyOnly: true,
+      intervalMinutes: isImagingService(service?.name) ? 15 : durationMinutes,
       allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
       serviceName: service?.name ?? null,
     }));
