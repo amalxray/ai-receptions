@@ -4,6 +4,7 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { Send } from 'lucide-react';
 import { type SuggestedClinic } from './ClinicCard';
 import { displayAskClinicName } from '@/lib/services/askClinicPresentation';
 import { sendGAEvent } from '@next/third-parties/google';
@@ -85,18 +86,46 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
   };
 
   return (
-    <div className="relative rounded-3xl backdrop-blur-xl bg-gradient-to-br from-white/90 to-white/70 border border-white/60 p-4 shadow-[0_20px_80px_rgba(99,102,241,0.3)] overflow-hidden" dir="rtl">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5"></div>
-      <div className="pointer-events-none absolute -top-10 -left-10 w-32 h-32 bg-gradient-to-br from-violet-400/20 to-indigo-400/20 rounded-full blur-2xl"></div>
+    <div className="relative isolate overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-emerald-950/30 backdrop-blur-xl" dir="rtl">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/[0.08] via-transparent to-cyan-500/[0.06]" />
+      <div className="pointer-events-none absolute -left-12 -top-12 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
       {/* Header */}
-      <div className="relative flex items-center gap-3 border-b border-slate-200/50 pb-3">
-        <span className="relative grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-indigo-600 via-violet-600 to-cyan-600 text-xl text-white shadow-[0_0_30px_rgba(99,102,241,0.6)] animate-[glow-pulse_2s_ease-in-out_infinite]">
-          <span className="inline-block">{logo}</span>
-          <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-white animate-pulse"></div>
+      <div className="relative flex items-center gap-3 border-b border-white/10 pb-3">
+        <span className="relative grid h-12 w-12 place-items-center rounded-full border border-emerald-300/25 bg-gradient-to-br from-emerald-400/20 via-slate-900 to-cyan-400/15 shadow-lg shadow-emerald-500/20">
+          <svg
+            viewBox="0 0 64 64"
+            className="h-9 w-9 animate-pulse drop-shadow-[0_0_10px_rgba(52,211,153,0.65)]"
+            role="img"
+            aria-label={`${assistantName} ${logo}`}
+          >
+            <defs>
+              <linearGradient id="ask-tooth-fill" x1="13" y1="8" x2="53" y2="56" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#ecfdf5" />
+                <stop offset=".48" stopColor="#a7f3d0" />
+                <stop offset="1" stopColor="#22d3ee" />
+              </linearGradient>
+              <linearGradient id="ask-tooth-shine" x1="18" y1="15" x2="34" y2="40" gradientUnits="userSpaceOnUse">
+                <stop stopColor="white" stopOpacity=".9" />
+                <stop offset="1" stopColor="white" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M32 7c-5.9 0-8.6 3.5-13.3 3.5C11.5 10.5 7 16.4 7 24c0 12.4 7.5 32.5 13 32.5 3.9 0 3.8-8.1 7.2-12.4 1.3-1.7 4.3-1.7 5.6 0 3.4 4.3 3.3 12.4 7.2 12.4 5.5 0 13-20.1 13-32.5 0-7.6-4.5-13.5-11.7-13.5C36.6 10.5 37.9 7 32 7Z"
+              fill="url(#ask-tooth-fill)"
+              stroke="#d1fae5"
+              strokeOpacity=".8"
+              strokeWidth="1.5"
+            />
+            <path d="M17 17c3-4 8-4 12-4-4 4-5 12-6 18-1 5-3 8-5 6-4-7-5-15-1-20Z" fill="url(#ask-tooth-shine)" />
+          </svg>
+          <div className="absolute -bottom-0.5 -left-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-900 bg-emerald-400 animate-pulse" />
         </span>
         <div>
-          <p className="text-sm font-black bg-gradient-to-r from-indigo-600 to-cyan-600 bg-clip-text text-transparent">{assistantName}</p>
-          <p className="text-xs font-semibold text-emerald-600">● متاح الآن — يرد فوراً</p>
+          <p className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-sm font-black text-transparent">{assistantName}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+            متاح الآن — يرد فوراً
+          </p>
         </div>
       </div>
 
@@ -107,13 +136,13 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
             <motion.div
               key={i}
               layout
-              initial={{ opacity: 0, x: m.role === 'user' ? 24 : -24, y: 8 }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
               className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
             >
-              <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-blue-600 text-white shadow-glow-coral' : 'border border-slate-200 bg-white text-slate-800 shadow-sm'}`}>
+              <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.role === 'user' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30' : 'border border-white/10 bg-white/5 text-slate-100 shadow-sm backdrop-blur'}`}>
                 {m.content}
               </div>
             </motion.div>
@@ -123,16 +152,16 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
           {sending && (
             <motion.div
               key="typing"
-              initial={{ opacity: 0, x: -24 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0 }}
               className="flex justify-start"
             >
-              <div className="flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm" aria-label="سنّي يفكر">
+              <div className="flex items-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 shadow-sm backdrop-blur" aria-label="سنّي يفكر">
                 {[0, 1, 2].map((d) => (
                   <motion.span
                     key={d}
-                    className="h-2 w-2 rounded-full bg-blue-500"
+                    className="h-2 w-2 rounded-full bg-emerald-400"
                     animate={{ y: [0, -5, 0] }}
                     transition={{ duration: 0.6, repeat: Infinity, delay: d * 0.15, ease: 'easeInOut' }}
                   />
@@ -153,31 +182,31 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
               href={c.booking_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex flex-col items-start rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-md hover:shadow-blue-900/5 hover:border-blue-200"
+              className="group flex flex-col items-start rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-right shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:border-emerald-300/30 hover:bg-white/[0.07] hover:shadow-md hover:shadow-emerald-950/30"
             >
               <div className="mb-2 flex w-full items-center justify-between">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-xs font-bold text-emerald-200">
                   {idx + 1}
                 </span>
                 {c.distance_km != null && (
-                  <span className="text-[10px] font-medium text-slate-500">{c.distance_km} كم</span>
+                  <span className="text-[10px] font-medium text-slate-400">{c.distance_km} كم</span>
                 )}
               </div>
               <div className="mb-2 flex items-center gap-2">
                 {c.logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.logo} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                  <img src={c.logo} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-lg border border-white/10 object-cover" />
                 ) : (
-                  <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-lg">
+                  <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/5 text-lg">
                     {c.type === 'imaging_center' ? '📷' : c.type === 'dental_lab' ? '🦷' : '🏥'}
                   </span>
                 )}
               </div>
-              <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700">
+              <p className="text-sm font-bold text-slate-100 group-hover:text-emerald-200">
                 {displayAskClinicName(c.name, c.type)}
               </p>
-              {c.city && <p className="mt-1 text-xs text-slate-500">📍 {c.city}</p>}
-              <p className="mt-2 text-[11px] font-medium text-blue-600 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+              {c.city && <p className="mt-1 text-xs text-slate-400">📍 {c.city}</p>}
+              <p className="mt-2 text-[11px] font-medium text-emerald-300 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 🏥 عرض العيادة
               </p>
             </a>
@@ -202,31 +231,31 @@ export default function AskChat({ assistantName = 'سنّي', logo = '🦷', qui
               initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.06, type: 'spring', stiffness: 320, damping: 20 }}
-              whileHover={{ scale: 1.06, boxShadow: '0 0 18px rgba(6,182,212,0.35)' }}
+              whileHover={{ scale: 1.04, boxShadow: '0 0 18px rgba(52,211,153,0.22)' }}
               whileTap={{ scale: 0.95 }}
-              className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 transition hover:border-blue-300 hover:bg-blue-100">{q}</motion.button>
+              className="rounded-full border border-emerald-300/20 bg-emerald-400/[0.08] px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:border-emerald-300/40 hover:bg-emerald-400/[0.14]">{q}</motion.button>
           ))}
         </div>
       )}
 
       {/* Input */}
-      <div className="relative mt-3 flex items-center gap-2 backdrop-blur-md bg-white/60 border border-white/60 rounded-2xl p-1.5 shadow-lg">
-        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(99,102,241,0.6)] hover:scale-105 transition-all duration-300">📍</button>
+      <div className="relative mt-3 flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 p-1.5 shadow-lg shadow-slate-950/20 backdrop-blur-md">
+        <button type="button" onClick={() => setShowLocPicker((s) => !s)} title="حدد موقعك" className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-300/20 bg-emerald-400/10 text-white transition-all duration-300 hover:bg-emerald-400/20 hover:shadow-lg hover:shadow-emerald-500/15">📍</button>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void send(input); }}
           placeholder="أخبرنا بما تشعر به لنساعدك في العثور على موعد مناسب..."
-          className="flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none"
+          className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus-visible:ring-0"
         />
         <button
           type="button"
           onClick={() => void send(input)}
           disabled={sending || !input.trim()}
-          className="flex-shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-cyan-600 text-white flex items-center justify-center hover:shadow-[0_0_20px_rgba(6,182,212,0.6)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/40 transition-all duration-300 hover:scale-105 hover:shadow-emerald-500/60 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
           aria-label="إرسال"
         >
-          {sending ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : '🚀'}
+          {sending ? <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> : <Send className="h-4 w-4" aria-hidden="true" />}
         </button>
       </div>
     </div>
