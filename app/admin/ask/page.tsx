@@ -20,31 +20,21 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Save } from 'lucide-react';
 import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
+import { DEFAULT_ADMIN_ASK_SECTIONS_ORDER, mergeAskSectionsOrder } from '@/lib/services/askSettings';
 
 type Settings = {
   hero: { title: string; subtitle: string; logo: string; assistant_name: string };
   colors: { primary: string; secondary: string; heading: string; warning: string };
   sections_order: string[];
-  sections?: Record<string, boolean>;
+  sections: Record<string, boolean>;
   questions: string[];
   search_config: { limit: number; sort: string; radius_km: number; require_location: boolean };
 };
 
-const DEFAULT_SECTIONS_ORDER = [
-  'hero',
-  'quick_questions',
-  'tips',
-  'articles',
-  'stories',
-  'fun_facts',
-  'faq',
-  'cta',
-  'gallery',
-];
-
 const SECTION_LABELS: Record<string, string> = {
   hero: 'الغلاف',
   quick_questions: 'الأسئلة السريعة',
+  chat: '💬 المحادثة',
   tips: 'النصائح',
   articles: 'المقالات',
   stories: 'قصص النجاح',
@@ -71,7 +61,17 @@ type AskGalleryItem = {
 };
 
 // مكون العنصر القابل للسحب
-function SortableSectionItem({ id, label }: { id: string; label: string }) {
+function SortableSectionItem({
+  id,
+  label,
+  visible,
+  onVisibilityChange,
+}: {
+  id: string;
+  label: string;
+  visible?: boolean;
+  onVisibilityChange?: (visible: boolean) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -101,7 +101,19 @@ function SortableSectionItem({ id, label }: { id: string; label: string }) {
       >
         <GripVertical className="h-5 w-5" />
       </button>
-      <span className="text-sm font-medium text-slate-200">{label}</span>
+      <span className="flex-1 text-sm font-medium text-slate-200">{label}</span>
+      {onVisibilityChange && (
+        <label className="flex items-center gap-2 text-xs text-slate-400">
+          <input
+            type="checkbox"
+            checked={visible}
+            onChange={(event) => onVisibilityChange(event.target.checked)}
+            aria-label={`إظهار ${label}`}
+            className="accent-emerald-500"
+          />
+          إظهار
+        </label>
+      )}
     </div>
   );
 }
@@ -356,12 +368,19 @@ export default function AdminAskSettingsPage() {
       const legacySectionsOrder = d.sections && typeof d.sections === 'object'
         ? Object.keys(d.sections)
         : [];
+      const storedOrder = Array.isArray(d.sections_order) && d.sections_order.every((section) => typeof section === 'string')
+        ? d.sections_order
+        : legacySectionsOrder;
       setSettings({
         hero: (d.hero ?? { title: '', subtitle: '', logo: '🦷', assistant_name: 'سنّي' }) as Settings['hero'],
         colors: (d.colors ?? { primary: '', secondary: '', heading: '', warning: '' }) as Settings['colors'],
-        sections_order: Array.isArray(d.sections_order) && d.sections_order.every((section) => typeof section === 'string')
-          ? d.sections_order
-          : [...legacySectionsOrder, ...DEFAULT_SECTIONS_ORDER.filter((section) => !legacySectionsOrder.includes(section))],
+        sections_order: mergeAskSectionsOrder(storedOrder, DEFAULT_ADMIN_ASK_SECTIONS_ORDER),
+        sections: {
+          ...((d.sections && typeof d.sections === 'object' && !Array.isArray(d.sections))
+            ? d.sections as Record<string, boolean>
+            : {}),
+          chat: (d.sections as Record<string, boolean> | undefined)?.chat !== false,
+        },
         questions: d.questions ?? [],
         search_config: d.search_config ?? { limit: 3, sort: 'distance', radius_km: 50, require_location: false },
       });
@@ -460,14 +479,24 @@ export default function AdminAskSettingsPage() {
             <h3 className="text-sm font-semibold text-white">🧩 ترتيب الأقسام</h3>
             <p className="mt-1 text-xs text-slate-400">اسحب الأقسام لإعادة ترتيبها في صفحة /ask العامة.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void saveKey('sections_order', settings.sections_order)}
-            className="flex items-center gap-2 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
-          >
-            <Save className="h-3.5 w-3.5" />
-            حفظ الترتيب
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void saveKey('sections_order', settings.sections_order)}
+              className="flex items-center gap-2 rounded-full bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500"
+            >
+              <Save className="h-3.5 w-3.5" />
+              حفظ الترتيب
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveKey('sections', settings.sections)}
+              className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20"
+            >
+              <Save className="h-3.5 w-3.5" />
+              حفظ الظهور
+            </button>
+          </div>
         </div>
 
         <div className="mt-4">
@@ -483,6 +512,12 @@ export default function AdminAskSettingsPage() {
                     key={key}
                     id={key}
                     label={SECTION_LABELS[key] ?? key}
+                    visible={settings.sections.chat}
+                    onVisibilityChange={key === 'chat'
+                      ? (visible) => setSettings((current) => current
+                        ? { ...current, sections: { ...current.sections, chat: visible } }
+                        : current)
+                      : undefined}
                   />
                 ))}
               </div>

@@ -14,6 +14,7 @@ import { LetterReveal } from '@/components/landing/motion';
 import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
 import { AskBackground } from '@/components/ask/AskBackground';
 import { AlertCircle, Sparkles, Smile, PlusCircle, AlertTriangle, Camera } from 'lucide-react';
+import { DEFAULT_ASK_SECTIONS, DEFAULT_PUBLIC_ASK_SECTIONS_ORDER, mergeAskSectionsOrder } from '@/lib/services/askSettings';
 
 /** Canonical public origin for structured data — MUST stay the official domain
  *  in SSR output so crawlers never see a stale/preview host in JSON-LD. */
@@ -45,19 +46,14 @@ const QUICK_CARDS = [
   { text: 'حالة طارئة', icon: AlertTriangle },
 ];
 
-const DEFAULT_ASK_SECTION_ORDER = [
-  'hero', 'stats', 'quick_questions', 'clinics', 'gallery', 'stories',
-  'tips', 'articles', 'fun_facts', 'faq', 'cta',
-];
-
 export default function AskClient({ settings, tips, articles, stories, faq, clinics, gallery, stats }: AskClientData) {
   const hero = (settings.hero ?? {}) as { title: string; subtitle: string; logo: string; assistant_name: string };
-  const sections = (settings.sections ?? {}) as Record<string, boolean>;
+  const sections = { ...DEFAULT_ASK_SECTIONS, ...((settings.sections ?? {}) as Record<string, boolean>) };
   const questions = (settings.questions ?? []) as string[];
   const storedOrder = Array.isArray(settings.sections_order)
-    ? settings.sections_order.filter((key): key is string => typeof key === 'string' && DEFAULT_ASK_SECTION_ORDER.includes(key))
+    ? settings.sections_order.filter((key): key is string => typeof key === 'string' && DEFAULT_PUBLIC_ASK_SECTIONS_ORDER.includes(key))
     : [];
-  const sectionOrder = Array.from(new Set([...storedOrder, ...DEFAULT_ASK_SECTION_ORDER]));
+  const sectionOrder = mergeAskSectionsOrder(storedOrder, DEFAULT_PUBLIC_ASK_SECTIONS_ORDER);
   const sectionPosition = (key: string) => sectionOrder.indexOf(key);
   const on = (k: string) => sections[k] !== false;
   const published = articles.filter((a) => a.slug);
@@ -178,10 +174,10 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
       {/* ═══ STATS (dynamic from DB) ═══ */}
       {on('stats') && <div style={{ order: sectionPosition('stats') }}><StatsSection stats={stats} /></div>}
 
-      {/* ═══ CHAT + QUICK CARDS ═══ */}
-      <section style={{ order: sectionPosition('quick_questions') }} className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-10">
-        {on('quick_questions') && questions.length > 0 && (
-          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      {/* ═══ QUICK CARDS ═══ */}
+      {on('quick_questions') && questions.length > 0 && (
+        <section style={{ order: sectionPosition('quick_questions') }} className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-2">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             {QUICK_CARDS.map((q, i) => {
               const Icon = q.icon;
               return (
@@ -196,11 +192,17 @@ export default function AskClient({ settings, tips, articles, stories, faq, clin
               );
             })}
           </div>
-        )}
+        </section>
+      )}
+
+      {/* ═══ CHAT ═══ */}
+      {on('chat') && (
+        <section id="chat" style={{ order: sectionPosition('chat') }} className="relative z-10 mx-auto w-full max-w-4xl px-4 pb-10">
         <div ref={chatRef}>
           <AskChat assistantName={hero.assistant_name ?? 'سنّي'} logo={hero.logo ?? '🦷'} quickQuestions={questions} />
         </div>
-      </section>
+        </section>
+      )}
 
       {/* ═══ PARTNER CLINICS (Doctor Cards) ═══ */}
       {on('clinics') && <div style={{ order: sectionPosition('clinics') }}><ClinicsSection clinics={clinics as never} /></div>}
