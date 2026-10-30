@@ -520,8 +520,11 @@ function BookingForm() {
             <div className="py-12 text-center">
               <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 text-3xl text-emerald-400">✓</div>
               <h2 className="text-2xl font-semibold text-white">{deepLinkState.message}</h2>
-              <Link href="/" className="mt-8 inline-flex items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400">
-                العودة للرئيسية
+              <Link
+                href={clinic.status === 'ready' ? `/${clinic.clinic.slug}` : '/'}
+                className="mt-8 inline-flex items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+              >
+                العودة إلى صفحة العيادة
               </Link>
             </div>
           )}
