@@ -4,19 +4,13 @@ import { getSupabaseEnvConfig } from '@/lib/config';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import {
+  DEFAULT_ADMIN_ASK_SECTIONS_ORDER,
+  DEFAULT_ASK_SECTIONS,
+  mergeAskSectionsOrder,
+} from '@/lib/services/askSettings';
 
 const ALLOWED_KEYS = new Set(['hero', 'colors', 'sections', 'sections_order', 'questions', 'search_config']);
-const DEFAULT_SECTIONS_ORDER = [
-  'hero',
-  'quick_questions',
-  'tips',
-  'articles',
-  'stories',
-  'fun_facts',
-  'faq',
-  'cta',
-  'gallery',
-];
 
 const putSchema = z.object({
   key: z.string(),
@@ -29,14 +23,14 @@ export const revalidate = 0;
 function normalizeSectionsOrder(settings: Record<string, unknown>): string[] {
   const currentOrder = settings.sections_order;
   if (Array.isArray(currentOrder) && currentOrder.every((section): section is string => typeof section === 'string')) {
-    return currentOrder;
+    return mergeAskSectionsOrder(currentOrder, DEFAULT_ADMIN_ASK_SECTIONS_ORDER);
   }
 
   const legacySections = settings.sections;
   const legacyOrder = legacySections && typeof legacySections === 'object' && !Array.isArray(legacySections)
     ? Object.keys(legacySections)
     : [];
-  return [...legacyOrder, ...DEFAULT_SECTIONS_ORDER.filter((section) => !legacyOrder.includes(section))];
+  return mergeAskSectionsOrder(legacyOrder, DEFAULT_ADMIN_ASK_SECTIONS_ORDER);
 }
 
 function isValidSettingValue(key: string, value: unknown): boolean {
@@ -66,6 +60,10 @@ export async function GET(req: Request) {
     const out: Record<string, unknown> = {};
     for (const row of data ?? []) out[row.key] = row.value;
     out.sections_order = normalizeSectionsOrder(out);
+    const storedSections = out.sections && typeof out.sections === 'object' && !Array.isArray(out.sections)
+      ? out.sections as Record<string, unknown>
+      : {};
+    out.sections = { ...DEFAULT_ASK_SECTIONS, ...storedSections };
     return NextResponse.json({ data: out });
   } catch (err) {
     logEvent('admin_ask_settings_get_error', {
