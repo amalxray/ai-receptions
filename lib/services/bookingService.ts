@@ -384,11 +384,9 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
     existingAppointments,
     holiday,
     limit,
-    // Display contract (Global by Default): patient-facing slots are FULL-HOUR
-    // starts only. A 5-minute catalog duration used to generate 09:00, 09:05,
-    // 09:10 … down to closing. The service duration still defines the session
-    // end and the overlap/holiday/break validation — nothing else changes.
-    hourlyOnly: true,
+    // Keep full-hour starts for ordinary services, but offer imaging starts at
+    // the service-duration cadence (e.g. every five minutes for panorama/CBCT).
+    hourlyOnly: !isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
     allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
     serviceName: service?.name ?? null,
   });
