@@ -55,6 +55,24 @@ describe('hourly-only slot display contract (full hours, 12h Arabic UI)', () => 
     ]);
   });
 
+  it('offers every five-minute start for a five-minute imaging service', () => {
+    const slots = suggestFreeSlots({
+      date: SATURDAY,
+      schedule: fiveMinuteSchedule,
+      allowImagingOverlap: true,
+      serviceName: 'تصوير بانوراما',
+      limit: 200,
+    });
+
+    expect(slots).toHaveLength(132);
+    expect(slots.slice(0, 3)).toEqual([
+      `${SATURDAY}T09:00:00.000Z`,
+      `${SATURDAY}T09:05:00.000Z`,
+      `${SATURDAY}T09:10:00.000Z`,
+    ]);
+    expect(slots.at(-1)).toBe(`${SATURDAY}T19:55:00.000Z`);
+  });
+
   it('snaps a mid-hour period start UP to the next full hour', () => {
     const lateStart: ProviderSchedule = {
       ...fiveMinuteSchedule,
