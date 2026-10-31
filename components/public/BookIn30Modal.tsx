@@ -4,9 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useToast } from '@/components/ui/Toast';
 import BookingConfirmationCard from './BookingConfirmationCard';
+import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 
 interface Props {
   clinicId: string;
+  serviceId: string;
+  serviceName: string;
+  activityType: ActivityPublicSpace['activityType'];
   isOpen: boolean;
   onClose: () => void;
 }
@@ -22,7 +26,10 @@ function addDays(date: Date, days: number): Date {
 }
 
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function generateTimes(): string[] {
@@ -34,7 +41,7 @@ function generateTimes(): string[] {
   return times;
 }
 
-export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
+export default function BookIn30Modal({ clinicId, serviceId, serviceName, activityType, isOpen, onClose }: Props) {
   const { addToast } = useToast();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -43,6 +50,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
   const [time, setTime] = useState('');
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
   const [bookedTimes, setBookedTimes] = useState<Set<string>>(new Set());
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingConfirmation, setBookingConfirmation] = useState<{
     appointmentId: string;
@@ -57,14 +65,18 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
   const times = generateTimes();
 
   const fetchAvailability = useCallback(async (d: string) => {
+    setError(null);
+    setBookedTimes(new Set());
+    setIsLoadingAvailability(true);
     try {
       const res = await fetch(`/api/public/book-quick?clinic_id=${encodeURIComponent(clinicId)}&date=${encodeURIComponent(d)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setBookedTimes(new Set(data.bookedTimes ?? []));
-      }
-    } catch {
-      // ignore
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذر تحميل المواعيد المتاحة');
+      setBookedTimes(new Set(data.bookedTimes ?? []));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تحميل المواعيد المتاحة');
+    } finally {
+      setIsLoadingAvailability(false);
     }
   }, [clinicId]);
 
@@ -81,7 +93,6 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
     setDate(d);
     setSelectedDate(d);
     setTime('');
-    fetchAvailability(d);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,7 +108,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
       const res = await fetch('/api/public/book-quick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinicId, name, phone, email: email.trim() || null, date, time }),
+        body: JSON.stringify({ clinicId, serviceId, activityType, name, phone, email: email.trim() || null, date, time }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -120,7 +131,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
     }
   };
 
-  const isDisabled = isSubmitting || !name || !phone || !date || !time;
+  const isDisabled = isSubmitting || isLoadingAvailability || !name || !phone || !date || !time;
 
   return (
     <>
@@ -144,7 +155,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
                 <div className="space-y-4">
                   <BookingConfirmationCard
                     appointmentId={bookingConfirmation.appointmentId}
-                    serviceName="موعد سريع"
+                    serviceName={serviceName}
                     appointmentDate={`${bookingConfirmation.date} — ${bookingConfirmation.time}`}
                     patientName={bookingConfirmation.patientName}
                     clinicName={bookingConfirmation.clinicName}
@@ -161,6 +172,9 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  <h2 className="text-center text-xl font-bold text-white" id="quick-booking-title">
+                    احجز خدمة {serviceName}
+                  </h2>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">الاسم الكامل</label>
                     <input
@@ -224,7 +238,7 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">الوقت</label>
                     <div className="grid grid-cols-4 gap-2">
                       {times.map((t) => {
-                        const disabled = bookedTimes.has(t);
+                        const disabled = isLoadingAvailability || bookedTimes.has(t);
                         return (
                           <button
                             key={t}
@@ -249,8 +263,8 @@ export default function BookIn30Modal({ clinicId, isOpen, onClose }: Props) {
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     disabled={isDisabled}
-                    onClick={(e) => { e.preventDefault(); handleSubmit(e as React.FormEvent); }}
                     className={`w-full rounded-xl bg-gradient-to-l from-cyan-500 to-emerald-500 py-3 text-lg font-bold text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed`}
+                    type="submit"
                   >
                     {isSubmitting ? 'جارٍ الحجز...' : 'تأكيد الحجز ⚡'}
                   </motion.button>

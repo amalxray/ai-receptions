@@ -190,7 +190,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
     loadReviews(space.clinicId),
     supabaseAdmin
       .from(servicesTable)
-      .select('name, price, price_min, price_max, duration_minutes, description')
+      .select('id, name, price, price_min, price_max, duration_minutes, description')
       .eq('clinic_id', space.clinicId)
       .eq('active', true)
       .order('sort_order', { ascending: true })
@@ -210,6 +210,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   const servicesCard = (
     <PublicServicesCard
       sectionKey="clinic_services"
+      clinicId={space.clinicId}
       services={services ?? []}
       activityType={space.activityType}
     />

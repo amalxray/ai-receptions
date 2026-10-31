@@ -358,6 +358,7 @@ export function ActivitySpaceChrome({
   // via the FloatingChatWidget (embedded ChatInterface) — never a redirect to
   // /chat. The widget keeps clinic scope from the same `space.clinicId`.
   const [chatSignal, setChatSignal] = useState(0);
+  const [chatPrompt, setChatPrompt] = useState<string | null>(null);
   const [ownerAuthenticated, setOwnerAuthenticated] = useState(false);
   const openChat = () => setChatSignal((n) => n + 1);
   useEffect(() => {
@@ -379,7 +380,11 @@ export function ActivitySpaceChrome({
   }, []);
 
   useEffect(() => {
-    const onOpenChat = () => setChatSignal((n) => n + 1);
+    const onOpenChat = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: unknown }>).detail;
+      setChatPrompt(typeof detail?.message === 'string' ? detail.message : null);
+      setChatSignal((n) => n + 1);
+    };
     window.addEventListener('clinic-chat:open', onOpenChat as EventListener);
     return () => window.removeEventListener('clinic-chat:open', onOpenChat as EventListener);
   }, []);
@@ -723,7 +728,7 @@ export function ActivitySpaceChrome({
         </footer>
       </main>
 
-      {showAi && !subscriptionExpired && <FloatingChatWidget clinicId={space.clinicId} clinicSlug={space.slug} clinicName={displayName} externalOpenSignal={chatSignal} activityType={space.activityType} />}
+      {showAi && !subscriptionExpired && <FloatingChatWidget clinicId={space.clinicId} clinicSlug={space.slug} clinicName={displayName} externalOpenSignal={chatSignal} chatPrompt={chatPrompt} activityType={space.activityType} />}
 
     </div>
   );

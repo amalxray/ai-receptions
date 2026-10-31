@@ -36,6 +36,7 @@ type Props = {
    * "تنظيف الأسنان" questions to an imaging center). Defaults to 'clinic'.
    */
   activityType?: string | null;
+  initialPrompt?: string | null;
   /**
    * Explicit API mode. NEVER inferred from the identifier shape (that caused
    * anonymous visitors to hit the session-protected route → 401 everywhere).
@@ -73,7 +74,7 @@ function suggestedQuestionsFor(activity?: string | null): string[] {
   return ACTIVITY_QUESTIONS[activity ?? 'clinic'] ?? ACTIVITY_QUESTIONS.clinic;
 }
 
-export default function ChatInterface({ clinicId = '', initialConversationId = null, embedded = false, activityType = null }: Props) {
+export default function ChatInterface({ clinicId = '', initialConversationId = null, embedded = false, activityType = null, initialPrompt = null }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
@@ -90,6 +91,10 @@ export default function ChatInterface({ clinicId = '', initialConversationId = n
   const [bookingDraft, setBookingDraft] = useState<BookingConfirmationData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initialPrompt) setDraft(initialPrompt);
+  }, [initialPrompt]);
 
   const isUuid = /^[0-9a-fA-F-]{36}$/.test(clinicId);
 const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
