@@ -359,12 +359,12 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
   }
 
   // If serviceId provided, use service duration for slot calculation
-  let durationMinutes = schedule.appointmentDurationMinutes;
+  let serviceDurationMinutes = schedule.appointmentDurationMinutes;
   if (serviceId) {
     if (!service) {
       throw new Error('Service not found for this clinic');
     }
-    durationMinutes = service.duration_minutes;
+    serviceDurationMinutes = service.duration_minutes;
 
     // Verify the provider is actually assigned to this service
     // (when assignments exist). This prevents querying availability for a provider that doesn't offer the service.
@@ -380,12 +380,13 @@ export async function getAvailableSlots(clinicId: string, providerId: string, da
 
   return suggestFreeSlots({
     date,
-    schedule: { ...schedule, appointmentDurationMinutes: durationMinutes },
+    schedule,
+    serviceDurationMinutes,
     existingAppointments,
     holiday,
     limit,
-    intervalMinutes: isImagingService(service?.name) ? 15 : durationMinutes,
-    allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
+    intervalMinutes: isImagingService(service?.name) ? 15 : serviceDurationMinutes,
+    allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, serviceDurationMinutes),
     serviceName: service?.name ?? null,
   });
 }
@@ -437,7 +438,7 @@ export async function getAvailableSlotsForDates(
   if (holidayResult.error) throw new Error('Failed to load clinic holidays');
   if (appointmentResult.error) throw new Error('Failed to load existing appointments');
 
-  const durationMinutes = service?.duration_minutes ?? schedule.appointmentDurationMinutes;
+  const serviceDurationMinutes = service?.duration_minutes ?? schedule.appointmentDurationMinutes;
   const holidayDates = new Set((holidayResult.data ?? []).map((row) => row.holiday_date));
   const appointments = (appointmentResult.data ?? []).map((row) => ({
     appointmentDate: row.appointment_date,
@@ -461,12 +462,13 @@ export async function getAvailableSlotsForDates(
       .map(({ appointment }) => appointment);
     result.set(date, suggestFreeSlots({
       date,
-      schedule: { ...schedule, appointmentDurationMinutes: durationMinutes },
+      schedule,
+      serviceDurationMinutes,
       existingAppointments,
       holiday: holidayDates.has(date),
       limit,
-      intervalMinutes: isImagingService(service?.name) ? 15 : durationMinutes,
-      allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, durationMinutes),
+      intervalMinutes: isImagingService(service?.name) ? 15 : serviceDurationMinutes,
+      allowImagingOverlap: isImagingServiceWithinHourlyCapacity(service?.name, serviceDurationMinutes),
       serviceName: service?.name ?? null,
     }));
   }
@@ -742,6 +744,7 @@ export async function createBooking(params: {
   const availability = checkSlotAvailability({
     startsAt,
     durationMinutes: resolvedDuration,
+    serviceDurationMinutes: resolvedDuration,
     schedule,
     existingAppointments,
     holiday,
