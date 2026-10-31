@@ -109,6 +109,15 @@ describe('time range extraction (constraints, not slots)', () => {
     expect(extractPreferredTimeRange('10 مساءً')).toEqual({ from: '22:00', to: '23:59' });
     expect(extractPreferredTimeRange('الساعة 10')).toEqual({ from: '22:00', to: '23:59' });
   });
+  it('preserves minutes and assumes evening for a bare numeric appointment time', () => {
+    expect(extractPreferredTimeRange('أريد حجز تصوير بانوراما اليوم الساعة 7:15')).toEqual({
+      from: '19:15',
+      to: '23:59',
+    });
+    expect(extractPreferredTimeRange('7:15')).toEqual({ from: '19:15', to: '23:59' });
+    expect(extractPreferredTimeRange('الساعة 12')).toEqual({ from: '12:00', to: '23:59' });
+    expect(extractTimeOptions('7 أو 12')).toEqual(['19:00', '12:00']);
+  });
   it('من 1 للـ4 → 13:00-16:00', () => {
     expect(extractPreferredTimeRange('من 1 للـ4')).toEqual({ from: '13:00', to: '16:00' });
   });

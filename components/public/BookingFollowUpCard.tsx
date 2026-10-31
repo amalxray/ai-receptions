@@ -51,6 +51,9 @@ export default function BookingFollowUpCard({
       className="mt-3 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-right shadow-sm"
     >
       <h3 className="text-sm font-bold text-slate-900">خيارات إضافية بعد الحجز</h3>
+      <p className="text-sm leading-6 text-slate-600">
+        سجّل الدخول عبر Google للاحتفاظ بتفاصيل حجزك ومتابعتها بسهولة.
+      </p>
       <div className="grid gap-2 sm:grid-cols-2">
         {clinicSlug && (
           <button

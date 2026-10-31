@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFastClinicPrompt, buildPrompt } from '../../lib/ai/promptManager';
+import { buildFastClinicPrompt, buildPrompt, buildWorkingHoursSection } from '../../lib/ai/promptManager';
 import { ClinicAISettings } from '../../types/db';
 
 describe('Prompt Manager', () => {
@@ -21,6 +21,24 @@ describe('Prompt Manager', () => {
   const mockContext = [
     { id: 'chunk-1', document_id: 'doc-1', chunk_index: 0, content: 'We are in-network with Cigna PPO.', similarity: 0.9, type: 'unstructured' as const, document: { id: 'doc-1', original_filename: 'faq.txt', file_type: 'text', mime_type: 'text/plain' } },
   ];
+
+  it('groups Saturday through Thursday and gives the emergency phone for a closed Friday', () => {
+    const summary = buildWorkingHoursSection({
+      days: [0, 1, 2, 3, 4, 6].map((weekday) => ({
+        weekday,
+        start_time: '09:00:00',
+        end_time: '20:00:00',
+      })),
+      todayName: 'Saturday',
+      todayWeekday: 6,
+      currentTime: '12:00',
+      isOpenNow: true,
+    });
+
+    expect(summary).toContain('السبت إلى الخميس: 09:00 – 20:00');
+    expect(summary).toContain('الجمعة: مغلق (للحالات الطارئة فقط، الاتصال المسبق على 0569509093)');
+    expect(summary).not.toContain('السبت: 09:00');
+  });
 
   it('builds a compact operational prompt from structured clinic facts only', () => {
     const prompt = buildFastClinicPrompt(mockSettings, 'What are your hours?', [], {

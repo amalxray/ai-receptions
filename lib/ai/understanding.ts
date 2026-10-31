@@ -196,7 +196,7 @@ export function extractPreferredDate(text: string, now: Date, timeZone: string):
 function hourTo24h(h: string, forceAfternoon = true): string | undefined {
   const n = Number(h);
   if (!Number.isInteger(n) || n < 1 || n > 12) return undefined;
-  return padHour(forceAfternoon ? String(n + 12) : String(n));
+  return padHour(forceAfternoon && n !== 12 ? String(n + 12) : String(n));
 }
 
 function padHour(h: string): string {
@@ -255,18 +255,21 @@ const CLOCK_QUESTION_RE = /كم\s*الساعة|كم\s*الساعه|أي\s*ساع
  */
 function extractBareHour(t: string): { from: string; to: string } | undefined {
   if (CLOCK_QUESTION_RE.test(t)) return undefined;
-  // Trailing lookahead avoids consuming the "1 أو 4" style options list and the
-  // minutes of a "الساعة 2:30" (handled explicitly below).
+  // Keep the minute capture distinct from the hour and avoid matching choices
+  // such as "1 أو 4" as a single appointment time.
   const labelledHour = t.match(
     /(?:الساعة|الساعه)\s*(\d{1,2})(?::([0-5]\d))?(?:\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm))?(?!\s*(?:أو|او|ولا))/i,
   );
+  const numericTime = labelledHour ? null : t.match(
+    /(?:^|[^\d])(\d{1,2}):([0-5]\d)(?:\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm))?(?=$|[\s،,.!?؟])/i,
+  );
   // A meridiem marker also makes a bare number unambiguous: "10 صباحاً".
-  // Without a marker, keep requiring الساعة/الساعه so dates and other numbers
+  // Bare hour-only numbers still require a marker so dates and other numbers
   // in a sentence are not accidentally treated as appointment times.
-  const markedBareHour = labelledHour ? null : t.match(
+  const markedBareHour = labelledHour || numericTime ? null : t.match(
     /(?:^|\s)(\d{1,2})(?::([0-5]\d))?\s*(صباحاً|صباحًا|صباحا|صباح|مساءً|مساء|am|pm)(?=$|[\s،,.!?؟])/i,
   );
-  const m = labelledHour ?? markedBareHour;
+  const m = labelledHour ?? numericTime ?? markedBareHour;
   if (!m) return undefined;
   const hour = Number(m[1]);
   if (!Number.isInteger(hour) || hour < 1 || hour > 23) return undefined;
