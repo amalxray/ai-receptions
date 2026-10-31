@@ -10,6 +10,7 @@ import VoiceToggle from './VoiceToggle';
 import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
 import BookingFollowUpCard from '@/components/public/BookingFollowUpCard';
+import { isBookingConfirmedReply, recoverBookingConfirmation } from '@/lib/chat/bookingConfirmationRecovery';
 import { useSpeechRecognition, useSpeechSynthesis, useTtsPreference, isRecognitionSupported, isSynthesisSupported } from '@/hooks/useVoice';
 
 type BookingConfirmationResult = {
@@ -379,15 +380,27 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         if (!finalPayload) throw new Error('Streaming response ended before completion');
 
         const assistantText = finalPayload?.assistant_message?.content ?? finalPayload?.assistant_message ?? 'تمت معالجة الرسالة.';
-        setConversationId(finalPayload?.conversation_id ?? conversationId);
+        const responseConversationId = finalPayload?.conversation_id ?? conversationId;
+        let bookingConfirmation = finalPayload?.booking_confirmation_result ?? undefined;
+        if (!bookingConfirmation && isBookingConfirmedReply(assistantText) && clinicId && responseConversationId) {
+          try {
+            bookingConfirmation = await recoverBookingConfirmation(clinicId, responseConversationId) ?? undefined;
+            if (!bookingConfirmation) {
+              console.warn('[chat booking confirmation] confirmed reply has no saved booking receipt');
+            }
+          } catch (error) {
+            console.error('[chat booking confirmation] failed to recover booking receipt:', error);
+          }
+        }
+        setConversationId(responseConversationId);
         const serverInteractive = (finalPayload?.interactive ?? null) as ChatInteractive | null;
-        if (finalPayload?.booking_confirmation_result) setBookingCompleted(true);
+        if (finalPayload?.booking_confirmation_result || bookingConfirmation) setBookingCompleted(true);
         setMessages((current) => current.map((message) => message.id === streamingAssistantId
           ? {
               ...message,
               text: assistantText,
               interactive: serverInteractive ?? undefined,
-              bookingConfirmation: finalPayload?.booking_confirmation_result ?? undefined,
+              bookingConfirmation,
             }
           : message,
         ));
@@ -439,8 +452,20 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       }
 
       const assistantText = payload?.assistant_message?.content ?? payload?.assistant_message ?? 'تمت معالجة الرسالة.';
-      setConversationId(payload?.conversation_id ?? conversationId);
-      if (payload?.booking_confirmation_result) setBookingCompleted(true);
+      const responseConversationId = payload?.conversation_id ?? conversationId;
+      let bookingConfirmation = payload?.booking_confirmation_result ?? undefined;
+      if (!bookingConfirmation && isBookingConfirmedReply(assistantText) && clinicId && responseConversationId) {
+        try {
+          bookingConfirmation = await recoverBookingConfirmation(clinicId, responseConversationId) ?? undefined;
+          if (!bookingConfirmation) {
+            console.warn('[chat booking confirmation] confirmed reply has no saved booking receipt');
+          }
+        } catch (error) {
+          console.error('[chat booking confirmation] failed to recover booking receipt:', error);
+        }
+      }
+      setConversationId(responseConversationId);
+      if (payload?.booking_confirmation_result || bookingConfirmation) setBookingCompleted(true);
       const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
       setMessages((current) => [
         ...current,
@@ -448,7 +473,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           role: 'assistant',
           text: assistantText,
           interactive: serverInteractive ?? undefined,
-          bookingConfirmation: payload?.booking_confirmation_result ?? undefined,
+          bookingConfirmation,
         },
       ]);
       // قراءة الرد بصوت (إذا كان TTS مفعّلاً — الافتراضي OFF)
