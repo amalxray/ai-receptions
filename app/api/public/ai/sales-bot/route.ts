@@ -20,7 +20,9 @@ const requestSchema = z.object({
 
 const salesLimiter = new RateLimiter(20, 60_000);
 const SALES_PROVIDER_CHAIN = ['gemini', 'groq'] as const;
-const BOOKING_REQUEST = /(?:احجز|حجز|موعد|مواعيد|للمريض|appointment|book(?:ing)?|schedule)/i;
+const ACTUAL_BOOKING_REQUEST = /(?:أريد|بدي|أحتاج)\s+(?:(?:أن|ان)\s+)?(?:أحجز|احجز|حجز|موعد)|(?:أبحث عن)\s+(?:موعد|حجز)|(?:احجز|حجز)\s+(?:لي|للمريض)/i;
+const BOOKING_DETAILS = /(?:للمريض|اسم المريض|بتاريخ|في الساعة|موعد يوم|موعد الساعة|(?:اليوم|غداً|بكرا)\s+(?:الساعة|موعد))/i;
+const MECHANISM_QUESTION = /(?:كيف|ما|هل|شو)\s+.*(?:يحجز|الحجز|الحجوزات|يعمل|تعمل|يتم)/i;
 const PRICE_REQUEST = /(?:سعر|أسعار|تكلفة|اشتراك|بكم|قديش|price|pricing|cost|fee|how\s+much)/i;
 
 const BOOKING_REDIRECT_MESSAGE = 'أنا بوت مبيعات للمنصة ولا أحجز مواعيد المرضى. استخدم مساعد الاستقبال عبر /ask لإتمام الحجز.';
@@ -62,7 +64,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'أرسل رسالة للمتابعة.' }, { status: 400 });
     }
 
-    if (BOOKING_REQUEST.test(latestUserMessage.content)) {
+    const text = latestUserMessage.content;
+    const isMechanismQuestion = MECHANISM_QUESTION.test(text) || /(?:آلية|طريقة|اشرح)/i.test(text);
+    const isActualBookingRequest = ACTUAL_BOOKING_REQUEST.test(text) || BOOKING_DETAILS.test(text);
+    if (isActualBookingRequest && !isMechanismQuestion) {
       return responseForBookingRequest();
     }
 
