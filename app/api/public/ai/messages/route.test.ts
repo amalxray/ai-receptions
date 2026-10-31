@@ -222,9 +222,33 @@ describe('public AI messages booking responses and history restoration', () => {
       requirePhone: true,
     }));
     expect(mocks.from).toHaveBeenCalledWith('messages');
-    expect(mocks.from.mock.results[0]?.value.update).toHaveBeenCalledWith({
-      content: expect.stringContaining('تم تسجيل موعدك في قاعدة بيانات العيادة'),
+    expect(payload.assistant_message.content).toBe('✅ تم تأكيد الحجز');
+    expect(payload.booking_confirmation_result).toMatchObject({
+      appointment_id: 'appointment-1',
     });
+  });
+
+  it('POST does not show a booking-card failure after an appointment already exists', async () => {
+    completeState.booking.appointment_id = 'appointment-1';
+    completeState.booking.appointment_status = 'pending_confirmation';
+    mocks.loadClinicOperatingData.mockResolvedValue({
+      services: [],
+      providers: [],
+      providerServiceIds: [],
+    });
+
+    const response = await postMessage();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.assistant_message.content).toBe('✅ تم تأكيد الحجز');
+    expect(payload.assistant_message.content).not.toContain('لم يتم إنشاء الحجز');
+    expect(payload.booking_completed).toBe(true);
+    expect(payload.booking_confirmation_result).toMatchObject({
+      appointment_id: 'appointment-1',
+      service: 'موعد',
+    });
+    expect(payload.interactive.booking_confirmation).toBeUndefined();
   });
 
   it('POST streams generated text and sends booking metadata as the final event', async () => {
@@ -413,6 +437,29 @@ describe('public AI messages booking responses and history restoration', () => {
     expect(response.status).toBe(200);
     expect(payload.data[1].content).toContain('تعذر تجهيز بطاقة تأكيد الموعد');
     expect(payload.data[1].content).toContain('لم يتم إنشاء الحجز');
+    expect(payload.interactive.booking_confirmation).toBeUndefined();
+  });
+
+  it('GET restores the booking receipt without a contradictory failure when the appointment exists', async () => {
+    completeState.booking.appointment_id = 'appointment-1';
+    completeState.booking.appointment_status = 'pending_confirmation';
+    mocks.loadClinicOperatingData.mockResolvedValue({
+      services: [],
+      providers: [],
+      providerServiceIds: [],
+    });
+
+    const response = await getMessages();
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data[1].content).toBe('✅ تم تأكيد الحجز');
+    expect(payload.data[1].content).not.toContain('لم يتم إنشاء الحجز');
+    expect(payload.booking_completed).toBe(true);
+    expect(payload.booking_confirmation_result).toMatchObject({
+      appointment_id: 'appointment-1',
+      service: 'موعد',
+    });
     expect(payload.interactive.booking_confirmation).toBeUndefined();
   });
 

@@ -273,7 +273,13 @@ export async function POST(req: Request) {
       receptionState?.state === 'BOOKING' &&
       Boolean(receptionState.booking.slot) &&
       !receptionState.booking.appointment_id;
-    const responseAssistant = confirmedByMessage
+    const bookingCompleted = Boolean(receptionState?.booking.appointment_id);
+    const bookingReceipt = bookingCompleted
+      ? buildBookingReceipt(clinic, receptionState, operatingData)
+      : null;
+    const responseAssistant = bookingCompleted
+      ? { ...safeAssistant, content: '✅ تم تأكيد الحجز' }
+      : confirmedByMessage
       ? { ...safeAssistant, content: CHAT_BOOKING_PENDING_MESSAGE }
       : bookingAttemptResult?.action === 'slot_unavailable'
         ? { ...safeAssistant, content: 'لم يعد هذا الموعد متاحًا، لذلك لم يتم إنشاء الحجز. اختر وقتًا آخر من المواعيد المتاحة.' }
@@ -298,9 +304,7 @@ export async function POST(req: Request) {
         assistant_message: responseAssistant,
         booking_context: bookingContext,
         booking_completed: Boolean(receptionState?.booking.appointment_id),
-        booking_confirmation_result: confirmedByMessage
-          ? buildBookingReceipt(clinic, receptionState, operatingData)
-          : null,
+        booking_confirmation_result: bookingReceipt,
         // الردود التفاعلية (أزرار سريعة + بطاقات + مؤشر تقدّم) — مشتقة من
         // الحالة الخادمية فقط: slot محقَّق من التوفر + نية الحجز في metadata.
         interactive: buildChatInteractive({
@@ -417,6 +421,7 @@ export async function GET(req: Request) {
     const bookingConfirmationResult = metadata.handoff === true
       ? null
       : buildBookingReceipt(clinic, receptionState, operatingData);
+    const bookingCompleted = Boolean(receptionState?.booking.appointment_id);
     const bookingDetailsPending = metadata.handoff !== true &&
       receptionState?.state === 'BOOKING' &&
       Boolean(receptionState.booking.slot) &&
@@ -429,11 +434,13 @@ export async function GET(req: Request) {
       receptionState.booking.patient_name?.trim() &&
       receptionState.booking.phone?.trim()
     );
-    if (bookingConfirmation || bookingDetailsPending || hasCompleteBookingDetails) {
+    if (bookingCompleted || bookingConfirmation || bookingDetailsPending || hasCompleteBookingDetails) {
       for (let index = (messages ?? []).length - 1; index >= 0; index -= 1) {
         if (messages[index].role === 'assistant') {
-          messages[index].content = bookingConfirmation
-            ? 'راجعي تفاصيل الموعد في البطاقة. أرسلي «نعم» لإنشاء الحجز، أو عدّلي أي معلومة قبل المتابعة.'
+          messages[index].content = bookingCompleted
+            ? '✅ تم تأكيد الحجز'
+            : bookingConfirmation
+              ? 'راجعي تفاصيل الموعد في البطاقة. أرسلي «نعم» لإنشاء الحجز، أو عدّلي أي معلومة قبل المتابعة.'
             : hasCompleteBookingDetails
               ? 'تعذر تجهيز بطاقة تأكيد الموعد حالياً، ولم يتم إنشاء الحجز. يرجى المحاولة مرة أخرى أو التواصل مع الاستقبال.'
               : !receptionState?.booking.patient_name?.trim()
@@ -452,7 +459,7 @@ export async function GET(req: Request) {
       data: messages ?? [],
       // STEP 10C: suppress pending-booking projection for staff-handoff conversations.
       booking_context: bookingContext,
-      booking_completed: Boolean(receptionState?.booking.appointment_id),
+      booking_completed: bookingCompleted,
       booking_confirmation_result: bookingConfirmationResult,
       // نفس الحمولة التفاعلية بعد إعادة التحميل — تُشتق من الخادم لا من localStorage.
       interactive: buildChatInteractive({
