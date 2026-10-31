@@ -217,6 +217,47 @@ describe('findEarliestAvailableSlot — STEP 3 constraints & timezone', () => {
     expect(result).toMatchObject({ found: true, time: '19:15' });
   });
 
+  it('uses the exact morning slot when the evening interpretation is outside clinic hours', async () => {
+    bookingMocks.getAvailableSlots.mockResolvedValue([
+      '2026-08-28T10:00:00.000Z',
+      '2026-08-28T10:15:00.000Z',
+      '2026-08-28T10:30:00.000Z',
+    ]);
+    const result = await findEarliestAvailableSlot({
+      clinicId: 'c1',
+      providerId: 'p1',
+      serviceId: 'svc',
+      preferredDate: '2026-08-28',
+      now: FIXED_NOW,
+      preferredTimeRange: { from: '22:15', to: '23:59' },
+    });
+
+    expect(result).toMatchObject({ found: true, time: '10:15' });
+    expect(result.requestedDateUnavailable).toBeUndefined();
+  });
+
+  it('offers verified same-day alternatives instead of misreporting a full day', async () => {
+    bookingMocks.getAvailableSlots.mockResolvedValue([
+      '2026-08-28T09:00:00.000Z',
+      '2026-08-28T10:30:00.000Z',
+    ]);
+    const result = await findEarliestAvailableSlot({
+      clinicId: 'c1',
+      providerId: 'p1',
+      serviceId: 'svc',
+      preferredDate: '2026-08-28',
+      now: FIXED_NOW,
+      preferredTimeRange: { from: '22:15', to: '23:59' },
+    });
+
+    expect(result).toMatchObject({
+      found: true,
+      time: '09:00',
+      requestedTimeUnavailable: true,
+    });
+    expect(result.requestedDateUnavailable).toBeUndefined();
+  });
+
   it('applies preferred_time_options and never invents slots', async () => {
     bookingMocks.getAvailableSlots.mockResolvedValue([
       '2026-08-28T09:00:00.000Z',
@@ -232,15 +273,18 @@ describe('findEarliestAvailableSlot — STEP 3 constraints & timezone', () => {
     expect(result.time).toBe('13:00');
   });
 
-  it('returns no_slots when no real slot matches the constraints', async () => {
+  it('offers verified same-day availability when no slot matches the requested time options', async () => {
     bookingMocks.getAvailableSlots.mockResolvedValue(['2026-08-28T09:00:00.000Z']);
     const result = await findEarliestAvailableSlot({
       clinicId: 'c1', providerId: 'p1', serviceId: 'svc', preferredDate: '2026-08-28',
       now: FIXED_NOW,
       preferredTimeOptions: ['16:00'],
     });
-    expect(result.found).toBe(false);
-    expect(result.reason).toBe('no_slots');
+    expect(result).toMatchObject({
+      found: true,
+      time: '09:00',
+      requestedTimeUnavailable: true,
+    });
   });
 
   it('computes slotStart/slotEnd from the real slot + real service duration', async () => {
