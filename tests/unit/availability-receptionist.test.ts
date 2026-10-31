@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const bookingMocks = vi.hoisted(() => ({
   getActiveServiceById: vi.fn(),
   getAvailableSlots: vi.fn(),
+  getAvailableSlotsForDates: vi.fn(),
   getGoogleCalendarBusyIntervals: vi.fn(),
 }));
 
@@ -13,6 +14,18 @@ vi.mock('@/lib/services/googleCalendarBooking', () => ({
 vi.mock('@/lib/server/logging', () => ({ logEvent: vi.fn() }));
 
 import { findEarliestAvailableSlot } from '@/lib/ai/availabilityTool';
+
+function mockMultiDateAvailabilityWithSingleDateMock() {
+  bookingMocks.getAvailableSlotsForDates.mockImplementation(
+    async (clinicId: string, providerId: string, dates: string[], limit: number, serviceId: string) => {
+      const entries = await Promise.all(dates.map(async (date) => [
+        date,
+        await bookingMocks.getAvailableSlots(clinicId, providerId, date, limit, serviceId),
+      ] as const));
+      return new Map(entries);
+    },
+  );
+}
 
 /**
  * Deterministic clock for the fixed-date tests. The availability tool's
@@ -32,6 +45,7 @@ const FIXED_NOW = new Date('2026-08-28T08:00:00.000Z');
 describe('findEarliestAvailableSlot (real availability tool)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMultiDateAvailabilityWithSingleDateMock();
   });
 
   it('uses local availability for an unconnected clinic without querying Google Calendar', async () => {
@@ -72,7 +86,7 @@ describe('findEarliestAvailableSlot (real availability tool)', () => {
       message: 'تعذّر التحقق من التقويم الآن، حاول لاحقاً',
       failureSource: 'google_calendar',
     });
-    expect(bookingMocks.getAvailableSlots).not.toHaveBeenCalled();
+    expect(bookingMocks.getAvailableSlots).toHaveBeenCalledTimes(1);
   });
 
   it('uses Supabase slots after invalid_grant and caches the calendar failure for five minutes', async () => {
@@ -142,6 +156,7 @@ describe('findEarliestAvailableSlot (real availability tool)', () => {
 describe('findEarliestAvailableSlot — STEP 3 constraints & timezone', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMultiDateAvailabilityWithSingleDateMock();
     bookingMocks.getActiveServiceById.mockResolvedValue({ id: 'svc', name: 'فحص أسنان', duration_minutes: 30 });
   });
 
@@ -152,9 +167,7 @@ describe('findEarliestAvailableSlot — STEP 3 constraints & timezone', () => {
       now: FIXED_NOW,
     });
     expect(result.found).toBe(true);
-    // P1: the per-day cap is a full day (20), not the old arbitrary 5 that hid
-    // real afternoon slots for every clinic.
-    expect(bookingMocks.getAvailableSlots).toHaveBeenCalledWith('c1', 'p1', '2026-08-28', 20, 'svc');
+    expect(bookingMocks.getAvailableSlots).toHaveBeenCalledWith('c1', 'p1', '2026-08-28', 96, 'svc');
     expect(result.date).toBe('2026-08-28');
   });
 
@@ -185,6 +198,23 @@ describe('findEarliestAvailableSlot — STEP 3 constraints & timezone', () => {
     });
     expect(result.found).toBe(true);
     expect(result.time).toBe('14:00');
+  });
+
+  it('does not offer an earlier slot than the requested 19:15 time', async () => {
+    bookingMocks.getAvailableSlots.mockResolvedValue([
+      '2026-08-28T17:30:00.000Z',
+      '2026-08-28T19:15:00.000Z',
+    ]);
+    const result = await findEarliestAvailableSlot({
+      clinicId: 'c1',
+      providerId: 'p1',
+      serviceId: 'svc',
+      preferredDate: '2026-08-28',
+      now: FIXED_NOW,
+      preferredTimeRange: { from: '19:15', to: '23:59' },
+    });
+
+    expect(result).toMatchObject({ found: true, time: '19:15' });
   });
 
   it('applies preferred_time_options and never invents slots', async () => {

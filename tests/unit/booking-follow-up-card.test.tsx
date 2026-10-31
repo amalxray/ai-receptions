@@ -23,6 +23,7 @@ describe('BookingFollowUpCard', () => {
 
     expect(markup).toContain('⭐ قيّم تجربتك');
     expect(markup).toContain('📅 أضف إلى Google Calendar');
+    expect(markup).toContain('سجّل الدخول عبر Google للاحتفاظ بتفاصيل حجزك ومتابعتها بسهولة.');
     expect(markup).toContain('جارٍ التحقق من حالة تسجيل الدخول');
     expect(markup).toContain('appointment-123');
     expect(markup).toContain('target="_blank"');

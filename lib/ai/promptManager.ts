@@ -540,14 +540,47 @@ export function buildWorkingHoursSection(workingHours?: ClinicWorkingHoursData |
   const byDay = new Map<number, ClinicWorkingHoursDay>();
   for (const d of workingHours.days) byDay.set(d.weekday, d);
   const lines: string[] = ['Real Clinic Working Hours (source of truth — NEVER contradict these):'];
-  for (let weekday = 0; weekday < 7; weekday += 1) {
+  const weekStartingSaturday = [6, 0, 1, 2, 3, 4, 5];
+  const scheduleSegments: Array<{ weekdays: number[]; day: ClinicWorkingHoursDay }> = [];
+  for (const weekday of weekStartingSaturday) {
     const day = byDay.get(weekday);
-    lines.push(day ? `- ${ARABIC_WEEKDAY_NAMES[weekday]}: ${day.start_time.slice(0, 5)} - ${day.end_time.slice(0, 5)}` : `- ${ARABIC_WEEKDAY_NAMES[weekday]}: closed`);
+    if (!day) continue;
+    const previous = scheduleSegments[scheduleSegments.length - 1];
+    if (
+      previous &&
+      previous.weekdays[previous.weekdays.length - 1] === weekStartingSaturday[weekStartingSaturday.indexOf(weekday) - 1] &&
+      previous.day.start_time === day.start_time &&
+      previous.day.end_time === day.end_time
+    ) {
+      previous.weekdays.push(weekday);
+    } else {
+      scheduleSegments.push({ weekdays: [weekday], day });
+    }
   }
+  const scheduleDescription = weekStartingSaturday.flatMap((weekday) => {
+    const day = byDay.get(weekday);
+    if (!day) {
+      return [weekday === 5
+        ? `${ARABIC_WEEKDAY_NAMES[weekday]}: مغلق (للحالات الطارئة فقط، الاتصال المسبق على 0569509093)`
+        : `${ARABIC_WEEKDAY_NAMES[weekday]}: مغلق`];
+    }
+    const segment = scheduleSegments.find((item) => item.weekdays.includes(weekday));
+    if (!segment || segment.weekdays[0] !== weekday) return [];
+    const first = segment.weekdays[0];
+    const last = segment.weekdays[segment.weekdays.length - 1];
+    const dayLabel = first === last
+      ? ARABIC_WEEKDAY_NAMES[first]
+      : `${ARABIC_WEEKDAY_NAMES[first]} إلى ${ARABIC_WEEKDAY_NAMES[last]}`;
+    return [`${dayLabel}: ${day.start_time.slice(0, 5)} – ${day.end_time.slice(0, 5)}`];
+  });
+  lines.push(`- Patient-facing schedule: ${scheduleDescription.join('. ')}.`);
   lines.push(`- Now: ${workingHours.todayName}, ${workingHours.currentTime} — clinic is ${workingHours.isOpenNow ? 'OPEN' : 'CLOSED'} right now.`);
   // Fix [2]: the open-days list is injected verbatim so the model can never
   // hallucinate a suggestion on a closed day (e.g. Friday when disabled in DB).
-  const openDays = workingHours.days.map((d) => ARABIC_WEEKDAY_NAMES[d.weekday]).join('، ');
+  const openDays = weekStartingSaturday
+    .filter((weekday) => byDay.has(weekday))
+    .map((weekday) => ARABIC_WEEKDAY_NAMES[weekday])
+    .join('، ');
   lines.push(`- Open days ONLY: ${openDays}. NEVER suggest or offer a day marked closed above. If the patient asks for a closed day, offer the nearest open day BY NAME.`);
   lines.push('- If the patient asks for a day/time outside these hours, say it is not available and suggest the nearest open day instead.');
   return lines.join('\n');
