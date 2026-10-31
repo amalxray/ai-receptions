@@ -39,8 +39,12 @@ export function shouldFailoverImmediately(err: unknown): boolean {
  * AI_PROVIDER-configured default → other registered cloud providers.
  * Ollama is only included when it IS the explicitly configured provider.
  */
-export function failoverCandidates(preferredProviderId?: string | null): Array<{ id: string; provider: NonNullable<ReturnType<typeof getProvider>> }> {
-  const all = listProviders();
+export function failoverCandidates(
+  preferredProviderId?: string | null,
+  allowedProviderIds?: readonly string[],
+): Array<{ id: string; provider: NonNullable<ReturnType<typeof getProvider>> }> {
+  const allowed = allowedProviderIds ? new Set(allowedProviderIds) : null;
+  const all = listProviders().filter((provider) => !allowed || allowed.has(provider.id));
   const configured = process.env.AI_PROVIDER ?? 'openai';
 
   const ordered: Array<{ id: string; provider: NonNullable<ReturnType<typeof getProvider>> }> = [];
@@ -83,9 +87,12 @@ export type OpenStreamResult = {
  * Throws the LAST error when every streaming candidate fails so callers keep
  * their existing graceful-degradation path.
  */
-export async function openStreamWithFailover(params: GenerateParams & { preferredProviderId?: string | null }): Promise<OpenStreamResult> {
-  const { preferredProviderId, ...generateParams } = params;
-  const candidates = failoverCandidates(preferredProviderId).filter((c) => typeof c.provider.stream === 'function');
+export async function openStreamWithFailover(params: GenerateParams & {
+  preferredProviderId?: string | null;
+  allowedProviderIds?: readonly string[];
+}): Promise<OpenStreamResult> {
+  const { preferredProviderId, allowedProviderIds, ...generateParams } = params;
+  const candidates = failoverCandidates(preferredProviderId, allowedProviderIds).filter((c) => typeof c.provider.stream === 'function');
   let lastError: unknown = new Error('No streaming AI provider is registered');
 
   for (const candidate of candidates) {
@@ -111,9 +118,13 @@ export async function openStreamWithFailover(params: GenerateParams & { preferre
   throw lastError;
 }
 
-export async function generateWithFailover(params: GenerateParams & { preferredProviderId?: string | null }): Promise<FailoverGenerateResult> {
-  const { preferredProviderId, ...generateParams } = params;
-  const candidates = failoverCandidates(preferredProviderId);
+export async function generateWithFailover(params: GenerateParams & {
+  preferredProviderId?: string | null;
+  /** Restrict a caller to a deliberate provider chain (e.g. public sales bot). */
+  allowedProviderIds?: readonly string[];
+}): Promise<FailoverGenerateResult> {
+  const { preferredProviderId, allowedProviderIds, ...generateParams } = params;
+  const candidates = failoverCandidates(preferredProviderId, allowedProviderIds);
   let lastError: unknown = new Error('No AI provider is registered');
 
   for (const candidate of candidates) {
