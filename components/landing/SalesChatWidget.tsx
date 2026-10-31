@@ -26,6 +26,7 @@ export default function SalesChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showQuickOptions, setShowQuickOptions] = useState(true);
   const [messages, setMessages] = useState<SalesMessage[]>([
     { id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE },
   ]);
@@ -52,6 +53,7 @@ export default function SalesChatWidget() {
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setInput('');
+    setShowQuickOptions(false);
     setLoading(true);
 
     try {
@@ -179,7 +181,7 @@ export default function SalesChatWidget() {
                 {loading && <div className="flex justify-end"><div className="rounded-2xl rounded-br-md border border-amber-200/10 bg-white/[0.07] px-4 py-3 text-sm text-amber-100"><span className="inline-flex gap-1"><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:120ms]" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:240ms]" /></span></div></div>}
               </div>
 
-              {messages.length === 1 && (
+              {showQuickOptions && (
                 <div className="border-t border-white/10 px-4 py-3">
                   <p className="mb-2 text-right text-[11px] font-semibold text-slate-400">اختر سؤالاً سريعاً</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -191,6 +193,11 @@ export default function SalesChatWidget() {
               )}
 
               <form onSubmit={handleSubmit} className="border-t border-white/10 bg-black/10 p-3">
+                {!showQuickOptions && (
+                  <button type="button" onClick={() => setShowQuickOptions(true)} className="mb-2 rounded-lg border border-amber-300/40 bg-transparent px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-300/10">
+                    ← العودة للخيارات
+                  </button>
+                )}
                 <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] p-1.5 focus-within:border-amber-300/40">
                   <input value={input} onChange={(event) => setInput(event.target.value)} disabled={loading} placeholder="اكتب سؤالك عن نمو عيادتك..." className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" aria-label="رسالتك" />
                   <button type="submit" disabled={loading || !input.trim()} className="relative overflow-hidden rounded-xl bg-gradient-to-l from-amber-300 to-[#D4AF37] px-4 py-2 text-sm font-black text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"><span className="relative z-10">إرسال</span><span aria-hidden className="absolute inset-0 -translate-x-full bg-white/30" style={{ animation: 'sales-chat-shimmer 2.8s linear infinite' }} /></button>
