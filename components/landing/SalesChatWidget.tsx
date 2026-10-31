@@ -24,6 +24,7 @@ function makeMessageId() {
 
 export default function SalesChatWidget() {
   const [open, setOpen] = useState(false);
+  const [showTeaser, setShowTeaser] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showQuickOptions, setShowQuickOptions] = useState(true);
@@ -35,6 +36,25 @@ export default function SalesChatWidget() {
   useEffect(() => {
     if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, open]);
+
+  useEffect(() => {
+    if (open) {
+      setShowTeaser(false);
+      return;
+    }
+    if (window.sessionStorage.getItem('sales-chat-teaser-shown')) return;
+
+    const showTimer = window.setTimeout(() => {
+      window.sessionStorage.setItem('sales-chat-teaser-shown', 'true');
+      setShowTeaser(true);
+    }, 4000);
+    const hideTimer = window.setTimeout(() => setShowTeaser(false), 14000);
+
+    return () => {
+      window.clearTimeout(showTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -110,20 +130,56 @@ export default function SalesChatWidget() {
 
       <AnimatePresence>
         {!open && (
-          <motion.button
-            type="button"
-            aria-label="فتح مستشار المبيعات"
-            onClick={() => setOpen(true)}
-            className="fixed bottom-6 left-6 z-[60] flex h-16 w-16 items-center justify-center rounded-full border border-amber-200/50 bg-gradient-to-br from-[#D4AF37] via-[#b88a22] to-[#4F46E5] text-3xl text-white shadow-2xl shadow-indigo-950/40 transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2 focus:ring-offset-slate-950"
-            style={{ animation: 'sales-chat-glow 2.6s ease-in-out infinite' }}
-            initial={{ opacity: 0, scale: 0.7, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.7, y: 20 }}
-            whileTap={{ scale: 0.94 }}
-          >
-            <span aria-hidden>💼</span>
-            <span className="absolute -right-0.5 -top-0.5 h-4 w-4 rounded-full border-2 border-slate-950 bg-emerald-400" />
-          </motion.button>
+          <div className="fixed bottom-6 left-6 z-[60]">
+            <AnimatePresence>
+              {showTeaser && (
+                <motion.div
+                  aria-label="رسالة من مستشار النمو"
+                  className="absolute bottom-[calc(100%+0.75rem)] left-0 flex max-w-[min(20rem,calc(100vw-3rem))] items-start gap-3 rounded-2xl border border-amber-200/20 bg-slate-950/95 px-4 py-3 text-right text-sm leading-6 text-white shadow-2xl shadow-indigo-950/50"
+                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="flex-1"
+                  >
+                    هل ترغب في تنمية عيادتك؟ أنا هنا لمساعدتك.
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="إخفاء الرسالة"
+                    onClick={() => setShowTeaser(false)}
+                    className="text-slate-400 transition hover:text-white"
+                  >
+                    ×
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <motion.button
+              type="button"
+              aria-label="فتح مستشار النمو"
+              onClick={() => setOpen(true)}
+              className="relative flex items-center gap-3 rounded-full border border-amber-200/50 bg-gradient-to-br from-[#D4AF37] via-[#b88a22] to-[#4F46E5] py-2 pl-5 pr-2 text-white shadow-2xl shadow-indigo-950/40 transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2 focus:ring-offset-slate-950"
+              style={{ animation: 'sales-chat-glow 2.6s ease-in-out infinite' }}
+              initial={{ opacity: 0, scale: 0.7, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.7, y: 20 }}
+              whileTap={{ scale: 0.94 }}
+            >
+              <span className="relative block h-12 w-12 shrink-0">
+                <img
+                  src="/avatars/consultant-main.png"
+                  alt="مستشار النمو"
+                  className="h-12 w-12 rounded-full object-cover"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-slate-950 bg-emerald-400 animate-pulse" />
+              </span>
+              <span className="whitespace-nowrap text-sm font-bold">مستشار النمو</span>
+            </motion.button>
+          </div>
         )}
       </AnimatePresence>
 
