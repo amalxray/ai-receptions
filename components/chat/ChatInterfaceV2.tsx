@@ -9,7 +9,7 @@ import VoiceButton from './VoiceButton';
 import VoiceToggle from './VoiceToggle';
 import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
-import GoogleSignInButton from '@/components/auth/GoogleSignInButton';
+import BookingFollowUpCard from '@/components/public/BookingFollowUpCard';
 import { useSpeechRecognition, useSpeechSynthesis, useTtsPreference, isRecognitionSupported, isSynthesisSupported } from '@/hooks/useVoice';
 
 type BookingConfirmationResult = {
@@ -689,13 +689,16 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           clinicName={message.bookingConfirmation.clinic_name}
                           clinicPhone={message.bookingConfirmation.clinic_phone}
                         />
-                        <GoogleSignInButton
-                          className="mt-4"
-                          label="تسجيل الدخول عبر Google"
-                          onVisible={scrollMessagesToBottom}
-                          showAccountStatus
-                          clinicId={clinicId}
+                        <BookingFollowUpCard
                           appointmentId={message.bookingConfirmation.appointment_id}
+                          appointmentDate={message.bookingConfirmation.appointment_date}
+                          clinicId={clinicId}
+                          clinicName={message.bookingConfirmation.clinic_name}
+                          clinicPhone={message.bookingConfirmation.clinic_phone}
+                          clinicSlug={clinicSlug ?? resolvedClinicSlug ?? (!isUuid ? clinicId : null)}
+                          onVisible={scrollMessagesToBottom}
+                          patientName={message.bookingConfirmation.patient_name}
+                          serviceName={message.bookingConfirmation.service}
                         />
                       </div>
                     )}

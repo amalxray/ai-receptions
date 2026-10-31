@@ -152,7 +152,7 @@ export default function FloatingChatWidget({
                 {isTenant ? (
                   <ChatInterfaceV2 clinicId={clinicId} clinicSlug={clinicSlug} activityType={activityType} initialPrompt={chatPrompt} embedded />
                 ) : (
-                  <ChatInterface clinicId={clinicId} activityType={activityType} initialPrompt={chatPrompt} embedded />
+                  <ChatInterface clinicId={clinicId} clinicSlug={clinicSlug} activityType={activityType} initialPrompt={chatPrompt} embedded />
                 )}
               </div>
             </div>

@@ -6,6 +6,7 @@ import type { BookingConfirmationData, ChatInteractive } from '@/lib/ai/chatInte
 import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
 import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
+import BookingFollowUpCard from '@/components/public/BookingFollowUpCard';
 
 type BookingConfirmationResult = {
   appointment_id: string;
@@ -37,6 +38,7 @@ type Props = {
    */
   activityType?: string | null;
   initialPrompt?: string | null;
+  clinicSlug?: string | null;
   /**
    * Explicit API mode. NEVER inferred from the identifier shape (that caused
    * anonymous visitors to hit the session-protected route → 401 everywhere).
@@ -74,7 +76,7 @@ function suggestedQuestionsFor(activity?: string | null): string[] {
   return ACTIVITY_QUESTIONS[activity ?? 'clinic'] ?? ACTIVITY_QUESTIONS.clinic;
 }
 
-export default function ChatInterface({ clinicId = '', initialConversationId = null, embedded = false, activityType = null, initialPrompt = null }: Props) {
+export default function ChatInterface({ clinicId = '', initialConversationId = null, embedded = false, activityType = null, initialPrompt = null, clinicSlug = null }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
@@ -82,6 +84,7 @@ export default function ChatInterface({ clinicId = '', initialConversationId = n
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [clinicName, setClinicName] = useState<string | null>(null);
+  const [resolvedClinicSlug, setResolvedClinicSlug] = useState<string | null>(clinicSlug);
   const [assistantName, setAssistantName] = useState<string | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
   const [showSuggested, setShowSuggested] = useState(true);
@@ -119,6 +122,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         if (res.ok) {
           const payload = await res.json();
           setClinicName(payload?.data?.name ?? null);
+          setResolvedClinicSlug(payload?.data?.slug ?? null);
         }
       } catch {
         // Non-fatal — fallback welcome below
@@ -126,6 +130,10 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
     }
     void loadClinicInfo();
   }, [clinicId, isUuid]);
+
+  useEffect(() => {
+    if (clinicSlug) setResolvedClinicSlug(clinicSlug);
+  }, [clinicSlug]);
 
   // Load conversation history on mount
   useEffect(() => {
@@ -514,6 +522,16 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           patientName={message.bookingConfirmation.patient_name}
                           clinicName={message.bookingConfirmation.clinic_name}
                           clinicPhone={message.bookingConfirmation.clinic_phone}
+                        />
+                        <BookingFollowUpCard
+                          appointmentId={message.bookingConfirmation.appointment_id}
+                          appointmentDate={message.bookingConfirmation.appointment_date}
+                          clinicId={clinicId}
+                          clinicName={message.bookingConfirmation.clinic_name}
+                          clinicPhone={message.bookingConfirmation.clinic_phone}
+                          clinicSlug={clinicSlug ?? resolvedClinicSlug ?? (!isUuid ? clinicId : null)}
+                          patientName={message.bookingConfirmation.patient_name}
+                          serviceName={message.bookingConfirmation.service}
                         />
                       </div>
                     )}
