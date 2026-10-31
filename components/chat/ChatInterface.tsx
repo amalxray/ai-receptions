@@ -7,6 +7,7 @@ import { QuickReplyChips, OptionCards } from './InteractiveReplies';
 import { ChatPersonaAvatar, TypingDots } from './ChatPersona';
 import BookingConfirmationCard from '@/components/public/BookingConfirmationCard';
 import BookingFollowUpCard from '@/components/public/BookingFollowUpCard';
+import { isBookingConfirmedReply, recoverBookingConfirmation } from '@/lib/chat/bookingConfirmationRecovery';
 
 type BookingConfirmationResult = {
   appointment_id: string;
@@ -305,7 +306,19 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
       }
 
       const assistantText = payload?.assistant_message?.content ?? payload?.assistant_message ?? 'تمت معالجة الرسالة.';
-      setConversationId(payload?.conversation_id ?? conversationId);
+      const responseConversationId = payload?.conversation_id ?? conversationId;
+      let bookingConfirmation = payload?.booking_confirmation_result ?? undefined;
+      if (!bookingConfirmation && isBookingConfirmedReply(assistantText) && clinicId && responseConversationId) {
+        try {
+          bookingConfirmation = await recoverBookingConfirmation(clinicId, responseConversationId) ?? undefined;
+          if (!bookingConfirmation) {
+            console.warn('[chat booking confirmation] confirmed reply has no saved booking receipt');
+          }
+        } catch (error) {
+          console.error('[chat booking confirmation] failed to recover booking receipt:', error);
+        }
+      }
+      setConversationId(responseConversationId);
       const serverInteractive = (payload?.interactive ?? null) as ChatInteractive | null;
       setMessages((current) => [
         ...current,
@@ -313,7 +326,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
           role: 'assistant',
           text: assistantText,
           interactive: serverInteractive ?? undefined,
-          bookingConfirmation: payload?.booking_confirmation_result ?? undefined,
+          bookingConfirmation,
         },
       ]);
     } catch (err) {
