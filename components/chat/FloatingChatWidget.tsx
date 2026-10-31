@@ -22,6 +22,7 @@ export default function FloatingChatWidget({
   clinicSlug = null,
   clinicName,
   externalOpenSignal,
+  chatPrompt,
   activityType = null,
 }: {
   clinicId: string;
@@ -30,6 +31,7 @@ export default function FloatingChatWidget({
   clinicName?: string | null;
   /** When this counter changes to a value > 0 the panel opens programmatically. */
   externalOpenSignal?: number;
+  chatPrompt?: string | null;
   /** Business activity — forwarded to ChatInterface for activity-aware chips. */
   activityType?: string | null;
 }) {
@@ -148,9 +150,9 @@ export default function FloatingChatWidget({
               {/* Chat body — voice (V2) on tenant hosts only; apex/www keep the original. */}
               <div className="min-h-0 flex-1">
                 {isTenant ? (
-                  <ChatInterfaceV2 clinicId={clinicId} clinicSlug={clinicSlug} activityType={activityType} embedded />
+                  <ChatInterfaceV2 clinicId={clinicId} clinicSlug={clinicSlug} activityType={activityType} initialPrompt={chatPrompt} embedded />
                 ) : (
-                  <ChatInterface clinicId={clinicId} activityType={activityType} embedded />
+                  <ChatInterface clinicId={clinicId} activityType={activityType} initialPrompt={chatPrompt} embedded />
                 )}
               </div>
             </div>

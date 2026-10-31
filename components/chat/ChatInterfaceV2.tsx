@@ -41,6 +41,7 @@ type Props = {
    * "تنظيف الأسنان" questions to an imaging center). Defaults to 'clinic'.
    */
   activityType?: string | null;
+  initialPrompt?: string | null;
   /**
    * Explicit API mode. NEVER inferred from the identifier shape (that caused
    * anonymous visitors to hit the session-protected route → 401 everywhere).
@@ -80,7 +81,7 @@ function suggestedQuestionsFor(activity?: string | null): string[] {
   return ACTIVITY_QUESTIONS[activity ?? 'clinic'] ?? ACTIVITY_QUESTIONS.clinic;
 }
 
-export default function ChatInterfaceV2({ clinicId = '', initialConversationId = null, embedded = false, activityType = null, clinicSlug = null }: Props) {
+export default function ChatInterfaceV2({ clinicId = '', initialConversationId = null, embedded = false, activityType = null, clinicSlug = null, initialPrompt = null }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
@@ -102,6 +103,10 @@ export default function ChatInterfaceV2({ clinicId = '', initialConversationId =
   const [bookingDraft, setBookingDraft] = useState<BookingConfirmationData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastSentRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (initialPrompt) setDraft(initialPrompt);
+  }, [initialPrompt]);
 
   // ── الحجز الصوتي: Web Speech API (UI فقط — لا تغيير في API/orchestrator) ──
   const { enabled: ttsEnabled, toggle: toggleTts } = useTtsPreference();

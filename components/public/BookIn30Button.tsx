@@ -1,37 +1,36 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { Zap, ArrowLeft } from 'lucide-react';
 import BookIn30Modal from './BookIn30Modal';
+import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 
 interface Props {
   clinicId: string;
+  serviceId: string;
+  serviceName: string;
+  activityType: ActivityPublicSpace['activityType'];
 }
 
-export default function BookIn30Button({ clinicId }: Props) {
+export default function BookIn30Button({ clinicId, serviceId, serviceName, activityType }: Props) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
     <>
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.98 }}
-        animate={{ boxShadow: [
-          '0 0 20px rgba(34,211,238,0.4)',
-          '0 0 40px rgba(34,211,238,0.7)',
-          '0 0 20px rgba(34,211,238,0.4)',
-        ]}}
-        transition={{ boxShadow: { duration: 2, repeat: Infinity } }}
+      <button
+        type="button"
         onClick={() => setIsModalOpen(true)}
-        className="inline-flex items-center gap-3 rounded-2xl bg-gradient-to-l from-cyan-500 via-cyan-400 to-emerald-500 px-10 py-5 text-lg font-black text-slate-950 shadow-2xl mx-auto mt-8"
+        className="mx-auto mt-8 inline-flex items-center gap-3 rounded-2xl bg-gradient-to-l from-cyan-500 via-cyan-400 to-emerald-500 px-6 py-3 text-base font-black text-slate-950 shadow-xl transition hover:brightness-110 active:scale-[0.98]"
       >
         <Zap className="h-6 w-6" />
-        احجز في 30 ثانية
+        احجز الآن
         <ArrowLeft className="h-5 w-5" />
-      </motion.button>
+      </button>
       <BookIn30Modal
         clinicId={clinicId}
+        serviceId={serviceId}
+        serviceName={serviceName}
+        activityType={activityType}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />

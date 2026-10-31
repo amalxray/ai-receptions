@@ -13,7 +13,6 @@ import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark
  */
 
 export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace & { subscriptionExpired?: boolean }; servicesCard?: ReactNode }) {
-  const hasServices = space.services.length > 0;
   const hasProviders = space.providers.length > 0;
   const hasAds = space.ads.length > 0;
   return (
@@ -53,44 +52,6 @@ export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPubl
               </div>
             </section>
           )}
-
-          {/* Services */}
-          <section className="mb-10">
-            <h2 className="mb-4 text-xl font-bold text-slate-800">الخدمات ومجالات الممارسة</h2>
-            {hasServices ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {space.services.map((service, index) => (
-                  <article
-                    key={`${service.name}-${service.duration_minutes ?? 0}`}
-                    className="public-card group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50/80 p-5 shadow-[0_12px_35px_rgba(8,145,178,0.07)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]"
-                  >
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-emerald-400/20 text-3xl shadow-inner shadow-cyan-500/10 transition duration-300 group-hover:scale-110 group-hover:shadow-[0_0_24px_rgba(6,182,212,0.28)]" aria-hidden="true">
-                        {['🩺', '✨', '🦷', '💙'][index % 4]}
-                      </span>
-                      {service.price != null && (
-                        <span className="rounded-full border border-cyan-100 bg-white/80 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">{service.price} ₪</span>
-                      )}
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-800 transition group-hover:text-brand-cyan">{service.name}</h3>
-                    {service.description && (
-                      <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{service.description}</p>
-                    )}
-                    {service.duration_minutes != null && (
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                        <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-600">⏱ {service.duration_minutes} دقيقة</span>
-                      </div>
-                    )}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-                {/* تم إخفاء «تحدث مع الاستقبال للاستفسار.» مع إخفاء زر المحادثة — re-enable by uncommenting */}
-                لا توجد خدمات منشورة بعد — للاستفسار تواصل مع العيادة مباشرة.
-              </p>
-            )}
-          </section>
 
           {/* Providers (dentists) */}
           {hasProviders && (
