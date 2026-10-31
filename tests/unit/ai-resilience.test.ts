@@ -58,6 +58,16 @@ describe('failoverCandidates — ordering & Ollama policy', () => {
     const ids = failoverCandidates(null).map((c) => c.id);
     expect(ids[0]).toBe('ollama');
   });
+
+  it('can constrain an isolated caller to its explicit provider chain', () => {
+    process.env.AI_PROVIDER = 'openai';
+    registerProvider({ id: 'openai', generate: async () => ({ text: '' }) });
+    registerProvider({ id: 'gemini', generate: async () => ({ text: '' }) });
+    registerProvider({ id: 'groq', generate: async () => ({ text: '' }) });
+
+    const ids = failoverCandidates('gemini', ['gemini', 'groq']).map((c) => c.id);
+    expect(ids).toEqual(['gemini', 'groq']);
+  });
 });
 
 describe('openStreamWithFailover — resilient stream OPEN (STEP 8)', () => {
