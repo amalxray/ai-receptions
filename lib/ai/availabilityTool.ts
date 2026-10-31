@@ -1,6 +1,7 @@
 import { getAvailableSlots, getAvailableSlotsForDates, getActiveServiceById, getActiveProviders, isClinicHoliday, loadProviderSchedule } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 import { getClinicHours, clinicLocalToInstant, timeToMinutes, zonedParts } from '@/lib/services/clinicHours';
+import { MAX_SUGGESTED_SLOTS_PER_DAY } from '@/lib/services/scheduling';
 import { dateInTimeZone, timeInTimeZone, addDaysIso } from '@/lib/ai/understanding';
 import { getGoogleCalendarBusyIntervals } from '@/lib/services/googleCalendarBooking';
 import type { ClinicOperatingData } from '@/lib/ai/clinicDataContext';
@@ -313,7 +314,13 @@ async function describeUnavailableRequestedDay(params: {
     const nextDays = Array.from({ length: params.lookaheadDays }, (_, index) =>
       addDaysIso(params.requestedDate, index + 1)
     );
-    const slotsByDay = await getSlotsForDates(params.clinicId, params.providerId, nextDays, 20, params.serviceId);
+    const slotsByDay = await getSlotsForDates(
+      params.clinicId,
+      params.providerId,
+      nextDays,
+      MAX_SUGGESTED_SLOTS_PER_DAY,
+      params.serviceId
+    );
     for (const nextDay of nextDays) {
       const [providerSlots, calendarBusy] = [
         slotsByDay.get(nextDay) ?? [],
@@ -439,7 +446,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     // P1 (Global by Default): 5 capped every clinic's day at 5 slots. A full
     // day for a 30-minute service inside a 9→17 schedule is 16 — the engine's
     // own per-day iteration is the only sane ceiling, not an arbitrary 5.
-    limitPerDay = 20,
+    limitPerDay = MAX_SUGGESTED_SLOTS_PER_DAY,
     checkGoogleCalendar = false,
   } = params;
   const googleCalendarDeadlineAt = checkGoogleCalendar
@@ -674,7 +681,7 @@ export async function findClinicLevelSlots(params: {
     const days: string[] = params.preferredDate
       ? [params.preferredDate]
       : Array.from({ length: params.lookaheadDays ?? 14 }, (_, i) => addDaysIso(todayLocal, i));
-    const limitPerDay = params.limitPerDay ?? 5;
+    const limitPerDay = params.limitPerDay ?? MAX_SUGGESTED_SLOTS_PER_DAY;
 
     const buildDaySlots = (day: string): string[] => {
       const { weekday } = zonedParts(clinicLocalToInstant(day, '12:00', timeZone), timeZone);

@@ -42,7 +42,7 @@ const ACTIVE_STATUSES = new Set(['scheduled', 'tentative', 'pending_confirmation
 const IMAGING_SERVICE_PATTERN = /تصوير|بانوراما|cbct|أشعة|اشعة|x[- ]?ray|xray|opg|سيفال|مقطعي|طبقي/i;
 export const MAX_IMAGING_APPOINTMENTS_PER_HOUR = 3;
 const MAX_IMAGING_DURATION_MINUTES = 60;
-export const MAX_SUGGESTED_SLOTS_PER_DAY = 20;
+export const MAX_SUGGESTED_SLOTS_PER_DAY = 96;
 
 export function isImagingService(serviceName: string | null | undefined): boolean {
   return IMAGING_SERVICE_PATTERN.test(serviceName ?? '');
@@ -105,6 +105,7 @@ export function getCalendarRange(date: string, view: 'day' | 'week' | 'month') {
 export function checkSlotAvailability(params: {
   startsAt: string;
   durationMinutes: number;
+  serviceDurationMinutes?: number;
   schedule: ProviderSchedule;
   existingAppointments?: ScheduledAppointment[];
   clinicClosed?: boolean;
@@ -124,7 +125,7 @@ export function checkSlotAvailability(params: {
   serviceName?: string | null;
 }): AvailabilityResult {
   const start = parseLocalDateTime(params.startsAt);
-  const duration = params.durationMinutes;
+  const duration = params.serviceDurationMinutes ?? params.durationMinutes;
   const end = new Date(start.getTime() + duration * 60_000);
   const endsAt = end.toISOString();
   if (!Number.isInteger(duration) || duration <= 0) return { available: false, reason: 'invalid_duration', endsAt };
@@ -184,6 +185,7 @@ export function checkSlotAvailability(params: {
 export function suggestFreeSlots(params: {
   date: string;
   schedule: ProviderSchedule;
+  serviceDurationMinutes?: number;
   existingAppointments?: ScheduledAppointment[];
   clinicClosed?: boolean;
   holiday?: boolean;
@@ -203,8 +205,8 @@ export function suggestFreeSlots(params: {
 }) {
   const day = params.schedule.days.find((item) => item.weekday === new Date(`${params.date}T00:00:00Z`).getUTCDay());
   if (!day?.enabled) return [];
-  const interval = params.intervalMinutes ?? params.schedule.appointmentDurationMinutes;
-  const duration = params.schedule.appointmentDurationMinutes;
+  const duration = params.serviceDurationMinutes ?? params.schedule.appointmentDurationMinutes;
+  const interval = params.intervalMinutes ?? (isImagingService(params.serviceName) ? 15 : duration);
   const limit = Math.max(0, Math.min(params.limit ?? 10, MAX_SUGGESTED_SLOTS_PER_DAY));
   if (limit === 0) return [];
   const toInstant = (time: string) =>
@@ -221,6 +223,7 @@ export function suggestFreeSlots(params: {
       const result = checkSlotAvailability({
         startsAt,
         durationMinutes: duration,
+        serviceDurationMinutes: duration,
         schedule: params.schedule,
         existingAppointments: params.existingAppointments,
         clinicClosed: params.clinicClosed,
