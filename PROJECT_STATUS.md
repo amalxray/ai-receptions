@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-10-31 — Stable Release: Ask & Booking Overhaul (B80-B97)
+
+- ✅ B80: Ask page (AI, Emerald Glass).
+- ✅ B61: Phone normalization (prevent patient mixing).
+- ✅ B73: Fix /ask/articles (migration applied).
+- ✅ B81: Emerald Glass UI (dark, premium design).
+- ✅ B83: Clinic Services v2 (services + BookIn30Modal).
+- ✅ B85: Slot logic (15-min imaging, 30-min clinic).
+- ✅ B86: Chat in sections_order (admin control).
+- ✅ B87: Redirect to clinic after booking.
+- ✅ B90: Service duration + evening slots (7:00 PM).
+- ✅ B91: Post-booking rating + Google Calendar card.
+- ✅ B92: Booking receipt recovery (follow-up card).
+- ✅ B93: Correct working hours description (Sat-Thu + Friday emergency).
+- ✅ B94: Google Sign-In + encouragement message (post-booking).
+- ✅ B95: Remove contradictory booking failure message.
+- ✅ B96: Correct time parsing (7:15 → 19:15).
+- ✅ B97: Never say "fully booked" without real availability check.
+- ⚠️ B88 (AI Performance): deferred (no risk to booking/chat).
+- ⚠️ B63 (Old Clinic Services): superseded by B83.
+
 ## ✅ B64: /ask UX Cleanup (Modals, Icons, Ticker, AI Prompt, Stories Fix) — 2026-10-28
 
 - **إصلاح stories**: إضافة معالجة الأخطاء في صفحة `/ask/stories` مع تصميم أنيق للحالة الفارغة.
