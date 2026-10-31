@@ -199,6 +199,8 @@ export type EarliestSlotResult = {
    * free slot — the caller must explain the day and (only then) offer another.
    */
   requestedDateUnavailable?: boolean;
+  /** The requested day has slots, but none match the patient's requested time. */
+  requestedTimeUnavailable?: boolean;
   /** FIX-A: why the requested day had nothing — closed, holiday, or fully booked. */
   dayStatus?: 'closed' | 'holiday' | 'fully_booked';
   /** FIX-A: first REAL slot after the requested day (same constraints), for an explained alternative. */
@@ -272,6 +274,34 @@ function slotMatchesConstraints(slot: string, c: SlotConstraints): boolean {
     if (!c.preferredTimeOptions.includes(slotTime)) return false;
   }
   return true;
+}
+
+function getMorningEquivalentTime(time: string): string | undefined {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return undefined;
+  const hour = Number(match[1]);
+  if (hour < 13 || hour > 23) return undefined;
+  return `${String(hour - 12).padStart(2, '0')}:${match[2]}`;
+}
+
+function getMorningEquivalentSlot(
+  slots: string[],
+  preferredTimeRange?: { from?: string | null; to?: string | null },
+  preferredTimeOptions?: string[],
+): string | undefined {
+  const requestedTimes = [
+    ...(preferredTimeRange?.from ? [preferredTimeRange.from] : []),
+    ...(preferredTimeOptions ?? []),
+  ];
+  const morningTimes = new Set(
+    requestedTimes
+      .map(getMorningEquivalentTime)
+      .filter((time): time is string => Boolean(time)),
+  );
+  return slots.find((slot) => {
+    const time = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(slot)?.[2];
+    return time !== undefined && morningTimes.has(time);
+  });
 }
 
 /**
@@ -515,10 +545,28 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
     }
     const providerSlots = slotsByDay.get(day) ?? [];
     const slots = providerSlots.filter((slot) => isFreeInGoogleCalendar(slot, service.duration_minutes, calendarBusy));
-    if (slots.length === 0) continue;
+    const matchingSlots = slots.filter((slot) => slotMatchesConstraints(slot, constraints));
+    const sameDaySlots = matchingSlots.length === 0 && (preferredTimeRange || preferredTimeOptions?.length)
+      ? slots.filter((slot) => slotMatchesConstraints(slot, {
+        ...constraints,
+        preferredTimeRange: undefined,
+        preferredTimeOptions: undefined,
+      }))
+      : [];
+    const morningEquivalentSlot = getMorningEquivalentSlot(
+      sameDaySlots,
+      preferredTimeRange,
+      preferredTimeOptions,
+    );
+    const requestedTimeUnavailable = matchingSlots.length === 0 && sameDaySlots.length > 0 && !morningEquivalentSlot;
+    const candidateSlots = matchingSlots.length > 0
+      ? matchingSlots
+      : morningEquivalentSlot
+        ? [morningEquivalentSlot]
+        : sameDaySlots;
+    if (candidateSlots.length === 0) continue;
 
-    for (const slot of slots) {
-      if (!slotMatchesConstraints(slot, constraints)) continue;
+    for (const slot of candidateSlots) {
       const m = slot.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
       if (!m) continue;
       const slotDate = m[1];
@@ -528,9 +576,8 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
       // Fix [3]: collect the rest of THIS day's matching slots as verified
       // alternatives (morning + afternoon), then stop scanning later days.
       const alternatives: string[] = [];
-      for (const other of slots) {
+      for (const other of candidateSlots) {
         if (other === slot) continue;
-        if (!slotMatchesConstraints(other, constraints)) continue;
         alternatives.push(other);
         // P1: enough room for a FULL day (16+ slots) instead of 4 visible times.
         if (alternatives.length >= 15) break;
@@ -545,6 +592,7 @@ export async function findEarliestAvailableSlot(params: AvailabilityQuery): Prom
         providerId,
         serviceId,
         alternatives,
+        ...(requestedTimeUnavailable ? { requestedTimeUnavailable: true } : {}),
         ...(unrealisticDurationMinutes !== undefined ? { unrealisticDurationMinutes } : {}),
       };
     }

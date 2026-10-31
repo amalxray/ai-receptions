@@ -846,9 +846,13 @@ export async function handleIncomingMessage(opts: {
           const noteZone = clinicProfile?.timezone ?? 'Asia/Jerusalem';
           const slotWeekday = zonedParts(clinicLocalToInstant(availability.date, '12:00', noteZone), noteZone).weekday;
           const altTimes = presentableAlternativeTimes(availability.alternatives ?? []);
+          const requestedTimeNote = availability.requestedTimeUnavailable
+            ? `The requested time did not match any available slot. Offer only these verified same-day alternatives and ask whether one works; do NOT say the day is fully booked. `
+            : '';
           // Fix [2]/[3]: Arabic-only day name + 12-hour display (same as the clinic-level path).
           availabilityNote =
             `REAL AVAILABILITY (queried from the booking system): ` +
+            requestedTimeNote +
             requestedDayHonoredNote(currentState?.preferred_date, noteZone) +
             `the earliest available slot is ` +
             `${ARABIC_WEEKDAYS[slotWeekday]} ${availability.date} at ${format12h(availability.time)} clinic-local ` +
