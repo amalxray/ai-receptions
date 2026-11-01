@@ -15,8 +15,8 @@ docker compose version >/dev/null 2>&1 || {
   echo "Create ai-inference/.env from .env.example first." >&2
   exit 1
 }
-[[ -s models/best_model_upgraded.onnx ]] || {
-  echo "Copy the validated ONNX model to models/best_model_upgraded.onnx first." >&2
+grep -qE '^HF_MODEL_REPO_ID=.+$' .env || {
+  echo "Set HF_MODEL_REPO_ID in ai-inference/.env to the model repository." >&2
   exit 1
 }
 

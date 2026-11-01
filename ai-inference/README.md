@@ -1,6 +1,18 @@
+---
+title: Dental Image Inference
+emoji: 🦷
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # خدمة تحليل صور الأسنان
 
-خدمة FastAPI مستقلة لتشغيل نموذج ONNX على Oracle Ampere A1. لا تستقبل هوية المريض أو العيادة، ولا تحفظ الصور أو تسجل محتواها. يستخدم endpoint مفتاح خدمة عبر HTTPS، ويدعم نموذج YOLOv8l ذي 31 فئة المكتشفة في `best.pt`.
+خدمة FastAPI لتشغيل نموذج ONNX ذي 52 فئة. لا تستقبل هوية المريض أو العيادة، ولا تحفظ الصور أو تسجل محتواها. يستخدم endpoint مفتاح خدمة عبر HTTPS، ويحمل ملف ONNX وقت بدء التشغيل من Hugging Face Model Repo.
+
+للنشر كـ Hugging Face Docker Space، ارفع محتويات هذا المجلد إلى جذر المستودع. اضبط `HF_MODEL_REPO_ID` كمتغير بيئة في Space، و`INFERENCE_API_KEY` كـ Secret بقيمة عشوائية لا تقل عن 32 حرفاً. للمستودع الخاص، أضف `HF_TOKEN` كـ Secret بصلاحية القراءة. اسم الملف الافتراضي في مستودع النموذج هو `best_model_upgraded.onnx` ويمكن تغييره عبر `HF_MODEL_FILENAME`.
 
 ## تشغيل واختبار محلي على Windows
 
@@ -54,39 +66,25 @@ cloudflared tunnel --url http://localhost:8000
 
 ## النموذج والتحويل
 
-حجم `best.pt` الذي فُحص هو 349,996,979 بايت. تشير بياناته الوصفية إلى نموذج مبني على `yolov8l.pt`، و31 فئة، وحجم إدخال تدريب 1024، إضافة إلى حالة optimizer من AdamW. استُخرجت البيانات الوصفية من أرشيف checkpoint دون unpickle. يحذف تصدير ONNX حالة التدريب؛ التقدير النظري لملف FP32 قرابة 175 MB، ويجب قياس الملف الناتج.
-
-في Colab أو بيئة تدريب موثوقة، ثبّت إصدار Ultralytics المستخدم عند التدريب، وصِل Drive، ثم:
+النموذج المعتمد هو `best_model_upgraded.pt` ذو 52 فئة. لتصديره محلياً من جذر المشروع، استخدم Ultralytics في بيئة التدريب:
 
 ```python
 from ultralytics import YOLO
 
-model = YOLO("/content/drive/MyDrive/dental_ai_training/runs/dental_v1237528182_final/weights/best.pt")
-onnx_path = model.export(
-    format="onnx",
-    imgsz=1024,
-    batch=1,
-    half=False,
-    dynamic=False,
-    simplify=False,
-    opset=17,
-    nms=False,
-)
-print(onnx_path)
+model = YOLO("dental_ai_training/dental_ai_training/best_model_upgraded.pt")
+model.export(format="onnx", imgsz=1024, opset=12)
 ```
 
-لا تُفعّل FP16 أو INT8 قبل مقارنة مخرجات PyTorch وONNX. قارن على نفس مجموعة تحقق ثابتة: mAP50، mAP50-95، precision، recall لكل فئة، وتطابق الصناديق/الثقة. احتفظ بـ`.pt` خارج Git ولا تنقل صور مرضى إلى Colab دون أساس موافقة مناسب. انسخ النموذج المقبول إلى `models/best_model_upgraded.onnx`.
+ارفع الناتج `best_model_upgraded.onnx` إلى Hugging Face Model Repo منفصل؛ لا تضع الأوزان في مستودع التطبيق. تُحمّل الخدمة الملف عند بدء التشغيل وتتحقق من مدخل 1024 ومن 52 فئة في مخرجات ONNX. تحقق من أسماء الفئات ومقاييس النموذج على مجموعة تحقق قبل أي استخدام سريري.
 
-## إعداد Oracle
+## إعداد Docker Compose
 
-1. أنشئ VM.Standard.A1.Flex في منطقة الحساب ضمن حد Always Free، مع Linux ARM64، وخصص 2 OCPU و12 GB فقط. افتح TCP 22 للإدارة الموثوقة، و80/443 لـCaddy؛ لا تفتح 8000 للإنترنت.
-2. ثبّت Docker Engine وCompose v2. وجّه سجل DNS الخاص بـ`AI_DOMAIN` إلى عنوان عام ثابت للـVM، ثم انسخ مجلد `ai-inference` إليها.
-3. أنشئ `models/` وانقل ONNX عبر قناة إدارية مشفرة. تحقّق من SHA-256 عبر القناة نفسها.
-4. انسخ `.env.example` إلى `.env`، ولّد مفتاحاً عشوائياً قوياً، واضبط `INFERENCE_API_KEY` و`AI_DOMAIN`. احفظ المفتاح المطابق في Vercel كـ`AI_INFERENCE_API_KEY`، واضبط `AI_INFERENCE_URL` على عنوان HTTPS الأساسي.
-5. شغّل `chmod +x deploy.sh healthcheck.sh` ثم `./deploy.sh`. Caddy يطلب شهادة TLS تلقائياً بعد تحقق DNS ووصول المنافذ.
-6. تحقّق يدوياً من `https://<AI_DOMAIN>/health` ثم اختبر `/analyze` بصورة اختبار غير طبية. لا يبدأ ربط بيانات المرضى قبل اجتياز مقارنة الدقة واختبار العزل.
+1. ثبّت Docker Engine وCompose v2. عند النشر خلف Caddy، وجّه `AI_DOMAIN` إلى عنوان الخادم وافتح TCP 80/443؛ لا تفتح 8000 للإنترنت.
+2. انسخ `.env.example` إلى `.env`. اضبط `AI_DOMAIN`، ومفتاح `INFERENCE_API_KEY` عشوائياً بطول 32 حرفاً أو أكثر، و`HF_MODEL_REPO_ID`. للمستودع الخاص أضف `HF_TOKEN` بصلاحية القراءة.
+3. شغّل `chmod +x deploy.sh healthcheck.sh` ثم `./deploy.sh`. تُنزّل الخدمة ONNX من Hugging Face عند بدء التشغيل؛ يتطلب ذلك اتصالاً خارجياً إلى Hub. Caddy يطلب شهادة TLS بعد تحقق DNS ووصول المنافذ.
+4. تحقّق يدوياً من `https://<AI_DOMAIN>/health` ثم اختبر `/analyze` بصورة اختبار غير طبية. لا يبدأ ربط بيانات المرضى قبل اجتياز مقارنة الدقة واختبار العزل.
 
-`healthcheck.sh` يتحقق من الاستجابة فقط؛ لا يمنع Oracle من استرداد مثيل خامل ولا يولّد حملاً اصطناعياً. الحصة المجانية ليست ضمان توافر 24/7. حدد نسخاً احتياطية لإعدادات الخادم والموديل، وراقب استخدام CPU/RAM والقرص والشبكة.
+`healthcheck.sh` يتحقق من الاستجابة فقط ولا يولّد حملاً اصطناعياً. حدّد متطلبات التوافر وراقب استخدام CPU/RAM والقرص والشبكة.
 
 ## عقد الخدمة
 
