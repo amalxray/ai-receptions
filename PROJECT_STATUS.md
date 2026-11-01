@@ -1,5 +1,13 @@
 # Project Status
 
+## B105 — تفعيل تحليل الأشعة بالذكاء الاصطناعي (52 فئة) — 2026-11-01
+
+- **النموذج**: `best_model_upgraded.onnx`، نموذج ONNX يضم 52 فئة.
+- **الاستضافة**: Render عبر خدمة Docker مجانية: [ai-xray-analyzer-nctg.onrender.com](https://ai-xray-analyzer-nctg.onrender.com).
+- **الحماية من النوم**: UptimeRobot مضبوط على فحص الخدمة كل 5 دقائق.
+- **الربط**: Vercel يستخدم متغيري الإنتاج `AI_INFERENCE_URL` و`AI_INFERENCE_API_KEY`؛ المفتاح محفوظ كمتغير سري وليس في المستودع.
+- **الاختبار**: وفقاً لتأكيد مدير المشروع، نجح الاختبار على صورة أشعة حقيقية وسجل 21 اكتشافاً. النتائج مساعدة فقط وليست تشخيصاً طبياً.
+
 ## 2026-10-31 — Stable Release: Ask & Booking Overhaul (B80-B97)
 
 - ✅ B80: Ask page (AI, Emerald Glass).
