@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic';
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const CONSENT_VERSION = '2026-10-11-v1';
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.25;
 
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
     const patientId = formData.get('patient_id');
     const medicalFileId = formData.get('medical_file_id');
     const consent = formData.get('consent');
+    const confidenceThresholdValue = formData.get('confidence_threshold');
 
     if (
       typeof clinicId !== 'string' ||
@@ -55,6 +57,19 @@ export async function POST(request: Request) {
     }
     if (consent !== 'true') {
       return errorResponse('يجب تأكيد الموافقة على تحليل الصورة أولاً.', 400);
+    }
+    const confidenceThreshold =
+      confidenceThresholdValue === null
+        ? DEFAULT_CONFIDENCE_THRESHOLD
+        : typeof confidenceThresholdValue === 'string'
+          ? Number(confidenceThresholdValue)
+          : Number.NaN;
+    if (
+      !Number.isFinite(confidenceThreshold) ||
+      confidenceThreshold <= 0 ||
+      confidenceThreshold > 1
+    ) {
+      return errorResponse('قيمة حساسية التحليل يجب أن تكون أكبر من 0 وحتى 1.', 400);
     }
 
     const authorization = await authorizeClinicRequest(request, clinicId);
@@ -135,6 +150,7 @@ export async function POST(request: Request) {
       imageBlob.slice(0, imageBlob.size, detectedType.mime),
       `panorama.${detectedType.ext}`
     );
+    oracleForm.append('confidence_threshold', String(confidenceThreshold));
 
     let inferenceResponse: Response;
     try {

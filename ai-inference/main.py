@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import math
 import os
 import secrets
 import time
@@ -14,7 +15,7 @@ from typing import Any
 
 import numpy as np
 import onnxruntime as ort
-from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 
@@ -209,6 +210,7 @@ def _postprocess(
     scale: float,
     pad_x: int,
     pad_y: int,
+    confidence_threshold: float,
 ) -> list[dict[str, Any]]:
     predictions = np.asarray(output)
     if predictions.ndim == 3:
@@ -228,7 +230,7 @@ def _postprocess(
     scores_by_class = predictions[:, 4:]
     class_ids = np.argmax(scores_by_class, axis=1)
     scores = scores_by_class[np.arange(scores_by_class.shape[0]), class_ids]
-    valid = np.isfinite(scores) & (scores >= CONFIDENCE_THRESHOLD)
+    valid = np.isfinite(scores) & (scores >= confidence_threshold)
     candidate_indices = np.flatnonzero(valid)
     if candidate_indices.size > MAX_CANDIDATES:
         best = np.argpartition(scores[candidate_indices], -MAX_CANDIDATES)[-MAX_CANDIDATES:]
@@ -291,10 +293,16 @@ async def health(request: Request) -> dict[str, str]:
 async def analyze(
     request: Request,
     image: UploadFile = File(...),
+    confidence_threshold: float = Form(default=CONFIDENCE_THRESHOLD),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> dict[str, Any]:
     if not x_api_key or not secrets.compare_digest(x_api_key, API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized.")
+    if not math.isfinite(confidence_threshold) or not 0 < confidence_threshold <= 1:
+        raise HTTPException(
+            status_code=422,
+            detail="Confidence threshold must be greater than 0 and at most 1.",
+        )
     if not await _allow_request():
         raise HTTPException(
             status_code=429,
@@ -317,7 +325,9 @@ async def analyze(
                 None,
                 {request.app.state.input_name: tensor},
             )
-        predictions = _postprocess(outputs[0], width, height, scale, pad_x, pad_y)
+        predictions = _postprocess(
+            outputs[0], width, height, scale, pad_x, pad_y, confidence_threshold
+        )
     except HTTPException:
         raise
     except Exception as exc:

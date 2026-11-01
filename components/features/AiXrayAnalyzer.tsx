@@ -138,6 +138,7 @@ export default function AiXrayAnalyzer({
   const [activePrediction, setActivePrediction] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [zoom, setZoom] = useState(1);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
@@ -187,6 +188,7 @@ export default function AiXrayAnalyzer({
       formData.set('patient_id', patientId);
       formData.set('medical_file_id', medicalFileId);
       formData.set('consent', 'true');
+      formData.set('confidence_threshold', String(confidenceThreshold));
 
       const response = await fetch('/api/ai/panorama-analyze', {
         method: 'POST',
@@ -392,6 +394,20 @@ export default function AiXrayAnalyzer({
           </label>
         </div>
       )}
+
+      <label className="flex flex-col gap-2 text-sm font-medium text-slate-200 sm:max-w-md">
+        حساسية التحليل
+        <select
+          value={confidenceThreshold}
+          onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
+          disabled={isAnalyzing}
+          className="min-h-11 rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-slate-100 shadow-lg shadow-black/20 outline-none backdrop-blur transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option value={0.4}>فحص سريع (حالات واضحة فقط - ثقة 40%+)</option>
+          <option value={0.25}>فحص متوازن (موصى به - ثقة 25%+)</option>
+          <option value={0.15}>فحص دقيق (اكتشافات أكثر - ثقة 15%+)</option>
+        </select>
+      </label>
 
       <button
         type="button"
