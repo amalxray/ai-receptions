@@ -19,37 +19,58 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 DEFAULT_CLASS_NAMES = [
-    "Bone Loss",
-    "Caries",
-    "Crown",
-    "Cyst",
-    "Filling",
-    "Fracture teeth",
-    "Implant",
-    "Malaligned",
-    "Mandibular Canal",
-    "Missing teeth",
-    "Periapical lesion",
-    "Permanent Teeth",
-    "Primary teeth",
-    "Retained root",
-    "Root Canal Treatment",
-    "Root Piece",
-    "Root resorption",
-    "Supra Eruption",
-    "TAD",
+    "bone_loss",
+    "caries",
+    "crown",
+    "cyst",
+    "filling",
+    "fracture_teeth",
+    "implant",
+    "malaligned",
+    "mandibular_canal",
+    "missing_teeth",
+    "periapical_lesion",
+    "permanent_teeth",
+    "primary_teeth",
+    "retained_root",
+    "root_canal_treatment",
+    "root_piece",
+    "root_resorption",
+    "supra_eruption",
+    "tad",
     "abutment",
     "attrition",
-    "bone defect",
-    "gingival former",
-    "impacted tooth",
-    "maxillary sinus",
-    "metal band",
-    "orthodontic brackets",
-    "permanent retainer",
+    "bone_defect",
+    "gingival_former",
+    "impacted_tooth",
+    "maxillary_sinus",
+    "metal_band",
+    "orthodontic_brackets",
+    "permanent_retainer",
     "plating",
-    "post - core",
+    "post_core",
     "wire",
+    "amalgam_restoration",
+    "composite_restoration",
+    "dental_caries",
+    "dental_crown",
+    "dental_implant",
+    "endodontic_post",
+    "endodontic_treatment",
+    "fractured_tooth",
+    "inferior_alveolar_nerve",
+    "interdental_bone_loss",
+    "mental_foramen",
+    "orthodontic_retainer_wire",
+    "permenant_tooth_bud",
+    "primary_tooth",
+    "proximal_dental_caries",
+    "pulp_canal_obliteration",
+    "pulpectomy_chamber",
+    "root_caries",
+    "space_maintainer",
+    "taurodontism",
+    "temporary_restoration",
 ]
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -65,7 +86,10 @@ MAX_CANDIDATES = int(os.getenv("MAX_CANDIDATES", "3000"))
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 MODEL_PATH = os.getenv("MODEL_PATH", "/models/best_model_upgraded.onnx")
-MODEL_VERSION = os.getenv("MODEL_VERSION", "yolov8l-20261011")
+HF_MODEL_REPO_ID = os.getenv("HF_MODEL_REPO_ID", "")
+HF_MODEL_FILENAME = os.getenv("HF_MODEL_FILENAME", "best_model_upgraded.onnx")
+HF_TOKEN = os.getenv("HF_TOKEN")
+MODEL_VERSION = os.getenv("MODEL_VERSION", "dental-yolo-52class")
 API_KEY = os.getenv("INFERENCE_API_KEY", "")
 ORT_INTRA_OP_THREADS = int(os.getenv("ORT_INTRA_OP_THREADS", "2"))
 ENABLE_API_DOCS = os.getenv("ENABLE_API_DOCS", "false").lower() == "true"
@@ -98,10 +122,26 @@ _request_times: deque[float] = deque()
 _rate_lock = asyncio.Lock()
 
 
+def _resolve_model_path() -> str:
+    if HF_MODEL_REPO_ID:
+        from huggingface_hub import hf_hub_download
+
+        return hf_hub_download(
+            repo_id=HF_MODEL_REPO_ID,
+            filename=HF_MODEL_FILENAME,
+            token=HF_TOKEN or None,
+        )
+    return MODEL_PATH
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not os.path.isfile(MODEL_PATH):
-        raise RuntimeError(f"ONNX model does not exist at configured path: {MODEL_PATH}")
+    model_path = _resolve_model_path()
+    if not os.path.isfile(model_path):
+        raise RuntimeError(
+            "ONNX model is unavailable. Set HF_MODEL_REPO_ID or provide "
+            f"MODEL_PATH pointing to an existing file: {model_path}"
+        )
     if "CPUExecutionProvider" not in ort.get_available_providers():
         raise RuntimeError("ONNX Runtime CPUExecutionProvider is unavailable.")
 
@@ -110,7 +150,7 @@ async def lifespan(app: FastAPI):
     options.inter_op_num_threads = 1
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     session = ort.InferenceSession(
-        MODEL_PATH,
+        model_path,
         sess_options=options,
         providers=["CPUExecutionProvider"],
     )
@@ -120,11 +160,25 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             f"Expected fixed ONNX input {expected_shape}, got {model_input.shape}."
         )
+    output_shape = session.get_outputs()[0].shape
+    expected_channels = len(CLASS_NAMES) + 4
+    if (
+        len(output_shape) != 3
+        or expected_channels not in output_shape[1:]
+    ):
+        raise RuntimeError(
+            f"Expected ONNX output with {expected_channels} channels for "
+            f"{len(CLASS_NAMES)} classes, got {output_shape}."
+        )
 
     app.state.session = session
     app.state.input_name = model_input.name
     app.state.inference_lock = asyncio.Semaphore(1)
-    logger.info("Loaded ONNX model version %s on CPUExecutionProvider.", MODEL_VERSION)
+    logger.info(
+        "Loaded ONNX model version %s with %d classes on CPUExecutionProvider.",
+        MODEL_VERSION,
+        len(CLASS_NAMES),
+    )
     yield
 
 
@@ -330,3 +384,14 @@ async def analyze(
         "image_height": height,
         "predictions": predictions,
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "7860")),
+        workers=1,
+    )

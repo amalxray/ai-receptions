@@ -1,6 +1,10 @@
 # خدمة تحليل صور الأسنان
 
-خدمة FastAPI مستقلة لتشغيل نموذج ONNX على Oracle Ampere A1. لا تستقبل هوية المريض أو العيادة، ولا تحفظ الصور أو تسجل محتواها. يستخدم endpoint مفتاح خدمة عبر HTTPS، ويدعم نموذج YOLOv8l ذي 31 فئة المكتشفة في `best.pt`.
+خدمة FastAPI لتشغيل نموذج ONNX ذي 52 فئة. لا تستقبل هوية المريض أو العيادة، ولا تحفظ الصور أو تسجل محتواها. يتطلب endpoint مفتاح خدمة. يعمل النموذج من ملف ONNX محلي داخل مجلد `models/`.
+
+## النشر على Render
+
+اربط المستودع بـ Render وأنشئ خدمة Blueprint من `render.yaml`. يبني Docker النموذج من `models/best_model_upgraded.onnx` ويضبط `MODEL_PATH` تلقائياً. أدخل `INFERENCE_API_KEY` كـ Secret عند إنشاء الخدمة؛ يجب أن يكون المفتاح 32 حرفاً على الأقل، ولا تحفظه في Git. يستمع التطبيق إلى المنفذ الذي يمرره Render، مع `8000` كقيمة افتراضية محلية، ويتحقق Render من الجاهزية عبر `/health`.
 
 ## تشغيل واختبار محلي على Windows
 
@@ -54,39 +58,135 @@ cloudflared tunnel --url http://localhost:8000
 
 ## النموذج والتحويل
 
-حجم `best.pt` الذي فُحص هو 349,996,979 بايت. تشير بياناته الوصفية إلى نموذج مبني على `yolov8l.pt`، و31 فئة، وحجم إدخال تدريب 1024، إضافة إلى حالة optimizer من AdamW. استُخرجت البيانات الوصفية من أرشيف checkpoint دون unpickle. يحذف تصدير ONNX حالة التدريب؛ التقدير النظري لملف FP32 قرابة 175 MB، ويجب قياس الملف الناتج.
-
-في Colab أو بيئة تدريب موثوقة، ثبّت إصدار Ultralytics المستخدم عند التدريب، وصِل Drive، ثم:
+النموذج المعتمد هو `best_model_upgraded.pt` ذو 52 فئة. لتصديره محلياً من جذر المشروع، استخدم Ultralytics في بيئة التدريب:
 
 ```python
 from ultralytics import YOLO
 
-model = YOLO("/content/drive/MyDrive/dental_ai_training/runs/dental_v1237528182_final/weights/best.pt")
-onnx_path = model.export(
-    format="onnx",
-    imgsz=1024,
-    batch=1,
-    half=False,
-    dynamic=False,
-    simplify=False,
-    opset=17,
-    nms=False,
-)
-print(onnx_path)
+model = YOLO("dental_ai_training/dental_ai_training/best_model_upgraded.pt")
+model.export(format="onnx", imgsz=1024, opset=12)
 ```
 
-لا تُفعّل FP16 أو INT8 قبل مقارنة مخرجات PyTorch وONNX. قارن على نفس مجموعة تحقق ثابتة: mAP50، mAP50-95، precision، recall لكل فئة، وتطابق الصناديق/الثقة. احتفظ بـ`.pt` خارج Git ولا تنقل صور مرضى إلى Colab دون أساس موافقة مناسب. انسخ النموذج المقبول إلى `models/best_model_upgraded.onnx`.
+انسخ ملف `best_model_upgraded.onnx` الناتج إلى `ai-inference/models/best_model_upgraded.onnx`. لا تضع أوزان النموذج في Git. تتحقق الخدمة عند بدء التشغيل من مدخل 1024 ومن 52 فئة في مخرجات ONNX. تحقق من أسماء الفئات ومقاييس النموذج على مجموعة تحقق قبل أي استخدام سريري.
 
-## إعداد Oracle
+## النشر على Oracle Cloud Free Tier (Ubuntu ARM)
 
-1. أنشئ VM.Standard.A1.Flex في منطقة الحساب ضمن حد Always Free، مع Linux ARM64، وخصص 2 OCPU و12 GB فقط. افتح TCP 22 للإدارة الموثوقة، و80/443 لـCaddy؛ لا تفتح 8000 للإنترنت.
-2. ثبّت Docker Engine وCompose v2. وجّه سجل DNS الخاص بـ`AI_DOMAIN` إلى عنوان عام ثابت للـVM، ثم انسخ مجلد `ai-inference` إليها.
-3. أنشئ `models/` وانقل ONNX عبر قناة إدارية مشفرة. تحقّق من SHA-256 عبر القناة نفسها.
-4. انسخ `.env.example` إلى `.env`، ولّد مفتاحاً عشوائياً قوياً، واضبط `INFERENCE_API_KEY` و`AI_DOMAIN`. احفظ المفتاح المطابق في Vercel كـ`AI_INFERENCE_API_KEY`، واضبط `AI_INFERENCE_URL` على عنوان HTTPS الأساسي.
-5. شغّل `chmod +x deploy.sh healthcheck.sh` ثم `./deploy.sh`. Caddy يطلب شهادة TLS تلقائياً بعد تحقق DNS ووصول المنافذ.
-6. تحقّق يدوياً من `https://<AI_DOMAIN>/health` ثم اختبر `/analyze` بصورة اختبار غير طبية. لا يبدأ ربط بيانات المرضى قبل اجتياز مقارنة الدقة واختبار العزل.
+يعتمد هذا الدليل على VM بمعمارية ARM وصورة Ubuntu. ملف `docker-compose.yml` الحالي يعرّض الخدمة داخلياً على `8000`، ويشغّل Caddy على `80/443`؛ لا ينشر منفذ الخدمة مباشرة إلى المضيف. لاستخدام ملف ONNX محلي بدلاً من تحميل خارجي، جهّز نموذجاً على الخادم وأضف ملف Compose override كما هو موضح أدناه.
 
-`healthcheck.sh` يتحقق من الاستجابة فقط؛ لا يمنع Oracle من استرداد مثيل خامل ولا يولّد حملاً اصطناعياً. الحصة المجانية ليست ضمان توافر 24/7. حدد نسخاً احتياطية لإعدادات الخادم والموديل، وراقب استخدام CPU/RAM والقرص والشبكة.
+### 1. إنشاء VM والحصول على عنوانها العام
+
+1. في Oracle Cloud Console، أنشئ Instance واختر صورة **Ubuntu Server ARM64** وشكلاً متوافقاً مع Free Tier.
+2. في تفاصيل الـInstance افتح **Primary VNIC → IPv4 Addresses** وسجّل **Public IPv4 address**. استخدم Reserved Public IP إذا كنت تحتاج عنواناً ثابتاً بعد إعادة إنشاء الـInstance.
+3. اتصل بالخادم عبر SSH باستخدام عنوانه العام ومفتاح SSH الذي أعددته عند إنشاء الـInstance:
+
+```bash
+ssh -i /path/to/private-key.pem ubuntu@<PUBLIC_IP>
+```
+
+### 2. تثبيت Docker Engine وCompose
+
+نفّذ الأوامر التالية على Ubuntu ARM64 لإضافة مستودع Docker الرسمي وتثبيت Docker Compose plugin:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+sudo docker run --rm hello-world
+docker compose version
+```
+
+### 3. تجهيز التطبيق والنموذج
+
+استنسخ المستودع على الخادم، ثم انسخ **ملف ONNX فقط** إلى مجلد الخدمة عبر SCP. لا تنسخ مجلد التدريب أو صور البيانات إلى الخادم:
+
+```bash
+git clone <REPOSITORY_URL> ai-receptions
+cd ai-receptions/ai-inference
+mkdir -p models
+```
+
+من جهازك المحلي، وفي نافذة طرفية أخرى:
+
+```bash
+scp -i /path/to/private-key.pem \
+  ./ai-inference/models/best_model_upgraded.onnx \
+  ubuntu@<PUBLIC_IP>:~/ai-receptions/ai-inference/models/
+```
+
+تحقق من تطابق SHA-256 على الجهازين قبل التشغيل:
+
+```bash
+sha256sum models/best_model_upgraded.onnx
+```
+
+أنشئ `.env` على الخادم دون حفظ المفتاح في Git:
+
+```bash
+printf 'INFERENCE_API_KEY=%s\nAI_DOMAIN=<PUBLIC_IP>\n' "$(openssl rand -hex 32)" > .env
+chmod 600 .env
+```
+
+قبل تنفيذ الأمر، استبدل `<PUBLIC_IP>` بعنوان الـVM العام الفعلي. يتطلب Compose الحالي `AI_DOMAIN` حتى عند تشغيل خدمة الاستدلال وحدها؛ عند استخدام Caddy وTLS استخدم بدلاً منه اسم DNS موجهاً إلى عنوان الخادم.
+
+أنشئ على الخادم ملف `docker-compose.oracle.yml` لإتاحة النموذج المحلي ونشر منفذ الاختبار:
+
+```yaml
+services:
+  inference:
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8000:8000"
+```
+
+### 4. فتح TCP 8000 وتشغيل الخدمة
+
+في Oracle Cloud Console، أضف **Ingress Rule** إلى Network Security Group المرتبط بالـVNIC (أو Security List للشبكة الفرعية):
+
+- Source CIDR: عنوان IP الخاص بك متبوعاً بـ`/32` للاختبار، وليس `0.0.0.0/0` إن أمكن.
+- IP Protocol: TCP
+- Destination Port Range: `8000`
+
+إذا كان UFW مفعّلاً على Ubuntu، اسمح فقط بعنوان IP الموثوق:
+
+```bash
+sudo ufw allow from <YOUR_PUBLIC_IP>/32 to any port 8000 proto tcp
+sudo ufw status
+```
+
+شغّل الخدمة فقط من دون Caddy:
+
+```bash
+sudo docker compose -f docker-compose.yml -f docker-compose.oracle.yml \
+  up -d --build inference
+sudo docker compose -f docker-compose.yml -f docker-compose.oracle.yml logs -f inference
+```
+
+تحقق من جاهزية النموذج:
+
+```bash
+curl --fail http://127.0.0.1:8000/health
+curl --fail "http://<PUBLIC_IP>:8000/health"
+```
+
+للإيقاف:
+
+```bash
+sudo docker compose -f docker-compose.yml -f docker-compose.oracle.yml \
+  down
+```
+
+**تنبيه أمني:** الاتصال المباشر على `http://<PUBLIC_IP>:8000` غير مشفّر. لا ترسل عبره صور مرضى أو بيانات حساسة. للاستخدام الحقيقي، لا تفتح 8000 للعامة؛ استخدم Caddy المضمّن مع DNS صحيح وTLS، وافتح 80/443 فقط، ثم اختبر عبر `https://<AI_DOMAIN>/health`. تقييد مصدر الشبكة ومفتاح API لا يعوضان التشفير.
+
+`healthcheck.sh` يتحقق من الاستجابة فقط ولا يولّد حملاً اصطناعياً. راقب الذاكرة ومساحة القرص وقيود Oracle Always Free؛ توافر الموارد المجانية ليس ضماناً للاستمرارية.
 
 ## عقد الخدمة
 

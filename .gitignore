@@ -10,6 +10,9 @@ ChatGPT Image 6 سبتمبر 2026، 08_39_33 م.png
 .restore-drill/
 .xgrok/
 *.swp
+*.pem
+*.key
+oci_config.txt
 
 # ── Personal dotfiles (never track) ──
 .bashrc
