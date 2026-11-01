@@ -373,8 +373,11 @@ export default function AiXrayAnalyzer({
       {!hasAnalyzed && (
         <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
           <p>
-            نسخة تجريبية غير معتمدة للتشخيص. ستُعالج صورة الملف الطبي المحفوظ عبر خدمة تحليل
-            خارجية، دون إرسال هوية المريض إلى مزود الاستدلال.
+            ⚠️ إخلاء مسؤولية: أداة مساعدة آلية، وليست تشخيصاً طبياً معتمداً.
+          </p>
+          <p>
+            🔒 الخصوصية: تُرسل صورة الأشعة عبر اتصال مشفّر إلى خادم التحليل، ولا تُحفظ هناك.
+            تبقى الصورة الأصلية ضمن ملف المريض، وتُحفظ نتيجة التحليل في سجله.
           </p>
           <label className="flex cursor-pointer items-start gap-2">
             <input
@@ -384,8 +387,7 @@ export default function AiXrayAnalyzer({
               className="mt-1 accent-indigo-600"
             />
             <span>
-              أؤكد إبلاغ المريض أو ممثله القانوني والحصول على موافقته على معالجة الصورة لهذا
-              الغرض.
+              ✅ الموافقة: أقرّ بحصولي على موافقة المريض (أو وليه) قبل التحليل.
             </span>
           </label>
         </div>
