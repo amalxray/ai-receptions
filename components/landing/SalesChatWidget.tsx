@@ -85,7 +85,7 @@ export default function SalesChatWidget() {
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? 'تعذّر الاتصال بالمستشار');
+      if (!response.ok) throw new Error(payload.error ?? 'تعذّر الاتصال بالمستشارة');
 
       setMessages((current) => [
         ...current,
@@ -102,7 +102,7 @@ export default function SalesChatWidget() {
         {
           id: makeMessageId(),
           role: 'assistant',
-          content: error instanceof Error ? error.message : 'تعذّر الاتصال بالمستشار الآن. جرّب مرة أخرى.',
+          content: error instanceof Error ? error.message : 'تعذّر الاتصال بالمستشارة الآن. جرّبي مرة أخرى.',
         },
       ]);
     } finally {
@@ -119,8 +119,8 @@ export default function SalesChatWidget() {
     <>
       <style jsx global>{`
         @keyframes sales-chat-glow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.38), 0 14px 34px rgba(15, 23, 42, 0.28); }
-          50% { box-shadow: 0 0 0 12px rgba(212, 175, 55, 0), 0 18px 44px rgba(79, 70, 229, 0.42); }
+          0%, 100% { filter: drop-shadow(0 10px 22px rgba(79, 70, 229, 0.14)); }
+          50% { filter: drop-shadow(0 14px 28px rgba(79, 70, 229, 0.3)); }
         }
         @keyframes sales-chat-shimmer {
           0% { transform: translateX(120%); }
@@ -130,12 +130,12 @@ export default function SalesChatWidget() {
 
       <AnimatePresence>
         {!open && (
-          <div className="fixed bottom-6 left-6 z-[60]">
+          <div className="fixed bottom-20 left-4 z-[60] sm:bottom-6 sm:left-6">
             <AnimatePresence>
               {showTeaser && (
                 <motion.div
-                  aria-label="رسالة من مستشار النمو"
-                  className="absolute bottom-[calc(100%+0.75rem)] left-0 flex max-w-[min(20rem,calc(100vw-3rem))] items-start gap-3 rounded-2xl border border-amber-200/20 bg-slate-950/95 px-4 py-3 text-right text-sm leading-6 text-white shadow-2xl shadow-indigo-950/50"
+                  aria-label="رسالة من مستشارة النمو"
+                  className="absolute bottom-full right-0 mb-3 flex max-w-[min(30rem,calc(100vw-2rem))] items-start gap-4 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-right text-lg leading-7 text-white shadow-2xl shadow-slate-950/50"
                   initial={{ opacity: 0, y: 8, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
@@ -151,33 +151,48 @@ export default function SalesChatWidget() {
                     type="button"
                     aria-label="إخفاء الرسالة"
                     onClick={() => setShowTeaser(false)}
-                    className="text-slate-400 transition hover:text-white"
+                    className="text-xl text-slate-400 transition hover:text-white"
                   >
                     ×
                   </button>
+                  <span
+                    aria-hidden="true"
+                    className="absolute -bottom-2 right-16 h-4 w-4 rotate-45 rounded-br border-b border-r border-slate-700 bg-slate-900"
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
             <motion.button
               type="button"
-              aria-label="فتح مستشار النمو"
+              aria-label="فتح مستشارة النمو"
               onClick={() => setOpen(true)}
-              className="relative flex items-center gap-3 rounded-full border border-amber-200/50 bg-gradient-to-br from-[#D4AF37] via-[#b88a22] to-[#4F46E5] py-2 pl-5 pr-2 text-white shadow-2xl shadow-indigo-950/40 transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2 focus:ring-offset-slate-950"
+              className="relative flex min-h-[140px] max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-slate-200 bg-white/95 px-5 py-4 text-slate-800 shadow-2xl shadow-indigo-500/20 backdrop-blur transition-[transform,box-shadow] hover:scale-105 hover:shadow-indigo-500/35 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 sm:gap-6 sm:px-8"
               style={{ animation: 'sales-chat-glow 2.6s ease-in-out infinite' }}
               initial={{ opacity: 0, scale: 0.7, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.7, y: 20 }}
               whileTap={{ scale: 0.94 }}
             >
-              <span className="relative block h-12 w-12 shrink-0">
-                <img
-                  src="/avatars/consultant-main.png"
-                  alt="مستشار النمو"
-                  className="h-12 w-12 rounded-full object-cover"
-                />
-                <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-slate-950 bg-emerald-400 animate-pulse" />
+              <span className="relative block h-28 w-28 shrink-0 rounded-full border-2 border-white/50 shadow-lg shadow-slate-950/20 sm:h-36 sm:w-36">
+                <span className="absolute inset-0 overflow-hidden rounded-full">
+                  <img
+                    src="/avatars/consultant-main.png"
+                    alt="مستشارة النمو"
+                    className="h-full w-full scale-[1.4] rounded-full object-cover object-[center_30%]"
+                  />
+                </span>
+                <span className="absolute bottom-1 right-1 h-7 w-7 rounded-full border-4 border-white bg-emerald-500 shadow-[0_0_14px_rgba(16,185,129,0.8)] animate-pulse" />
               </span>
-              <span className="whitespace-nowrap text-sm font-bold">مستشار النمو</span>
+              <span className="flex flex-col items-start gap-1 whitespace-nowrap text-slate-800">
+                <span className="text-xl font-bold sm:text-2xl">
+                  مستشارة النمو
+                  <span aria-hidden="true" className="mr-3">→</span>
+                </span>
+                <span className="flex items-center gap-2 text-sm font-semibold text-emerald-600 sm:text-base">
+                  <span className="h-3 w-3 animate-pulse rounded-full bg-emerald-500" />
+                  متاحة الآن
+                </span>
+              </span>
             </motion.button>
           </div>
         )}
@@ -188,7 +203,7 @@ export default function SalesChatWidget() {
           <>
             <motion.button
               type="button"
-              aria-label="إغلاق مستشار المبيعات"
+              aria-label="إغلاق مستشارة المبيعات"
               className="fixed inset-0 z-[55] cursor-default bg-slate-950/60 backdrop-blur-[2px]"
               onClick={() => setOpen(false)}
               initial={{ opacity: 0 }}
@@ -198,7 +213,7 @@ export default function SalesChatWidget() {
             <motion.section
               role="dialog"
               aria-modal="true"
-              aria-label="مستشار مبيعات AI-Receptions"
+              aria-label="مستشارة مبيعات AI-Receptions"
               dir="rtl"
               className="fixed bottom-4 left-4 right-4 z-[60] flex h-[min(78dvh,680px)] flex-col overflow-hidden rounded-[2rem] border border-amber-300/20 bg-slate-950/90 text-white shadow-2xl shadow-indigo-950/60 backdrop-blur-2xl sm:bottom-6 sm:left-6 sm:right-auto sm:w-[min(94vw,430px)]"
               initial={{ opacity: 0, y: 30, scale: 0.96 }}
@@ -213,8 +228,8 @@ export default function SalesChatWidget() {
                   <div className="flex items-center gap-3">
                     <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-300/30 bg-gradient-to-br from-amber-300/20 to-indigo-500/30 text-2xl">📈</span>
                     <div>
-                      <p className="font-heading text-base font-bold text-amber-100">مستشار نمو العيادة</p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> متاح الآن</p>
+                      <p className="font-heading text-base font-bold text-amber-100">مستشارة نمو العيادة</p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> متاحة الآن</p>
                     </div>
                   </div>
                   <button type="button" onClick={() => setOpen(false)} aria-label="إغلاق المحادثة" className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white">×</button>
@@ -258,7 +273,7 @@ export default function SalesChatWidget() {
                   <input value={input} onChange={(event) => setInput(event.target.value)} disabled={loading} placeholder="اكتب سؤالك عن نمو عيادتك..." className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500" aria-label="رسالتك" />
                   <button type="submit" disabled={loading || !input.trim()} className="relative overflow-hidden rounded-xl bg-gradient-to-l from-amber-300 to-[#D4AF37] px-4 py-2 text-sm font-black text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"><span className="relative z-10">إرسال</span><span aria-hidden className="absolute inset-0 -translate-x-full bg-white/30" style={{ animation: 'sales-chat-shimmer 2.8s linear infinite' }} /></button>
                 </div>
-                <p className="mt-2 text-center text-[10px] text-slate-500">مستشار مبيعات مستقل — لا ينفذ حجوزات المرضى</p>
+                <p className="mt-2 text-center text-[10px] text-slate-500">مستشارة مبيعات مستقلة — لا تنفذ حجوزات المرضى</p>
               </form>
             </motion.section>
           </>
