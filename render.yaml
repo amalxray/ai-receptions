@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ai-inference
+    runtime: docker
+    dockerfilePath: ./ai-inference/Dockerfile
+    dockerContext: ./ai-inference
+    healthCheckPath: /health
+    envVars:
+      - key: INFERENCE_API_KEY
+        sync: false
+      - key: MODEL_PATH
+        value: /app/models/best_model_upgraded.onnx
