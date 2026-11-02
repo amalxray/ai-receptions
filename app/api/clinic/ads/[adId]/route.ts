@@ -4,16 +4,35 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 
+const nullableString = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.string().optional()
+);
+
+const nullableUrl = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.string().url('رابط الصورة غير صالح').optional()
+);
+
 const updateSchema = z.object({
-  title: z.string().min(1, 'العنوان مطلوب').optional(),
-  description: z.string().optional(),
-  image_url: z.string().url('رابط الصورة غير صالح').optional(),
-  cta_text: z.string().optional(),
-  cta_link: z.string().optional(),
-  is_active: z.boolean().optional(),
-  display_order: z.number().int().optional(),
-  start_date: z.string().optional(),
-  end_date: z.string().optional(),
+  title: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.string().min(1, 'العنوان مطلوب').optional()
+  ),
+  description: nullableString,
+  image_url: nullableUrl,
+  cta_text: nullableString,
+  cta_link: nullableUrl,
+  is_active: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.boolean().optional()
+  ),
+  display_order: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.number().int().optional()
+  ),
+  start_date: nullableString,
+  end_date: nullableString,
 });
 
 export async function PUT(req: Request, { params }: { params: { adId: string } }) {
