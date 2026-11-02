@@ -374,11 +374,11 @@ export default function AiXrayAnalyzer({
       </AnimatePresence>
 
       <div
-        className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[minmax(13rem,1fr)_minmax(0,3fr)_minmax(16rem,1fr)]"
+        className="grid grid-cols-1 gap-4 min-w-0 xl:grid-cols-[20%_60%_20%]"
         style={{ direction: 'ltr' }}
       >
         <aside
-          className="rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-lg"
+          className="min-w-0 rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-lg flex flex-col"
           dir="rtl"
           aria-label="تصفية فئات الاكتشاف"
         >
@@ -607,7 +607,7 @@ export default function AiXrayAnalyzer({
         </div>
 
         <aside
-          className="rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-lg"
+          className="min-w-0 rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-lg flex flex-col"
           dir="rtl"
           aria-label="نتائج تحليل الأشعة"
         >
