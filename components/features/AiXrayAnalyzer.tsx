@@ -268,6 +268,9 @@ export default function AiXrayAnalyzer({
   const sortedVisiblePredictions = [...visiblePredictions].sort(
     (left, right) => right.prediction.confidence - left.prediction.confidence,
   );
+  const allCategoriesSelected = categories.every(
+    (category) => !hiddenCategories.includes(category),
+  );
 
   const toggleCategory = (className: string) => {
     setHiddenCategories((current) =>
@@ -382,15 +385,33 @@ export default function AiXrayAnalyzer({
           dir="rtl"
           aria-label="تصفية فئات الاكتشاف"
         >
-          <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="font-bold text-white">الفئات</h3>
               <p className="mt-1 text-xs text-slate-400">{categories.length} فئات مكتشفة</p>
             </div>
-            <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs tabular-nums text-slate-300">
-              {visiblePredictions.length}/{predictions.length}
-            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setHiddenCategories([])}
+                disabled={categories.length === 0 || allCategoriesSelected}
+                className="rounded-md px-2 py-1 text-xs font-medium text-cyan-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                تحديد الكل
+              </button>
+              <button
+                type="button"
+                onClick={() => setHiddenCategories(categories)}
+                disabled={categories.length === 0 || !allCategoriesSelected}
+                className="rounded-md px-2 py-1 text-xs font-medium text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                إلغاء الكل
+              </button>
+            </div>
           </div>
+          <p className="mb-2 text-xs text-slate-400" aria-live="polite">
+            ظاهرة: {visiblePredictions.length}/{predictions.length}
+          </p>
 
           {categories.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-700 p-3 text-xs leading-5 text-slate-400">
@@ -613,7 +634,7 @@ export default function AiXrayAnalyzer({
         >
           <div className="mb-4 flex items-center justify-between gap-2">
             <div>
-              <h3 className="font-bold text-white">النتائج</h3>
+              <h3 className="font-bold text-white">النتائج ({predictions.length})</h3>
               <p className="mt-1 text-xs text-slate-400">
                 مرتبة حسب نسبة الثقة
               </p>
@@ -633,7 +654,7 @@ export default function AiXrayAnalyzer({
             </p>
           ) : (
             <ul className="max-h-[22rem] space-y-2 overflow-y-auto xl:max-h-[42rem]">
-              {sortedVisiblePredictions.map(({ prediction, index }) => {
+              {sortedVisiblePredictions.map(({ prediction, index }, resultIndex) => {
                 const style = getCategoryStyle(prediction.class_name, prediction.class_id);
                 const confidence = Math.max(0, Math.min(1, prediction.confidence));
                 const percentage = Math.round(confidence * 100);
@@ -655,6 +676,9 @@ export default function AiXrayAnalyzer({
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="flex min-w-0 items-center gap-2">
+                          <span className="w-5 shrink-0 text-xs font-semibold tabular-nums text-slate-400">
+                            {resultIndex + 1}.
+                          </span>
                           <span
                             className="h-2.5 w-2.5 shrink-0 rounded-full"
                             style={{ backgroundColor: style.color }}
