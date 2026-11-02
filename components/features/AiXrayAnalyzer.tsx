@@ -2,15 +2,30 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
+  ArrowUpRight,
   Activity,
   AlertCircle,
+  Circle as CircleIcon,
+  Move,
+  MousePointer2,
+  Pencil,
   RotateCcw,
+  Save,
   ScanLine,
+  Search,
   Sparkles,
+  Square as SquareIcon,
+  Trash2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type Konva from 'konva';
+import 'konva/lib/shapes/Arrow';
+import 'konva/lib/shapes/Ellipse';
+import 'konva/lib/shapes/Rect';
+import 'konva/lib/shapes/Transformer';
+import { Arrow, Ellipse, Layer, Rect, Stage, Transformer } from 'react-konva/lib/ReactKonvaCore';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
 interface Prediction {
@@ -48,6 +63,20 @@ interface CategoryStyle {
   color: string;
   softColor: string;
   label: string;
+}
+
+type DrawingTool = 'select' | 'pan' | 'rectangle' | 'circle' | 'arrow';
+
+interface Annotation {
+  id: string;
+  tool: Exclude<DrawingTool, 'select'>;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  flipX: boolean;
+  flipY: boolean;
+  className: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -132,6 +161,23 @@ const fallbackColors = [
   '#6366f1',
 ];
 
+const annotationTerms = [
+  'Caries',
+  'Crown',
+  'Filling',
+  'Implant',
+  'Root Canal Treatment',
+  'Impacted Tooth',
+  'Missing Teeth',
+  'Periapical Lesion',
+  'Bone Loss',
+  'Fracture',
+  'Cyst',
+  'Root Resorption',
+  'Retained Root',
+  'Malaligned',
+];
+
 function getCategoryStyle(className: string, classId: number): CategoryStyle {
   const normalizedClass = className.trim().toLowerCase();
   const matchingCategory = Object.keys(categoryStyles).find((category) =>
@@ -157,10 +203,24 @@ export default function AiXrayAnalyzer({
 }: AiXrayAnalyzerProps) {
   const prefersReducedMotion = useReducedMotion();
   const imageRef = useRef<HTMLImageElement>(null);
+  const stageRef = useRef<Konva.Stage>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const annotationNodesRef = useRef(new Map<string, Konva.Node>());
+  const drawingStartRef = useRef<{ x: number; y: number } | null>(null);
+  const annotationSequenceRef = useRef(0);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [activePrediction, setActivePrediction] = useState<number | null>(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [drawingTool, setDrawingTool] = useState<DrawingTool>('select');
+  const [draftAnnotation, setDraftAnnotation] = useState<Annotation | null>(null);
+  const [showTermPicker, setShowTermPicker] = useState(false);
+  const [termSearch, setTermSearch] = useState('');
+  const [annotationsDirty, setAnnotationsDirty] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
@@ -189,10 +249,29 @@ export default function AiXrayAnalyzer({
   }, []);
 
   useEffect(() => {
+    const selectedAnnotation = annotations.find(
+      (annotation) => annotation.id === selectedAnnotationId,
+    );
+    const selectedNode = selectedAnnotation?.tool === 'rectangle'
+      ? annotationNodesRef.current.get(selectedAnnotation.id)
+      : undefined;
+    transformerRef.current?.nodes(selectedNode ? [selectedNode] : []);
+    transformerRef.current?.getLayer()?.batchDraw();
+  }, [annotations, editMode, selectedAnnotationId]);
+
+  useEffect(() => {
     setPredictions([]);
     setHasAnalyzed(false);
     setError(null);
     setActivePrediction(null);
+    setAnnotations([]);
+    setSelectedAnnotationId(null);
+    setEditMode(false);
+    setDrawingTool('select');
+    setDraftAnnotation(null);
+    setShowTermPicker(false);
+    setAnnotationsDirty(false);
+    setSaveMessage(null);
     setConsent(false);
     setZoom(1);
     setHiddenCategories([]);
@@ -210,6 +289,10 @@ export default function AiXrayAnalyzer({
     setHasAnalyzed(false);
     setActivePrediction(null);
     setHiddenCategories([]);
+    setAnnotations([]);
+    setSelectedAnnotationId(null);
+    setShowTermPicker(false);
+    setAnnotationsDirty(false);
 
     try {
       const headers = await authHeaders();
@@ -272,6 +355,149 @@ export default function AiXrayAnalyzer({
     (category) => !hiddenCategories.includes(category),
   );
 
+  const createAnnotation = (
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    tool: Exclude<DrawingTool, 'select'>,
+    id: string,
+    className: string,
+  ): Annotation => ({
+    id,
+    tool,
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+    flipX: end.x < start.x,
+    flipY: end.y < start.y,
+    className,
+  });
+
+  const markAnnotationsChanged = () => {
+    setAnnotationsDirty(true);
+    setSaveMessage(null);
+  };
+
+  const updateAnnotation = (id: string, changes: Partial<Annotation>) => {
+    setAnnotations((current) =>
+      current.map((annotation) =>
+        annotation.id === id ? { ...annotation, ...changes } : annotation,
+      ),
+    );
+    markAnnotationsChanged();
+  };
+
+  const beginDrawing = () => {
+    if (!editMode || drawingTool === 'select' || drawingTool === 'pan') return;
+    const pointer = stageRef.current?.getPointerPosition();
+    if (!pointer) return;
+
+    drawingStartRef.current = pointer;
+    const id = `annotation-${++annotationSequenceRef.current}`;
+    setDraftAnnotation(
+      createAnnotation(pointer, pointer, drawingTool, id, 'Unclassified'),
+    );
+    setSelectedAnnotationId(null);
+    setShowTermPicker(false);
+  };
+
+  const moveDrawing = () => {
+    const start = drawingStartRef.current;
+    const pointer = stageRef.current?.getPointerPosition();
+    if (!start || !pointer || !draftAnnotation) return;
+    setDraftAnnotation(
+      createAnnotation(
+        start,
+        pointer,
+        draftAnnotation.tool,
+        draftAnnotation.id,
+        draftAnnotation.className,
+      ),
+    );
+  };
+
+  const finishDrawing = () => {
+    const start = drawingStartRef.current;
+    const pointer = stageRef.current?.getPointerPosition();
+    const draft = draftAnnotation;
+    drawingStartRef.current = null;
+    if (!start || !pointer || !draft) return;
+
+    const annotation = createAnnotation(
+      start,
+      pointer,
+      draft.tool,
+      draft.id,
+      draft.className,
+    );
+    setDraftAnnotation(null);
+    if (Math.max(annotation.width, annotation.height) < 6) return;
+
+    setAnnotations((current) => [...current, annotation]);
+    setSelectedAnnotationId(annotation.id);
+    setDrawingTool('select');
+    setTermSearch('');
+    setShowTermPicker(true);
+    markAnnotationsChanged();
+  };
+
+  const deleteSelectedAnnotation = () => {
+    if (!selectedAnnotationId) return;
+    setAnnotations((current) =>
+      current.filter((annotation) => annotation.id !== selectedAnnotationId),
+    );
+    setSelectedAnnotationId(null);
+    setShowTermPicker(false);
+    markAnnotationsChanged();
+  };
+
+  const saveAnnotations = () => {
+    try {
+      const payload = {
+        format: 'ai-receptions-xray-annotations',
+        version: 1,
+        image: { width: imageSize.width, height: imageSize.height },
+        annotations: annotations.map(
+          ({ tool, x, y, width, height, flipX, flipY, className }) => ({
+            tool,
+            x,
+            y,
+            width,
+            height,
+            flipX,
+            flipY,
+            className,
+          }),
+        ),
+      };
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `xray-annotations-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setAnnotationsDirty(false);
+      setSaveMessage('تم تنزيل ملف التعديلات محلياً؛ لم تُحفظ على سجل المريض.');
+    } catch (saveError) {
+      setSaveMessage(
+        saveError instanceof Error
+          ? `تعذر حفظ التعديلات: ${saveError.message}`
+          : 'تعذر حفظ التعديلات.',
+      );
+    }
+  };
+
+  const annotationTermsWithResults = Array.from(
+    new Set([...annotationTerms, ...categories]),
+  );
+  const filteredAnnotationTerms = annotationTermsWithResults.filter((term) =>
+    term.toLowerCase().includes(termSearch.trim().toLowerCase()),
+  );
+
   const toggleCategory = (className: string) => {
     setHiddenCategories((current) =>
       current.includes(className)
@@ -325,40 +551,27 @@ export default function AiXrayAnalyzer({
         <div>
           <h2 className="text-lg font-bold text-slate-900">محطة تحليل الأشعة</h2>
           <p className="mt-1 text-sm text-slate-500">
-            كبّر الصورة بعجلة الفأرة أو اللمس، واسحبها لفحص التفاصيل.
+            كبّر الصورة تدريجياً، وافحص النتائج أو أضف ملاحظات مرئية على الصورة.
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            حساسية التحليل
-            <select
-              value={confidenceThreshold}
-              onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
-              disabled={isAnalyzing}
-              className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value={0.4}>فحص سريع (حالات واضحة فقط - ثقة 40%+)</option>
-              <option value={0.25}>فحص متوازن (موصى به - ثقة 25%+)</option>
-              <option value={0.15}>فحص دقيق (اكتشافات أكثر - ثقة 15%+)</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={analyzeImage}
-            disabled={isAnalyzing || !consent}
-            className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isAnalyzing ? (
-              <ScanLine className="h-5 w-5 animate-pulse" aria-hidden="true" />
-            ) : (
-              <Sparkles
-                className="h-5 w-5 transition-transform group-hover:rotate-12"
-                aria-hidden="true"
-              />
-            )}
-            <span>{isAnalyzing ? 'جارٍ تحليل الصورة...' : 'تحليل بالذكاء الاصطناعي'}</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setEditMode((current) => !current);
+            setDrawingTool('select');
+            setSelectedAnnotationId(null);
+            setShowTermPicker(false);
+          }}
+          aria-pressed={editMode}
+          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+            editMode
+              ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <Pencil className="h-4 w-4" aria-hidden="true" />
+          {editMode ? 'إنهاء التحرير' : 'تحرير العلامات'}
+        </button>
       </div>
 
       <AnimatePresence initial={false}>
@@ -377,7 +590,7 @@ export default function AiXrayAnalyzer({
       </AnimatePresence>
 
       <div
-        className="grid grid-cols-1 gap-4 min-w-0 xl:grid-cols-[20%_60%_20%]"
+        className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)_minmax(16rem,1fr)]"
         style={{ direction: 'ltr' }}
       >
         <aside
@@ -456,11 +669,110 @@ export default function AiXrayAnalyzer({
           )}
         </aside>
 
-        <div
-          className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-xl"
-          dir="ltr"
-          aria-label="عارض صورة الأشعة"
-        >
+        <div className="min-w-0 space-y-3" dir="rtl">
+          {editMode && (
+            <div
+              className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/90 p-3 shadow-lg backdrop-blur-xl"
+              role="toolbar"
+              aria-label="أدوات تحرير صورة الأشعة"
+            >
+              <button
+                type="button"
+                onClick={() => setDrawingTool('rectangle')}
+                aria-pressed={drawingTool === 'rectangle'}
+                className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                  drawingTool === 'rectangle'
+                    ? 'border-cyan-300 bg-cyan-300/15 text-cyan-100'
+                    : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                }`}
+              >
+                <SquareIcon className="h-4 w-4" aria-hidden="true" />
+                مربع
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawingTool('circle')}
+                aria-pressed={drawingTool === 'circle'}
+                className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                  drawingTool === 'circle'
+                    ? 'border-cyan-300 bg-cyan-300/15 text-cyan-100'
+                    : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                }`}
+              >
+                <CircleIcon className="h-4 w-4" aria-hidden="true" />
+                دائرة
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawingTool('arrow')}
+                aria-pressed={drawingTool === 'arrow'}
+                className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                  drawingTool === 'arrow'
+                    ? 'border-cyan-300 bg-cyan-300/15 text-cyan-100'
+                    : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                }`}
+              >
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                سهم
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawingTool('select')}
+                aria-pressed={drawingTool === 'select'}
+                className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                  drawingTool === 'select'
+                    ? 'border-cyan-300 bg-cyan-300/15 text-cyan-100'
+                    : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                }`}
+              >
+                <MousePointer2 className="h-4 w-4" aria-hidden="true" />
+                تحديد
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawingTool('pan')}
+                aria-pressed={drawingTool === 'pan'}
+                className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                  drawingTool === 'pan'
+                    ? 'border-cyan-300 bg-cyan-300/15 text-cyan-100'
+                    : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                }`}
+              >
+                <Move className="h-4 w-4" aria-hidden="true" />
+                تحريك
+              </button>
+              <button
+                type="button"
+                onClick={deleteSelectedAnnotation}
+                disabled={!selectedAnnotationId}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                حذف
+              </button>
+              <button
+                type="button"
+                onClick={saveAnnotations}
+                disabled={!annotationsDirty && annotations.length === 0}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Save className="h-4 w-4" aria-hidden="true" />
+                حفظ التعديلات
+              </button>
+            </div>
+          )}
+
+          {saveMessage && (
+            <p className="rounded-xl border border-cyan-300/20 bg-cyan-950/60 px-4 py-2 text-sm text-cyan-100" role="status">
+              {saveMessage}
+            </p>
+          )}
+
+          <div
+            className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-xl"
+            dir="ltr"
+            aria-label="عارض صورة الأشعة"
+          >
           <TransformWrapper
             key={displayedImageUrl}
             initialScale={1}
@@ -468,9 +780,12 @@ export default function AiXrayAnalyzer({
             maxScale={5}
             centerOnInit
             fitOnInit="contain"
-            wheel={{ step: 0.12 }}
+            wheel={{ step: 0.2 }}
             pinch={{ step: 5, allowPanning: true }}
-            panning={{ velocityDisabled: true }}
+            panning={{
+              velocityDisabled: true,
+              disabled: editMode && drawingTool !== 'pan',
+            }}
             onTransform={(_ref, state) => setZoom(state.scale)}
           >
             {({ zoomIn, zoomOut, resetTransform, state }) => (
@@ -535,6 +850,167 @@ export default function AiXrayAnalyzer({
                           })}
                         </div>
                       )}
+                    {imageSize.width > 0 && imageSize.height > 0 && (
+                      <Stage
+                        ref={stageRef}
+                        width={imageSize.width}
+                        height={imageSize.height}
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          width: '100%',
+                          height: '100%',
+                          cursor: !editMode
+                            ? 'default'
+                            : drawingTool === 'pan'
+                              ? 'grab'
+                              : drawingTool === 'select'
+                                ? 'default'
+                                : 'crosshair',
+                        }}
+                        listening={editMode && drawingTool !== 'pan'}
+                        onMouseDown={(event) => {
+                          if (event.target === event.target.getStage()) beginDrawing();
+                        }}
+                        onMouseMove={moveDrawing}
+                        onMouseUp={finishDrawing}
+                        onTouchStart={(event) => {
+                          if (event.target === event.target.getStage()) beginDrawing();
+                        }}
+                        onTouchMove={moveDrawing}
+                        onTouchEnd={finishDrawing}
+                      >
+                        <Layer>
+                          {[...annotations, ...(draftAnnotation ? [draftAnnotation] : [])].map(
+                            (annotation) => {
+                              const color = getCategoryStyle(annotation.className, 0).color;
+                              const isDraft = annotation.id === draftAnnotation?.id;
+                              const shapeProps = {
+                                key: annotation.id,
+                                x: annotation.x,
+                                y: annotation.y,
+                                width: annotation.width,
+                                height: annotation.height,
+                                stroke: color,
+                                strokeWidth: 3,
+                                opacity: isDraft ? 0.65 : 1,
+                                draggable:
+                                  editMode &&
+                                  drawingTool === 'select' &&
+                                  !isDraft,
+                                listening:
+                                  editMode &&
+                                  (drawingTool === 'select' || isDraft),
+                                onClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
+                                  event.cancelBubble = true;
+                                  if (drawingTool === 'select' && !isDraft) {
+                                    setSelectedAnnotationId(annotation.id);
+                                    setShowTermPicker(false);
+                                  }
+                                },
+                                onTap: (event: Konva.KonvaEventObject<TouchEvent>) => {
+                                  event.cancelBubble = true;
+                                  if (drawingTool === 'select' && !isDraft) {
+                                    setSelectedAnnotationId(annotation.id);
+                                    setShowTermPicker(false);
+                                  }
+                                },
+                                onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
+                                  updateAnnotation(annotation.id, {
+                                    x: event.target.x(),
+                                    y: event.target.y(),
+                                  });
+                                },
+                                onTransformEnd: (
+                                  event: Konva.KonvaEventObject<Event>,
+                                ) => {
+                                  const node = event.target;
+                                  const scaleX = node.scaleX();
+                                  const scaleY = node.scaleY();
+                                  node.scaleX(1);
+                                  node.scaleY(1);
+                                  updateAnnotation(annotation.id, {
+                                    x: node.x(),
+                                    y: node.y(),
+                                    width: Math.max(1, node.width() * Math.abs(scaleX)),
+                                    height: Math.max(1, node.height() * Math.abs(scaleY)),
+                                    flipX: scaleX < 0 ? !annotation.flipX : annotation.flipX,
+                                    flipY: scaleY < 0 ? !annotation.flipY : annotation.flipY,
+                                  });
+                                },
+                              };
+
+                              if (annotation.tool === 'rectangle') {
+                                return (
+                                  <Rect
+                                    {...shapeProps}
+                                    ref={(node) => {
+                                      if (node) annotationNodesRef.current.set(annotation.id, node);
+                                      else annotationNodesRef.current.delete(annotation.id);
+                                    }}
+                                    fill={`${color}18`}
+                                  />
+                                );
+                              }
+                              if (annotation.tool === 'circle') {
+                                return (
+                                  <Ellipse
+                                    {...shapeProps}
+                                    ref={(node) => {
+                                      if (node) annotationNodesRef.current.set(annotation.id, node);
+                                      else annotationNodesRef.current.delete(annotation.id);
+                                    }}
+                                    x={annotation.x + annotation.width / 2}
+                                    y={annotation.y + annotation.height / 2}
+                                    radiusX={annotation.width / 2}
+                                    radiusY={annotation.height / 2}
+                                    fill={`${color}18`}
+                                  />
+                                );
+                              }
+                              return (
+                                <Arrow
+                                  {...shapeProps}
+                                  ref={(node) => {
+                                    if (node) annotationNodesRef.current.set(annotation.id, node);
+                                    else annotationNodesRef.current.delete(annotation.id);
+                                  }}
+                                  points={[
+                                    annotation.flipX ? annotation.width : 0,
+                                    annotation.flipY ? annotation.height : 0,
+                                    annotation.flipX ? 0 : annotation.width,
+                                    annotation.flipY ? 0 : annotation.height,
+                                  ]}
+                                  pointerLength={Math.max(8, imageSize.width * 0.008)}
+                                  pointerWidth={Math.max(8, imageSize.width * 0.008)}
+                                  fill={color}
+                                />
+                              );
+                            },
+                          )}
+                          {editMode &&
+                            annotations.some(
+                              (annotation) =>
+                                annotation.id === selectedAnnotationId &&
+                                annotation.tool === 'rectangle',
+                            ) && (
+                            <Transformer
+                              ref={transformerRef}
+                              rotateEnabled={false}
+                              flipEnabled
+                              keepRatio={false}
+                              anchorSize={10}
+                              anchorFill="#ffffff"
+                              anchorStroke="#06b6d4"
+                              borderStroke="#06b6d4"
+                              boundBoxFunc={(oldBox, newBox) =>
+                                newBox.width < 5 || newBox.height < 5 ? oldBox : newBox
+                              }
+                            />
+                          )}
+                        </Layer>
+                      </Stage>
+                    )}
                   </div>
                 </TransformComponent>
 
@@ -545,7 +1021,7 @@ export default function AiXrayAnalyzer({
                 >
                   <button
                     type="button"
-                    onClick={() => zoomOut()}
+                    onClick={() => zoomOut(0.2, 180)}
                     disabled={state.scale <= 1}
                     aria-label="تصغير صورة البانوراما"
                     title="تصغير"
@@ -561,7 +1037,7 @@ export default function AiXrayAnalyzer({
                   </span>
                   <button
                     type="button"
-                    onClick={() => zoomIn()}
+                    onClick={() => zoomIn(0.2, 180)}
                     disabled={state.scale >= 5}
                     aria-label="تكبير صورة البانوراما"
                     title="تكبير"
@@ -582,8 +1058,63 @@ export default function AiXrayAnalyzer({
                 </div>
 
                 <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-white/10 bg-slate-950/75 px-3 py-1.5 text-xs text-slate-200 backdrop-blur">
-                  عجلة الفأرة أو اللمس للتكبير · اسحب للتحريك
+                  كل خطوة تكبير 20٪ · عجلة الفأرة أو اللمس للتحريك
                 </div>
+
+                {showTermPicker && selectedAnnotationId && (
+                  <div
+                    className="absolute left-1/2 top-1/2 z-30 w-[min(22rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/15 bg-slate-900/95 p-4 text-slate-100 shadow-2xl backdrop-blur-xl"
+                    dir="rtl"
+                    role="dialog"
+                    aria-label="اختيار مصطلح للعلامة"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h4 className="font-bold">اختر المصطلح</h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowTermPicker(false)}
+                        className="rounded-lg px-2 py-1 text-sm text-slate-300 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                        aria-label="إغلاق اختيار المصطلح"
+                      >
+                        إغلاق
+                      </button>
+                    </div>
+                    <label className="relative block">
+                      <Search
+                        className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                        aria-hidden="true"
+                      />
+                      <input
+                        type="search"
+                        value={termSearch}
+                        onChange={(event) => setTermSearch(event.target.value)}
+                        placeholder="ابحث عن مصطلح..."
+                        className="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 py-2 pe-10 ps-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/20"
+                      />
+                    </label>
+                    <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto">
+                      {filteredAnnotationTerms.map((term) => (
+                        <li key={term}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateAnnotation(selectedAnnotationId, { className: term });
+                              setShowTermPicker(false);
+                            }}
+                            className="w-full rounded-lg px-3 py-2 text-start text-sm text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                          >
+                            {getCategoryStyle(term, 0).label}
+                          </button>
+                        </li>
+                      ))}
+                      {filteredAnnotationTerms.length === 0 && (
+                        <li className="px-3 py-2 text-sm text-slate-400">
+                          لا توجد مصطلحات مطابقة.
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
 
                 <AnimatePresence>
                   {isAnalyzing && (
@@ -625,6 +1156,42 @@ export default function AiXrayAnalyzer({
               </>
             )}
           </TransformWrapper>
+        </div>
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/90 p-4 shadow-lg backdrop-blur-xl sm:flex-row sm:items-end sm:justify-between"
+            dir="rtl"
+            aria-label="إعدادات تحليل الأشعة"
+          >
+            <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium text-slate-200">
+              حساسية التحليل
+              <select
+                value={confidenceThreshold}
+                onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
+                disabled={isAnalyzing}
+                className="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 shadow-sm outline-none transition focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value={0.4}>فحص سريع (ثقة 40٪ فأكثر)</option>
+                <option value={0.25}>فحص متوازن (موصى به - ثقة 25٪ فأكثر)</option>
+                <option value={0.15}>فحص دقيق (ثقة 15٪ فأكثر)</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={analyzeImage}
+              disabled={isAnalyzing || !consent}
+              className="group inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isAnalyzing ? (
+                <ScanLine className="h-5 w-5 animate-pulse" aria-hidden="true" />
+              ) : (
+                <Sparkles
+                  className="h-5 w-5 transition-transform group-hover:rotate-12"
+                  aria-hidden="true"
+                />
+              )}
+              <span>{isAnalyzing ? 'جارٍ تحليل الصورة...' : 'تحليل بالذكاء الاصطناعي'}</span>
+            </button>
+          </div>
         </div>
 
         <aside
