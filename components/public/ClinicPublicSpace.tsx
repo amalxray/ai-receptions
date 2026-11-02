@@ -13,8 +13,9 @@ import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark
  */
 
 export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace & { subscriptionExpired?: boolean }; servicesCard?: ReactNode }) {
+  const ads = Array.isArray(space?.ads) ? space.ads : [];
   const hasProviders = !!space?.providers && space.providers.length > 0;
-  const hasAds = !!space?.ads && space.ads.length > 0;
+  const hasAds = ads.length > 0;
   return (
     <ActivitySpaceChrome
       space={space}
@@ -35,7 +36,7 @@ export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPubl
             <section className="mb-10">
               <h2 className="mb-4 text-xl font-bold text-slate-800">عروض وإعلانات</h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                {space.ads.map((ad) => (
+                {ads.map((ad) => (
                   <div
                     key={ad.title}
                     className="public-card rounded-2xl border border-brand-cyan/25 bg-white p-5 hover:border-brand-cyan/50"
