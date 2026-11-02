@@ -221,6 +221,7 @@ export default function AiXrayAnalyzer({
   const [termSearch, setTermSearch] = useState('');
   const [annotationsDirty, setAnnotationsDirty] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isSavingAnnotations, setIsSavingAnnotations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
@@ -451,43 +452,60 @@ export default function AiXrayAnalyzer({
     markAnnotationsChanged();
   };
 
-  const saveAnnotations = () => {
+  const saveAnnotations = async () => {
+    if (isSavingAnnotations || !annotationsDirty) return;
+
+    setIsSavingAnnotations(true);
+    setSaveMessage(null);
     try {
-      const payload = {
-        format: 'ai-receptions-xray-annotations',
-        version: 1,
-        image: { width: imageSize.width, height: imageSize.height },
-        annotations: annotations.map(
-          ({ tool, x, y, width, height, flipX, flipY, className }) => ({
-            tool,
-            x,
-            y,
-            width,
-            height,
-            flipX,
-            flipY,
-            className,
-          }),
-        ),
-      };
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
-      );
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `xray-annotations-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (!imageUrl) {
+        throw new Error('تعذر تحديد رابط صورة الأشعة المرتبطة بالملف.');
+      }
+
+      const headers = await authHeaders();
+      const response = await fetch('/api/ai/panorama-analyze/save-annotations', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clinic_id: clinicId,
+          image_url: imageUrl,
+          annotations: annotations.map(
+            ({ tool, x, y, width, height, flipX, flipY, className }) => ({
+              tool,
+              x,
+              y,
+              width,
+              height,
+              flipX,
+              flipY,
+              className,
+            }),
+          ),
+          image_width: imageSize.width,
+          image_height: imageSize.height,
+          medical_file_id: medicalFileId,
+          patient_id: patientId,
+        }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          isRecord(payload) && typeof payload.error === 'string'
+            ? payload.error
+            : 'تعذر حفظ التعديلات. حاول مرة أخرى.';
+        throw new Error(message);
+      }
+
       setAnnotationsDirty(false);
-      setSaveMessage('تم تنزيل ملف التعديلات محلياً؛ لم تُحفظ على سجل المريض.');
+      setSaveMessage('تم حفظ التعديلات في سجل صورة الأشعة.');
     } catch (saveError) {
       setSaveMessage(
         saveError instanceof Error
           ? `تعذر حفظ التعديلات: ${saveError.message}`
           : 'تعذر حفظ التعديلات.',
       );
+    } finally {
+      setIsSavingAnnotations(false);
     }
   };
 
@@ -753,11 +771,11 @@ export default function AiXrayAnalyzer({
               <button
                 type="button"
                 onClick={saveAnnotations}
-                disabled={!annotationsDirty && annotations.length === 0}
+                disabled={!annotationsDirty || isSavingAnnotations}
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Save className="h-4 w-4" aria-hidden="true" />
-                حفظ التعديلات
+                {isSavingAnnotations ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}
               </button>
             </div>
           )}
