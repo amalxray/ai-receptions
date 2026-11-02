@@ -13,8 +13,8 @@ import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock, InitialsBrandMark
  */
 
 export function ClinicPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace & { subscriptionExpired?: boolean }; servicesCard?: ReactNode }) {
-  const hasProviders = space.providers.length > 0;
-  const hasAds = space.ads.length > 0;
+  const hasProviders = !!space?.providers && space.providers.length > 0;
+  const hasAds = !!space?.ads && space.ads.length > 0;
   return (
     <ActivitySpaceChrome
       space={space}
