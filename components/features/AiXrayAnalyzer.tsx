@@ -795,10 +795,14 @@ export default function AiXrayAnalyzer({
             key={displayedImageUrl}
             initialScale={1}
             minScale={1}
-            maxScale={5}
+            maxScale={4}
+            limitToBounds
             centerOnInit
             fitOnInit="contain"
+            smooth={false}
             wheel={{ step: 0.2 }}
+            doubleClick={{ disabled: true }}
+            zoomAnimation={{ disabled: true }}
             pinch={{ step: 5, allowPanning: true }}
             panning={{
               velocityDisabled: true,
@@ -1056,7 +1060,7 @@ export default function AiXrayAnalyzer({
                   <button
                     type="button"
                     onClick={() => zoomIn(0.2, 180)}
-                    disabled={state.scale >= 5}
+                    disabled={state.scale >= 4}
                     aria-label="تكبير صورة البانوراما"
                     title="تكبير"
                     className="rounded-lg p-2 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
