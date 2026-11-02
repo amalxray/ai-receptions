@@ -447,7 +447,7 @@ export default function AiXrayAnalyzer({
             maxScale={5}
             centerOnInit
             fitOnInit="contain"
-            wheel={{ step: 0.12 }}
+            wheel={{ step: 0.2 }}
             pinch={{ step: 5, allowPanning: true }}
             panning={{ velocityDisabled: true }}
             onTransform={(_ref, state) => setZoom(state.scale)}
