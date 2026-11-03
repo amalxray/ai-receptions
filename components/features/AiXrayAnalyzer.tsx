@@ -15,6 +15,7 @@ import {
   Search,
   Sparkles,
   Square as SquareIcon,
+  Zap,
   Trash2,
   ZoomIn,
   ZoomOut,
@@ -281,7 +282,7 @@ export default function AiXrayAnalyzer({
     }
   }, [displayedImageUrl, updateImageSize]);
 
-  const analyzeImage = async () => {
+  const analyzeImage = async (modelVersion?: 'advanced') => {
     if (isAnalyzing || !consent || (!imageFile && !imageUrl)) return;
 
     setIsAnalyzing(true);
@@ -303,6 +304,9 @@ export default function AiXrayAnalyzer({
       formData.set('medical_file_id', medicalFileId);
       formData.set('consent', 'true');
       formData.set('confidence_threshold', String(confidenceThreshold));
+      if (modelVersion === 'advanced') {
+        formData.set('model_version', 'advanced');
+      }
 
       const response = await fetch('/api/ai/panorama-analyze', {
         method: 'POST',
@@ -572,24 +576,50 @@ export default function AiXrayAnalyzer({
             كبّر الصورة تدريجياً، وافحص النتائج أو أضف ملاحظات مرئية على الصورة.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditMode((current) => !current);
-            setDrawingTool('select');
-            setSelectedAnnotationId(null);
-            setShowTermPicker(false);
-          }}
-          aria-pressed={editMode}
-          className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-            editMode
-              ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
-              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-          {editMode ? 'إنهاء التحرير' : 'تحرير العلامات'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => analyzeImage()}
+            disabled={isAnalyzing || !consent}
+            className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isAnalyzing ? (
+              <ScanLine className="h-5 w-5 animate-pulse" aria-hidden="true" />
+            ) : (
+              <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" aria-hidden="true" />
+            )}
+            <span>{isAnalyzing ? 'جارٍ تحليل الصورة...' : 'تحليل بالذكاء الاصطناعي'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => analyzeImage('advanced')}
+            disabled={isAnalyzing || !consent}
+            className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-400 bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-2.5 font-bold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-500/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Zap className="h-5 w-5 transition-transform group-hover:scale-110" aria-hidden="true" />
+            <span>تحليل متقدم (83 فئة)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditMode((current) => !current);
+              setDrawingTool('select');
+              setSelectedAnnotationId(null);
+              setShowTermPicker(false);
+            }}
+            aria-pressed={editMode}
+            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+              editMode
+                ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            {editMode ? 'إنهاء التحرير' : 'تحرير العلامات'}
+          </button>
+        </div>
       </div>
 
       <AnimatePresence initial={false}>

@@ -45,6 +45,22 @@ describe('getPanoramaInferenceConfig', () => {
     });
   });
 
+  it('routes advanced requests to the dedicated v2 inference service', () => {
+    expect(
+      getPanoramaInferenceConfig(
+        {
+          NODE_ENV: 'production',
+          AI_INFERENCE_URL_V2: 'https://ai-inference-v2.onrender.com',
+          AI_INFERENCE_API_KEY_V2: 'advanced-secret',
+        },
+        'advanced'
+      )
+    ).toEqual({
+      endpoint: new URL('https://ai-inference-v2.onrender.com/analyze'),
+      apiKey: 'advanced-secret',
+    });
+  });
+
   it('fails closed for invalid URLs and insecure production URLs', () => {
     expect(
       getPanoramaInferenceConfig({
