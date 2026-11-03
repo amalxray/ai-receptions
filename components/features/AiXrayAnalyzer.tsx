@@ -220,6 +220,11 @@ export default function AiXrayAnalyzer({
   const [isSavingAnnotations, setIsSavingAnnotations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
+  const [zoom, setZoom] = useState(1);
+  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
   const [reactKonva, setReactKonva] = useState<typeof import('react-konva') | null>(null);
 
   useEffect(() => {
@@ -238,11 +243,6 @@ export default function AiXrayAnalyzer({
   }, []);
 
   const { Stage, Layer, Rect, Ellipse, Arrow, Transformer } = reactKonva ?? {};
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
-  const [zoom, setZoom] = useState(1);
-  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [fileObjectUrl, setFileObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!imageFile) {
@@ -582,14 +582,14 @@ export default function AiXrayAnalyzer({
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-900">محطة تحليل الأشعة</h2>
           <p className="mt-1 text-sm text-slate-500">
             كبّر الصورة تدريجياً، وافحص النتائج أو أضف ملاحظات مرئية على الصورة.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => analyzeImage()}
@@ -603,6 +603,20 @@ export default function AiXrayAnalyzer({
             )}
             <span>{isAnalyzing ? 'جارٍ تحليل الصورة...' : 'تحليل بالذكاء الاصطناعي'}</span>
           </button>
+
+          <label className="flex min-w-[210px] flex-col gap-1 text-xs font-medium text-slate-600" dir="rtl">
+            <span className="text-[11px] font-semibold text-slate-500">حساسية التحليل</span>
+            <select
+              value={confidenceThreshold}
+              onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
+              disabled={isAnalyzing}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value={0.4}>فحص سريع (40٪)</option>
+              <option value={0.25}>فحص متوازن (25٪)</option>
+              <option value={0.15}>فحص دقيق (15٪)</option>
+            </select>
+          </label>
 
           <button
             type="button"
@@ -1222,41 +1236,6 @@ export default function AiXrayAnalyzer({
             )}
           </TransformWrapper>
         </div>
-          <div
-            className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/90 p-4 shadow-lg backdrop-blur-xl sm:flex-row sm:items-end sm:justify-between"
-            dir="rtl"
-            aria-label="إعدادات تحليل الأشعة"
-          >
-            <label className="flex min-w-0 flex-1 flex-col gap-2 text-sm font-medium text-slate-200">
-              حساسية التحليل
-              <select
-                value={confidenceThreshold}
-                onChange={(event) => setConfidenceThreshold(Number(event.target.value))}
-                disabled={isAnalyzing}
-                className="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 shadow-sm outline-none transition focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value={0.4}>فحص سريع (ثقة 40٪ فأكثر)</option>
-                <option value={0.25}>فحص متوازن (موصى به - ثقة 25٪ فأكثر)</option>
-                <option value={0.15}>فحص دقيق (ثقة 15٪ فأكثر)</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => analyzeImage()}
-              disabled={isAnalyzing || !consent}
-              className="group inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isAnalyzing ? (
-                <ScanLine className="h-5 w-5 animate-pulse" aria-hidden="true" />
-              ) : (
-                <Sparkles
-                  className="h-5 w-5 transition-transform group-hover:rotate-12"
-                  aria-hidden="true"
-                />
-              )}
-              <span>{isAnalyzing ? 'جارٍ تحليل الصورة...' : 'تحليل بالذكاء الاصطناعي'}</span>
-            </button>
-          </div>
         </div>
 
         <aside

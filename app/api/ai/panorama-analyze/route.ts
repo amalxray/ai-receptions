@@ -136,12 +136,24 @@ export async function POST(request: Request) {
       return errorResponse('صيغة صورة الأشعة غير مدعومة.', 415);
     }
 
+    const confidenceThresholdRaw = formData.get('confidence_threshold');
+    const parsedConfidenceThreshold = Number(
+      typeof confidenceThresholdRaw === 'string' && confidenceThresholdRaw.trim() !== ''
+        ? confidenceThresholdRaw
+        : 0.25,
+    );
+    const confidenceThreshold = Number.isFinite(parsedConfidenceThreshold)
+      ? Math.min(1, Math.max(0, parsedConfidenceThreshold))
+      : 0.25;
+
     const oracleForm = new FormData();
     oracleForm.append(
       'image',
       imageBlob.slice(0, imageBlob.size, detectedType.mime),
       `panorama.${detectedType.ext}`
     );
+    oracleForm.append('confidence_threshold', String(confidenceThreshold));
+    oracleForm.append('model_version', modelVersion ?? 'legacy');
 
     let inferenceResponse: Response;
     try {
