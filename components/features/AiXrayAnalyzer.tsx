@@ -22,11 +22,6 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
-import 'konva/lib/shapes/Arrow';
-import 'konva/lib/shapes/Ellipse';
-import 'konva/lib/shapes/Rect';
-import 'konva/lib/shapes/Transformer';
-import { Arrow, Ellipse, Layer, Rect, Stage, Transformer } from 'react-konva/lib/ReactKonvaCore';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 
 interface Prediction {
@@ -225,6 +220,24 @@ export default function AiXrayAnalyzer({
   const [isSavingAnnotations, setIsSavingAnnotations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  const [reactKonva, setReactKonva] = useState<typeof import('react-konva') | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    import('react-konva')
+      .then((module) => {
+        if (isMounted) setReactKonva(module);
+      })
+      .catch(() => {
+        if (isMounted) setReactKonva(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const { Stage, Layer, Rect, Ellipse, Arrow, Transformer } = reactKonva ?? {};
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25);
   const [zoom, setZoom] = useState(1);
   const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
@@ -902,7 +915,7 @@ export default function AiXrayAnalyzer({
                           })}
                         </div>
                       )}
-                    {imageSize.width > 0 && imageSize.height > 0 && (
+                    {imageSize.width > 0 && imageSize.height > 0 && Stage && Layer && Rect && Ellipse && Arrow && Transformer && (
                       <Stage
                         ref={stageRef}
                         width={imageSize.width}
@@ -1229,7 +1242,7 @@ export default function AiXrayAnalyzer({
             </label>
             <button
               type="button"
-              onClick={analyzeImage}
+              onClick={() => analyzeImage()}
               disabled={isAnalyzing || !consent}
               className="group inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
