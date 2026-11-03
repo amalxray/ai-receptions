@@ -81,6 +81,17 @@ export default function AdsManager() {
     setForm({});
   };
 
+  const readJsonResponse = async (res: Response) => {
+    const text = await res.text();
+    if (!text) return {} as Record<string, unknown>;
+
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return { error: text } as Record<string, unknown>;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clinicId || !form.title) return;
@@ -88,20 +99,21 @@ export default function AdsManager() {
     try {
       const headers = await authHeaders();
       const body: Record<string, unknown> = { ...form };
+      const requestHeaders = { ...headers, 'Content-Type': 'application/json' };
 
       let res: Response;
       if (editingId) {
         res = await fetch(`${endpoint}/${editingId}?clinic_id=${encodeURIComponent(clinicId)}`, {
-          method: 'PUT', headers, body: JSON.stringify(body),
+          method: 'PUT', headers: requestHeaders, body: JSON.stringify(body),
         });
       } else {
         res = await fetch(`${endpoint}?clinic_id=${encodeURIComponent(clinicId)}`, {
-          method: 'POST', headers, body: JSON.stringify(body),
+          method: 'POST', headers: requestHeaders, body: JSON.stringify(body),
         });
       }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'تعذر حفظ الإعلان');
+      const data = await readJsonResponse(res);
+      if (!res.ok) throw new Error((data.error as string) || 'تعذر حفظ الإعلان');
 
       addToast({ type: 'success', message: editingId ? 'تم تحديث الإعلان' : 'تم إنشاء الإعلان' });
       closeForm();
@@ -121,8 +133,8 @@ export default function AdsManager() {
       const res = await fetch(`${endpoint}/${id}?clinic_id=${encodeURIComponent(clinicId)}`, {
         method: 'DELETE', headers,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'تعذر حذف الإعلان');
+      const data = await readJsonResponse(res);
+      if (!res.ok) throw new Error((data.error as string) || 'تعذر حذف الإعلان');
       addToast({ type: 'success', message: 'تم حذف الإعلان' });
       void load();
     } catch (e) {
@@ -135,11 +147,11 @@ export default function AdsManager() {
     try {
       const headers = await authHeaders();
       const res = await fetch(`${endpoint}/${ad.id}?clinic_id=${encodeURIComponent(clinicId)}`, {
-        method: 'PUT', headers,
+        method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: !ad.is_active }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'تعذر تحديث الإعلان');
+      const data = await readJsonResponse(res);
+      if (!res.ok) throw new Error((data.error as string) || 'تعذر تحديث الإعلان');
       addToast({ type: 'success', message: ad.is_active ? 'تم إلغاء التفعيل' : 'تم التفعيل' });
       void load();
     } catch (e) {

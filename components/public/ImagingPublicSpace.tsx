@@ -64,6 +64,8 @@ export function imagingServicePriceLabel(svc: { pricing_mode: string | null; pri
 }
 
 export function ImagingPublicSpace({ space, servicesCard }: { space: ActivityPublicSpace; servicesCard?: ReactNode }) {
+  const ads = Array.isArray(space?.ads) ? space.ads : [];
+  const hasAds = ads.length > 0;
   const hasImaging = space.imagingServices.length > 0;
   const hasShared = space.services.length > 0;
   return (
@@ -73,6 +75,28 @@ export function ImagingPublicSpace({ space, servicesCard }: { space: ActivityPub
       children={
         <>
           {servicesCard}
+          {/* Announcements / offers (clinic_ads) */}
+          {hasAds && (
+            <section className="mb-10">
+              <h2 className="mb-4 text-xl font-bold text-slate-800">عروض وإعلانات</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {ads.map((ad) => (
+                  <div
+                    key={ad.title}
+                    className="public-card rounded-2xl border border-brand-cyan/25 bg-white p-5 hover:border-brand-cyan/50"
+                  >
+                    <h3 className="font-bold text-slate-800">🎉 {ad.title}</h3>
+                    {ad.description && <p className="mt-2 text-sm leading-relaxed text-slate-500">{ad.description}</p>}
+                    {ad.cta_link && (
+                      <a href={ad.cta_link} className="mt-3 inline-block text-sm font-semibold text-brand-cyan hover:text-brand-cyan/80">
+                        {ad.cta_text} ←
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           {/* 5) Imaging services / modalities */}
           <section className="mb-10">
             <h2 className="mb-3 text-xl font-semibold text-slate-800">خدمات التصوير والفحوصات</h2>

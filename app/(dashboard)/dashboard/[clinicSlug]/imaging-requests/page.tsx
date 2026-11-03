@@ -5,6 +5,7 @@ import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
 import StatusPill from '@/components/dashboard/StatusPill';
+import { toast } from '@/components/ui/Toast';
 import { useClinicContext } from '@/lib/useClinicContext';
 
 /** IMAGING REQUESTS — imaging-center inbox (referral workflow UI). */
@@ -82,6 +83,8 @@ export default function ImagingRequestsPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -103,7 +106,7 @@ export default function ImagingRequestsPage() {
   }, [loading, clinicId, load]);
 
   async function transition(requestId: string, toStatus: string) {
-    if (!clinicId) return;
+    if (!clinicId || deleteBusy) return;
     setBusyId(requestId);
     setErr(null);
     try {
@@ -123,6 +126,62 @@ export default function ImagingRequestsPage() {
     }
   }
 
+  async function deleteRequests(requestIds: string[]) {
+    if (!clinicId || !rows || busyId || deleteBusy || requestIds.length === 0) return;
+    const requestIdSet = new Set(requestIds);
+    const requestsToDelete = rows.filter((row) => requestIdSet.has(row.id));
+    if (requestsToDelete.length === 0) return;
+
+    const originalRows = rows;
+    const originalOrder = new Map(originalRows.map((row, index) => [row.id, index]));
+    setDeleteBusy(true);
+    setErr(null);
+    setRows(originalRows.filter((row) => !requestIdSet.has(row.id)));
+    setSelectedIds((current) => new Set(Array.from(current).filter((id) => !requestIdSet.has(id))));
+
+    const results = await Promise.allSettled(
+      requestsToDelete.map(async (row) => {
+        const headers = await authHeaders();
+        const res = await fetch(
+          `/api/clinic/activity-requests/${encodeURIComponent(row.id)}?clinic_id=${encodeURIComponent(clinicId)}&table=imaging_requests`,
+          { method: 'DELETE', headers }
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(describeApiError(body, 'تعذر حذف طلب التصوير'));
+      })
+    );
+    const failedRows = requestsToDelete.filter((_, index) => results[index].status === 'rejected');
+    const successCount = requestsToDelete.length - failedRows.length;
+
+    if (failedRows.length > 0) {
+      const failures = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason instanceof Error ? result.reason.message : 'تعذر حذف طلب التصوير');
+      setRows((current) => {
+        const restored = [...(current ?? [])];
+        for (const failedRow of failedRows) {
+          if (!restored.some((row) => row.id === failedRow.id)) restored.push(failedRow);
+        }
+        return restored.sort(
+          (a, b) => (originalOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (originalOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+        );
+      });
+      toast.error(
+        successCount > 0
+          ? `تم حذف ${successCount} طلب، وتعذر حذف ${failedRows.length}: ${failures[0]}`
+          : failures[0]
+      );
+    } else {
+      toast.success(
+        requestsToDelete.length === 1
+          ? 'تم حذف طلب التصوير'
+          : `تم حذف ${requestsToDelete.length} من طلبات التصوير`
+      );
+    }
+
+    setDeleteBusy(false);
+  }
+
   if (loading) return <Skeleton className="h-60" />;
   if (clinicError) return <EmptyState title="تعذر تحميل الطلبات" description={clinicError} />;
 
@@ -134,18 +193,57 @@ export default function ImagingRequestsPage() {
       ) : rows.length === 0 ? (
         <EmptyState title="لا توجد طلبات تصوير" description="ستظهر هنا الطلبات الواردة من العيادات المحيلة المرتبطة بمركزك." />
       ) : (
-        <div className="space-y-4">
-          {rows.map((r) => (
-            <RequestCard
-              key={r.id}
-              r={r}
-              busy={busyId === r.id}
-              onTransition={transition}
-              clinicId={clinicId}
-              authHeaders={authHeaders}
-              onLinked={load}
-            />
-          ))}
+        <div>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set(rows.map((row) => row.id)))}
+              disabled={deleteBusy || busyId !== null || rows.every((row) => selectedIds.has(row.id))}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-cyan-500/70 disabled:opacity-50"
+            >
+              تحديد الكل
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={deleteBusy || busyId !== null || selectedIds.size === 0}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-cyan-500/70 disabled:opacity-50"
+            >
+              إلغاء الكل
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteRequests(Array.from(selectedIds))}
+              disabled={deleteBusy || busyId !== null || selectedIds.size === 0}
+              className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+            >
+              {deleteBusy ? 'جارٍ الحذف…' : `حذف المحدد${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+            </button>
+          </div>
+          <div className="space-y-4">
+            {rows.map((r) => (
+              <RequestCard
+                key={r.id}
+                r={r}
+                busy={busyId === r.id || deleteBusy}
+                selected={selectedIds.has(r.id)}
+                deleting={deleteBusy}
+                onToggleSelected={(checked) => {
+                  setSelectedIds((current) => {
+                    const next = new Set(current);
+                    if (checked) next.add(r.id);
+                    else next.delete(r.id);
+                    return next;
+                  });
+                }}
+                onDelete={() => void deleteRequests([r.id])}
+                onTransition={transition}
+                clinicId={clinicId}
+                authHeaders={authHeaders}
+                onLinked={load}
+              />
+            ))}
+          </div>
         </div>
       )}
     </DashboardSection>
@@ -153,6 +251,10 @@ export default function ImagingRequestsPage() {
 function RequestCard({
   r,
   busy,
+  selected,
+  deleting,
+  onToggleSelected,
+  onDelete,
   onTransition,
   clinicId,
   authHeaders,
@@ -160,6 +262,10 @@ function RequestCard({
 }: {
   r: Row;
   busy: boolean;
+  selected: boolean;
+  deleting: boolean;
+  onToggleSelected: (checked: boolean) => void;
+  onDelete: () => void;
   onTransition: (id: string, to: string) => void;
   clinicId: string | null;
   authHeaders: () => Promise<Record<string, string>>;
@@ -206,7 +312,20 @@ function RequestCard({
             {refName ? ` · العيادة المحيلة: ${refName}` : ''}
           </p>
         </div>
-        <StatusPill tone={TONE[r.status] ?? 'neutral'}>{STATUS_AR[r.status] ?? r.status}</StatusPill>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={selected}
+              disabled={deleting}
+              onChange={(event) => onToggleSelected(event.target.checked)}
+              aria-label={`تحديد طلب ${r.requested_service ?? 'التصوير'}`}
+              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-500 focus:ring-cyan-500"
+            />
+            تحديد
+          </label>
+          <StatusPill tone={TONE[r.status] ?? 'neutral'}>{STATUS_AR[r.status] ?? r.status}</StatusPill>
+        </div>
       </div>
       {r.notes && <p className="mt-2 text-sm text-slate-300">{r.notes}</p>}
       {/* patient_id = the REFERRING clinic's patient; patient_id_center = OUR file */}
@@ -238,6 +357,14 @@ function RequestCard({
         <p className="mt-2 text-xs text-emerald-400">ملف مركز التصوير: مرتبط ✓</p>
       )}
       <p className="mt-2 text-xs text-slate-500">{r.created_at ? new Date(r.created_at).toLocaleString('ar') : ''}</p>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={busy}
+        className="mt-3 rounded-lg border border-red-800 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:border-red-600 hover:bg-red-950/40 disabled:opacity-50"
+      >
+        حذف
+      </button>
       {nexts.length > 0 && !busy && (
         <div className="mt-3 flex flex-wrap gap-2">
           {nexts.map((s) => (

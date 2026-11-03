@@ -4,16 +4,35 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 
+const nullableString = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.string().optional()
+);
+
+const nullableUrl = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.string().url('رابط الصورة غير صالح').optional()
+);
+
 const createSchema = z.object({
   title: z.string().min(1, 'العنوان مطلوب'),
-  description: z.string().optional(),
-  image_url: z.string().url('رابط الصورة غير صالح').optional(),
-  cta_text: z.string().default('إقرأ المزيد'),
-  cta_link: z.string().optional(),
-  is_active: z.boolean().default(true),
-  display_order: z.number().int().default(0),
-  start_date: z.string().optional(),
-  end_date: z.string().optional(),
+  description: nullableString,
+  image_url: nullableUrl,
+  cta_text: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.string().default('إقرأ المزيد')
+  ),
+  cta_link: nullableUrl,
+  is_active: z.preprocess(
+    (value) => (value === null ? true : value),
+    z.boolean().default(true)
+  ),
+  display_order: z.preprocess(
+    (value) => (value === null ? 0 : value),
+    z.number().int().default(0)
+  ),
+  start_date: nullableString,
+  end_date: nullableString,
 });
 
 export async function GET(req: Request) {

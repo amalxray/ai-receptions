@@ -279,13 +279,11 @@ export async function getPublicClinicProfile(
       : Promise.resolve({ data: null, error: null }),
     supabaseAdmin
       .from('clinic_ads')
-      .select('title, description, image_url, cta_text, cta_link')
+      .select('title, description, image_url, cta_text, cta_link, start_date, end_date')
       .eq('clinic_id', clinic.id)
       .eq('is_active', true)
-      .or(`start_date.is.null,start_date.lte.${today}`)
-      .or(`end_date.is.null,end_date.gte.${today}`)
       .order('display_order', { ascending: true })
-      .limit(6),
+      .limit(50),
   ]);
   const { data: servicesRows } = servicesResult;
 
@@ -344,13 +342,26 @@ export async function getPublicClinicProfile(
     // Degrade gracefully: the public profile still renders without ads.
     logEvent('public_profile_ads_error', { clinicId: clinic.id, error: adsError.message }, 'error');
   }
-  const ads: PublicAd[] = (adRows ?? []).map((a) => ({
-    title: a.title,
-    description: a.description ?? null,
-    image_url: a.image_url ?? null,
-    cta_text: a.cta_text ?? 'اعرف المزيد',
-    cta_link: a.cta_link ?? null,
-  }));
+
+  const ads: PublicAd[] = (adRows ?? [])
+    .filter((ad) => {
+      const startDate = ad.start_date ? new Date(`${ad.start_date}T00:00:00Z`) : null;
+      const endDate = ad.end_date ? new Date(`${ad.end_date}T23:59:59Z`) : null;
+      const todayDate = new Date(`${today}T00:00:00Z`);
+
+      const startsBeforeToday = !startDate || startDate <= todayDate;
+      const endsAfterToday = !endDate || endDate >= todayDate;
+
+      return startsBeforeToday && endsAfterToday;
+    })
+    .slice(0, 6)
+    .map((a) => ({
+      title: a.title,
+      description: a.description ?? null,
+      image_url: a.image_url ?? null,
+      cta_text: a.cta_text ?? 'اعرف المزيد',
+      cta_link: a.cta_link ?? null,
+    }));
 
   return {
     id: clinic.id,
