@@ -1,13 +1,20 @@
-type PanoramaInferenceConfig = {
+export type PanoramaInferenceConfig = {
   endpoint: URL;
   apiKey: string;
 };
 
 export function getPanoramaInferenceConfig(
-  environment: NodeJS.ProcessEnv = process.env
+  environment: NodeJS.ProcessEnv = process.env,
+  modelVersion?: string | null,
 ): PanoramaInferenceConfig | null {
-  const inferenceUrl = environment.AI_INFERENCE_URL;
-  const apiKey = environment.AI_INFERENCE_API_KEY;
+  const isAdvancedModel = modelVersion === 'advanced';
+  const inferenceUrl = isAdvancedModel
+    ? environment.AI_INFERENCE_URL_V2
+    : environment.AI_INFERENCE_URL;
+  const apiKey = isAdvancedModel
+    ? environment.AI_INFERENCE_API_KEY_V2
+    : environment.AI_INFERENCE_API_KEY;
+
   if (!inferenceUrl || !apiKey) return null;
 
   let endpoint: URL;
