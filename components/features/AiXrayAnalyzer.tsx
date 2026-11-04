@@ -356,6 +356,7 @@ export default function AiXrayAnalyzer({
   const sortedVisiblePredictions = [...visiblePredictions].sort(
     (left, right) => right.prediction.confidence - left.prediction.confidence,
   );
+  const legendCategories = categories.slice(0, 3);
   const allCategoriesSelected = categories.every(
     (category) => !hiddenCategories.includes(category),
   );
@@ -908,8 +909,7 @@ export default function AiXrayAnalyzer({
                                 }}
                               >
                                 <span
-                                  className="absolute -top-5 left-0 whitespace-nowrap rounded-t px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                                  style={{ backgroundColor: style.color }}
+                                  className="absolute -top-5 left-0 whitespace-nowrap rounded-t bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm"
                                 >
                                   {getClassLabel(prediction.class_name)}
                                 </span>
@@ -1243,6 +1243,32 @@ export default function AiXrayAnalyzer({
             <span className="rounded-lg bg-slate-800 px-2 py-1 text-xs tabular-nums text-slate-300">
               {visiblePredictions.length}
             </span>
+          </div>
+
+          <div
+            className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-700 bg-slate-950/50 px-2.5 py-2 text-[11px] text-slate-400"
+            title="ألوان أشرطة النتائج تطابق ألوان الفئات والصناديق على الصورة"
+            aria-label="مفتاح ألوان النتائج"
+          >
+            <span className="font-semibold text-slate-300">مفتاح الألوان:</span>
+            {legendCategories.map((category) => {
+              const representative = predictions.find(
+                (prediction) => prediction.class_name === category,
+              );
+              const style = getCategoryStyle(category, representative?.class_id ?? 0);
+
+              return (
+                <span key={category} className="inline-flex items-center gap-1">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: style.color }}
+                    aria-hidden="true"
+                  />
+                  <span>{getClassLabel(category)}</span>
+                </span>
+              );
+            })}
+            <span className="text-slate-500">الألوان تطابق الصناديق على الصورة</span>
           </div>
 
           {sortedVisiblePredictions.length === 0 ? (
