@@ -720,11 +720,9 @@ export default function AiXrayAnalyzer({
                         style={{ backgroundColor: style.color }}
                         aria-hidden="true"
                       />
-                      <span className="flex min-w-0 flex-1 flex-col text-slate-200">
-                        <span className="truncate text-sm">{category}</span>
-                        <span className="truncate text-xs font-normal text-cyan-200">
-                          {getClassLabel(category)}
-                        </span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
+                        {getClassLabel(category)}{' '}
+                        <span className="text-xs font-normal text-cyan-200">({category})</span>
                       </span>
                       <span className="text-xs tabular-nums text-slate-400">{count}</span>
                     </label>
