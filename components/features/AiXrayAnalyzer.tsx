@@ -23,6 +23,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
+import {
+  getClassLabel,
+  panoramaClassNames,
+} from '@/lib/ai/panoramaClassTranslations';
 
 interface Prediction {
   x: number;
@@ -157,30 +161,13 @@ const fallbackColors = [
   '#6366f1',
 ];
 
-const annotationTerms = [
-  'Caries',
-  'Crown',
-  'Filling',
-  'Implant',
-  'Root Canal Treatment',
-  'Impacted Tooth',
-  'Missing Teeth',
-  'Periapical Lesion',
-  'Bone Loss',
-  'Fracture',
-  'Cyst',
-  'Root Resorption',
-  'Retained Root',
-  'Malaligned',
-];
-
 function getCategoryStyle(className: string, classId: number): CategoryStyle {
   const normalizedClass = className.trim().toLowerCase();
   const matchingCategory = Object.keys(categoryStyles).find((category) =>
     normalizedClass.includes(category),
   );
 
-  if (matchingCategory) return categoryStyles[matchingCategory];
+  if (matchingCategory) return { ...categoryStyles[matchingCategory], label: getClassLabel(className) };
 
   const color = fallbackColors[Math.abs(classId) % fallbackColors.length];
   return { color, softColor: `${color}24`, label: className };
@@ -526,11 +513,12 @@ export default function AiXrayAnalyzer({
     }
   };
 
-  const annotationTermsWithResults = Array.from(
-    new Set([...annotationTerms, ...categories]),
-  );
-  const filteredAnnotationTerms = annotationTermsWithResults.filter((term) =>
-    term.toLowerCase().includes(termSearch.trim().toLowerCase()),
+  const annotationTermsWithResults = Array.from(new Set([...panoramaClassNames, ...categories]));
+  const normalizedTermSearch = termSearch.trim().toLowerCase();
+  const filteredAnnotationTerms = annotationTermsWithResults.filter(
+    (term) =>
+      term.toLowerCase().includes(normalizedTermSearch) ||
+      getClassLabel(term).toLowerCase().includes(normalizedTermSearch),
   );
 
   const toggleCategory = (className: string) => {
@@ -1182,7 +1170,8 @@ export default function AiXrayAnalyzer({
                             }}
                             className="w-full rounded-lg px-3 py-2 text-start text-sm text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                           >
-                            {getCategoryStyle(term, 0).label}
+                            <span>{getClassLabel(term)}</span>
+                            <span className="ms-2 text-xs text-slate-400">({term})</span>
                           </button>
                         </li>
                       ))}
@@ -1296,7 +1285,7 @@ export default function AiXrayAnalyzer({
                             aria-hidden="true"
                           />
                           <span className="truncate text-sm font-semibold text-slate-100">
-                            {style.label}
+                            {getClassLabel(prediction.class_name)} ({prediction.class_name}) -
                           </span>
                         </span>
                         <span
