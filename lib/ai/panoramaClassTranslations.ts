@@ -1,4 +1,4 @@
-export const panoramaClassTranslations: Record<string, string> = {
+const basePanoramaClassTranslations: Record<string, string> = {
   caries: 'تسوس',
   crown: 'تاج',
   filling: 'حشوة',
@@ -41,6 +41,18 @@ export const panoramaClassTranslations: Record<string, string> = {
   temporary_restoration: 'حشوة مؤقتة',
 };
 
+// Keep the legacy model names addressable as direct dictionary keys as well as
+// through normalization in getClassLabel().
+export const panoramaClassTranslations: Record<string, string> = {
+  ...basePanoramaClassTranslations,
+  ...Object.fromEntries(
+    Object.entries(basePanoramaClassTranslations).map(([name, label]) => [
+      `dental_disease_${name}`,
+      label,
+    ]),
+  ),
+};
+
 /** The 83 model labels from the combined YOLO data.yaml, including legacy aliases. */
 export const panoramaClassNames = [
   'bone_loss', 'caries', 'crown', 'cyst', 'filling', 'fracture_teeth', 'implant',
@@ -80,5 +92,8 @@ function normalizeClassName(className: string): string {
 }
 
 export function getClassLabel(className: string): string {
-  return panoramaClassTranslations[normalizeClassName(className)] ?? className;
+  const rawName = className.trim();
+  return panoramaClassTranslations[rawName] ??
+    panoramaClassTranslations[normalizeClassName(rawName)] ??
+    className;
 }

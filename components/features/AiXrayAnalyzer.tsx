@@ -720,8 +720,11 @@ export default function AiXrayAnalyzer({
                         style={{ backgroundColor: style.color }}
                         aria-hidden="true"
                       />
-                      <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
-                        {style.label}
+                      <span className="min-w-0 flex-1 text-sm leading-5 text-slate-200">
+                        <span className="block break-words">{getClassLabel(category)}</span>
+                        <span className="block break-all text-xs font-normal text-cyan-200">
+                          {category}
+                        </span>
                       </span>
                       <span className="text-xs tabular-nums text-slate-400">{count}</span>
                     </label>
@@ -907,8 +910,7 @@ export default function AiXrayAnalyzer({
                                 }}
                               >
                                 <span
-                                  className="absolute -top-5 left-0 whitespace-nowrap rounded-t px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
-                                  style={{ backgroundColor: style.color }}
+                                  className="absolute -top-5 left-0 whitespace-nowrap rounded-t bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm"
                                 >
                                   {getClassLabel(prediction.class_name)}
                                 </span>
