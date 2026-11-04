@@ -404,7 +404,7 @@ export default function PatientsPage() {
           label: '3 مديونيات متأخرة',
           tone: 'rose',
           description: 'إجراءات متابعة مطلوبة خلال 24 ساعة',
-          href: `${base}/patients?filter=overdue`,
+          href: `${base}/financial-intelligence?status=unpaid`,
         },
         {
           icon: '🩻',
@@ -418,7 +418,7 @@ export default function PatientsPage() {
           label: '5 مرضى جدد هذا الأسبوع',
           tone: 'cyan',
           description: 'تحديثات حديثة في قائمة المرضى',
-          href: `${base}/patients?filter=recent`,
+          href: `${base}/patients`,
         },
         {
           icon: '💬',
@@ -446,14 +446,22 @@ export default function PatientsPage() {
   );
 
   const recentActivities = useMemo(
-    () => [
-      { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
-      { name: 'نبيله جابر', action: 'موعد جديد', time: 'اليوم', tone: 'cyan', icon: '📅' },
-      { name: 'سارة عبد الله', action: 'دفعة تم استلامها', time: 'قبل 20 د', tone: 'emerald', icon: '💰' },
-      { name: 'فهد حمود', action: 'تحديث ملف طبي', time: 'قبل ساعة', tone: 'amber', icon: '📝' },
-      { name: 'مريم عزيز', action: 'رسالة جديدة', time: 'قبل 2 س', tone: 'sky', icon: '💬' },
-    ],
-    []
+    () => {
+      const fallbackActivities = [
+        { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
+        { name: 'نبيله جابر', action: 'موعد جديد', time: 'اليوم', tone: 'cyan', icon: '📅' },
+        { name: 'سارة عبد الله', action: 'دفعة تم استلامها', time: 'قبل 20 د', tone: 'emerald', icon: '💰' },
+        { name: 'فهد حمود', action: 'تحديث ملف طبي', time: 'قبل ساعة', tone: 'amber', icon: '📝' },
+        { name: 'مريم عزيز', action: 'رسالة جديدة', time: 'قبل 2 س', tone: 'sky', icon: '💬' },
+      ];
+
+      return fallbackActivities.map((activity, index) => ({
+        ...activity,
+        patientId: patients[index]?.id ?? null,
+        name: patients[index]?.name ?? activity.name,
+      }));
+    },
+    [patients]
   );
 
   const hasQuery = query.trim().length > 0;
@@ -686,7 +694,16 @@ export default function PatientsPage() {
                         {activity.icon}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-white">{activity.name}</p>
+                        {activity.patientId ? (
+                          <Link
+                            href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(activity.patientId)}`}
+                            className="block truncate text-sm font-medium text-white hover:text-cyan-200 hover:underline"
+                          >
+                            {activity.name}
+                          </Link>
+                        ) : (
+                          <p className="truncate text-sm font-medium text-white">{activity.name}</p>
+                        )}
                         <p className="truncate text-[11px] text-slate-400">{activity.action}</p>
                       </div>
                       <span className="text-[10px] font-bold text-slate-500">{activity.time}</span>
