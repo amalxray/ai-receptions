@@ -58,3 +58,4 @@ Supabase connection: success
 
 Knowledge ingestion verification completed successfully.
 ```
+
