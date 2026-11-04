@@ -910,7 +910,8 @@ export default function AiXrayAnalyzer({
                                 }}
                               >
                                 <span
-                                  className="absolute -top-5 left-0 whitespace-nowrap rounded-t bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm"
+                                  className="absolute -top-5 left-0 whitespace-nowrap px-1.5 py-0.5 text-[10px] font-bold leading-none drop-shadow-md"
+                                  style={{ color: style.color }}
                                 >
                                   {getClassLabel(prediction.class_name)}
                                 </span>
