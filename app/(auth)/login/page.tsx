@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import PasswordInput from '@/components/ui/PasswordInput';
 import { supabase } from '@/lib/supabase';
 import { isSafeDashboardPath, isSafeAdminPath, isSafeInvitePath } from '@/lib/services/dashboardPaths';
+import { PRODUCTION_BASE_URL } from '@/lib/communications/links';
+import { tenantSlugFromHostname } from '@/lib/vercel/domains';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -54,7 +56,9 @@ export default function LoginPage() {
       const safeRequested =
         isSafeDashboardPath(requested) || isSafeInvitePath(requested) ? requested : null;
 
-      // Platform owner takes priority over any clinic membership → /admin.
+      const tenantSlug = tenantSlugFromHostname(window.location.hostname);
+
+      // Platform owner takes priority over any clinic membership → the platform domain.
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
       if (userId) {
@@ -64,9 +68,57 @@ export default function LoginPage() {
           .eq('user_id', userId)
           .maybeSingle();
         if (platformAdmin) {
-          router.replace(isSafeAdminPath(requested) ? requested : '/admin');
+          const adminPath = isSafeAdminPath(requested) ? requested : '/admin';
+          if (tenantSlug || window.location.hostname === 'dentairec.com') {
+            window.location.replace(new URL(adminPath, PRODUCTION_BASE_URL).toString());
+          } else {
+            router.replace(adminPath);
+          }
           return;
         }
+
+        if (tenantSlug) {
+          const { data: clinic, error: clinicError } = await supabase
+            .from('clinics')
+            .select('id')
+            .eq('slug', tenantSlug)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+          if (clinicError) throw clinicError;
+
+          const { data: membership, error: membershipError } = clinic
+            ? await supabase
+                .from('clinic_users')
+                .select('clinic_id')
+                .eq('user_id', userId)
+                .eq('clinic_id', clinic.id)
+                .is('deleted_at', null)
+                .limit(1)
+                .maybeSingle()
+            : { data: null, error: null };
+
+          if (membershipError) throw membershipError;
+
+          if (!membership) {
+            const { error: signOutError } = await supabase.auth.signOut();
+            if (signOutError) throw signOutError;
+            setError('هذا الحساب لا ينتمي إلى هذه العيادة');
+            setIsSubmitting(false);
+            return;
+          }
+
+          const requestedSlug = safeRequested?.split('/')[2];
+          const destination =
+            safeRequested && isSafeInvitePath(safeRequested)
+              ? safeRequested
+              : requestedSlug === tenantSlug
+                ? safeRequested
+                : `/dashboard/${encodeURIComponent(tenantSlug)}/overview`;
+          router.replace(destination);
+          return;
+        }
+
         const { data: membership } = await supabase
           .from('clinic_users')
           .select('clinic:clinics(slug)')
