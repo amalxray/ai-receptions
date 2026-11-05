@@ -455,7 +455,7 @@ export default function FinancialIntelligencePage() {
                 delta={deltas.payroll}
                 tone={TONES.payroll}
                 invert
-                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'payroll') : undefined}
+                href={clinicSlug ? `${tenantDashboardUrl(clinicSlug, 'payroll')}?status=paid` : undefined}
               />
               <FlowCard
                 index={2}
@@ -784,6 +784,12 @@ function PnlHero({ net, delta, months, spark }: { net: number; delta: Delta; mon
           <p className="mt-2 text-[11px] text-slate-500">صافي الربح شهريًا خلال الفترة المختارة.</p>
         </div>
       </div>
+      <a
+        href="#pnl-details"
+        className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-cyan-300 transition hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+      >
+        عرض التفاصيل ←
+      </a>
     </motion.div>
   );
 }
@@ -816,7 +822,7 @@ function RevenueStack({
   const share = (value: number) => (revenue > 0 ? fmtPct(Math.round((value / revenue) * 1000) / 10) : '—');
 
   return (
-    <motion.div {...FADE_UP} transition={{ duration: 0.35, delay: 0.15 }}>
+    <motion.div id="pnl-details" {...FADE_UP} transition={{ duration: 0.35, delay: 0.15 }}>
       <Panel
         title="من الإيراد إلى صافي الربح"
         hint="نسب الإيرادات المُسجَّلة في الفترة — المصروفات تشمل الرواتب المدفوعة (وليست بندًا إضافيًا)."
