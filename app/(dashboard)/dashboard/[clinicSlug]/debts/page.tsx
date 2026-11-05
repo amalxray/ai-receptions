@@ -19,7 +19,7 @@ type AgingRow = {
 type PatientRow = { id: string; name: string };
 
 const formatMoney = (amount: number) =>
-  new Intl.NumberFormat('ar-SA', { style: 'currency', currency: 'SAR', maximumFractionDigits: 2 }).format(amount);
+  new Intl.NumberFormat('ar-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 2 }).format(amount);
 
 export default function DebtsPage() {
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
