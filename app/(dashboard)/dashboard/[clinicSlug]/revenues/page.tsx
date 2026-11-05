@@ -30,7 +30,12 @@ type PaymentRow = {
 
 type RevenueTab = 'invoices' | 'payments';
 type InvoiceFilter = 'all' | 'paid' | 'unpaid' | 'voided';
-type VoidTarget = { kind: 'invoice' | 'payment'; id: string; label: string };
+type VoidTarget = {
+  kind: 'invoice' | 'payment';
+  id: string;
+  label: string;
+  activePaymentIds: string[];
+};
 
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat('ar-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 2 }).format(amount);
@@ -64,6 +69,22 @@ function responseRows<T>(payload: unknown): T[] {
   return Array.isArray(data) ? data as T[] : [];
 }
 
+async function fetchActiveInvoicePaymentIds(invoiceId: string, clinicId: string, headers: Record<string, string>) {
+  const response = await fetch(
+    `/api/clinic/accounting/invoices/${encodeURIComponent(invoiceId)}?clinic_id=${encodeURIComponent(clinicId)}`,
+    { headers },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = (payload as { error?: string } | null)?.error;
+    throw new Error(message || 'تعذر التحقق من دفعات الفاتورة. أعد المحاولة.');
+  }
+  const detail = (payload as { data?: { payments?: Array<{ id: string; status: string }> } } | null)?.data;
+  return Array.isArray(detail?.payments)
+    ? detail.payments.filter((payment) => payment.status !== 'voided').map((payment) => payment.id)
+    : [];
+}
+
 export default function RevenuesPage() {
   const { clinicId, clinicSlug, role, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [activeTab, setActiveTab] = useState<RevenueTab>('invoices');
@@ -77,6 +98,8 @@ export default function RevenuesPage() {
   const [voidReason, setVoidReason] = useState('');
   const [voidError, setVoidError] = useState<string | null>(null);
   const [voidSubmitting, setVoidSubmitting] = useState(false);
+  const [preparingInvoiceId, setPreparingInvoiceId] = useState<string | null>(null);
+  const [voidLookupError, setVoidLookupError] = useState<string | null>(null);
   const canVoid = role === 'owner';
 
   useEffect(() => {
@@ -124,6 +147,7 @@ export default function RevenuesPage() {
     setVoidTarget(target);
     setVoidReason('');
     setVoidError(null);
+    setVoidLookupError(null);
   };
 
   const closeVoidDialog = () => {
@@ -131,6 +155,21 @@ export default function RevenuesPage() {
     setVoidTarget(null);
     setVoidReason('');
     setVoidError(null);
+  };
+
+  const beginInvoiceVoid = async (invoice: InvoiceRow) => {
+    if (!clinicId) return;
+    setPreparingInvoiceId(invoice.id);
+    setVoidLookupError(null);
+    try {
+      const headers = await authHeaders();
+      const activePaymentIds = await fetchActiveInvoicePaymentIds(invoice.id, clinicId, headers);
+      openVoidDialog({ kind: 'invoice', id: invoice.id, label: invoice.invoice_number, activePaymentIds });
+    } catch (caughtError) {
+      setVoidLookupError(caughtError instanceof Error ? caughtError.message : 'تعذر التحقق من دفعات الفاتورة. أعد المحاولة.');
+    } finally {
+      setPreparingInvoiceId(null);
+    }
   };
 
   const confirmVoid = async () => {
@@ -142,19 +181,45 @@ export default function RevenuesPage() {
     setVoidError(null);
     try {
       const headers = await authHeaders();
-      const resource = voidTarget.kind === 'invoice' ? 'invoices' : 'payments';
-      const response = await fetch(
-        `/api/clinic/accounting/${resource}/${encodeURIComponent(voidTarget.id)}/void?clinic_id=${encodeURIComponent(clinicId)}`,
-        {
+      const postVoid = async (resource: 'invoices' | 'payments', id: string) => {
+        const response = await fetch(`/api/clinic/accounting/${resource}/${encodeURIComponent(id)}/void?clinic_id=${encodeURIComponent(clinicId)}`, {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason: voidReason.trim() }),
-        },
-      );
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        const message = (payload as { error?: string } | null)?.error;
-        throw new Error(message || 'تعذر إلغاء السجل. تحقق من صلاحياتك وحالة السجل.');
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message = (payload as { error?: string } | null)?.error;
+          if (message === 'VOID_PAYMENTS_FIRST') {
+            if (voidTarget.kind === 'invoice') {
+              try {
+                const activePaymentIds = await fetchActiveInvoicePaymentIds(voidTarget.id, clinicId, headers);
+                setVoidTarget((current) => current?.kind === 'invoice' ? { ...current, activePaymentIds } : current);
+              } catch {
+                // Keep the server's actionable error below if detail refresh is unavailable.
+              }
+            }
+            throw new Error("الفاتورة عليها دفعات. اضغط على زر 'إلغاء الفاتورة والدفعات معاً'.");
+          }
+          throw new Error(message || 'تعذر إلغاء السجل. تحقق من صلاحياتك وحالة السجل.');
+        }
+      };
+
+      if (voidTarget.kind === 'invoice') {
+        for (const paymentId of voidTarget.activePaymentIds) {
+          try {
+            await postVoid('payments', paymentId);
+          } catch (caughtError) {
+            // A retry after a lost response may find this payment already voided.
+            if (!(caughtError instanceof Error) || caughtError.message !== 'PAYMENT_ALREADY_VOIDED') throw caughtError;
+          }
+          setVoidTarget((current) => current?.kind === 'invoice'
+            ? { ...current, activePaymentIds: current.activePaymentIds.filter((id) => id !== paymentId) }
+            : current);
+        }
+        await postVoid('invoices', voidTarget.id);
+      } else {
+        await postVoid('payments', voidTarget.id);
       }
       setVoidTarget(null);
       setVoidReason('');
@@ -213,6 +278,8 @@ export default function RevenuesPage() {
         ) : null}
       </div>
 
+      {voidLookupError ? <p role="alert" className="mb-4 text-sm text-rose-300">{voidLookupError}</p> : null}
+
       {clinicError || error ? (
         <EmptyState title="تعذر تحميل بيانات الإيرادات" description={clinicError ?? error ?? ''} />
       ) : loading ? (
@@ -257,10 +324,11 @@ export default function RevenuesPage() {
                       {canVoid && invoice.status !== 'voided' ? (
                         <button
                           type="button"
-                          onClick={() => openVoidDialog({ kind: 'invoice', id: invoice.id, label: invoice.invoice_number })}
+                          onClick={() => void beginInvoiceVoid(invoice)}
+                          disabled={preparingInvoiceId === invoice.id}
                           className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
                         >
-                          إلغاء
+                          {preparingInvoiceId === invoice.id ? 'جارٍ التحقق…' : 'إلغاء'}
                         </button>
                       ) : '—'}
                     </td>
@@ -301,7 +369,7 @@ export default function RevenuesPage() {
                     {canVoid && payment.status !== 'voided' ? (
                       <button
                         type="button"
-                        onClick={() => openVoidDialog({ kind: 'payment', id: payment.id, label: payment.receipt_number || payment.invoice_number || payment.id })}
+                        onClick={() => openVoidDialog({ kind: 'payment', id: payment.id, label: payment.receipt_number || payment.invoice_number || payment.id, activePaymentIds: [] })}
                         className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
                       >
                         إلغاء
@@ -326,7 +394,9 @@ export default function RevenuesPage() {
             <h2 id="void-dialog-title" className="text-xl font-bold text-white">تأكيد الإلغاء</h2>
             <p className="mt-3 text-sm leading-6 text-slate-300">
               {voidTarget.kind === 'invoice'
-                ? 'سيتم إلغاء هذه الفاتورة نهائياً من الحسابات. أدخل سبب الإلغاء.'
+                ? voidTarget.activePaymentIds.length > 0
+                  ? `هذه الفاتورة عليها ${voidTarget.activePaymentIds.length} دفعات. سيتم إلغاء جميع الدفعات أولاً ثم إلغاء الفاتورة. هل تريد المتابعة؟`
+                  : 'سيتم إلغاء هذه الفاتورة نهائياً من الحسابات. أدخل سبب الإلغاء.'
                 : 'سيتم إلغاء هذه الدفعة نهائياً من الحسابات. أدخل سبب الإلغاء.'}
             </p>
             <p className="mt-2 text-xs text-slate-400">السجل: {voidTarget.label}</p>
@@ -358,7 +428,11 @@ export default function RevenuesPage() {
                 disabled={voidSubmitting || !voidReason.trim()}
                 className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {voidSubmitting ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
+                {voidSubmitting
+                  ? 'جارٍ الإلغاء…'
+                  : voidTarget.kind === 'invoice' && voidTarget.activePaymentIds.length > 0
+                    ? 'إلغاء الفاتورة والدفعات معاً'
+                    : 'تأكيد الإلغاء'}
               </button>
             </div>
           </section>
