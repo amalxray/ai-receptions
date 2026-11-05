@@ -9,7 +9,7 @@
 
 const MODULE_SEGMENT = /^[a-z0-9-]+$/;
 export const DASHBOARD_MODULES = [
-  'overview', 'appointments', 'patients', 'providers', 'services', 'revenues',
+  'overview', 'appointments', 'patients', 'providers', 'services', 'revenues', 'expenses',
   'conversations', 'leads', 'notifications', 'knowledge', 'knowledge-base',
   'ai-settings', 'communication-settings', 'clinic-setup', 'public-page',
   'ads', 'analytics', 'growth', 'financial-intelligence', 'imaging', 'lab',

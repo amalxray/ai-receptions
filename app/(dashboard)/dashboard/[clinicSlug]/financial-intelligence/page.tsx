@@ -465,10 +465,7 @@ export default function FinancialIntelligencePage() {
                 delta={deltas.operating}
                 tone={TONES.expenses}
                 invert
-                onClick={() => {
-                  setActiveSegment('مصروفات تشغيلية');
-                  setExpenseOpen(true);
-                }}
+                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'expenses') : undefined}
               />
               <FlowCard
                 index={3}
