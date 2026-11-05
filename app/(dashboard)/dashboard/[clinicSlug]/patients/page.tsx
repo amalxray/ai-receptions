@@ -76,6 +76,20 @@ type DailySummary = {
 
 const EMPTY_SUMMARY: DailySummary = { appointmentsToday: null, newFiles: null, outstanding: null };
 
+type SmartAlertCounts = {
+  overdueDebts: number;
+  pendingImaging: number;
+  newPatients: number;
+  unreadMessages: number;
+};
+
+const EMPTY_SMART_ALERT_COUNTS: SmartAlertCounts = {
+  overdueDebts: 0,
+  pendingImaging: 0,
+  newPatients: 0,
+  unreadMessages: 0,
+};
+
 export default function PatientsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -99,6 +113,7 @@ export default function PatientsPage() {
   /** Starts TRUE: the first paint (SSR included) shows skeletons, never a fake
    *  «غير متاح» while the three requests are still in flight. */
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [smartAlertCounts, setSmartAlertCounts] = useState<SmartAlertCounts>(EMPTY_SMART_ALERT_COUNTS);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<PatientSearchRecord | null>(null);
@@ -241,6 +256,70 @@ export default function PatientsPage() {
     return () => {
       cancelled = true;
     };
+  }, [authHeaders, clinicId]);
+
+  /** Smart alert totals come from clinic-scoped APIs; failed sources stay at zero. */
+  useEffect(() => {
+    let cancelled = false;
+    setSmartAlertCounts(EMPTY_SMART_ALERT_COUNTS);
+    if (!clinicId) return () => { cancelled = true; };
+
+    (async () => {
+      const headers = await authHeaders();
+      const getJson = (url: string) =>
+        fetch(url, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(url))));
+      const now = Date.now();
+      const [aging, referrals, patientsResponse, messages] = await Promise.allSettled([
+        getJson(`/api/clinic/accounting/aging?clinic_id=${encodeURIComponent(clinicId)}`),
+        getJson(`/api/imaging/referrals?clinic_id=${encodeURIComponent(clinicId)}&direction=outgoing`),
+        getJson(`/api/patients?clinic_id=${encodeURIComponent(clinicId)}&limit=500`),
+        getJson(`/api/clinic/messages?clinic_id=${encodeURIComponent(clinicId)}`),
+      ]);
+      if (cancelled) return;
+
+      const outstandingRows = aging.status === 'fulfilled' && Array.isArray(aging.value?.data?.rows)
+        ? aging.value.data.rows
+        : [];
+      const referralRows = referrals.status === 'fulfilled' && Array.isArray(referrals.value?.data)
+        ? referrals.value.data
+        : [];
+      const patientRows = patientsResponse.status === 'fulfilled' && Array.isArray(patientsResponse.value)
+        ? patientsResponse.value
+        : [];
+      const conversationRows = messages.status === 'fulfilled' && Array.isArray(messages.value?.data)
+        ? messages.value.data
+        : [];
+      const activeReferralStatuses = new Set([
+        'pending', 'requested', 'submitted', 'accepted', 'scheduled',
+        'in_progress', 'ready', 'needs_clarification',
+      ]);
+      const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+      setSmartAlertCounts({
+        overdueDebts: aging.status === 'fulfilled'
+          ? outstandingRows.filter((row: any) => Number(row?.balance_amount) > 0 && Number(row?.age_days) > 0).length
+          : 0,
+        pendingImaging: referrals.status === 'fulfilled'
+          ? referralRows.filter((row: any) => activeReferralStatuses.has(String(row?.status ?? '').toLowerCase())).length
+          : 0,
+        newPatients: patientsResponse.status === 'fulfilled'
+          ? patientRows.filter((row: any) => {
+              const createdAt = Date.parse(row?.created_at ?? '');
+              return Number.isFinite(createdAt) && createdAt >= weekAgo && createdAt <= now;
+            }).length
+          : 0,
+        unreadMessages: messages.status === 'fulfilled'
+          ? conversationRows.reduce(
+              (total: number, row: any) => total + Math.max(0, Number(row?.unread_count) || 0),
+              0
+            )
+          : 0,
+      });
+    })().catch(() => {
+      if (!cancelled) setSmartAlertCounts(EMPTY_SMART_ALERT_COUNTS);
+    });
+
+    return () => { cancelled = true; };
   }, [authHeaders, clinicId]);
 
   /**
@@ -418,35 +497,35 @@ export default function PatientsPage() {
       return [
         {
           icon: '⚠️',
-          label: '3 مديونيات متأخرة',
+          label: `${smartAlertCounts.overdueDebts} مديونيات متأخرة`,
           tone: 'rose',
           description: 'إجراءات متابعة مطلوبة خلال 24 ساعة',
           href: `${base}/debts`,
         },
         {
           icon: '🩻',
-          label: '2 بانتظار نتائج أشعة',
+          label: `${smartAlertCounts.pendingImaging} بانتظار نتائج أشعة`,
           tone: 'violet',
           description: 'نتائج قادمة من المعمل أو الأشعة',
           href: `${base}/imaging?filter=pending`,
         },
         {
           icon: '📅',
-          label: '5 مرضى جدد هذا الأسبوع',
+          label: `${smartAlertCounts.newPatients} مرضى جدد هذا الأسبوع`,
           tone: 'cyan',
           description: 'تحديثات حديثة في قائمة المرضى',
           href: `${base}/patients?filter=new_this_week`,
         },
         {
           icon: '💬',
-          label: '1 رسالة غير مقروءة',
+          label: `${smartAlertCounts.unreadMessages} رسالة غير مقروءة`,
           tone: 'amber',
           description: 'رسالة جديدة من المريض أو من العيادة',
           href: `${base}/messages`,
         },
       ];
     },
-    [clinicSlug]
+    [clinicSlug, smartAlertCounts]
   );
 
   const handleAlertClick = useCallback(
@@ -462,25 +541,7 @@ export default function PatientsPage() {
     [router]
   );
 
-  const recentActivities = useMemo(
-    () => {
-      // TODO: replace these demo activity rows with the clinic activity API.
-      const fallbackActivities = [
-        { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
-        { name: 'نبيله جابر', action: 'موعد جديد', time: 'اليوم', tone: 'cyan', icon: '📅' },
-        { name: 'سارة عبد الله', action: 'دفعة تم استلامها', time: 'قبل 20 د', tone: 'emerald', icon: '💰' },
-        { name: 'فهد حمود', action: 'تحديث ملف طبي', time: 'قبل ساعة', tone: 'amber', icon: '📝' },
-        { name: 'مريم عزيز', action: 'رسالة جديدة', time: 'قبل 2 س', tone: 'sky', icon: '💬' },
-      ];
-
-      return fallbackActivities.map((activity, index) => ({
-        ...activity,
-        patientId: patients[index]?.id ?? null,
-        name: patients[index]?.name ?? activity.name,
-      }));
-    },
-    [patients]
-  );
+  // TODO: Restore a real activity feed when the clinic activity log API is available.
 
   const hasQuery = query.trim().length > 0;
   const hasPatientResults = hasQuery || filterNewThisWeek;
@@ -637,7 +698,7 @@ export default function PatientsPage() {
               })}
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="grid gap-3">
               <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="text-sm font-bold text-white">تنبيهات ذكية</p>
@@ -683,51 +744,7 @@ export default function PatientsPage() {
                 </div>
               </div>
 
-              <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-bold text-white">آخر النشاطات</p>
-                  <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
-                    5 آخرين
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {recentActivities.map((activity) => (
-                    <Link
-                      key={`${activity.name}-${activity.action}`}
-                      href={activity.patientId
-                        ? `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(activity.patientId)}`
-                        : `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients?filter=new_this_week`}
-                      className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
-                    >
-                    <motion.div
-                      whileHover={{ x: 2 }}
-                      whileTap={{ scale: 0.99 }}
-                      transition={{ type: 'spring', stiffness: 240, damping: 24 }}
-                      className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 px-3 py-2.5"
-                    >
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-sm ${
-                        activity.tone === 'violet'
-                          ? 'bg-violet-500/10'
-                          : activity.tone === 'cyan'
-                            ? 'bg-cyan-500/10'
-                            : activity.tone === 'emerald'
-                              ? 'bg-emerald-500/10'
-                              : activity.tone === 'amber'
-                                ? 'bg-amber-500/10'
-                                : 'bg-sky-500/10'
-                      }`}>
-                        {activity.icon}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-white group-hover:text-cyan-200 group-hover:underline">{activity.name}</p>
-                        <p className="truncate text-[11px] text-slate-400">{activity.action}</p>
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-500">{activity.time}</span>
-                    </motion.div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              {/* TODO: Restore this panel when a real clinic activity log API is available. */}
             </div>
           </motion.div>
         ) : null}
