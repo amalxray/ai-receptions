@@ -19,6 +19,7 @@ import {
   refundPayment,
   voidInvoice,
   listInvoices,
+  listPayments,
 } from '@/lib/services/accounting';
 
 const CLINIC_A = '11111111-1111-1111-1111-111111111111';
@@ -97,11 +98,62 @@ describe('accounting service — void / refund / voidInvoice', () => {
 
 describe('accounting service — tenant-scoped reads', () => {
   it('always filters reads by clinic_id (isolation baseline)', async () => {
-    mockAdmin.supabaseAdmin.from.mockReturnValue({
-      select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ order: vi.fn().mockResolvedValue({ data: [], error: null }) }) }),
-    });
+    mockAdmin.supabaseAdmin.from.mockImplementation(() => createQuery({ data: [], error: null }));
     const rows = await listInvoices(CLINIC_A);
     expect(Array.isArray(rows)).toBe(true);
-    expect(mockAdmin.supabaseAdmin.from).toHaveBeenCalledWith('invoice_balances');
+    expect(mockAdmin.supabaseAdmin.from).toHaveBeenCalledWith('clinic_invoices');
+  });
+
+  it('joins the patient name and applies invoice status and limit filters', async () => {
+    const invoiceQuery = createQuery({ data: [{
+      id: 'invoice-1', status: 'paid', patients: { full_name: 'A Patient' },
+    }], error: null });
+    const balanceQuery = createQuery({ data: [{
+      invoice_id: 'invoice-1', paid_amount: 100, written_off_amount: 0, balance_amount: 0,
+    }], error: null });
+    mockAdmin.supabaseAdmin.from.mockImplementation((table: string) =>
+      table === 'clinic_invoices' ? invoiceQuery : balanceQuery,
+    );
+
+    const rows = await listInvoices(CLINIC_A, null, 'paid', 7);
+
+    expect(rows[0]).toMatchObject({ patient_name: 'A Patient', paid_amount: 100, balance_amount: 0 });
+    expect(invoiceQuery.eq).toHaveBeenCalledWith('status', 'paid');
+    expect(invoiceQuery.limit).toHaveBeenCalledWith(7);
+  });
+
+  it('maps unpaid and voided filters to their invoice states', async () => {
+    const unpaidQuery = createQuery({ data: [], error: null });
+    mockAdmin.supabaseAdmin.from.mockReturnValue(unpaidQuery);
+    await listInvoices(CLINIC_A, null, 'unpaid', 50);
+    expect(unpaidQuery.in).toHaveBeenCalledWith('status', ['issued', 'partially_paid']);
+
+    const voidedQuery = createQuery({ data: [{ id: 'voided-invoice', status: 'voided', patients: null }], error: null });
+    mockAdmin.supabaseAdmin.from.mockReturnValue(voidedQuery);
+    const voidedRows = await listInvoices(CLINIC_A, null, 'voided', 50);
+    expect(voidedQuery.eq).toHaveBeenCalledWith('status', 'voided');
+    expect(voidedRows[0]).toMatchObject({ patient_name: null, balance_amount: 0 });
+  });
+
+  it('joins patient and invoice labels and caps the payment query results', async () => {
+    const paymentQuery = createQuery({ data: [{
+      id: 'payment-1', clinic_invoices: { invoice_number: 'INV-1', patients: { full_name: 'A Patient' } },
+    }], error: null });
+    mockAdmin.supabaseAdmin.from.mockReturnValue(paymentQuery);
+
+    const rows = await listPayments(CLINIC_A, null, 8);
+
+    expect(rows[0]).toMatchObject({ patient_name: 'A Patient', invoice_number: 'INV-1' });
+    expect(paymentQuery.limit).toHaveBeenCalledWith(8);
   });
 });
+
+function createQuery(result: { data: unknown[]; error: null }) {
+  const query: Record<string, any> = {};
+  for (const method of ['select', 'eq', 'neq', 'in', 'order', 'limit']) {
+    query[method] = vi.fn().mockReturnValue(query);
+  }
+  query.then = (resolve: (value: typeof result) => unknown, reject?: (reason: unknown) => unknown) =>
+    Promise.resolve(result).then(resolve, reject);
+  return query;
+}

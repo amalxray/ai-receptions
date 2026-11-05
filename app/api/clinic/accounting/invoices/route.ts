@@ -72,7 +72,22 @@ export async function GET(req: Request) {
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
     const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
     if (permBlocked) return permBlocked;
-    const data = await listInvoices(clinicId, url.searchParams.get('patient_id'));
+    const status = url.searchParams.get('status');
+    if (status && !['paid', 'unpaid', 'voided'].includes(status)) {
+      return NextResponse.json({ error: 'status must be paid, unpaid, or voided' }, { status: 400 });
+    }
+    const rawLimit = url.searchParams.get('limit');
+    const parsedLimit = rawLimit === null ? 50 : Number(rawLimit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+      return NextResponse.json({ error: 'limit must be a positive integer' }, { status: 400 });
+    }
+    const limit = Math.min(parsedLimit, 100);
+    const data = await listInvoices(
+      clinicId,
+      url.searchParams.get('patient_id'),
+      status as 'paid' | 'unpaid' | 'voided' | null,
+      limit,
+    );
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

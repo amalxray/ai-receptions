@@ -244,16 +244,52 @@ export async function voidInvoice(input: VoidInvoiceInput): Promise<void> {
 
 // --- Read-only queries (derived balances — never stored numbers) ---
 
-export async function listInvoices(clinicId: string, patientId?: string | null) {
+export async function listInvoices(
+  clinicId: string,
+  patientId?: string | null,
+  status?: 'paid' | 'unpaid' | 'voided' | null,
+  limit = 50,
+) {
   let query = supabaseAdmin
-    .from('invoice_balances')
-    .select('*')
+    .from('clinic_invoices')
+    .select('*, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name)')
     .eq('clinic_id', clinicId)
-    .order('invoice_number', { ascending: false });
+    .order('invoice_number', { ascending: false })
+    .limit(limit);
   if (patientId) query = query.eq('patient_id', patientId);
+  if (status === 'paid') query = query.eq('status', 'paid');
+  else if (status === 'unpaid') query = query.in('status', ['issued', 'partially_paid']);
+  else if (status === 'voided') query = query.eq('status', 'voided');
+  else query = query.neq('status', 'voided');
+
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data ?? [];
+  const invoices = data ?? [];
+  if (!invoices.length) return [];
+
+  const activeInvoiceIds = invoices.filter((invoice) => invoice.status !== 'voided').map((invoice) => invoice.id);
+  const balanceByInvoiceId = new Map<string, Record<string, unknown>>();
+  if (activeInvoiceIds.length) {
+    const { data: balances, error: balanceError } = await supabaseAdmin
+      .from('invoice_balances')
+      .select('invoice_id, paid_amount, written_off_amount, balance_amount')
+      .eq('clinic_id', clinicId)
+      .in('invoice_id', activeInvoiceIds);
+    if (balanceError) throw new Error(balanceError.message);
+    for (const balance of balances ?? []) balanceByInvoiceId.set(balance.invoice_id, balance);
+  }
+
+  return invoices.map((invoice) => {
+    const patient = Array.isArray(invoice.patients) ? invoice.patients[0] : invoice.patients;
+    const balance = balanceByInvoiceId.get(invoice.id);
+    return {
+      ...invoice,
+      patient_name: patient?.full_name ?? null,
+      paid_amount: balance?.paid_amount ?? 0,
+      written_off_amount: balance?.written_off_amount ?? 0,
+      balance_amount: balance?.balance_amount ?? 0,
+    };
+  });
 }
 
 export async function getInvoiceDetail(clinicId: string, invoiceId: string): Promise<InvoiceWithItems | null> {
@@ -269,16 +305,25 @@ export async function getInvoiceDetail(clinicId: string, invoiceId: string): Pro
   return { ...invRes.data, items: itemsRes.data ?? [], payments: payRes.data ?? [] };
 }
 
-export async function listPayments(clinicId: string, invoiceId?: string | null) {
+export async function listPayments(clinicId: string, invoiceId?: string | null, limit = 50) {
   let query = supabaseAdmin
     .from('clinic_payments')
-    .select('*')
+    .select('*, clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey(invoice_number, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name))')
     .eq('clinic_id', clinicId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (invoiceId) query = query.eq('invoice_id', invoiceId);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((payment) => {
+    const invoice = Array.isArray(payment.clinic_invoices) ? payment.clinic_invoices[0] : payment.clinic_invoices;
+    const patient = Array.isArray(invoice?.patients) ? invoice.patients[0] : invoice?.patients;
+    return {
+      ...payment,
+      invoice_number: invoice?.invoice_number ?? null,
+      patient_name: patient?.full_name ?? null,
+    };
+  });
 }
 
 export async function getPatientBalances(clinicId: string, patientId?: string | null) {
