@@ -66,7 +66,13 @@ export async function GET(req: Request) {
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
     const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
     if (permBlocked) return permBlocked;
-    const data = await listPayments(clinicId);
+    const rawLimit = url.searchParams.get('limit');
+    const parsedLimit = rawLimit === null ? 50 : Number(rawLimit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+      return NextResponse.json({ error: 'limit must be a positive integer' }, { status: 400 });
+    }
+    const limit = Math.min(parsedLimit, 100);
+    const data = await listPayments(clinicId, null, limit);
     return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 500 });
