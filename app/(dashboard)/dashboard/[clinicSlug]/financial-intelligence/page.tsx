@@ -445,7 +445,7 @@ export default function FinancialIntelligencePage() {
                 hint={`مقابل ${periodLabel} سابقة`}
                 delta={deltas.revenue}
                 tone={TONES.revenue}
-                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'analytics') : undefined}
+                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'revenues') : undefined}
               />
               <FlowCard
                 index={1}
