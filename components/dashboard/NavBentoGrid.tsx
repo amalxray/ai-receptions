@@ -3,9 +3,9 @@
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { NavGroupId } from '@/lib/services/dashboardNavModel';
 import {
   STAT_TONE_CLASS,
@@ -15,24 +15,12 @@ import {
   type NavStats,
 } from '@/lib/services/navBentoModel';
 
-/**
- * N29 — the Bento grid of ONE nav group (one per tab).
- *
- * Purely presentational: gating (roles, permissions, plan locks), URLs and the
- * active route all arrive as props from the nav hook, so this file can be
- * server-rendered and unit tested without touching auth.
- *
- * Golden rule here: hover lift + glow, press ripple, staggered entrance, one
- * colour per section, and a 🔒 upsell card instead of hiding a locked module.
- */
-
 export type BentoItem = {
   module: string;
   label: string;
   href: string;
   active: boolean;
   locked: boolean;
-  /** Present when locked — "متاح في باقة …". */
   lockTitle?: string;
 };
 
@@ -46,89 +34,176 @@ export type BentoGroup = {
 type NavBentoGridProps = {
   group: BentoGroup;
   stats?: NavStats;
-  /** `panel` = the mega-menu under the sticky bar, `drawer` = the mobile drawer. */
-  variant?: 'panel' | 'drawer';
   onNavigate?: () => void;
 };
 
-const ITEM_TONES: Record<string, ReturnType<typeof navTone>> = {
-  'my-payslips': {
-    ring: 'border-amber-500/30 from-amber-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(245,158,11,0.75)]',
-    bar: 'bg-amber-400',
-    chip: 'bg-amber-500/15 text-amber-100 ring-amber-500/30',
-    tab: 'from-amber-500/30 to-orange-500/10 ring-amber-400/40',
-  },
-  'knowledge-base': {
-    ring: 'border-blue-500/30 from-blue-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(59,130,246,0.75)]',
-    bar: 'bg-blue-400',
-    chip: 'bg-blue-500/15 text-blue-100 ring-blue-500/30',
-    tab: 'from-blue-500/30 to-cyan-500/10 ring-blue-400/40',
-  },
-  'public-page': {
-    ring: 'border-cyan-500/30 from-cyan-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(34,211,238,0.75)]',
+type ButtonTone = {
+  border: string;
+  glow: string;
+  accent: string;
+  bar: string;
+  chip: string;
+};
+
+const BUTTON_COLORS: Record<string, ButtonTone> = {
+  cyan: {
+    border: 'border-cyan-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(34,211,238,0.8)]',
+    accent: 'text-cyan-200',
     bar: 'bg-cyan-400',
     chip: 'bg-cyan-500/15 text-cyan-100 ring-cyan-500/30',
-    tab: 'from-cyan-500/30 to-sky-500/10 ring-cyan-400/40',
   },
-  profile: {
-    ring: 'border-violet-500/30 from-violet-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(167,139,250,0.75)]',
-    bar: 'bg-violet-400',
-    chip: 'bg-violet-500/15 text-violet-100 ring-violet-500/30',
-    tab: 'from-violet-500/30 to-fuchsia-500/10 ring-violet-400/40',
+  sky: {
+    border: 'border-sky-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(14,165,233,0.8)]',
+    accent: 'text-sky-200',
+    bar: 'bg-sky-400',
+    chip: 'bg-sky-500/15 text-sky-100 ring-sky-500/30',
   },
-  'public-content': {
-    ring: 'border-pink-500/30 from-pink-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(236,72,153,0.75)]',
-    bar: 'bg-pink-400',
-    chip: 'bg-pink-500/15 text-pink-100 ring-pink-500/30',
-    tab: 'from-pink-500/30 to-rose-500/10 ring-pink-400/40',
+  blue: {
+    border: 'border-blue-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(59,130,246,0.8)]',
+    accent: 'text-blue-200',
+    bar: 'bg-blue-400',
+    chip: 'bg-blue-500/15 text-blue-100 ring-blue-500/30',
   },
-  ads: {
-    ring: 'border-orange-500/30 from-orange-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(251,146,60,0.75)]',
-    bar: 'bg-orange-400',
-    chip: 'bg-orange-500/15 text-orange-100 ring-orange-500/30',
-    tab: 'from-orange-500/30 to-amber-500/10 ring-orange-400/40',
+  green: {
+    border: 'border-green-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(34,197,94,0.8)]',
+    accent: 'text-green-200',
+    bar: 'bg-green-400',
+    chip: 'bg-green-500/15 text-green-100 ring-green-500/30',
   },
-  'ai-settings': {
-    ring: 'border-emerald-500/30 from-emerald-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(16,185,129,0.75)]',
+  emerald: {
+    border: 'border-emerald-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(52,211,153,0.8)]',
+    accent: 'text-emerald-200',
     bar: 'bg-emerald-400',
     chip: 'bg-emerald-500/15 text-emerald-100 ring-emerald-500/30',
-    tab: 'from-emerald-500/30 to-teal-500/10 ring-emerald-400/40',
   },
-  'communication-settings': {
-    ring: 'border-indigo-500/30 from-indigo-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(99,102,241,0.75)]',
+  amber: {
+    border: 'border-amber-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(245,158,11,0.85)]',
+    accent: 'text-amber-200',
+    bar: 'bg-amber-400',
+    chip: 'bg-amber-500/15 text-amber-100 ring-amber-500/30',
+  },
+  orange: {
+    border: 'border-orange-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(249,115,22,0.8)]',
+    accent: 'text-orange-200',
+    bar: 'bg-orange-400',
+    chip: 'bg-orange-500/15 text-orange-100 ring-orange-500/30',
+  },
+  rose: {
+    border: 'border-rose-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(251,113,133,0.8)]',
+    accent: 'text-rose-200',
+    bar: 'bg-rose-400',
+    chip: 'bg-rose-500/15 text-rose-100 ring-rose-500/30',
+  },
+  pink: {
+    border: 'border-pink-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(236,72,153,0.8)]',
+    accent: 'text-pink-200',
+    bar: 'bg-pink-400',
+    chip: 'bg-pink-500/15 text-pink-100 ring-pink-500/30',
+  },
+  fuchsia: {
+    border: 'border-fuchsia-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(217,70,239,0.8)]',
+    accent: 'text-fuchsia-200',
+    bar: 'bg-fuchsia-400',
+    chip: 'bg-fuchsia-500/15 text-fuchsia-100 ring-fuchsia-500/30',
+  },
+  violet: {
+    border: 'border-violet-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(139,92,246,0.8)]',
+    accent: 'text-violet-200',
+    bar: 'bg-violet-400',
+    chip: 'bg-violet-500/15 text-violet-100 ring-violet-500/30',
+  },
+  indigo: {
+    border: 'border-indigo-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(99,102,241,0.8)]',
+    accent: 'text-indigo-200',
     bar: 'bg-indigo-400',
     chip: 'bg-indigo-500/15 text-indigo-100 ring-indigo-500/30',
-    tab: 'from-indigo-500/30 to-violet-500/10 ring-indigo-400/40',
   },
-  'clinic-setup': {
-    ring: 'border-red-500/30 from-red-500/[0.14] to-slate-950/60',
-    glow: 'hover:shadow-[0_0_38px_-16px_rgba(239,68,68,0.75)]',
-    bar: 'bg-red-400',
-    chip: 'bg-red-500/15 text-red-100 ring-red-500/30',
-    tab: 'from-red-500/30 to-rose-500/10 ring-red-400/40',
+  teal: {
+    border: 'border-teal-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(20,184,166,0.8)]',
+    accent: 'text-teal-200',
+    bar: 'bg-teal-400',
+    chip: 'bg-teal-500/15 text-teal-100 ring-teal-500/30',
   },
+  lime: {
+    border: 'border-lime-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(132,204,22,0.8)]',
+    accent: 'text-lime-200',
+    bar: 'bg-lime-400',
+    chip: 'bg-lime-500/15 text-lime-100 ring-lime-500/30',
+  },
+  slate: {
+    border: 'border-slate-400/50',
+    glow: 'hover:shadow-[0_0_15px_rgba(148,163,184,0.7)]',
+    accent: 'text-slate-200',
+    bar: 'bg-slate-400',
+    chip: 'bg-slate-500/15 text-slate-100 ring-slate-500/30',
+  },
+};
+
+const BUTTON_TONES: Record<string, ButtonTone> = {
+  overview: BUTTON_COLORS.cyan,
+  appointments: BUTTON_COLORS.sky,
+  patients: BUTTON_COLORS.blue,
+  'medical-files': BUTTON_COLORS.green,
+  referrals: BUTTON_COLORS.rose,
+  providers: BUTTON_COLORS.indigo,
+  services: BUTTON_COLORS.fuchsia,
+  team: BUTTON_COLORS.violet,
+  conversations: BUTTON_COLORS.violet,
+  reviews: BUTTON_COLORS.amber,
+  messages: BUTTON_COLORS.fuchsia,
+  notifications: BUTTON_COLORS.orange,
+  leads: BUTTON_COLORS.lime,
+  'financial-intelligence': BUTTON_COLORS.amber,
+  expenses: BUTTON_COLORS.orange,
+  payroll: BUTTON_COLORS.emerald,
+  'my-payslips': BUTTON_COLORS.amber,
+  analytics: BUTTON_COLORS.violet,
+  growth: BUTTON_COLORS.pink,
+  subscription: BUTTON_COLORS.amber,
+  'knowledge-base': BUTTON_COLORS.blue,
+  'public-page': BUTTON_COLORS.cyan,
+  'public-content': BUTTON_COLORS.pink,
+  'before-after': BUTTON_COLORS.rose,
+  badges: BUTTON_COLORS.amber,
+  profile: BUTTON_COLORS.violet,
+  'ai-settings': BUTTON_COLORS.emerald,
+  'communication-settings': BUTTON_COLORS.indigo,
+  ads: BUTTON_COLORS.orange,
+  imaging: BUTTON_COLORS.sky,
+  lab: BUTTON_COLORS.green,
+  'imaging-centers': BUTTON_COLORS.teal,
+  'imaging-requests': BUTTON_COLORS.teal,
+  'referring-clinics': BUTTON_COLORS.cyan,
+  'clinic-setup': BUTTON_COLORS.rose,
+  setup: BUTTON_COLORS.slate,
+  'ai-analysis': BUTTON_COLORS.violet,
 };
 
 function readStoredOrder(groupId: NavGroupId, fallback: string[]) {
   if (typeof window === 'undefined') return fallback;
 
   try {
-    const key = `nav-grid-order-${groupId}`;
-    const raw = window.localStorage.getItem(key);
+    const raw = window.localStorage.getItem(`nav-grid-order-${groupId}`);
     if (!raw) return fallback;
 
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return fallback;
 
-    const valid = parsed.filter((module) => fallback.includes(module));
+    const valid = parsed.filter((module): module is string => typeof module === 'string' && fallback.includes(module));
     const missing = fallback.filter((module) => !valid.includes(module));
     return [...valid, ...missing];
   } catch {
@@ -137,8 +212,6 @@ function readStoredOrder(groupId: NavGroupId, fallback: string[]) {
 }
 
 export default function NavBentoGrid({ group, stats, onNavigate }: NavBentoGridProps) {
-  const tone = navTone(group.id);
-  const columns = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
   const defaultOrder = useMemo(() => group.items.map((item) => item.module), [group.items]);
   const [orderedModules, setOrderedModules] = useState<string[]>(() => readStoredOrder(group.id, defaultOrder));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -152,259 +225,133 @@ export default function NavBentoGrid({ group, stats, onNavigate }: NavBentoGridP
   }, [defaultOrder]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(`nav-grid-order-${group.id}`, JSON.stringify(orderedModules));
-    }
+    window.localStorage.setItem(`nav-grid-order-${group.id}`, JSON.stringify(orderedModules));
   }, [group.id, orderedModules]);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
 
     setOrderedModules((current) => {
       const oldIndex = current.indexOf(String(active.id));
       const newIndex = current.indexOf(String(over.id));
-      if (oldIndex < 0 || newIndex < 0) return current;
-      return arrayMove(current, oldIndex, newIndex);
+      return oldIndex < 0 || newIndex < 0 ? current : arrayMove(current, oldIndex, newIndex);
     });
   };
 
   const orderedItems = orderedModules
-    .map((moduleId) => group.items.find((item) => item.module === moduleId))
+    .map((module) => group.items.find((item) => item.module === module))
     .filter((item): item is BentoItem => Boolean(item));
+  const groupTone = navTone(group.id);
 
   return (
-    <motion.section
-      key={group.id}
-      aria-label={group.label}
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="relative space-y-5 rounded-[2rem] border border-white/5 bg-slate-950/60 p-3 shadow-[0_18px_60px_-32px_rgba(15,23,42,0.9)] backdrop-blur-xl sm:p-4"
-    >
-      <div className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),_transparent_34%),linear-gradient(rgba(148,163,184,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.03)_1px,transparent_1px)] bg-[size:100%_100%,18px_18px,18px_18px] opacity-80" />
-
-      <header className="relative flex flex-wrap items-center justify-between gap-3 px-1">
+    <section aria-label={group.label} className="relative space-y-4 rounded-2xl border border-white/10 bg-slate-950/70 p-3 shadow-xl backdrop-blur-xl">
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-white">
-          <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 text-lg shadow-inner shadow-white/5">
+          <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-base">
             {group.icon}
           </span>
           {group.label}
-          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${tone.chip}`}>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ${groupTone.chip}`}>
             {group.items.length}
           </span>
         </p>
-        <p className="text-[11px] text-slate-400">كل وحدات هذا القسم — لا شيء مخفي</p>
+        <p className="text-xs text-slate-400">اسحب الأزرار لترتيبها</p>
       </header>
 
-      {group.items.length === 0 ? (
-        <p className="relative rounded-2xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-400">
-          لا وحدات متاحة لصلاحيتك في هذا القسم.
-        </p>
+      {orderedItems.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-700 p-3 text-center text-sm text-slate-400">لا وحدات متاحة في هذا القسم.</p>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedModules} strategy={rectSortingStrategy}>
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-              className={`relative grid gap-3 ${columns} md:gap-4`}
-            >
+            <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-4 lg:grid-cols-6">
               {orderedItems.map((item, index) => (
-                <SortableBentoCard
+                <SortableButton
                   key={item.module}
                   item={item}
-                  tone={tone}
-                  chip={stats ? statForModule(item.module, stats) : null}
                   index={index}
+                  stats={stats}
+                  fallbackTone={groupTone}
                   onNavigate={onNavigate}
                 />
               ))}
-            </motion.div>
+            </div>
           </SortableContext>
         </DndContext>
       )}
-    </motion.section>
+    </section>
   );
 }
 
-function SortableBentoCard({
+function SortableButton({
   item,
-  tone,
-  chip,
   index,
+  stats,
+  fallbackTone,
   onNavigate,
 }: {
   item: BentoItem;
-  tone: ReturnType<typeof navTone>;
-  chip: ReturnType<typeof statForModule>;
   index: number;
+  stats?: NavStats;
+  fallbackTone: ReturnType<typeof navTone>;
   onNavigate?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.module });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+  const presentation = navPresentation(item.module);
+  const tone = BUTTON_TONES[item.module] ?? {
+    border: 'border-white/20',
+    glow: fallbackTone.glow,
+    accent: 'text-white',
+    bar: fallbackTone.bar,
+    chip: fallbackTone.chip,
   };
+  const chip = stats ? statForModule(item.module, stats) : null;
 
   return (
     <motion.div
       ref={setNodeRef}
-      style={style}
-      variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
-      whileHover={{ y: -4, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={`relative min-h-[120px] min-w-0 ${isDragging ? 'z-20 opacity-70' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`relative min-w-0 ${isDragging ? 'z-20 opacity-70' : ''}`}
     >
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        title={item.locked ? item.lockTitle : presentation.description}
+        aria-current={item.active ? 'page' : undefined}
+        className={`group relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-slate-900/90 p-2 pb-7 text-sm shadow-sm transition-all duration-300 hover:-translate-y-0.5 ${tone.border} ${tone.glow} ${
+          item.active ? 'ring-2 ring-white/40' : 'ring-1 ring-white/5'
+        }`}
+      >
+        <span aria-hidden className={`absolute inset-y-2 right-0 w-1 rounded-l-full ${tone.bar}`} />
+        <span className="flex min-w-0 items-center gap-2 pr-1">
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-base ${tone.accent}`} aria-hidden>
+            {presentation.emoji}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-semibold leading-5 text-white">{item.label}</span>
+          {item.locked ? (
+            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${tone.chip}`}>🔒</span>
+          ) : chip ? (
+            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${STAT_TONE_CLASS[chip.tone]}`}>
+              {chip.text}
+            </span>
+          ) : null}
+        </span>
+        {item.active ? <span className="text-xs font-medium text-emerald-200">الوحدة الحالية</span> : null}
+      </Link>
+
       <button
         type="button"
         aria-label={`إعادة ترتيب ${item.label}`}
-        className="absolute left-1.5 top-1.5 z-20 flex h-6 w-6 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white/90 text-[10px] text-slate-500 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        className="absolute bottom-1 right-1 z-20 flex h-4 w-4 cursor-grab items-center justify-center rounded border border-white/30 bg-slate-950/90 text-[8px] leading-none text-slate-300 shadow-sm active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
         ⋮⋮
       </button>
-      <BentoCard item={item} tone={tone} chip={chip} index={index} onNavigate={onNavigate} />
+      <span className="pointer-events-none absolute bottom-1 left-2 text-[10px] font-bold text-slate-500/80">
+        {String(index + 1).padStart(2, '0')}
+      </span>
     </motion.div>
   );
-}
-
-function BentoCard({
-  item,
-  tone,
-  chip,
-  index,
-  onNavigate,
-}: {
-  item: BentoItem;
-  tone: ReturnType<typeof navTone>;
-  chip: ReturnType<typeof statForModule>;
-  index: number;
-  onNavigate?: () => void;
-}) {
-  const presentation = navPresentation(item.module);
-  const { spawn, layer } = usePressRipple();
-  return (
-    <motion.div
-      variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
-      whileHover={{ y: -4, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={item.locked ? 'min-h-[120px] min-w-0 opacity-80' : 'min-h-[120px] min-w-0'}
-    >
-      <Link
-        href={item.href}
-        onPointerDown={spawn}
-        onClick={onNavigate}
-        title={item.locked ? item.lockTitle : presentation.description}
-        aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex min-h-[120px] min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-300 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:border-cyan-400/50 hover:-translate-y-1 dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${
-          item.active ? 'ring-2 ring-teal-500/30 shadow-[0_0_30px_-18px_rgba(45,212,191,0.8)]' : 'ring-1 ring-slate-200/80 dark:ring-white/5'
-        }`}
-      >
-        {layer}
-        <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/6 to-transparent" />
-        <span aria-hidden className={`absolute inset-y-0 right-0 w-1 rounded-l-full ${ITEM_TONES[item.module]?.bar ?? tone.bar}`} />
-        <span className="absolute bottom-2 left-3 z-10 text-[10px] font-black tracking-[0.2em] text-slate-400/80">
-          {String(index + 1).padStart(2, '0')}
-        </span>
-
-        <span className="relative z-10 flex items-start justify-between gap-3 pl-7">
-          <motion.span
-            aria-hidden
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-lg shadow-inner shadow-white/5"
-            whileHover={{ scale: 1.1, rotate: -7 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-          >
-            {presentation.emoji}
-          </motion.span>
-
-          <div className="flex items-center gap-2">
-            {item.locked ? (
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${ITEM_TONES[item.module]?.chip ?? tone.chip}`}>🔒</span>
-            ) : chip ? (
-              <motion.span
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${STAT_TONE_CLASS[chip.tone]}`}
-              >
-                {chip.text}
-              </motion.span>
-            ) : null}
-          </div>
-        </span>
-
-        <span className="relative z-10 mt-1 flex flex-col gap-0.5">
-          <span className="block text-[11px] font-bold leading-4 text-slate-900 dark:text-white">{item.label}</span>
-        </span>
-
-        <span className="relative z-10 mt-auto pt-1">
-          {item.active ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-100">
-              <span className={`h-2 w-2 rounded-full ${tone.bar}`} aria-hidden />
-              الوحدة الحالية
-            </span>
-          ) : null}
-        </span>
-      </Link>
-    </motion.div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Press ripple (same interaction as the patients search surface)             */
-/* -------------------------------------------------------------------------- */
-
-type RippleDot = { id: number; x: number; y: number; size: number };
-
-/**
- * Kept local on purpose (this delivery is capped at 8 files): the identical
- * interaction already exists in PatientSearchBar — a later cleanup can lift one
- * shared `components/ui/press-ripple.tsx` and delete both copies.
- */
-function usePressRipple(): { spawn: (event: MouseEvent<HTMLElement>) => void; layer: ReactNode } {
-  const [dots, setDots] = useState<RippleDot[]>([]);
-
-  const spawn = (event: MouseEvent<HTMLElement>) => {
-    const host = event.currentTarget;
-    if (!host) return;
-    const rect = host.getBoundingClientRect();
-    const size = Math.max(rect.width, rect.height) * 1.5;
-    const id = Date.now() + Math.random();
-    setDots((current) => [
-      ...current,
-      { id, x: event.clientX - rect.left - size / 2, y: event.clientY - rect.top - size / 2, size },
-    ]);
-    window.setTimeout(() => setDots((current) => current.filter((dot) => dot.id !== id)), 600);
-  };
-
-  const layer = (
-    <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
-      <AnimatePresence>
-        {dots.map((dot) => (
-          <motion.span
-            key={dot.id}
-            initial={{ scale: 0, opacity: 0.28 }}
-            animate={{ scale: 1, opacity: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            style={{
-              position: 'absolute',
-              left: dot.x,
-              top: dot.y,
-              width: dot.size,
-              height: dot.size,
-              borderRadius: '9999px',
-              background: 'currentColor',
-            }}
-          />
-        ))}
-      </AnimatePresence>
-    </span>
-  );
-
-  return { spawn, layer };
 }

@@ -366,7 +366,7 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
     return (
       <div className="space-y-5">
         {bentoGroups.map((group) => (
-          <NavBentoGrid key={group.id} group={group} stats={stats} variant="drawer" />
+          <NavBentoGrid key={group.id} group={group} stats={stats} />
         ))}
       </div>
     );
@@ -438,7 +438,7 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
             <div
               className={`mt-3 rounded-[1.75rem] border bg-slate-950/95 p-5 shadow-2xl shadow-slate-950/60 ring-1 backdrop-blur-xl ${tone.ring}`}
             >
-              <NavBentoGrid group={activeGroup} stats={stats} variant="panel" onNavigate={() => setOpen(false)} />
+              <NavBentoGrid group={activeGroup} stats={stats} onNavigate={() => setOpen(false)} />
             </div>
           </motion.div>
         ) : null}
