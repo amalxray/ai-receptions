@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
@@ -78,6 +78,8 @@ const EMPTY_SUMMARY: DailySummary = { appointmentsToday: null, newFiles: null, o
 
 export default function PatientsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const filterNewThisWeek = searchParams.get('filter') === 'new_this_week';
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
 
   /** Rows the API returned for the CURRENT debounced query (bounded by `limit`). */
@@ -116,7 +118,7 @@ export default function PatientsPage() {
       setError(null);
       try {
         const headers = await authHeaders();
-        const qs = new URLSearchParams({ clinic_id: clinicId, limit: String(SEARCH_FETCH_LIMIT) });
+        const qs = new URLSearchParams({ clinic_id: clinicId, limit: String(filterNewThisWeek ? 500 : SEARCH_FETCH_LIMIT) });
         if (term.trim()) qs.set('q', term);
         const res = await fetch(`/api/patients?${qs.toString()}`, { headers });
         if (!res.ok) throw new Error('بيانات المرضى غير متاحة');
@@ -129,7 +131,7 @@ export default function PatientsPage() {
         setSearching(false);
       }
     },
-    [authHeaders, clinicId]
+    [authHeaders, clinicId, filterNewThisWeek]
   );
 
   /**
@@ -149,13 +151,13 @@ export default function PatientsPage() {
       setSearching(false);
       return;
     }
-    if (!query.trim()) {
+    if (!query.trim() && !filterNewThisWeek) {
       setPatients([]);
       setSearching(false);
       return;
     }
     void runSearch(query);
-  }, [clinicLoading, clinicId, clinicError, query, runSearch]);
+  }, [clinicLoading, clinicId, clinicError, query, runSearch, filterNewThisWeek]);
 
   /** B48 — appointments for ONE patient (`patient_id` filter) + `{ data }` envelope. */
   useEffect(() => {
@@ -368,18 +370,33 @@ export default function PatientsPage() {
   const visiblePatients = useMemo(
     () =>
       patients.filter((patient) => {
+        if (filterNewThisWeek) {
+          const createdAt = patient.created_at ? new Date(patient.created_at).getTime() : Number.NaN;
+          const age = Date.now() - createdAt;
+          if (!Number.isFinite(createdAt) || age < 0 || age > 7 * 24 * 60 * 60 * 1000) return false;
+        }
         const status = getPatientTreatmentStatus(patient.metadata);
         if (treatmentFilter === 'all') return true;
         return treatmentFilter === 'active' ? status === 'active' : status === 'closed';
       }),
-    [patients, treatmentFilter]
+    [patients, treatmentFilter, filterNewThisWeek]
   );
 
   /** Ranked + capped view of the API rows for the current query. */
   const outcome = useMemo(
-    () =>
-      searchPatients(visiblePatients, query, showAll ? Math.max(visiblePatients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT),
-    [visiblePatients, query, showAll]
+    () => {
+      if (filterNewThisWeek) {
+        const limit = showAll ? visiblePatients.length : SEARCH_RESULT_LIMIT;
+        return {
+          results: visiblePatients.slice(0, limit),
+          total: visiblePatients.length,
+          hasMore: visiblePatients.length > limit,
+          query: '',
+        };
+      }
+      return searchPatients(visiblePatients, query, showAll ? Math.max(visiblePatients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT);
+    },
+    [visiblePatients, query, showAll, filterNewThisWeek]
   );
 
   const greeting = useMemo(() => greetingAr(), []);
@@ -404,7 +421,7 @@ export default function PatientsPage() {
           label: '3 مديونيات متأخرة',
           tone: 'rose',
           description: 'إجراءات متابعة مطلوبة خلال 24 ساعة',
-          href: `${base}/financial-intelligence?status=unpaid`,
+          href: `${base}/debts`,
         },
         {
           icon: '🩻',
@@ -418,7 +435,7 @@ export default function PatientsPage() {
           label: '5 مرضى جدد هذا الأسبوع',
           tone: 'cyan',
           description: 'تحديثات حديثة في قائمة المرضى',
-          href: `${base}/patients`,
+          href: `${base}/patients?filter=new_this_week`,
         },
         {
           icon: '💬',
@@ -447,6 +464,7 @@ export default function PatientsPage() {
 
   const recentActivities = useMemo(
     () => {
+      // TODO: replace these demo activity rows with the clinic activity API.
       const fallbackActivities = [
         { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
         { name: 'نبيله جابر', action: 'موعد جديد', time: 'اليوم', tone: 'cyan', icon: '📅' },
@@ -465,7 +483,8 @@ export default function PatientsPage() {
   );
 
   const hasQuery = query.trim().length > 0;
-  const hint = hasQuery ? (outcome.total === 1 ? 'نتيجة واحدة' : `${outcome.total} نتائج`) : null;
+  const hasPatientResults = hasQuery || filterNewThisWeek;
+  const hint = hasPatientResults ? (outcome.total === 1 ? 'نتيجة واحدة' : `${outcome.total} نتائج`) : null;
 
   const handleQueryChange = useCallback((next: string) => {
     setQuery(next);
@@ -531,7 +550,7 @@ export default function PatientsPage() {
 
       {/* 📊 Daily summary — hidden as soon as the receptionist starts searching. */}
       <AnimatePresence initial={false}>
-        {!hasQuery && !isFormOpen ? (
+        {!hasPatientResults && !isFormOpen ? (
           <motion.div
             key="summary"
             initial={{ opacity: 0, y: 18 }}
@@ -673,8 +692,14 @@ export default function PatientsPage() {
                 </div>
                 <div className="space-y-2">
                   {recentActivities.map((activity) => (
-                    <motion.div
+                    <Link
                       key={`${activity.name}-${activity.action}`}
+                      href={activity.patientId
+                        ? `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(activity.patientId)}`
+                        : `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients?filter=new_this_week`}
+                      className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
+                    >
+                    <motion.div
                       whileHover={{ x: 2 }}
                       whileTap={{ scale: 0.99 }}
                       transition={{ type: 'spring', stiffness: 240, damping: 24 }}
@@ -694,20 +719,12 @@ export default function PatientsPage() {
                         {activity.icon}
                       </span>
                       <div className="min-w-0 flex-1">
-                        {activity.patientId ? (
-                          <Link
-                            href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(activity.patientId)}`}
-                            className="block truncate text-sm font-medium text-white hover:text-cyan-200 hover:underline"
-                          >
-                            {activity.name}
-                          </Link>
-                        ) : (
-                          <p className="truncate text-sm font-medium text-white">{activity.name}</p>
-                        )}
+                        <p className="truncate text-sm font-medium text-white group-hover:text-cyan-200 group-hover:underline">{activity.name}</p>
                         <p className="truncate text-[11px] text-slate-400">{activity.action}</p>
                       </div>
                       <span className="text-[10px] font-bold text-slate-500">{activity.time}</span>
                     </motion.div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -820,7 +837,7 @@ export default function PatientsPage() {
         ) : null}
       </AnimatePresence>
 
-      {hasQuery && (
+      {hasPatientResults && (
         <div className="mb-4 flex flex-wrap gap-2">
           {['all', 'active', 'closed'].map((filter) => (
             <button
@@ -841,7 +858,7 @@ export default function PatientsPage() {
 
       {/* 🔎 Results (max 10) — the panel opens UNDER them, never in a modal. */}
       <AnimatePresence mode="wait">
-        {hasQuery ? (
+        {hasPatientResults ? (
           <motion.div
             key="results"
             initial="hidden"
