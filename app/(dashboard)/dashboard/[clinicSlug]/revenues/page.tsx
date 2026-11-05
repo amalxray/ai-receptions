@@ -25,10 +25,12 @@ type PaymentRow = {
   amount: number;
   method: string;
   created_at: string;
+  status: 'recorded' | 'voided' | string;
 };
 
 type RevenueTab = 'invoices' | 'payments';
 type InvoiceFilter = 'all' | 'paid' | 'unpaid' | 'voided';
+type VoidTarget = { kind: 'invoice' | 'payment'; id: string; label: string };
 
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat('ar-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 2 }).format(amount);
@@ -63,13 +65,19 @@ function responseRows<T>(payload: unknown): T[] {
 }
 
 export default function RevenuesPage() {
-  const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const { clinicId, clinicSlug, role, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [activeTab, setActiveTab] = useState<RevenueTab>('invoices');
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>('all');
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [voidError, setVoidError] = useState<string | null>(null);
+  const [voidSubmitting, setVoidSubmitting] = useState(false);
+  const canVoid = ['owner', 'manager', 'admin'].includes(role ?? '');
 
   useEffect(() => {
     if (clinicLoading) return;
@@ -110,7 +118,53 @@ export default function RevenuesPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, authHeaders, clinicId, clinicLoading, invoiceFilter]);
+  }, [activeTab, authHeaders, clinicId, clinicLoading, invoiceFilter, refreshKey]);
+
+  const openVoidDialog = (target: VoidTarget) => {
+    setVoidTarget(target);
+    setVoidReason('');
+    setVoidError(null);
+  };
+
+  const closeVoidDialog = () => {
+    if (voidSubmitting) return;
+    setVoidTarget(null);
+    setVoidReason('');
+    setVoidError(null);
+  };
+
+  const confirmVoid = async () => {
+    if (!clinicId || !voidTarget || !voidReason.trim()) {
+      setVoidError('سبب الإلغاء مطلوب.');
+      return;
+    }
+    setVoidSubmitting(true);
+    setVoidError(null);
+    try {
+      const headers = await authHeaders();
+      const resource = voidTarget.kind === 'invoice' ? 'invoices' : 'payments';
+      const response = await fetch(
+        `/api/clinic/accounting/${resource}/${encodeURIComponent(voidTarget.id)}/void?clinic_id=${encodeURIComponent(clinicId)}`,
+        {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: voidReason.trim() }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = (payload as { error?: string } | null)?.error;
+        throw new Error(message || 'تعذر إلغاء السجل. تحقق من صلاحياتك وحالة السجل.');
+      }
+      setVoidTarget(null);
+      setVoidReason('');
+      setRefreshKey((current) => current + 1);
+    } catch (caughtError) {
+      setVoidError(caughtError instanceof Error ? caughtError.message : 'حدث خطأ أثناء الإلغاء.');
+    } finally {
+      setVoidSubmitting(false);
+    }
+  };
 
   const patientHref = (patientId: string) =>
     `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(patientId)}`;
@@ -170,7 +224,7 @@ export default function RevenuesPage() {
           <EmptyState title="لا توجد فواتير" description="لا توجد فواتير تطابق الحالة المختارة." />
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-800">
-            <table className="w-full min-w-[760px] text-right text-sm">
+            <table className="w-full min-w-[900px] text-right text-sm">
               <thead className="bg-slate-950/70 text-xs text-slate-400">
                 <tr>
                   <th className="px-4 py-3">رقم الفاتورة</th>
@@ -179,6 +233,7 @@ export default function RevenuesPage() {
                   <th className="px-4 py-3">الحالة</th>
                   <th className="px-4 py-3">تاريخ الإصدار</th>
                   <th className="px-4 py-3">الملف</th>
+                  <th className="px-4 py-3">الإجراء</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,6 +253,17 @@ export default function RevenuesPage() {
                         عرض
                       </Link>
                     </td>
+                    <td className="px-4 py-3">
+                      {canVoid && invoice.status !== 'voided' ? (
+                        <button
+                          type="button"
+                          onClick={() => openVoidDialog({ kind: 'invoice', id: invoice.id, label: invoice.invoice_number })}
+                          className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
+                        >
+                          إلغاء
+                        </button>
+                      ) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -208,7 +274,7 @@ export default function RevenuesPage() {
         <EmptyState title="لا توجد مدفوعات" description="لم تُسجّل مدفوعات لعرضها حالياً." />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-800">
-          <table className="w-full min-w-[760px] text-right text-sm">
+          <table className="w-full min-w-[1000px] text-right text-sm">
             <thead className="bg-slate-950/70 text-xs text-slate-400">
               <tr>
                 <th className="px-4 py-3">رقم الإيصال</th>
@@ -217,6 +283,8 @@ export default function RevenuesPage() {
                 <th className="px-4 py-3">المبلغ</th>
                 <th className="px-4 py-3">طريقة الدفع</th>
                 <th className="px-4 py-3">التاريخ</th>
+                <th className="px-4 py-3">الحالة</th>
+                <th className="px-4 py-3">الإجراء</th>
               </tr>
             </thead>
             <tbody>
@@ -228,12 +296,74 @@ export default function RevenuesPage() {
                   <td className="px-4 py-3">{formatMoney(Number(payment.amount || 0))}</td>
                   <td className="px-4 py-3">{paymentMethodLabel(payment.method)}</td>
                   <td className="px-4 py-3">{formatDate(payment.created_at)}</td>
+                  <td className="px-4 py-3">{payment.status === 'voided' ? 'ملغاة' : 'مسجلة'}</td>
+                  <td className="px-4 py-3">
+                    {canVoid && payment.status !== 'voided' ? (
+                      <button
+                        type="button"
+                        onClick={() => openVoidDialog({ kind: 'payment', id: payment.id, label: payment.receipt_number || payment.invoice_number || payment.id })}
+                        className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/10"
+                      >
+                        إلغاء
+                      </button>
+                    ) : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {voidTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="void-dialog-title"
+            className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"
+          >
+            <h2 id="void-dialog-title" className="text-xl font-bold text-white">تأكيد الإلغاء</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              {voidTarget.kind === 'invoice'
+                ? 'سيتم إلغاء هذه الفاتورة نهائياً من الحسابات. أدخل سبب الإلغاء.'
+                : 'سيتم إلغاء هذه الدفعة نهائياً من الحسابات. أدخل سبب الإلغاء.'}
+            </p>
+            <p className="mt-2 text-xs text-slate-400">السجل: {voidTarget.label}</p>
+            <label htmlFor="void-reason" className="mt-5 block text-sm font-medium text-slate-200">سبب الإلغاء</label>
+            <textarea
+              id="void-reason"
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              rows={3}
+              required
+              maxLength={500}
+              disabled={voidSubmitting}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-60"
+              placeholder="اكتب سبب الإلغاء"
+            />
+            {voidError ? <p role="alert" className="mt-3 text-sm text-rose-300">{voidError}</p> : null}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeVoidDialog}
+                disabled={voidSubmitting}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-60"
+              >
+                إلغاء العملية
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmVoid()}
+                disabled={voidSubmitting || !voidReason.trim()}
+                className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {voidSubmitting ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </DashboardSection>
   );
 }
