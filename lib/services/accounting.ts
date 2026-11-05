@@ -555,6 +555,122 @@ export async function listExpenses(
   };
 }
 
+export async function updateExpense(input: {
+  clinicId: string;
+  expenseId: string;
+  notes?: string | null;
+  vendor?: string | null;
+  categoryId?: string | null;
+  actorUserId: string | null;
+}): Promise<ExpenseRow> {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.notes !== undefined) patch.notes = input.notes;
+  if (input.vendor !== undefined) patch.vendor = input.vendor;
+  if (input.categoryId !== undefined) patch.category_id = input.categoryId;
+
+  const { data, error } = await supabaseAdmin
+    .from('clinic_expenses')
+    .update(patch)
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.expenseId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('EXPENSE_NOT_FOUND');
+
+  await writeAuditLog({
+    clinicId: input.clinicId,
+    actorUserId: input.actorUserId,
+    action: 'expense_updated',
+    resourceType: 'clinic_expenses',
+    resourceId: input.expenseId,
+    metadata: {
+      notes: input.notes ?? null,
+      vendor: input.vendor ?? null,
+      category_id: input.categoryId ?? null,
+    },
+  });
+
+  return data as ExpenseRow;
+}
+
+export async function updateExpenseAttachment(input: {
+  clinicId: string;
+  expenseId: string;
+  path: string | null;
+  actorUserId: string | null;
+}): Promise<ExpenseRow> {
+  const { data, error } = await supabaseAdmin
+    .from('clinic_expenses')
+    .update({ attachment_url: input.path, updated_at: new Date().toISOString() })
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.expenseId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('EXPENSE_NOT_FOUND');
+
+  await writeAuditLog({
+    clinicId: input.clinicId,
+    actorUserId: input.actorUserId,
+    action: input.path ? 'expense_attachment_uploaded' : 'expense_attachment_removed',
+    resourceType: 'clinic_expenses',
+    resourceId: input.expenseId,
+    metadata: { attachment_path: input.path },
+  });
+
+  return data as ExpenseRow;
+}
+
+export async function deleteExpenseAttachment(input: {
+  clinicId: string;
+  expenseId: string;
+  actorUserId: string | null;
+}): Promise<void> {
+  const { data, error } = await supabaseAdmin
+    .from('clinic_expenses')
+    .select('attachment_url')
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.expenseId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('EXPENSE_NOT_FOUND');
+  const currentPath = (data as { attachment_url?: string | null }).attachment_url ?? null;
+
+  if (currentPath) {
+    const { error: removeError } = await supabaseAdmin.storage.from('expense-attachments').remove([currentPath]);
+    if (removeError) throw new Error(removeError.message);
+  }
+
+  await updateExpenseAttachment({
+    clinicId: input.clinicId,
+    expenseId: input.expenseId,
+    path: null,
+    actorUserId: input.actorUserId,
+  });
+}
+
+export async function getExpenseAttachmentSignedUrl(
+  clinicId: string,
+  expenseId: string,
+  path: string | null | undefined,
+  seconds = 3600
+): Promise<string | null> {
+  const storagePath = (path ?? '').trim();
+  if (!storagePath) return null;
+  if (!storagePath.startsWith(`${clinicId}/${expenseId}/`)) {
+    throw new Error('EXPENSE_ATTACHMENT_PATH_INVALID');
+  }
+
+  const { data, error } = await supabaseAdmin.storage.from('expense-attachments').createSignedUrl(storagePath, seconds);
+  if (error) throw new Error(error.message);
+  if (!data?.signedUrl) throw new Error('EXPENSE_ATTACHMENT_SIGNED_URL_FAILED');
+  return data.signedUrl;
+}
+
 
 export type ExpenseCategoryRow = Record<string, unknown>;
 
@@ -745,4 +861,3 @@ export async function getDailyCashPositions(
     netCash: Number(row.net_cash ?? 0),
   }));
 }
-
