@@ -146,8 +146,8 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
   const tone = navTone(group.id);
   const columns =
     variant === 'drawer'
-      ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-      : 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
+      ? 'grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5'
+      : 'grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5';
   const defaultOrder = useMemo(() => group.items.map((item) => item.module), [group.items]);
   const [orderedModules, setOrderedModules] = useState<string[]>(() => readStoredOrder(group.id, defaultOrder));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -218,7 +218,7 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
               initial="hidden"
               animate="visible"
               variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-              className={`relative grid gap-3 ${columns}`}
+              className={`relative grid auto-rows-[80px] ${columns} sm:gap-4`}
             >
               {orderedItems.map((item, index) => (
                 <SortableBentoCard
@@ -265,7 +265,7 @@ function SortableBentoCard({
       whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={`${isDragging ? 'z-20 opacity-70' : ''}`}
+      className={`relative min-w-0 ${SPAN_CLASS[navPresentation(item.module).span] ?? ''} ${isDragging ? 'z-20 opacity-70' : ''}`}
     >
       <button
         type="button"
@@ -296,15 +296,13 @@ function BentoCard({
 }) {
   const presentation = navPresentation(item.module);
   const { spawn, layer } = usePressRipple();
-  const cardClass = `${SPAN_CLASS[presentation.span] ?? ''} ${item.locked ? 'opacity-80' : ''}`;
-
   return (
     <motion.div
       variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
       whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={cardClass}
+      className={item.locked ? 'h-full min-w-0 opacity-80' : 'h-full min-w-0'}
     >
       <Link
         href={item.href}
@@ -312,7 +310,7 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex h-[80px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
+        className={`group relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
           item.active ? 'ring-2 ring-teal-500/30 shadow-[0_0_30px_-18px_rgba(45,212,191,0.8)]' : 'ring-1 ring-slate-200/80 dark:ring-white/5'
         }`}
       >
