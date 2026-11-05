@@ -75,8 +75,10 @@ export const DATA_ROLES: readonly string[] = [...ADMIN_ROLES, 'doctor', 'recepti
  * (front-desk checkout) without any administrative finance power.
  */
 
-/** Roles allowed to perform admin finance actions (voids, adjustments, write-offs). */
+/** Roles allowed to perform admin finance actions (adjustments, write-offs). */
 export const FINANCE_ADMIN_ROLES: readonly string[] = ['owner', 'accountant'];
+/** Roles allowed to void invoices or payments (owner only). */
+export const FINANCE_VOID_ROLES = ['owner'] as const;
 /** Roles allowed to READ financial data (invoices, payments, balances). */
 export const FINANCE_READ_ROLES: readonly string[] = [...FINANCE_ADMIN_ROLES, 'manager'];
 /** Roles allowed to create invoices. */

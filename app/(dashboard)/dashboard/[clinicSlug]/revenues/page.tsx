@@ -77,7 +77,7 @@ export default function RevenuesPage() {
   const [voidReason, setVoidReason] = useState('');
   const [voidError, setVoidError] = useState<string | null>(null);
   const [voidSubmitting, setVoidSubmitting] = useState(false);
-  const canVoid = ['owner', 'manager', 'admin'].includes(role ?? '');
+  const canVoid = role === 'owner';
 
   useEffect(() => {
     if (clinicLoading) return;

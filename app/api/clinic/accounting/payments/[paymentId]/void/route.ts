@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, roleDenied, FINANCE_VOID_ROLES } from '@/lib/services/clinicAuthorization';
 import { voidPayment } from '@/lib/services/accounting';
 
 export async function POST(req: Request, { params }: { params: Promise<{ paymentId: string }> }) {
@@ -9,7 +9,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ payment
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
+    const denied = roleDenied(authorization, FINANCE_VOID_ROLES);
     if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const body = await req.json();
     await voidPayment({ clinicId, paymentId, reason: body?.reason ?? '', actorUserId: authorization.user?.id ?? null });
