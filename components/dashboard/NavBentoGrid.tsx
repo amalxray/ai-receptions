@@ -51,12 +51,6 @@ type NavBentoGridProps = {
   onNavigate?: () => void;
 };
 
-const SPAN_CLASS: Record<string, string> = {
-  hero: 'sm:col-span-2 sm:row-span-2',
-  wide: 'sm:col-span-2',
-  unit: '',
-};
-
 const ITEM_TONES: Record<string, ReturnType<typeof navTone>> = {
   'my-payslips': {
     ring: 'border-amber-500/30 from-amber-500/[0.14] to-slate-950/60',
@@ -142,12 +136,9 @@ function readStoredOrder(groupId: NavGroupId, fallback: string[]) {
   }
 }
 
-export default function NavBentoGrid({ group, stats, variant = 'panel', onNavigate }: NavBentoGridProps) {
+export default function NavBentoGrid({ group, stats, onNavigate }: NavBentoGridProps) {
   const tone = navTone(group.id);
-  const columns =
-    variant === 'drawer'
-      ? 'grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5'
-      : 'grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5';
+  const columns = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
   const defaultOrder = useMemo(() => group.items.map((item) => item.module), [group.items]);
   const [orderedModules, setOrderedModules] = useState<string[]>(() => readStoredOrder(group.id, defaultOrder));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -218,7 +209,7 @@ export default function NavBentoGrid({ group, stats, variant = 'panel', onNaviga
               initial="hidden"
               animate="visible"
               variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-              className={`relative grid auto-rows-[80px] ${columns} sm:gap-4`}
+              className={`relative grid gap-3 ${columns} md:gap-4`}
             >
               {orderedItems.map((item, index) => (
                 <SortableBentoCard
@@ -265,12 +256,12 @@ function SortableBentoCard({
       whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={`relative min-w-0 ${SPAN_CLASS[navPresentation(item.module).span] ?? ''} ${isDragging ? 'z-20 opacity-70' : ''}`}
+      className={`relative min-h-[120px] min-w-0 ${isDragging ? 'z-20 opacity-70' : ''}`}
     >
       <button
         type="button"
         aria-label={`إعادة ترتيب ${item.label}`}
-        className="absolute right-1.5 top-1.5 z-20 flex h-5 w-5 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white/90 text-[10px] text-slate-500 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        className="absolute left-1.5 top-1.5 z-20 flex h-6 w-6 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white/90 text-[10px] text-slate-500 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
         {...attributes}
         {...listeners}
       >
@@ -302,7 +293,7 @@ function BentoCard({
       whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={item.locked ? 'h-full min-w-0 opacity-80' : 'h-full min-w-0'}
+      className={item.locked ? 'min-h-[120px] min-w-0 opacity-80' : 'min-h-[120px] min-w-0'}
     >
       <Link
         href={item.href}
@@ -310,18 +301,18 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-500/50 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${ITEM_TONES[item.module]?.glow ?? tone.glow} ${
+        className={`group relative flex min-h-[120px] min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-300 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:border-cyan-400/50 hover:-translate-y-1 dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${
           item.active ? 'ring-2 ring-teal-500/30 shadow-[0_0_30px_-18px_rgba(45,212,191,0.8)]' : 'ring-1 ring-slate-200/80 dark:ring-white/5'
         }`}
       >
         {layer}
         <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/6 to-transparent" />
         <span aria-hidden className={`absolute inset-y-0 right-0 w-1 rounded-l-full ${ITEM_TONES[item.module]?.bar ?? tone.bar}`} />
-        <span className="absolute left-4 top-4 z-10 text-[10px] font-black tracking-[0.2em] text-slate-400/80">
+        <span className="absolute bottom-2 left-3 z-10 text-[10px] font-black tracking-[0.2em] text-slate-400/80">
           {String(index + 1).padStart(2, '0')}
         </span>
 
-        <span className="relative z-10 flex items-start justify-between gap-3">
+        <span className="relative z-10 flex items-start justify-between gap-3 pl-7">
           <motion.span
             aria-hidden
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-lg shadow-inner shadow-white/5"
