@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
  * every clinic, no hard-coding.
  */
 
-type ExpenseCategory = { id: string; name: string; active: boolean };
+type ExpenseCategory = { id: string; name: string; is_active?: boolean; active?: boolean };
 
 const EXPENSE_METHODS: Array<{ value: string; label: string }> = [
   { value: 'cash', label: 'نقداً' },
@@ -31,6 +31,9 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [categoryId, setCategoryId] = useState('');
   const [newCategory, setNewCategory] = useState('');
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [spentAt, setSpentAt] = useState(() => new Date().toISOString().slice(0, 10));
@@ -49,12 +52,22 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
           { headers: await authHeaders() }
         );
         const payload = await response.json();
-        if (isMounted && response.ok) {
+        if (isMounted) {
+          if (!response.ok) {
+            setCategoriesError('تعذر تحميل الفئات. حاول التحديث.');
+            setCategories([]);
+            return;
+          }
           const list = (payload?.data ?? []) as ExpenseCategory[];
-          setCategories(list.filter((item) => item.active !== false));
+          const nextCategories = list.filter((item) => (item.is_active ?? item.active ?? true) !== false);
+          setCategories(nextCategories);
+          setCategoriesError(null);
         }
       } catch {
-        // categories stay empty — the form still works with a new inline category
+        if (isMounted) {
+          setCategoriesError('تعذر تحميل الفئات. حاول التحديث.');
+          setCategories([]);
+        }
       }
     })();
     return () => {
@@ -96,15 +109,42 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
             <input type="date" value={spentAt} onChange={(e) => setSpentAt(e.target.value)} className={inputClass} />
           </label>
         </div>
-        <label className="block space-y-1">
-          <span className="text-xs text-slate-400">الفئة</span>
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
-            <option value="">غير مصنّف</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>{category.name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="space-y-2">
+          <label className="block space-y-1">
+            <span className="text-xs text-slate-400">الفئة</span>
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+              <option value="">غير مصنّف</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </label>
+          {categoriesError ? <p className="text-xs text-rose-300">{categoriesError}</p> : null}
+          {!showNewCategoryInput ? (
+            <button type="button" onClick={() => setShowNewCategoryInput(true)} className="text-xs font-medium text-cyan-300 transition hover:text-cyan-200">
+              ➕ إضافة فئة جديدة
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className={`${inputClass} flex-1`} 
+                placeholder="اسم الفئة"
+                maxLength={80}
+              />
+              <button
+                type="button"
+                onClick={saveNewCategory}
+                disabled={savingCategory || !newCategory.trim()}
+                className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingCategory ? 'جارٍ...' : 'حفظ'}
+              </button>
+            </div>
+          )}
+        </div>
 
         <label className="block space-y-1">
           <span className="text-xs text-slate-400">المورّد / الجهة</span>
@@ -136,6 +176,42 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
       </div>
     </div>
   );
+
+  async function saveNewCategory() {
+    const trimmedName = newCategory.trim();
+    if (!clinicId || !trimmedName || savingCategory) return;
+
+    setSavingCategory(true);
+    try {
+      const response = await fetch('/api/clinic/accounting/expense-categories', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ clinic_id: clinicId, name: trimmedName }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const apiMessage = (payload as { error?: string } | null)?.error;
+        setCategoriesError(apiMessage ? `تعذر حفظ الفئة: ${apiMessage}` : 'تعذر حفظ الفئة. حاول مرة أخرى.');
+        return;
+      }
+
+      const created = (payload?.data ?? null) as ExpenseCategory | null;
+      if (created) {
+        setCategories((prev) => {
+          const next = [...prev, created].filter((item) => (item.is_active ?? item.active ?? true) !== false);
+          return next.filter((item, index, arr) => arr.findIndex((candidate) => candidate.id === item.id) === index);
+        });
+        setCategoryId(created.id);
+      }
+      setNewCategory('');
+      setShowNewCategoryInput(false);
+      setCategoriesError(null);
+    } catch {
+      setCategoriesError('تعذر حفظ الفئة. حاول مرة أخرى.');
+    } finally {
+      setSavingCategory(false);
+    }
+  }
 
   async function saveExpense() {
     if (!clinicId || saving) return;
