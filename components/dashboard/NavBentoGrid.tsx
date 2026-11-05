@@ -115,6 +115,55 @@ const ITEM_TONES: Record<string, ReturnType<typeof navTone>> = {
     chip: 'bg-red-500/15 text-red-100 ring-red-500/30',
     tab: 'from-red-500/30 to-rose-500/10 ring-red-400/40',
   },
+  appointments: {
+    ring: 'border-sky-500/50 from-sky-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(14,165,233,0.8)]',
+    bar: 'bg-sky-400',
+    chip: 'bg-sky-500/15 text-sky-100 ring-sky-500/30',
+    tab: 'from-sky-500/30 to-cyan-500/10 ring-sky-400/40',
+  },
+  patients: {
+    ring: 'border-blue-500/50 from-blue-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(59,130,246,0.8)]',
+    bar: 'bg-blue-400',
+    chip: 'bg-blue-500/15 text-blue-100 ring-blue-500/30',
+    tab: 'from-blue-500/30 to-indigo-500/10 ring-blue-400/40',
+  },
+  'medical-files': {
+    ring: 'border-green-500/50 from-green-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(34,197,94,0.8)]',
+    bar: 'bg-green-400',
+    chip: 'bg-green-500/15 text-green-100 ring-green-500/30',
+    tab: 'from-green-500/30 to-emerald-500/10 ring-green-400/40',
+  },
+  'financial-intelligence': {
+    ring: 'border-amber-500/50 from-amber-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(245,158,11,0.85)]',
+    bar: 'bg-amber-400',
+    chip: 'bg-amber-500/15 text-amber-100 ring-amber-500/30',
+    tab: 'from-amber-500/30 to-orange-500/10 ring-amber-400/40',
+  },
+  expenses: {
+    ring: 'border-orange-500/50 from-orange-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(249,115,22,0.8)]',
+    bar: 'bg-orange-400',
+    chip: 'bg-orange-500/15 text-orange-100 ring-orange-500/30',
+    tab: 'from-orange-500/30 to-red-500/10 ring-orange-400/40',
+  },
+  analytics: {
+    ring: 'border-violet-500/50 from-violet-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(139,92,246,0.8)]',
+    bar: 'bg-violet-400',
+    chip: 'bg-violet-500/15 text-violet-100 ring-violet-500/30',
+    tab: 'from-violet-500/30 to-fuchsia-500/10 ring-violet-400/40',
+  },
+  messages: {
+    ring: 'border-fuchsia-500/50 from-fuchsia-500/[0.18] to-slate-950/70',
+    glow: 'hover:shadow-[0_0_15px_rgba(217,70,239,0.8)]',
+    bar: 'bg-fuchsia-400',
+    chip: 'bg-fuchsia-500/15 text-fuchsia-100 ring-fuchsia-500/30',
+    tab: 'from-fuchsia-500/30 to-pink-500/10 ring-fuchsia-400/40',
+  },
 };
 
 function readStoredOrder(groupId: NavGroupId, fallback: string[]) {
@@ -138,7 +187,7 @@ function readStoredOrder(groupId: NavGroupId, fallback: string[]) {
 
 export default function NavBentoGrid({ group, stats, onNavigate }: NavBentoGridProps) {
   const tone = navTone(group.id);
-  const columns = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+  const columns = 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6';
   const defaultOrder = useMemo(() => group.items.map((item) => item.module), [group.items]);
   const [orderedModules, setOrderedModules] = useState<string[]>(() => readStoredOrder(group.id, defaultOrder));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -209,7 +258,7 @@ export default function NavBentoGrid({ group, stats, onNavigate }: NavBentoGridP
               initial="hidden"
               animate="visible"
               variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-              className={`relative grid gap-3 ${columns} md:gap-4`}
+              className={`relative grid items-start gap-3 ${columns} md:gap-4`}
             >
               {orderedItems.map((item, index) => (
                 <SortableBentoCard
@@ -253,15 +302,14 @@ function SortableBentoCard({
       ref={setNodeRef}
       style={style}
       variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
-      whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={`relative min-h-[120px] min-w-0 ${isDragging ? 'z-20 opacity-70' : ''}`}
+      className={`relative min-w-0 ${isDragging ? 'z-20 opacity-70' : ''}`}
     >
       <button
         type="button"
         aria-label={`إعادة ترتيب ${item.label}`}
-        className="absolute left-1.5 top-1.5 z-20 flex h-6 w-6 cursor-grab items-center justify-center rounded-md border border-slate-200 bg-white/90 text-[10px] text-slate-500 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        className="absolute bottom-1 right-1 z-20 flex h-4 w-4 cursor-grab items-center justify-center rounded border border-slate-200 bg-white/90 text-[8px] leading-none text-slate-500 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
         {...attributes}
         {...listeners}
       >
@@ -290,10 +338,9 @@ function BentoCard({
   return (
     <motion.div
       variants={{ hidden: { opacity: 0, y: 18, scale: 0.98 }, visible: { opacity: 1, y: 0, scale: 1 } }}
-      whileHover={{ y: -4, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className={item.locked ? 'min-h-[120px] min-w-0 opacity-80' : 'min-h-[120px] min-w-0'}
+      className={item.locked ? 'min-w-0 opacity-80' : 'min-w-0'}
     >
       <Link
         href={item.href}
@@ -301,7 +348,7 @@ function BentoCard({
         onClick={onNavigate}
         title={item.locked ? item.lockTitle : presentation.description}
         aria-current={item.active ? 'page' : undefined}
-        className={`group relative flex min-h-[120px] min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left shadow-sm transition-all duration-300 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:border-cyan-400/50 hover:-translate-y-1 dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${
+        className={`group relative flex min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white p-2 pb-6 text-left text-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-cyan-400/50 ${ITEM_TONES[item.module]?.glow ?? tone.glow} dark:border-gray-700 dark:bg-slate-900 ${ITEM_TONES[item.module]?.ring ?? tone.ring} ${
           item.active ? 'ring-2 ring-teal-500/30 shadow-[0_0_30px_-18px_rgba(45,212,191,0.8)]' : 'ring-1 ring-slate-200/80 dark:ring-white/5'
         }`}
       >
@@ -338,7 +385,7 @@ function BentoCard({
         </span>
 
         <span className="relative z-10 mt-1 flex flex-col gap-0.5">
-          <span className="block text-[11px] font-bold leading-4 text-slate-900 dark:text-white">{item.label}</span>
+          <span className="block text-sm font-bold leading-5 text-slate-900 dark:text-white">{item.label}</span>
         </span>
 
         <span className="relative z-10 mt-auto pt-1">
