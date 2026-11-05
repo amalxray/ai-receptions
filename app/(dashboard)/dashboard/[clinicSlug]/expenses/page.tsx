@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import ExpenseDialog from '@/components/dashboard/ExpenseDialog';
+import EditExpenseDialog from '@/components/dashboard/EditExpenseDialog';
 import Skeleton from '@/components/ui/Skeleton';
 import { useClinicContext } from '@/lib/useClinicContext';
 
@@ -13,8 +14,11 @@ type Expense = {
   spent_at: string;
   vendor: string | null;
   notes: string | null;
+  category_id: string | null;
   category_name: string | null;
   amount: number;
+  method: string;
+  attachment_url: string | null;
   status: 'recorded' | 'voided' | string;
   void_reason?: string | null;
 };
@@ -43,12 +47,14 @@ export default function ExpensesPage() {
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Expense | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [voidTarget, setVoidTarget] = useState<Expense | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [voidError, setVoidError] = useState<string | null>(null);
   const [voidSubmitting, setVoidSubmitting] = useState(false);
   const canVoid = role === 'owner';
+  const canEdit = role === 'owner' || role === 'accountant';
 
   useEffect(() => {
     if (!clinicId || clinicLoading) return;
@@ -130,6 +136,27 @@ export default function ExpensesPage() {
     }
   };
 
+  const openAttachment = async (expenseId: string) => {
+    if (!clinicId) return;
+    const attachmentWindow = window.open('about:blank', '_blank');
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(
+        `/api/clinic/accounting/expenses/${encodeURIComponent(expenseId)}/attachment?clinic_id=${encodeURIComponent(clinicId)}`,
+        { headers }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'تعذر فتح المرفق.');
+      const signedUrl = payload?.data?.signedUrl as string | null | undefined;
+      if (!signedUrl) throw new Error('لا يوجد رابط صالح للمرفق.');
+      if (attachmentWindow) attachmentWindow.location.href = signedUrl;
+      else window.open(signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (caughtError) {
+      attachmentWindow?.close();
+      setError(caughtError instanceof Error ? caughtError.message : 'تعذر فتح المرفق.');
+    }
+  };
+
   return (
     <>
       <DashboardSection
@@ -178,7 +205,14 @@ export default function ExpensesPage() {
                     <td className="px-4 py-3">{expense.category_name || 'غير مصنّف'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold">{formatMoney(Number(expense.amount) || 0)}</td>
                     <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs ${expense.status === 'voided' ? 'bg-slate-700 text-slate-300' : 'bg-emerald-500/10 text-emerald-300'}`}>{expense.status === 'voided' ? 'ملغى' : 'مسجّل'}</span></td>
-                    <td className="px-4 py-3">{canVoid && expense.status !== 'voided' ? <button type="button" onClick={() => { setVoidTarget(expense); setVoidReason(''); setVoidError(null); }} className="rounded-full border border-rose-500/40 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-500/10">إلغاء</button> : '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {canEdit && expense.status !== 'voided' ? <button type="button" onClick={() => setEditTarget(expense)} className="rounded-full border border-cyan-500/40 px-3 py-1 text-xs text-cyan-200 transition hover:bg-cyan-500/10">تعديل</button> : null}
+                        {canVoid && expense.status !== 'voided' ? <button type="button" onClick={() => { setVoidTarget(expense); setVoidReason(''); setVoidError(null); }} className="rounded-full border border-rose-500/40 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-500/10">إلغاء</button> : null}
+                        {expense.attachment_url ? <button type="button" onClick={() => void openAttachment(expense.id)} className="text-lg" aria-label="عرض المرفق">📎</button> : null}
+                        {!canEdit && !(canVoid && expense.status !== 'voided') && !expense.attachment_url ? '—' : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -190,6 +224,22 @@ export default function ExpensesPage() {
       </DashboardSection>
 
       {clinicId ? <ExpenseDialog clinicId={clinicId} authHeaders={authHeaders} open={expenseDialogOpen} onClose={() => setExpenseDialogOpen(false)} onSaved={() => setRefreshKey((key) => key + 1)} /> : null}
+
+      {clinicId ? (
+        <EditExpenseDialog
+          expense={editTarget}
+          open={Boolean(editTarget)}
+          clinicId={clinicId}
+          authHeaders={authHeaders}
+          onOpenChange={(open) => {
+            if (!open) setEditTarget(null);
+          }}
+          onSaved={() => {
+            setEditTarget(null);
+            setRefreshKey((key) => key + 1);
+          }}
+        />
+      ) : null}
 
       {voidTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true" aria-labelledby="void-expense-title">

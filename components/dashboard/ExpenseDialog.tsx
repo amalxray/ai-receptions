@@ -39,6 +39,7 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
   const [spentAt, setSpentAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [vendor, setVendor] = useState('');
   const [notes, setNotes] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -156,6 +157,17 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputClass} placeholder="اختياري" maxLength={500} />
         </label>
 
+        <label className="block space-y-1">
+          <span className="text-xs text-slate-400">إرفاق فاتورة (اختياري)</span>
+          <input
+            type="file"
+            accept=".pdf,image/jpeg,image/png"
+            onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 file:mr-3 file:rounded file:border-0 file:bg-cyan-500 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-slate-950"
+          />
+          {attachmentFile ? <span className="text-[11px] text-slate-400">{attachmentFile.name}</span> : null}
+        </label>
+
         {message ? (
           <p className={`rounded-lg px-3 py-2 text-xs ${message.startsWith('تم') ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}>{message}</p>
         ) : null}
@@ -248,10 +260,37 @@ export default function ExpenseDialog({ clinicId, authHeaders, open, onClose, on
         setMessage(apiMessage ? `تعذر الحفظ: ${apiMessage}` : `تعذر حفظ المصروف (${response.status})`);
         return;
       }
+
+      const createdExpenseId = (payload as { data?: { expense_id?: string; expenseId?: string } } | null)?.data?.expense_id ??
+        (payload as { data?: { expense_id?: string; expenseId?: string } } | null)?.data?.expenseId ??
+        null;
+
+      if (attachmentFile && createdExpenseId) {
+        const formData = new FormData();
+        formData.append('file', attachmentFile);
+        const uploadResponse = await fetch(`/api/clinic/accounting/expenses/${encodeURIComponent(createdExpenseId)}/attachment?clinic_id=${encodeURIComponent(clinicId)}`, {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: formData,
+        });
+        const uploadPayload = await uploadResponse.json().catch(() => null);
+        if (!uploadResponse.ok) {
+          const uploadError = (uploadPayload as { error?: string } | null)?.error;
+          setMessage(`تم حفظ المصروف بنجاح، لكن تعذر رفع الفاتورة${uploadError ? `: ${uploadError}` : ''}. يمكنك إرفاقها لاحقاً من تعديل المصروف.`);
+          setAmount('');
+          setVendor('');
+          setNotes('');
+          setAttachmentFile(null);
+          onSaved();
+          return;
+        }
+      }
+
       setMessage('تم حفظ المصروف بنجاح');
       setAmount('');
       setVendor('');
       setNotes('');
+      setAttachmentFile(null);
       onSaved();
       onClose();
     } catch {
