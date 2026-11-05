@@ -520,20 +520,39 @@ export type ExpenseRow = Record<string, unknown>;
 
 export async function listExpenses(
   clinicId: string,
-  filters?: { categoryId?: string | null; status?: string | null; from?: string | null; to?: string | null }
-): Promise<ExpenseRow[]> {
+  filters?: {
+    categoryId?: string | null;
+    status?: string | null;
+    from?: string | null;
+    to?: string | null;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ items: ExpenseRow[]; hasMore: boolean }> {
+  const limit = Math.min(100, Math.max(1, Math.floor(filters?.limit ?? 50)));
+  const offset = Math.max(0, Math.floor(filters?.offset ?? 0));
   let query = supabaseAdmin
     .from('clinic_expenses')
-    .select('*')
+    .select('*, category:clinic_expense_categories(name)')
     .eq('clinic_id', clinicId)
     .order('spent_at', { ascending: false });
   if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
   if (filters?.status) query = query.eq('status', filters.status);
   if (filters?.from) query = query.gte('spent_at', filters.from);
   if (filters?.to) query = query.lte('spent_at', filters.to);
+  query = query.range(offset, offset + limit);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data ?? []) as ExpenseRow[];
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const hasMore = rows.length > limit;
+  return {
+    items: rows.slice(0, limit).map((row) => {
+      const category = row.category as { name?: string } | Array<{ name?: string }> | null;
+      const categoryRecord = Array.isArray(category) ? category[0] : category;
+      return { ...row, category_name: categoryRecord?.name ?? null };
+    }),
+    hasMore,
+  };
 }
 
 

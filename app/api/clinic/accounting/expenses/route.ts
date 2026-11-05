@@ -48,13 +48,26 @@ export async function GET(req: Request) {
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
     const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
     if (permBlocked) return permBlocked;
-    const data = await listExpenses(clinicId, {
+    const status = url.searchParams.get('status');
+    if (status && !['recorded', 'voided'].includes(status)) {
+      return NextResponse.json({ error: 'status must be recorded or voided' }, { status: 400 });
+    }
+    const parseInteger = (value: string | null, fallback: number) => {
+      if (value === null || value.trim() === '') return fallback;
+      const parsed = Number(value);
+      return Number.isInteger(parsed) ? parsed : fallback;
+    };
+    const limit = Math.min(100, Math.max(1, parseInteger(url.searchParams.get('limit'), 50)));
+    const offset = Math.max(0, parseInteger(url.searchParams.get('offset'), 0));
+    const result = await listExpenses(clinicId, {
       categoryId: url.searchParams.get('category_id'),
-      status: url.searchParams.get('status'),
+      status,
       from: url.searchParams.get('from'),
       to: url.searchParams.get('to'),
+      limit,
+      offset,
     });
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: result.items, pagination: { limit, offset, hasMore: result.hasMore } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

@@ -38,6 +38,7 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   'referring-clinics': 'communication',
   'imaging-centers': 'communication',
   'financial-intelligence': 'finance',
+  expenses: 'finance',
   analytics: 'finance',
   growth: 'finance',
   subscription: 'finance',
