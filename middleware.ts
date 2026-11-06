@@ -4,9 +4,11 @@ import { getSupabaseCoreConfig } from '@/lib/supabase/config';
 import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 import {
   clinicSpaceUrl,
+  normalizeHostname,
   tenantRedirect,
   tenantSlugFromHostname,
   tenantPathRewrite,
+  TENANT_ROOT_DOMAIN,
 } from '@/lib/vercel/domains';
 import { tenantSlugExists } from '@/lib/vercel/tenantLookup';
 import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdomainReadiness';
@@ -71,8 +73,17 @@ function tenantRewrite(request: NextRequest, slug: string): URL | null {
 }
 
 export async function middleware(request: NextRequest) {
-  const { supabaseUrl, anonKey } = getSupabaseCoreConfig();
   const { pathname } = request.nextUrl;
+  const hostname = normalizeHostname(hostHeader(request).split(',')[0] ?? '');
+  const isPlatformSubdomain =
+    hostname.endsWith(`.${TENANT_ROOT_DOMAIN}`) &&
+    hostname !== `www.${TENANT_ROOT_DOMAIN}`;
+
+  if (pathname.startsWith('/admin') && isPlatformSubdomain) {
+    return NextResponse.redirect('https://www.dentairec.com/admin');
+  }
+
+  const { supabaseUrl, anonKey } = getSupabaseCoreConfig();
   const host = hostHeader(request);
 
   // --- Canonical migration: legacy URLs 301 to the tenant subdomain ---------
