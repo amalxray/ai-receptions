@@ -4,12 +4,15 @@ import { getSupabaseCoreConfig } from '@/lib/supabase/config';
 import { supabaseCookieOptions } from '@/lib/supabase/cookieOptions';
 import {
   clinicSpaceUrl,
+  normalizeHostname,
   tenantRedirect,
   tenantSlugFromHostname,
   tenantPathRewrite,
+  TENANT_ROOT_DOMAIN,
 } from '@/lib/vercel/domains';
 import { tenantSlugExists } from '@/lib/vercel/tenantLookup';
 import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdomainReadiness';
+import { DASHBOARD_MODULES } from '@/lib/services/dashboardPaths';
 
 /**
  * SUPABASE SSR SESSION REFRESH + TENANT SUBDOMAIN ROUTING — middleware.
@@ -70,8 +73,17 @@ function tenantRewrite(request: NextRequest, slug: string): URL | null {
 }
 
 export async function middleware(request: NextRequest) {
-  const { supabaseUrl, anonKey } = getSupabaseCoreConfig();
   const { pathname } = request.nextUrl;
+  const hostname = normalizeHostname(hostHeader(request).split(',')[0] ?? '');
+  const isPlatformSubdomain =
+    hostname.endsWith(`.${TENANT_ROOT_DOMAIN}`) &&
+    hostname !== `www.${TENANT_ROOT_DOMAIN}`;
+
+  if (pathname.startsWith('/admin') && isPlatformSubdomain) {
+    return NextResponse.redirect('https://www.dentairec.com/admin');
+  }
+
+  const { supabaseUrl, anonKey } = getSupabaseCoreConfig();
   const host = hostHeader(request);
 
   // --- Canonical migration: legacy URLs 301 to the tenant subdomain ---------
@@ -152,12 +164,64 @@ export async function middleware(request: NextRequest) {
   // IMPORTANT: do not run anything between client creation and getUser() — this
   // both refreshes the session and protects against CSRF in the cookie flow.
   // Errors here simply mean "no/session refresh not possible".
-  let authed = false;
+  let userId: string | null = null;
   try {
     const { data } = await supabase.auth.getUser();
-    authed = Boolean(data.user);
+    userId = data.user?.id ?? null;
   } catch {
     // No session → treated as unauthenticated below.
+  }
+  const authed = Boolean(userId);
+
+  // Clinic dashboard routes carry their tenant in `/dashboard/{slug}/...`.
+  // Keep the legacy flat-module redirects and tenant picker outside this check.
+  const dashboardSegments = pathname.split('/').filter(Boolean);
+  const dashboardToken = dashboardSegments[1];
+  const isLegacyDashboardPath =
+    dashboardSegments.length === 2 &&
+    (dashboardToken === 'tenants' ||
+      DASHBOARD_MODULES.some((module) => module === dashboardToken));
+  const isClinicDashboardPath =
+    dashboardSegments[0] === 'dashboard' &&
+    dashboardSegments.length >= 2 &&
+    !isLegacyDashboardPath;
+
+  if (isClinicDashboardPath && !userId) {
+    const next = `${pathname}${request.nextUrl.search}`;
+    return NextResponse.redirect(
+      new URL(`/login?next=${encodeURIComponent(next)}`, request.url)
+    );
+  }
+
+  if (isClinicDashboardPath && userId) {
+    let clinicToken: string;
+    try {
+      clinicToken = decodeURIComponent(dashboardToken).toLowerCase();
+    } catch {
+      return new NextResponse(null, { status: 404 });
+    }
+
+    const { data: memberships, error: membershipError } = await supabase
+      .from('clinic_users')
+      .select('clinic_id, clinic:clinics(slug)')
+      .eq('user_id', userId)
+      .is('deleted_at', null);
+
+    if (membershipError) {
+      return NextResponse.json({ error: 'Unable to verify clinic membership' }, { status: 503 });
+    }
+
+    const belongsToClinic = (memberships ?? []).some((membership) => {
+      const clinic = Array.isArray(membership.clinic) ? membership.clinic[0] : membership.clinic;
+      return (
+        membership.clinic_id.toLowerCase() === clinicToken ||
+        clinic?.slug?.toLowerCase() === clinicToken
+      );
+    });
+
+    if (!belongsToClinic) {
+      return new NextResponse(null, { status: 404 });
+    }
   }
 
   // Admin page guard: /admin/* requires a session (the admin LAYOUT then
