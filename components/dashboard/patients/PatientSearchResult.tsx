@@ -20,6 +20,7 @@ import { usePressRipple } from '@/components/dashboard/patients/PatientSearchBar
 
 type PatientSearchResultProps = {
   patient: PatientSearchRecord;
+  index?: number;
   /** The debounced query — drives the name highlight. */
   query: string;
   clinicSlug?: string | null;
@@ -30,6 +31,7 @@ type PatientSearchResultProps = {
 
 export default function PatientSearchResult({
   patient,
+  index = 0,
   query,
   clinicSlug,
   active = false,
@@ -39,6 +41,12 @@ export default function PatientSearchResult({
   const { spawn, layer } = usePressRipple();
   const segments = highlightSegments(patient.name, query);
   const ageLabel = formatManualAgeAr(readManualAge(patient.metadata));
+  const glowClasses = [
+    'hover:shadow-[0_0_15px_rgba(59,130,246,0.8)]',
+    'hover:shadow-[0_0_15px_rgba(34,197,94,0.8)]',
+    'hover:shadow-[0_0_15px_rgba(245,158,11,0.8)]',
+    'hover:shadow-[0_0_15px_rgba(168,85,247,0.8)]',
+  ];
 
   return (
     <div className="space-y-2">
@@ -54,10 +62,10 @@ export default function PatientSearchResult({
         whileTap={{ scale: 0.985 }}
         transition={{ type: 'spring', stiffness: 320, damping: 26 }}
         aria-current={active ? 'true' : undefined}
-        className={`relative w-full overflow-hidden rounded-[1.5rem] border p-4 text-right transition-colors ${
+        className={`relative w-full overflow-hidden rounded-2xl border p-3 text-right transition-all duration-300 hover:-translate-y-1 ${
           active
             ? 'border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_36px_-14px_rgba(34,211,238,0.75)]'
-            : 'border-slate-800 bg-slate-950/70 hover:border-cyan-500/50 hover:shadow-[0_0_30px_-16px_rgba(34,211,238,0.6)]'
+            : `border-slate-800 bg-slate-950/70 hover:border-slate-600 ${glowClasses[index % glowClasses.length]}`
         }`}
       >
         {layer}
@@ -70,10 +78,10 @@ export default function PatientSearchResult({
           transition={{ duration: 0.2 }}
         />
 
-        <div className="relative flex items-center gap-3">
+        <div className="relative flex items-center gap-2">
           <motion.span
             aria-hidden
-            className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${tone.wash} text-sm font-bold text-slate-950`}
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${tone.wash} text-xs font-bold text-slate-950`}
             animate={{ scale: active ? 1.05 : 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 20 }}
           >
@@ -81,7 +89,7 @@ export default function PatientSearchResult({
           </motion.span>
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-semibold text-white">
+            <p className="truncate text-sm font-semibold text-white">
               {segments.map((segment, index) =>
                 segment.hit ? (
                   <mark
@@ -96,7 +104,7 @@ export default function PatientSearchResult({
               )}
             </p>
 
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
               {patient.phone ? (
                 <span className="inline-flex items-center gap-1">
                   <Phone className="h-3 w-3" />
@@ -113,7 +121,7 @@ export default function PatientSearchResult({
           </div>
 
           <span
-            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ring-1 ${tone.chip}`}
+            className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ring-1 ${tone.chip}`}
             title={tone.label}
           >
             {tone.emoji} {tone.label}
@@ -121,7 +129,7 @@ export default function PatientSearchResult({
 
           <ChevronLeft
             aria-hidden
-            className={`h-5 w-5 shrink-0 transition-colors ${
+            className={`h-4 w-4 shrink-0 transition-colors ${
               active ? 'text-cyan-300' : 'text-slate-600'
             }`}
           />
