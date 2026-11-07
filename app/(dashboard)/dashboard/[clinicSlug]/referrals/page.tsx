@@ -51,9 +51,9 @@ type Partner = { name: string | null; slug: string | null; activity_type: string
 type ReverseReferralRow = {
   id: string;
   from_clinic_id: string;
-  patient_id_to: string;
-  patient_name: string;
-  patient_phone: string | null;
+  patient_id_to: string | null;
+  from_patient_name: string | null;
+  from_patient_phone: string | null;
   image_url: string;
   notes: string | null;
   status: 'pending' | 'accepted' | 'rejected';
@@ -150,7 +150,14 @@ export default function ReferralsPage() {
       if (!response.ok) throw new Error(body?.error ?? 'تعذر تحديث التحويل');
       setReverseRows((current) =>
         (current ?? []).map((row) =>
-          row.id === id ? { ...row, status: body.data.status, accepted_at: body.data.accepted_at } : row,
+          row.id === id
+            ? {
+                ...row,
+                status: body.data.status,
+                accepted_at: body.data.accepted_at,
+                patient_id_to: body.data.patient_id_to ?? row.patient_id_to,
+              }
+            : row,
         ),
       );
     } catch (error) {
@@ -200,8 +207,8 @@ export default function ReferralsPage() {
                 <div>
                   <p className="text-base font-semibold text-white">إعادة تحويل المريض إلى العيادة</p>
                   <p className="mt-1 text-sm text-slate-400">
-                    المريض: {row.patient_name}
-                    {row.patient_phone ? ` · ${row.patient_phone}` : ''}
+                    المريض: {row.from_patient_name ?? 'بيانات تحويل قديم'}
+                    {row.from_patient_phone ? ` · ${row.from_patient_phone}` : ''}
                     {row.from_clinic_name ? ` · من: ${row.from_clinic_name}` : ''}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">{formatDateAr(row.created_at)}</p>
@@ -214,12 +221,14 @@ export default function ReferralsPage() {
               </div>
               {row.notes && <p className="mt-3 text-sm text-slate-300">{row.notes}</p>}
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <Link
-                  href={tenantDashboardUrl(clinicSlug ?? '', `patients/${encodeURIComponent(row.patient_id_to)}`)}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
-                >
-                  ملف المريض
-                </Link>
+                {row.patient_id_to && (
+                  <Link
+                    href={tenantDashboardUrl(clinicSlug ?? '', `patients/${encodeURIComponent(row.patient_id_to)}`)}
+                    className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                  >
+                    ملف المريض
+                  </Link>
+                )}
                 <a
                   href={row.image_url}
                   target="_blank"
