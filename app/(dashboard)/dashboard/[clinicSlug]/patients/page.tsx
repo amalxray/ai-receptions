@@ -28,7 +28,6 @@ import {
   type PatientSessionStatus,
 } from '@/components/dashboard/patients/smartProfile';
 import {
-  SEARCH_FETCH_LIMIT,
   SEARCH_RESULT_LIMIT,
   formatDateLongAr,
   formatHijriAr,
@@ -41,14 +40,13 @@ import {
 import { useClinicContext } from '@/lib/useClinicContext';
 
 /**
- * N28 — the patients page is SEARCH, not a list.
+ * The patients page lists a selectable creation-date range (today by default)
+ * and keeps Arabic-aware search and quick patient previews.
  *
- * There is deliberately no patient list on open (B47 removed the paged table,
- * and a list is what also made the demo/seeded rows look wrong): the page opens
- * on a greeting + a big search field + a three-tile day summary, and the patient
- * panel renders UNDER the results once one is picked. Everything Arabic-aware
- * (normalisation, ranking, the 10-row cap, status colours) lives in
- * `lib/services/patientSearch.ts` so it is unit tested.
+ * The patient panel renders UNDER the results once one is picked, while each
+ * result also links directly to the full patient file. Arabic-aware
+ * normalisation, ranking, the 10-row cap, and status colours live in
+ * `lib/services/patientSearch.ts` so they remain unit tested.
  *
  * The API contract is unchanged: `GET /api/patients` still answers with a BARE
  * ARRAY (only `q` sanitising, a `notes` arm and an optional `limit` were added),
@@ -93,11 +91,14 @@ const EMPTY_SMART_ALERT_COUNTS: SmartAlertCounts = {
 export default function PatientsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const filterNewThisWeek = searchParams.get('filter') === 'new_this_week';
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all'>(() =>
+    searchParams.get('filter') === 'new_this_week' ? 'week' : 'today'
+  );
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
 
   /** Rows the API returned for the CURRENT debounced query (bounded by `limit`). */
   const [patients, setPatients] = useState<PatientSearchRecord[]>([]);
+  const [patientsLoaded, setPatientsLoaded] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Debounced query — the bar owns the raw draft and calls back after 300ms. */
@@ -133,7 +134,14 @@ export default function PatientsPage() {
       setError(null);
       try {
         const headers = await authHeaders();
-        const qs = new URLSearchParams({ clinic_id: clinicId, limit: String(filterNewThisWeek ? 500 : SEARCH_FETCH_LIMIT) });
+        const qs = new URLSearchParams({
+          clinic_id: clinicId,
+          limit: '500',
+          date_filter: dateFilter,
+        });
+        if (dateFilter === 'today') {
+          qs.set('timezone_offset', String(new Date().getTimezoneOffset()));
+        }
         if (term.trim()) qs.set('q', term);
         const res = await fetch(`/api/patients?${qs.toString()}`, { headers });
         if (!res.ok) throw new Error('بيانات المرضى غير متاحة');
@@ -143,10 +151,11 @@ export default function PatientsPage() {
         setPatients([]);
         setError(caughtError instanceof Error ? caughtError.message : 'حدث خطأ غير معروف');
       } finally {
+        setPatientsLoaded(true);
         setSearching(false);
       }
     },
-    [authHeaders, clinicId, filterNewThisWeek]
+    [authHeaders, clinicId, dateFilter]
   );
 
   /**
@@ -166,13 +175,8 @@ export default function PatientsPage() {
       setSearching(false);
       return;
     }
-    if (!query.trim() && !filterNewThisWeek) {
-      setPatients([]);
-      setSearching(false);
-      return;
-    }
     void runSearch(query);
-  }, [clinicLoading, clinicId, clinicError, query, runSearch, filterNewThisWeek]);
+  }, [clinicLoading, clinicId, clinicError, query, runSearch]);
 
   /** B48 — appointments for ONE patient (`patient_id` filter) + `{ data }` envelope. */
   useEffect(() => {
@@ -449,22 +453,17 @@ export default function PatientsPage() {
   const visiblePatients = useMemo(
     () =>
       patients.filter((patient) => {
-        if (filterNewThisWeek) {
-          const createdAt = patient.created_at ? new Date(patient.created_at).getTime() : Number.NaN;
-          const age = Date.now() - createdAt;
-          if (!Number.isFinite(createdAt) || age < 0 || age > 7 * 24 * 60 * 60 * 1000) return false;
-        }
         const status = getPatientTreatmentStatus(patient.metadata);
         if (treatmentFilter === 'all') return true;
         return treatmentFilter === 'active' ? status === 'active' : status === 'closed';
       }),
-    [patients, treatmentFilter, filterNewThisWeek]
+    [patients, treatmentFilter]
   );
 
-  /** Ranked + capped view of the API rows for the current query. */
+  /** Date-filtered rows are already ordered by creation time by the API. */
   const outcome = useMemo(
     () => {
-      if (filterNewThisWeek) {
+      if (!query.trim()) {
         const limit = showAll ? visiblePatients.length : SEARCH_RESULT_LIMIT;
         return {
           results: visiblePatients.slice(0, limit),
@@ -475,7 +474,7 @@ export default function PatientsPage() {
       }
       return searchPatients(visiblePatients, query, showAll ? Math.max(visiblePatients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT);
     },
-    [visiblePatients, query, showAll, filterNewThisWeek]
+    [visiblePatients, query, showAll]
   );
 
   const greeting = useMemo(() => greetingAr(), []);
@@ -544,7 +543,7 @@ export default function PatientsPage() {
   // TODO: Restore a real activity feed when the clinic activity log API is available.
 
   const hasQuery = query.trim().length > 0;
-  const hasPatientResults = hasQuery || filterNewThisWeek;
+  const hasPatientResults = hasQuery || patientsLoaded;
   const hint = hasPatientResults ? (outcome.total === 1 ? 'نتيجة واحدة' : `${outcome.total} نتائج`) : null;
 
   const handleQueryChange = useCallback((next: string) => {
@@ -552,10 +551,17 @@ export default function PatientsPage() {
     setShowAll(false);
   }, []);
 
+  const handleDateFilterChange = useCallback((next: 'today' | 'week' | 'all') => {
+    setDateFilter(next);
+    setShowAll(false);
+    setSelected(null);
+    setPatientsLoaded(false);
+  }, []);
+
   return (
     <DashboardSection
       title="المرضى"
-      subtitle="ابحث عن المريض وافتح ملفه دون مغادرة الصفحة — لا قوائم ولا ترقيم."
+      subtitle="اعرض المرضى حسب تاريخ الإضافة، وابحث وافتح الملف الطبي الكامل."
       action={
         <Magnetic>
           <ShimmerButton
@@ -573,7 +579,7 @@ export default function PatientsPage() {
         </Magnetic>
       }
     >
-      {/* 🌅 The open state: greeting + date (Gregorian · Hijri). */}
+      {/* 🌅 Greeting + date (Gregorian · Hijri). */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -590,7 +596,7 @@ export default function PatientsPage() {
           </p>
         </div>
         <p className="rounded-full border border-slate-800 px-3 py-1 text-[11px] text-slate-500">
-          🔍 ابحث لتظهر النتائج أسفل الصفحة
+          🔍 النتائج حسب الفترة والبحث
         </p>
       </motion.div>
 
@@ -611,7 +617,7 @@ export default function PatientsPage() {
 
       {/* 📊 Daily summary — hidden as soon as the receptionist starts searching. */}
       <AnimatePresence initial={false}>
-        {!hasPatientResults && !isFormOpen ? (
+        {!hasQuery && !isFormOpen ? (
           <motion.div
             key="summary"
             initial={{ opacity: 0, y: 18 }}
@@ -854,6 +860,29 @@ export default function PatientsPage() {
         ) : null}
       </AnimatePresence>
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="patient-date-filter" className="text-sm text-slate-400">
+            تاريخ الإضافة
+          </label>
+          <select
+            id="patient-date-filter"
+            value={dateFilter}
+            onChange={(event) => handleDateFilterChange(event.target.value as 'today' | 'week' | 'all')}
+            className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100"
+          >
+            <option value="today">اليوم</option>
+            <option value="week">آخر 7 أيام</option>
+            <option value="all">الكل</option>
+          </select>
+        </div>
+        {patientsLoaded && !error && !clinicError ? (
+          <p className="text-sm text-slate-400" aria-live="polite">
+            عدد المرضى ضمن الفترة: <span className="font-semibold text-cyan-200">{outcome.total}</span>
+          </p>
+        ) : null}
+      </div>
+
       {hasPatientResults && (
         <div className="mb-4 flex flex-wrap gap-2">
           {['all', 'active', 'closed'].map((filter) => (
@@ -908,6 +937,7 @@ export default function PatientsPage() {
                       }}
                       query={outcome.query}
                       active={selected?.id === result.id}
+                      clinicSlug={clinicSlug}
                       onSelect={(next) => setSelected({ ...next, status: patientTreatmentStatusLabel(next.metadata) })}
                     />
                   ))}

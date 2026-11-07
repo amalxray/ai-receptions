@@ -22,15 +22,55 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const dateFilter = url.searchParams.get('date_filter') ?? 'all';
+  const timezoneOffsetParam = url.searchParams.get('timezone_offset');
+  const timezoneOffset = timezoneOffsetParam === null ? 0 : Number(timezoneOffsetParam);
+
+  if (!['today', 'week', 'all'].includes(dateFilter)) {
+    return NextResponse.json({ error: 'date_filter must be today, week, or all' }, { status: 400 });
+  }
+  if (
+    dateFilter === 'today' &&
+    (!Number.isInteger(timezoneOffset) || Math.abs(timezoneOffset) > 14 * 60)
+  ) {
+    return NextResponse.json({ error: 'timezone_offset must be a whole number between -840 and 840' }, { status: 400 });
+  }
+
+  const now = new Date();
+  let createdAtFrom: Date | null = null;
+  let createdAtUntil: Date | null = null;
+  if (dateFilter === 'today') {
+    const localNow = new Date(now.getTime() - timezoneOffset * 60_000);
+    const localMidnightAsUtc = Date.UTC(
+      localNow.getUTCFullYear(),
+      localNow.getUTCMonth(),
+      localNow.getUTCDate()
+    );
+    createdAtFrom = new Date(localMidnightAsUtc + timezoneOffset * 60_000);
+    createdAtUntil = new Date(createdAtFrom.getTime() + 24 * 60 * 60_000);
+  } else if (dateFilter === 'week') {
+    createdAtFrom = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
+    createdAtUntil = now;
+  }
+
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
     // B51-D — demo data is development/test only (see demoFallbackAllowed).
-    if (demoFallbackAllowed()) return NextResponse.json(getDemoPatients());
+    if (demoFallbackAllowed()) {
+      const demoPatients = getDemoPatients();
+      const filteredPatients = createdAtFrom && createdAtUntil
+        ? demoPatients.filter((patient) => {
+            const createdAt = Date.parse(patient.created_at);
+            return createdAt >= createdAtFrom.getTime() && createdAt < createdAtUntil.getTime();
+          })
+        : demoPatients;
+      return NextResponse.json(filteredPatients);
+    }
     return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
   }
 
   try {
-    const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
@@ -57,6 +97,12 @@ export async function GET(req: Request) {
       .eq('clinic_id', clinicId)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (createdAtFrom && createdAtUntil) {
+      query = query
+        .gte('created_at', createdAtFrom.toISOString())
+        .lt('created_at', createdAtUntil.toISOString());
+    }
 
     if (searchQuery) {
       // N28 — `notes` joins the three original columns: "الملاحظة" is one of the
