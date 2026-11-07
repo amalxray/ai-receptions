@@ -78,7 +78,7 @@ logger = logging.getLogger("ai-inference")
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 MAX_IMAGE_PIXELS = int(os.getenv("MAX_IMAGE_PIXELS", "40000000"))
-IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "1024"))
+IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "640"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.25"))
 IOU_THRESHOLD = float(os.getenv("IOU_THRESHOLD", "0.50"))
 MAX_DETECTIONS = int(os.getenv("MAX_DETECTIONS", "100"))
