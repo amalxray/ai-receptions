@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
@@ -167,8 +167,10 @@ describe('#35 — global toast store', () => {
 describe('#35 — Web Audio chime (no mp3 asset)', () => {
   it('synthesises the dual-tone chime with a Web Audio oscillator', () => {
     expect(chime).toContain('createOscillator');
-    expect(chime).toContain('exponentialRampToValueAtTime');
-    expect(chime).toContain('1200');
+    expect(chime).toContain('CHIME_DURATION_SECONDS = 4');
+    expect(chime).toContain('NOTE_DURATION_SECONDS = 0.9');
+    expect(chime).toContain('linearRampToValueAtTime(0.035');
+    expect(chime).toContain('fundamental.stop(start + NOTE_DURATION_SECONDS)');
     expect(chime).not.toMatch(/\.mp3/);
   });
 
@@ -176,6 +178,66 @@ describe('#35 — Web Audio chime (no mp3 asset)', () => {
     expect(chime).toContain('localStorage');
     expect(chime).toContain('export function isChimeMuted');
     expect(chime).toContain('export function setChimeMuted');
+  });
+
+  it('schedules a quiet melody for about four seconds and then closes its audio context', async () => {
+    const stops: number[] = [];
+    const peakGains: number[] = [];
+    const timers: number[] = [];
+    const oscillators: Array<{
+      frequency: { setValueAtTime: (value: number, time: number) => void };
+      connect: () => void;
+      start: (time: number) => void;
+      stop: (time: number) => void;
+      type: string;
+    }> = [];
+    class MockAudioContext {
+      currentTime = 10;
+      state = 'running';
+      destination = {};
+      createOscillator() {
+        const oscillator = {
+          frequency: { setValueAtTime: () => undefined },
+          connect: () => undefined,
+          start: () => undefined,
+          stop: (time: number) => stops.push(time),
+          type: '',
+        };
+        oscillators.push(oscillator);
+        return oscillator;
+      }
+      createGain() {
+        return {
+          gain: {
+            setValueAtTime: (value: number) => {
+              if (value > 0.001) peakGains.push(value);
+            },
+            linearRampToValueAtTime: (value: number) => peakGains.push(value),
+          },
+          connect: () => undefined,
+        };
+      }
+      close = async () => undefined;
+      resume = async () => undefined;
+    }
+    const context = new MockAudioContext();
+
+    vi.stubGlobal('window', {
+      AudioContext: MockAudioContext,
+      setTimeout: (_callback: () => void, delay: number) => timers.push(delay),
+    });
+    vi.stubGlobal('localStorage', { getItem: () => 'false' });
+    try {
+      const { playNotificationChime } = await import('@/lib/audio/chime');
+      playNotificationChime();
+
+      expect(oscillators).toHaveLength(10);
+      expect(Math.max(...stops) - context.currentTime).toBeCloseTo(3.94);
+      expect(timers).toContain(4250);
+      expect(Math.max(...peakGains)).toBe(0.035);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('is a safe no-op outside the browser', async () => {
