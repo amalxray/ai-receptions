@@ -20,7 +20,7 @@ export type Toast = {
 
 /**
  * #35 — modern toast visual language: five semantic palettes, each with a
- * conic border (ShineBorder), a soft radial blob and a 5s progress bar.
+ * conic border (ShineBorder), a soft radial blob and a 6s progress bar.
  */
 const typeConfig: Record<
   ToastType,
@@ -100,7 +100,7 @@ export function pushToast(toast: Omit<Toast, 'id'>): string {
   }
 
   if (toast.duration !== Infinity) {
-    const dur = toast.duration ?? 5000;
+    const dur = toast.duration ?? 6000;
     setTimeout(() => dismissToast(id), dur);
   }
 
@@ -157,7 +157,7 @@ export function ToastContainer({
       <AnimatePresence mode="popLayout">
         {toasts.map((t) => {
           const cfg = typeConfig[t.type] ?? typeConfig.info;
-          const durationSec = (t.duration ?? 5000) / 1000;
+          const durationSec = (t.duration ?? 6000) / 1000;
 
           return (
             <motion.div
@@ -216,7 +216,7 @@ export function ToastContainer({
                   </button>
                 </div>
 
-                {/* Progress bar — 5s by default */}
+                {/* Progress bar — 6s by default */}
                 {t.duration !== Infinity ? (
                   <div className="relative mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-800/60">
                     <motion.div
@@ -259,4 +259,3 @@ export const toast = {
       duration: options?.duration,
     }),
 };
-
