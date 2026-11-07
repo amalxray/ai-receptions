@@ -41,6 +41,7 @@ export default function PatientSearchResult({
   const { spawn, layer } = usePressRipple();
   const segments = highlightSegments(patient.name, query);
   const ageLabel = formatManualAgeAr(readManualAge(patient.metadata));
+  const href = `/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(patient.id)}`;
   const glowClasses = [
     'hover:shadow-[0_0_15px_rgba(59,130,246,0.8)]',
     'hover:shadow-[0_0_15px_rgba(34,197,94,0.8)]',
@@ -49,24 +50,24 @@ export default function PatientSearchResult({
   ];
 
   return (
-    <div className="space-y-2">
-      <motion.button
-        type="button"
-        onClick={() => onSelect(patient)}
-        onPointerDown={spawn}
+    <Link
+      href={href}
+      onClick={() => onSelect(patient)}
+      onPointerDown={spawn}
+      aria-current={active ? 'true' : undefined}
+      className={`group relative block w-full overflow-hidden rounded-2xl border p-3 text-right transition-all duration-300 hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+        active
+          ? 'border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_36px_-14px_rgba(34,211,238,0.75)]'
+          : `border-slate-800 bg-slate-950/70 hover:border-slate-600 ${glowClasses[index % glowClasses.length]}`
+      }`}
+    >
+      <motion.div
         variants={{
           hidden: { opacity: 0, y: 16 },
           visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
         }}
-        whileHover={{ y: -3, scale: 1.005 }}
         whileTap={{ scale: 0.985 }}
         transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-        aria-current={active ? 'true' : undefined}
-        className={`relative w-full overflow-hidden rounded-2xl border p-3 text-right transition-all duration-300 hover:-translate-y-1 ${
-          active
-            ? 'border-cyan-500/60 bg-cyan-500/10 shadow-[0_0_36px_-14px_rgba(34,211,238,0.75)]'
-            : `border-slate-800 bg-slate-950/70 hover:border-slate-600 ${glowClasses[index % glowClasses.length]}`
-        }`}
       >
         {layer}
 
@@ -134,15 +135,7 @@ export default function PatientSearchResult({
             }`}
           />
         </div>
-      </motion.button>
-      <div className="flex justify-end">
-        <Link
-          href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/patients/${encodeURIComponent(patient.id)}`}
-          className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-        >
-          عرض الملف
-        </Link>
-      </div>
-    </div>
+      </motion.div>
+    </Link>
   );
 }
