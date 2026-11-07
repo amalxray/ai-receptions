@@ -48,6 +48,19 @@ type ReferralRow = {
 };
 
 type Partner = { name: string | null; slug: string | null; activity_type: string | null };
+type ReverseReferralRow = {
+  id: string;
+  from_clinic_id: string;
+  patient_id_to: string;
+  patient_name: string;
+  patient_phone: string | null;
+  image_url: string;
+  notes: string | null;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+  accepted_at: string | null;
+  from_clinic_name: string | null;
+};
 
 type DirectionTab = 'outgoing' | 'incoming';
 
@@ -69,6 +82,7 @@ export default function ReferralsPage() {
   const { clinicId, clinicSlug, activityType, authHeaders, loading, error: clinicError } = useClinicContext();
   const [tab, setTab] = useState<DirectionTab>('outgoing');
   const [rows, setRows] = useState<ReferralRow[] | null>(null);
+  const [reverseRows, setReverseRows] = useState<ReverseReferralRow[] | null>(null);
   const [partners, setPartners] = useState<Record<string, Partner>>({});
   const [err, setErr] = useState<string | null>(null);
 
@@ -76,6 +90,7 @@ export default function ReferralsPage() {
     async (direction: DirectionTab) => {
       if (!clinicId) return;
       setRows(null);
+      setReverseRows(null);
       setErr(null);
       try {
         const headers = await authHeaders();
@@ -85,14 +100,26 @@ export default function ReferralsPage() {
         );
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل التحويلات');
+        let incomingReverseRows: ReverseReferralRow[] = [];
+        if (direction === 'incoming' && activityType === 'clinic') {
+          const reverseResponse = await fetch(
+            `/api/clinic/reverse-referrals?clinic_id=${encodeURIComponent(clinicId)}`,
+            { headers },
+          );
+          const reverseBody = await reverseResponse.json().catch(() => ({}));
+          if (!reverseResponse.ok) throw new Error(reverseBody?.error ?? 'تعذر تحميل التحويلات العكسية');
+          incomingReverseRows = Array.isArray(reverseBody.data) ? reverseBody.data as ReverseReferralRow[] : [];
+        }
         setRows((body?.data ?? []) as ReferralRow[]);
         setPartners((body?.partners ?? {}) as Record<string, Partner>);
+        setReverseRows(incomingReverseRows);
       } catch (e) {
         setErr(e instanceof Error ? e.message : 'حدث خطأ');
         setRows([]);
+        setReverseRows([]);
       }
     },
-    [clinicId, authHeaders],
+    [activityType, clinicId, authHeaders],
   );
 
   useEffect(() => {
@@ -108,6 +135,28 @@ export default function ReferralsPage() {
 
   if (loading) return <Skeleton className="h-60" />;
   if (clinicError) return <EmptyState title="تعذر تحميل التحويلات" description={clinicError} />;
+
+  const updateReverseReferral = async (id: string, status: 'accepted' | 'rejected') => {
+    if (!clinicId) return;
+    setErr(null);
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(`/api/clinic/reverse-referrals?id=${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ clinic_id: clinicId, status }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? 'تعذر تحديث التحويل');
+      setReverseRows((current) =>
+        (current ?? []).map((row) =>
+          row.id === id ? { ...row, status: body.data.status, accepted_at: body.data.accepted_at } : row,
+        ),
+      );
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'تعذر تحديث التحويل');
+    }
+  };
 
   return (
     <DashboardSection title="التحويلات بين المنشآت" subtitle={description}>
@@ -132,7 +181,7 @@ export default function ReferralsPage() {
 
       {rows === null ? (
         <Skeleton className="h-40" />
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && (reverseRows?.length ?? 0) === 0 ? (
         <EmptyState
           title={tab === 'outgoing' ? 'لم تُرسل أي تحويل بعد' : 'لا توجد تحويلات واردة'}
           description={
@@ -145,6 +194,61 @@ export default function ReferralsPage() {
         />
       ) : (
         <div className="space-y-3">
+          {tab === 'incoming' && reverseRows?.map((row) => (
+            <article key={`reverse-${row.id}`} className="rounded-2xl border border-violet-500/30 bg-slate-950/70 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-semibold text-white">إعادة تحويل المريض إلى العيادة</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    المريض: {row.patient_name}
+                    {row.patient_phone ? ` · ${row.patient_phone}` : ''}
+                    {row.from_clinic_name ? ` · من: ${row.from_clinic_name}` : ''}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">{formatDateAr(row.created_at)}</p>
+                </div>
+                <StatusPill
+                  tone={row.status === 'accepted' ? 'success' : row.status === 'pending' ? 'warning' : 'danger'}
+                >
+                  {row.status === 'accepted' ? 'مقبول' : row.status === 'pending' ? 'بانتظار القبول' : 'مرفوض'}
+                </StatusPill>
+              </div>
+              {row.notes && <p className="mt-3 text-sm text-slate-300">{row.notes}</p>}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Link
+                  href={tenantDashboardUrl(clinicSlug ?? '', `patients/${encodeURIComponent(row.patient_id_to)}`)}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                >
+                  ملف المريض
+                </Link>
+                <a
+                  href={row.image_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 hover:bg-cyan-500/20"
+                >
+                  عرض الصورة
+                </a>
+                {row.status === 'pending' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void updateReverseReferral(row.id, 'accepted')}
+                      className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 hover:bg-emerald-500/20"
+                    >
+                      قبول التحويل
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void updateReverseReferral(row.id, 'rejected')}
+                      className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100 hover:bg-red-500/20"
+                    >
+                      رفض
+                    </button>
+                  </>
+                )}
+              </div>
+            </article>
+          ))}
           {rows.map((r) => {
             const counterpartId = tab === 'outgoing' ? r.clinic_id : r.referring_clinic_id;
             const counterpart = counterpartId ? partners[counterpartId] : null;

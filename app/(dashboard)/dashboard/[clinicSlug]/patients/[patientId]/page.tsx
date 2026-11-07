@@ -16,6 +16,7 @@ import PatientFinancialFilesPanel from '@/components/dashboard/patients/PatientF
 import PatientMedicalFilesTab from '@/components/dashboard/patients/PatientMedicalFilesTab';
 import Skeleton from '@/components/ui/Skeleton';
 import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
+import ReverseTransferDialog from '@/components/dashboard/imaging/ReverseTransferDialog';
 import {
   appendPatientSession,
   appendQuickNote,
@@ -131,6 +132,7 @@ export default function PatientDetailPage() {
    */
   const effectiveTab = resolvePatientFileTab(activityType, tab);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showReverseTransfer, setShowReverseTransfer] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
@@ -750,13 +752,22 @@ export default function PatientDetailPage() {
               {treatmentStatus === 'closed' ? '🔓 إعادة فتح حساب جديد' : '🛑 إنهاء العلاج'}
             </button>
           )}
-          {patient && clinicId && !clinicLoading && (
+          {patient && clinicId && !clinicLoading && activityType === 'clinic' && (
             <button
               type="button"
               onClick={() => setShowTransfer(true)}
               className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
             >
               🩻 تحويل لمركز تصوير
+            </button>
+          )}
+          {patient && clinicId && !clinicLoading && activityType === 'imaging_center' && (
+            <button
+              type="button"
+              onClick={() => setShowReverseTransfer(true)}
+              className="rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20"
+            >
+              ↩️ إعادة تحويل إلى عيادة
             </button>
           )}
           {patient && (
@@ -1089,6 +1100,17 @@ export default function PatientDetailPage() {
           target={{ patientId: patient.id, patientName: patient.name }}
           onClose={() => setShowTransfer(false)}
           onDone={(r) => setTransferMsg(r.ok ? r.message : null)}
+        />
+      )}
+      {showReverseTransfer && patient && clinicId && !clinicLoading && activityType === 'imaging_center' && (
+        <ReverseTransferDialog
+          clinicId={clinicId}
+          sourcePatientId={patient.id}
+          patientName={patient.name}
+          patientPhone={patient.phone ?? null}
+          authHeaders={authHeaders}
+          onClose={() => setShowReverseTransfer(false)}
+          onDone={setTransferMsg}
         />
       )}
 
