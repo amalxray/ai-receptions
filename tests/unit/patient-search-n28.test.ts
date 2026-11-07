@@ -61,6 +61,7 @@ const harness = vi.hoisted(() => ({
   /** Every `.or()` filter string the route built, and every `.limit()`. */
   or: [] as string[],
   limit: [] as number[],
+  dateFilters: [] as { column: string; operator: string; value: string }[],
   table: [] as string[],
   authorizeCalls: 0,
 }));
@@ -83,6 +84,14 @@ vi.mock('@/lib/supabase/admin', () => {
     select: () => builder,
     eq: () => builder,
     order: () => builder,
+    gte: (column: string, value: string) => {
+      harness.dateFilters.push({ column, operator: 'gte', value });
+      return builder;
+    },
+    lt: (column: string, value: string) => {
+      harness.dateFilters.push({ column, operator: 'lt', value });
+      return builder;
+    },
     limit: (value: number) => {
       harness.limit.push(value);
       return builder;
@@ -111,6 +120,7 @@ vi.mock('next/link', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 /** The four SSR scenarios run with a resolved clinic, no network at all. */
@@ -140,6 +150,7 @@ function postgrestWouldFail(filter: string): boolean {
 beforeEach(() => {
   harness.or.length = 0;
   harness.limit.length = 0;
+  harness.dateFilters.length = 0;
   harness.table.length = 0;
   harness.authorizeCalls = 0;
 });
@@ -386,14 +397,19 @@ describe('N28 — wiring guards', () => {
     expect(api).toContain('NextResponse.json((data || []).map(toPatientShape))');
     expect(api).toContain('MAX_LIMIT');
     expect(api).toContain('Number(url.searchParams.get(\'limit\'))');
+    expect(api).toContain("url.searchParams.get('date_filter') ?? 'all'");
   });
 
-  it('the page is search-only: no patient list, no pagination anywhere', () => {
+  it('the page defaults to today, offers date filters, and counts the filtered patients', () => {
     expect(page).not.toContain('التالي');
     expect(page).not.toContain('السابق');
     expect(page).toContain('searchPatients');
     expect(page).toContain('SEARCH_RESULT_LIMIT');
     expect(page).toContain('عرض الكل');
+    expect(page).toContain("searchParams.get('filter') === 'new_this_week' ? 'week' : 'today'");
+    expect(page).toContain('id="patient-date-filter"');
+    expect(page).toContain('date_filter: dateFilter');
+    expect(page).toContain('عدد المرضى ضمن الفترة:');
   });
 
   it('the page still unwraps the { data } envelope for appointments (B48 regression)', () => {
@@ -452,6 +468,38 @@ describe('N28 — GET /api/patients: the comma 500 is gone', () => {
     expect(harness.limit.at(-1)).toBe(50);
     await call(`q=${encodeURIComponent('خالد')}&limit=abc`);
     expect(harness.limit.at(-1)).toBe(50);
+  });
+
+  it('filters today by the requested local day and week by the rolling 7-day range', async () => {
+    const todayResponse = await call('date_filter=today&timezone_offset=0');
+    expect(todayResponse.status).toBe(200);
+    expect(harness.dateFilters).toHaveLength(2);
+    expect(harness.dateFilters.map(({ column, operator }) => [column, operator])).toEqual([
+      ['created_at', 'gte'],
+      ['created_at', 'lt'],
+    ]);
+    expect(Date.parse(harness.dateFilters[1].value) - Date.parse(harness.dateFilters[0].value)).toBe(24 * 60 * 60 * 1000);
+
+    harness.dateFilters.length = 0;
+    const weekResponse = await call('date_filter=week');
+    expect(weekResponse.status).toBe(200);
+    expect(harness.dateFilters.map(({ column, operator }) => [column, operator])).toEqual([
+      ['created_at', 'gte'],
+      ['created_at', 'lt'],
+    ]);
+    const weekRange = Date.parse(harness.dateFilters[1].value) - Date.parse(harness.dateFilters[0].value);
+    expect(weekRange).toBeGreaterThanOrEqual(7 * 24 * 60 * 60 * 1000);
+    expect(weekRange).toBeLessThan(7 * 24 * 60 * 60 * 1000 + 1000);
+  });
+
+  it('does not apply a created_at filter for all patients and rejects invalid filters', async () => {
+    const allResponse = await call('date_filter=all');
+    expect(allResponse.status).toBe(200);
+    expect(harness.dateFilters).toEqual([]);
+
+    const invalidResponse = await call('date_filter=month');
+    expect(invalidResponse.status).toBe(400);
+    expect(harness.authorizeCalls).toBe(1);
   });
 
   it('still answers a BARE ARRAY of patientShape rows', async () => {
@@ -526,6 +574,16 @@ describe('N28 — SSR scenarios', () => {
     expect(rowHtml).toContain('dir="ltr"');
     expect(rowHtml).toContain('قيد المتابعة');
     expect(rowHtml).toContain('🟡');
+    const linkedRowHtml = renderToStaticMarkup(
+      createElement(PatientSearchResult, {
+        patient: SSR_PATIENT,
+        query: '',
+        clinicSlug: 'amal-xray',
+        onSelect: () => {},
+      })
+    );
+    expect(linkedRowHtml).toContain('href="/dashboard/amal-xray/patients/p1"');
+    expect(linkedRowHtml).toContain('عرض الملف');
   });
 
   it('(ج) SELECTION: the panel renders under the results with the patient header', () => {
@@ -586,4 +644,3 @@ describe('N28 — SSR scenarios', () => {
     expect(html).not.toContain('جارٍ التحميل');
   });
 });
-
