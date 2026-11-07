@@ -582,8 +582,9 @@ describe('N28 — SSR scenarios', () => {
         onSelect: () => {},
       })
     );
-    expect(linkedRowHtml).toContain('href="/dashboard/amal-xray/patients/p1"');
-    expect(linkedRowHtml).toContain('عرض الملف');
+    expect(linkedRowHtml).toContain('<a href="/dashboard/amal-xray/patients/p1"');
+    expect(linkedRowHtml).toContain('hover:shadow-[0_0_15px_rgba(59,130,246,0.8)]');
+    expect(linkedRowHtml).not.toContain('عرض الملف');
   });
 
   it('(ج) SELECTION: the panel renders under the results with the patient header', () => {
