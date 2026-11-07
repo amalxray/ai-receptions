@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import io
 import json
 import logging
@@ -134,6 +135,84 @@ def _resolve_model_path() -> str:
     return MODEL_PATH
 
 
+def _metadata_class_names(session: ort.InferenceSession) -> list[str] | None:
+    raw_names = session.get_modelmeta().custom_metadata_map.get("names")
+    if not raw_names:
+        return None
+
+    try:
+        names = json.loads(raw_names)
+    except json.JSONDecodeError:
+        try:
+            names = ast.literal_eval(raw_names)
+        except (ValueError, SyntaxError):
+            logger.warning("Ignoring invalid ONNX class-name metadata.")
+            return None
+
+    if isinstance(names, dict):
+        try:
+            indexed_names = sorted(names.items(), key=lambda item: int(item[0]))
+        except (TypeError, ValueError):
+            logger.warning("Ignoring ONNX class-name metadata with invalid indexes.")
+            return None
+        if [int(index) for index, _ in indexed_names] != list(range(len(indexed_names))):
+            logger.warning("Ignoring ONNX class-name metadata with non-contiguous indexes.")
+            return None
+        names = [name for _, name in indexed_names]
+
+    if (
+        not isinstance(names, list)
+        or not names
+        or any(not isinstance(name, str) or not name.strip() for name in names)
+    ):
+        logger.warning("Ignoring ONNX class-name metadata with invalid names.")
+        return None
+    return names
+
+
+def _resolve_model_class_names(session: ort.InferenceSession) -> list[str]:
+    output_shape = session.get_outputs()[0].shape
+    if len(output_shape) != 3 or output_shape[0] != 1:
+        raise RuntimeError(f"Unsupported ONNX output shape: {output_shape}.")
+
+    output_dimensions = output_shape[1:]
+    metadata_names = _metadata_class_names(session)
+    if metadata_names:
+        class_names = metadata_names
+    else:
+        fixed_dimensions = [
+            dimension
+            for dimension in output_dimensions
+            if isinstance(dimension, int) and dimension > 4
+        ]
+        if len(fixed_dimensions) != 2:
+            raise RuntimeError(
+                f"Cannot determine class count from ONNX output shape: {output_shape}."
+            )
+        class_count = min(fixed_dimensions) - 4
+        if len(CLASS_NAMES) == class_count:
+            class_names = CLASS_NAMES
+        elif len(DEFAULT_CLASS_NAMES) == class_count:
+            class_names = DEFAULT_CLASS_NAMES
+        else:
+            logger.warning(
+                "ONNX model has %s classes but no matching class-name metadata; "
+                "using neutral labels.",
+                class_count,
+            )
+            class_names = [f"Class {class_id}" for class_id in range(class_count)]
+
+    expected_channels = len(class_names) + 4
+    if expected_channels not in output_dimensions:
+        raise RuntimeError(
+            f"Expected ONNX output with {expected_channels} channels for "
+            f"{len(class_names)} classes, got {output_shape}."
+        )
+
+    logger.info("Resolved %s ONNX model classes.", len(class_names))
+    return class_names
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     model_path = _resolve_model_path()
@@ -160,24 +239,15 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             f"Expected fixed ONNX input {expected_shape}, got {model_input.shape}."
         )
-    output_shape = session.get_outputs()[0].shape
-    expected_channels = len(CLASS_NAMES) + 4
-    if (
-        len(output_shape) != 3
-        or expected_channels not in output_shape[1:]
-    ):
-        raise RuntimeError(
-            f"Expected ONNX output with {expected_channels} channels for "
-            f"{len(CLASS_NAMES)} classes, got {output_shape}."
-        )
-
+    class_names = _resolve_model_class_names(session)
+    app.state.class_names = class_names
     app.state.session = session
     app.state.input_name = model_input.name
     app.state.inference_lock = asyncio.Semaphore(1)
     logger.info(
         "Loaded ONNX model version %s with %d classes on CPUExecutionProvider.",
         MODEL_VERSION,
-        len(CLASS_NAMES),
+        len(class_names),
     )
     yield
 
@@ -274,13 +344,15 @@ def _postprocess(
     pad_x: int,
     pad_y: int,
     confidence_threshold: float = CONFIDENCE_THRESHOLD,
+    class_names: list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    class_names = class_names or CLASS_NAMES
     predictions = np.asarray(output)
     if predictions.ndim == 3:
         if predictions.shape[0] != 1:
             raise RuntimeError("Only batch size 1 is supported.")
         predictions = predictions[0]
-    expected_channels = 4 + len(CLASS_NAMES)
+    expected_channels = 4 + len(class_names)
     if predictions.ndim != 2:
         raise RuntimeError(f"Unexpected ONNX output dimensions: {predictions.shape}.")
     if predictions.shape[0] == expected_channels:
@@ -288,7 +360,7 @@ def _postprocess(
     elif predictions.shape[1] != expected_channels:
         raise RuntimeError(f"Unexpected ONNX output shape: {predictions.shape}.")
     if predictions.shape[1] != expected_channels:
-        raise RuntimeError(f"ONNX output does not match {len(CLASS_NAMES)} model classes.")
+        raise RuntimeError(f"ONNX output does not match {len(class_names)} model classes.")
 
     scores_by_class = predictions[:, 4:]
     class_ids = np.argmax(scores_by_class, axis=1)
@@ -332,7 +404,7 @@ def _postprocess(
         result.append(
             {
                 "class_id": class_id,
-                "class_name": CLASS_NAMES[class_id],
+                "class_name": class_names[class_id],
                 "confidence": float(selected_scores[index]),
                 "box": {
                     "x": x1,
@@ -400,6 +472,7 @@ async def analyze(
             pad_x,
             pad_y,
             confidence_threshold=effective_threshold,
+            class_names=request.app.state.class_names,
         )
     except HTTPException:
         raise
