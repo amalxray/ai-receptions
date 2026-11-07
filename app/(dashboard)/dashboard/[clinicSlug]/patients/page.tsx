@@ -913,7 +913,7 @@ export default function PatientsPage() {
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
           >
             {searching && outcome.results.length === 0 ? (
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
                 {[0, 1, 2, 3].map((index) => (
                   <Skeleton key={index} className="h-24" />
                 ))}
@@ -927,10 +927,11 @@ export default function PatientsPage() {
               />
             ) : (
               <>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {outcome.results.map((result) => (
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+                  {outcome.results.map((result, index) => (
                     <PatientSearchResult
                       key={result.id}
+                      index={index}
                       patient={{
                         ...result,
                         status: patientTreatmentStatusLabel(result.metadata),
