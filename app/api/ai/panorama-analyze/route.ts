@@ -37,17 +37,10 @@ export async function POST(request: Request) {
     const patientId = formData.get('patient_id');
     const medicalFileId = formData.get('medical_file_id');
     const consent = formData.get('consent');
-    const modelVersionRaw = formData.get('model_version');
-    const modelVersion =
-      typeof modelVersionRaw === 'string' ? modelVersionRaw.trim().toLowerCase() : null;
-    const inferenceConfig = getPanoramaInferenceConfig(process.env, modelVersion);
+    const modelVersion = 'advanced';
+    const inferenceConfig = getPanoramaInferenceConfig(process.env);
     if (!inferenceConfig) {
-      return errorResponse(
-        modelVersion === 'advanced'
-          ? 'خدمة التحليل المتقدم غير مهيأة.'
-          : 'ميزة تحليل صور البانوراما غير مفعلة.',
-        404
-      );
+      return errorResponse('خدمة تحليل صور البانوراما غير مهيأة.', 404);
     }
 
     if (
@@ -153,7 +146,7 @@ export async function POST(request: Request) {
       `panorama.${detectedType.ext}`
     );
     oracleForm.append('confidence_threshold', String(confidenceThreshold));
-    oracleForm.append('model_version', modelVersion ?? 'legacy');
+    oracleForm.append('model_version', modelVersion);
 
     let inferenceResponse: Response;
     try {
