@@ -1,8 +1,11 @@
-// Web Audio API lightweight chime generator
-// Crystal-clear dual-tone frequency (800Hz -> 1200Hz) with smooth exponential decay.
-// No external mp3 assets needed. Respects mute toggle in localStorage.
+// A quiet, four-second notification chime synthesized with the Web Audio API.
+// No external audio asset is needed; the mute preference remains in localStorage.
 
 const CHIME_MUTED_STORAGE_KEY = 'clinic_notifications_chime_muted';
+const CHIME_DURATION_SECONDS = 4;
+const NOTE_INTERVAL_SECONDS = 0.76;
+const NOTE_DURATION_SECONDS = 0.9;
+const MELODY = [659.25, 783.99, 987.77, 783.99, 659.25];
 
 export function isChimeMuted(): boolean {
   if (typeof window === 'undefined') return true;
@@ -26,47 +29,51 @@ export function playNotificationChime(): void {
   if (typeof window === 'undefined') return;
   if (isChimeMuted()) return;
 
+  let context: AudioContext | null = null;
   try {
     const AudioContextClass =
       window.AudioContext ??
       (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return;
 
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
+    const audioContext = new AudioContextClass();
+    context = audioContext;
+    const now = audioContext.currentTime;
 
-    // Create a crystal dual-bell chime: Tone 1 (880Hz, A5) + Tone 2 (1320Hz, E6)
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gainNode = ctx.createGain();
+    MELODY.forEach((frequency, index) => {
+      const start = now + index * NOTE_INTERVAL_SECONDS;
+      const fundamental = audioContext.createOscillator();
+      const overtone = audioContext.createOscillator();
+      const gain = audioContext.createGain();
 
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now);
-    osc1.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+      fundamental.type = 'sine';
+      fundamental.frequency.setValueAtTime(frequency, start);
+      overtone.type = 'sine';
+      overtone.frequency.setValueAtTime(frequency * 2, start);
 
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(1320, now + 0.04);
-    osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.035, start + 0.06);
+      gain.gain.setValueAtTime(0.02, start + 0.3);
+      gain.gain.setValueAtTime(0.012, start + NOTE_DURATION_SECONDS - 0.12);
+      gain.gain.linearRampToValueAtTime(0.001, start + NOTE_DURATION_SECONDS);
 
-    // Smooth envelope: quick attack, gentle exponential decay
-    gainNode.gain.setValueAtTime(0.001, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      fundamental.connect(gain);
+      overtone.connect(gain);
+      gain.connect(audioContext.destination);
 
-    osc1.connect(gainNode);
-    osc2.connect(gainNode);
-    gainNode.connect(ctx.destination);
+      fundamental.start(start);
+      overtone.start(start);
+      fundamental.stop(start + NOTE_DURATION_SECONDS);
+      overtone.stop(start + NOTE_DURATION_SECONDS);
+    });
 
-    osc1.start(now);
-    osc2.start(now + 0.04);
-
-    osc1.stop(now + 0.45);
-    osc2.stop(now + 0.45);
-
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 600);
+    const closeContext = () => {
+      if (audioContext.state !== 'closed') void audioContext.close().catch(() => {});
+    };
+    window.setTimeout(closeContext, CHIME_DURATION_SECONDS * 1000 + 250);
+    if (audioContext.state === 'suspended') void audioContext.resume().catch(closeContext);
   } catch {
-    // AudioContext may be blocked by autoplay policies until a user gesture.
+    // AudioContext may be unavailable or blocked by browser autoplay policies.
+    if (context && context.state !== 'closed') void context.close().catch(() => {});
   }
 }
