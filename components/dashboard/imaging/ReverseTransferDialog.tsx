@@ -8,14 +8,11 @@ type PartnerClinic = {
   relationship?: { status: string } | null;
 };
 
-type PatientOption = { id: string; name: string; phone: string | null };
-
 type MedicalFileOption = {
   id: string;
   original_filename: string | null;
   mime_type: string;
   medical_category: string | null;
-  file_type: string;
 };
 
 type Props = {
@@ -46,12 +43,8 @@ export default function ReverseTransferDialog({
   const [clinics, setClinics] = useState<PartnerClinic[] | null>(null);
   const [files, setFiles] = useState<MedicalFileOption[]>([]);
   const [targetClinicId, setTargetClinicId] = useState('');
-  const [search, setSearch] = useState('');
-  const [searched, setSearched] = useState(false);
-  const [patients, setPatients] = useState<PatientOption[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState<PatientOption | null>(null);
-  const [newPatientName, setNewPatientName] = useState(patientName);
-  const [newPatientPhone, setNewPatientPhone] = useState(patientPhone ?? '');
+  const [patientNameToSend, setPatientNameToSend] = useState(patientName);
+  const [patientPhoneToSend, setPatientPhoneToSend] = useState(patientPhone ?? '');
   const [sourceKind, setSourceKind] = useState<'existing' | 'device'>('existing');
   const [sourceFileId, setSourceFileId] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -100,64 +93,13 @@ export default function ReverseTransferDialog({
     };
   }, [authHeaders, clinicId, sourcePatientId]);
 
-  const searchPatients = async () => {
-    if (!targetClinicId || search.trim().length < 2) {
-      setError('اختر العيادة وأدخل حرفين على الأقل للبحث');
-      return;
-    }
-    setError(null);
-    setSelectedPatient(null);
-    setSearched(false);
-    try {
-      const headers = await authHeaders();
-      const response = await fetch(
-        `/api/clinic/reverse-referrals/patients?clinic_id=${encodeURIComponent(clinicId)}&target_clinic_id=${encodeURIComponent(targetClinicId)}&q=${encodeURIComponent(search.trim())}`,
-        { headers },
-      );
-      const body = await responseJson(response);
-      setPatients(Array.isArray(body.data) ? body.data : []);
-      setSearched(true);
-    } catch (searchError) {
-      setError(searchError instanceof Error ? searchError.message : 'تعذر البحث عن المريض');
-    }
-  };
-
-  const createPatient = async () => {
-    if (!targetClinicId || newPatientName.trim().length < 2) {
-      setError('أدخل اسم المريض بشكل صحيح');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const headers = await authHeaders();
-      const response = await fetch(
-        `/api/clinic/reverse-referrals/patients?clinic_id=${encodeURIComponent(clinicId)}`,
-        {
-          method: 'POST',
-          headers: { ...headers, 'content-type': 'application/json' },
-          body: JSON.stringify({
-            clinic_id: targetClinicId,
-            source_patient_id: sourcePatientId,
-            name: newPatientName.trim(),
-            phone: newPatientPhone.trim(),
-          }),
-        },
-      );
-      const body = await responseJson(response);
-      setSelectedPatient(body.data as PatientOption);
-      setPatients([]);
-      setSearched(false);
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'تعذر إنشاء ملف المريض');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const submit = async () => {
-    if (!targetClinicId || !selectedPatient) {
-      setError('اختر المريض في العيادة المستهدفة أولاً');
+    if (!targetClinicId) {
+      setError('اختر العيادة المستهدفة');
+      return;
+    }
+    if (patientNameToSend.trim().length < 2 || patientPhoneToSend.trim().length < 5) {
+      setError('أدخل اسم المريض ورقم هاتف صحيحين');
       return;
     }
     if (sourceKind === 'existing' && !sourceFileId) {
@@ -176,7 +118,8 @@ export default function ReverseTransferDialog({
       const form = new FormData();
       form.set('target_clinic_id', targetClinicId);
       form.set('source_patient_id', sourcePatientId);
-      form.set('patient_id_to', selectedPatient.id);
+      form.set('from_patient_name', patientNameToSend.trim());
+      form.set('from_patient_phone', patientPhoneToSend.trim());
       form.set('notes', notes.trim());
       if (sourceKind === 'existing') form.set('file_id', sourceFileId);
       if (sourceKind === 'device' && uploadedFile) form.set('file', uploadedFile);
@@ -186,7 +129,7 @@ export default function ReverseTransferDialog({
         { method: 'POST', headers, body: form },
       );
       await responseJson(response);
-      onDone?.('تم إرسال التحويل العكسي وإرفاق الصورة بملف المريض');
+      onDone?.('تم إرسال التحويل إلى العيادة بانتظار القبول');
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'تعذر إرسال التحويل العكسي');
@@ -206,7 +149,9 @@ export default function ReverseTransferDialog({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-white">إعادة تحويل إلى عيادة</h2>
-            <p className="mt-1 text-sm text-slate-400">المريض في مركز التصوير: {patientName}</p>
+            <p className="mt-1 text-sm text-slate-400">
+              أرسل بيانات المريض والصورة إلى العيادة؛ تتم مطابقة ملفه عند قبول التحويل.
+            </p>
           </div>
           <button
             type="button"
@@ -224,12 +169,7 @@ export default function ReverseTransferDialog({
             <span className="mb-1 block text-sm text-slate-300">العيادة المستهدفة</span>
             <select
               value={targetClinicId}
-              onChange={(event) => {
-                setTargetClinicId(event.target.value);
-                setPatients([]);
-                setSearched(false);
-                setSelectedPatient(null);
-              }}
+              onChange={(event) => setTargetClinicId(event.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white"
               disabled={clinics === null || busy}
             >
@@ -245,92 +185,30 @@ export default function ReverseTransferDialog({
             )}
           </label>
 
-          <div className="space-y-2">
-            <label className="block">
-              <span className="mb-1 block text-sm text-slate-300">ابحث عن المريض بالاسم أو الهاتف</span>
-              <input
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setSearched(false);
-                  setPatients([]);
-                  setSelectedPatient(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void searchPatients();
-                  }
-                }}
-                maxLength={100}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white"
-                disabled={!targetClinicId || busy}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void searchPatients()}
-              disabled={!targetClinicId || busy}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"
-            >
-              بحث عن المريض
-            </button>
-            {patients.length > 0 && (
-              <div className="space-y-2 rounded-xl border border-slate-800 p-3">
-                {patients.map((patient) => (
-                  <button
-                    key={patient.id}
-                    type="button"
-                    onClick={() => setSelectedPatient(patient)}
-                    className={`block w-full rounded-lg border p-3 text-right text-sm ${
-                      selectedPatient?.id === patient.id
-                        ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                        : 'border-slate-800 text-slate-300 hover:bg-slate-900'
-                    }`}
-                  >
-                    <span className="font-semibold">{patient.name}</span>
-                    {patient.phone ? <span className="mr-2 text-slate-400">{patient.phone}</span> : null}
-                  </button>
-                ))}
-              </div>
-            )}
-            {searched && patients.length === 0 && (
-              <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
-                <p className="text-sm text-amber-200">لم يُعثر على مريض مطابق في العيادة المستهدفة.</p>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-slate-300">اسم المريض الجديد</span>
-                  <input
-                    value={newPatientName}
-                    onChange={(event) => setNewPatientName(event.target.value)}
-                    maxLength={200}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                    disabled={busy}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-slate-300">رقم الهاتف (اختياري)</span>
-                  <input
-                    value={newPatientPhone}
-                    onChange={(event) => setNewPatientPhone(event.target.value)}
-                    maxLength={40}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                    disabled={busy}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void createPatient()}
-                  disabled={busy}
-                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
-                >
-                  إنشاء مريض جديد بهذا الاسم
-                </button>
-              </div>
-            )}
-            {selectedPatient && (
-              <p className="text-sm text-emerald-300">المريض المختار: {selectedPatient.name}</p>
-            )}
-          </div>
+          <label className="block">
+            <span className="mb-1 block text-sm text-slate-300">اسم المريض (إلزامي)</span>
+            <input
+              value={patientNameToSend}
+              onChange={(event) => setPatientNameToSend(event.target.value)}
+              maxLength={200}
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white"
+              disabled={busy}
+              required
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm text-slate-300">رقم الهاتف (إلزامي)</span>
+            <input
+              value={patientPhoneToSend}
+              onChange={(event) => setPatientPhoneToSend(event.target.value)}
+              maxLength={40}
+              inputMode="tel"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white"
+              disabled={busy}
+              required
+            />
+          </label>
 
           <fieldset className="space-y-3 rounded-xl border border-slate-800 p-3">
             <legend className="px-1 text-sm text-slate-300">مصدر الصورة</legend>
@@ -405,10 +283,10 @@ export default function ReverseTransferDialog({
             <button
               type="button"
               onClick={() => void submit()}
-              disabled={busy || !selectedPatient || !targetClinicId}
+              disabled={busy || !targetClinicId}
               className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
             >
-              {busy ? 'جارٍ الإرسال…' : 'إرسال التحويل وإرفاق الصورة'}
+              {busy ? 'جارٍ الإرسال…' : 'إرسال التحويل'}
             </button>
           </div>
         </div>
