@@ -19,6 +19,7 @@ import TransferDialog from '@/components/dashboard/imaging/TransferDialog';
 import {
   appendPatientSession,
   appendQuickNote,
+  buildWhatsAppHref,
   closePatientTreatment,
   getPatientOutstandingDebt,
   getPatientTreatmentStatus,
@@ -88,6 +89,9 @@ type PatientCommunication = {
   attempt_count: number;
   last_error: string | null;
 };
+
+const REVIEW_REQUEST_MESSAGE =
+  'شكراً لزيارتكم مركز أمل لتصوير الأسنان والفكين. نسعد بتقييمكم لخدمتنا عبر الرابط التالي: https://amal-x-ray-center.dentairec.com/reviews';
 
 /**
  * N30 — the tab set is NOT a local constant anymore: it is derived per activity
@@ -167,6 +171,11 @@ export default function PatientDetailPage() {
    * loads its own full rows), so the two never fetch the same thing twice.
    */
   const [requestsById, setRequestsById] = useState<Record<string, { label: string; status: string }>>({});
+
+  const reviewPhone =
+    patient?.phone ??
+    (typeof patient?.metadata?.phone === 'string' ? patient.metadata.phone : null);
+  const reviewWhatsAppHref = buildWhatsAppHref(reviewPhone, REVIEW_REQUEST_MESSAGE);
 
 
   useEffect(() => {
@@ -748,6 +757,21 @@ export default function PatientDetailPage() {
               className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
             >
               🩻 تحويل لمركز تصوير
+            </button>
+          )}
+          {patient && (
+            <button
+              type="button"
+              disabled={!reviewWhatsAppHref}
+              onClick={() => {
+                if (reviewWhatsAppHref) {
+                  window.open(reviewWhatsAppHref, '_blank', 'noopener,noreferrer');
+                }
+              }}
+              title={reviewWhatsAppHref ? 'إرسال طلب تقييم عبر واتساب' : 'لا يوجد رقم هاتف مسجل للمريض'}
+              className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ⭐ طلب تقييم
             </button>
           )}
         </div>

@@ -53,6 +53,14 @@ describe('B38 — WhatsApp link normalization', () => {
     expect(buildWhatsAppHref('12345', 'مرحبا')).toBeNull();
     expect(buildWhatsAppHref(null, 'مرحبا')).toBeNull();
   });
+
+  it('builds the review request link with the encoded clinic review message', () => {
+    const message =
+      'شكراً لزيارتكم مركز أمل لتصوير الأسنان والفكين. نسعد بتقييمكم لخدمتنا عبر الرابط التالي: https://amal-x-ray-center.dentairec.com/reviews';
+    expect(buildWhatsAppHref('059 875 7557', message)).toBe(
+      `https://wa.me/970598757557?text=${encodeURIComponent(message)}`
+    );
+  });
 });
 
 describe('B39 — quick notes are stored, not just toggled', () => {
@@ -135,6 +143,15 @@ describe('B38/B39 — wiring guard', () => {
   it('the country-code default is Palestine, never the old Jordan default', () => {
     expect(smartProfile).toContain("defaultCountryCode = '970'");
     expect(smartProfile).not.toContain("defaultCountryCode = '962'");
+  });
+
+  it('the patient detail page offers the review request action and disables it without a phone', () => {
+    expect(detailPage).toContain("buildWhatsAppHref(reviewPhone, REVIEW_REQUEST_MESSAGE)");
+    expect(detailPage).toContain("typeof patient?.metadata?.phone === 'string'");
+    expect(detailPage).toContain('disabled={!reviewWhatsAppHref}');
+    expect(detailPage).toContain('window.open(reviewWhatsAppHref,');
+    expect(detailPage).toContain('⭐ طلب تقييم');
+    expect(detailPage).toContain('https://amal-x-ray-center.dentairec.com/reviews');
   });
 
   it('the quick-note button opens the composer instead of toggling the notes block', () => {
