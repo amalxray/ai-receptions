@@ -371,6 +371,31 @@ export default function ReferralDetailPage() {
     }
   }
 
+  async function saveFileToPatient(fileId: string) {
+    if (!clinicId || !request) return;
+    setBusy(`save-${fileId}`);
+    setErr(null);
+    setNotice(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(
+        `/api/clinic/referrals/${encodeURIComponent(request.id)}/save-to-patient?clinic_id=${encodeURIComponent(clinicId)}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...headers },
+          body: JSON.stringify({ file_id: fileId }),
+        },
+      );
+      if (!res.ok) throw new Error(await readError(res, 'تعذر حفظ الملف في ملف المريض'));
+      const body = await res.json();
+      setNotice(body?.already_saved ? 'الملف محفوظ مسبقًا في ملف المريض' : 'تم حفظ الملف في ملفات المريض');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'حدث خطأ');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loading) return <Skeleton className="h-60" />;
   if (clinicError) return <EmptyState title="تعذر تحميل التحويل" description={clinicError} />;
   if (!detail && !err) return <Skeleton className="h-60" />;
@@ -611,6 +636,16 @@ export default function ReferralDetailPage() {
                       >
                         {busy === f.id ? '…' : 'تنزيل'}
                       </button>
+                      {direction === 'outgoing' && detail.result?.images?.includes(f.id) ? (
+                        <button
+                          type="button"
+                          onClick={() => void saveFileToPatient(f.id)}
+                          disabled={busy !== null}
+                          className="rounded-xl border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20 disabled:opacity-50"
+                        >
+                          {busy === `save-${f.id}` ? 'جارٍ الحفظ…' : '📁 حفظ في ملفات المريض'}
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -641,4 +676,3 @@ export default function ReferralDetailPage() {
     </DashboardSection>
   );
 }
-
