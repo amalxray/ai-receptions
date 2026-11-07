@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { getPanoramaInferenceConfig } from '@/lib/ai/panoramaInferenceConfig';
 
 describe('getPanoramaInferenceConfig', () => {
-  it('disables panorama analysis when either production setting is missing', () => {
+  it('disables panorama analysis when either advanced-model setting is missing', () => {
     expect(getPanoramaInferenceConfig({ NODE_ENV: 'production' })).toBeNull();
     expect(
       getPanoramaInferenceConfig({
         NODE_ENV: 'production',
         AI_INFERENCE_URL: 'https://inference.example.com',
+        AI_INFERENCE_API_KEY: 'legacy-secret',
       })
     ).toBeNull();
     expect(
@@ -23,41 +24,25 @@ describe('getPanoramaInferenceConfig', () => {
       getPanoramaInferenceConfig({
         NODE_ENV: 'production',
         VERCEL_ENV: 'production',
-        AI_INFERENCE_URL: 'https://inference.example.com',
-        AI_INFERENCE_API_KEY: 'secret',
+        AI_INFERENCE_URL_V2: 'https://ai-inference-v2.onrender.com',
+        AI_INFERENCE_API_KEY_V2: 'advanced-secret',
       })
-    ).toEqual({
-      endpoint: new URL('https://inference.example.com/analyze'),
-      apiKey: 'secret',
-    });
-  });
-
-  it('builds the analysis endpoint from the local inference URL', () => {
-    expect(
-      getPanoramaInferenceConfig({
-        NODE_ENV: 'development',
-        AI_INFERENCE_URL: 'http://127.0.0.1:8000',
-        AI_INFERENCE_API_KEY: 'local-secret',
-      })
-    ).toEqual({
-      endpoint: new URL('http://127.0.0.1:8000/analyze'),
-      apiKey: 'local-secret',
-    });
-  });
-
-  it('routes advanced requests to the dedicated v2 inference service', () => {
-    expect(
-      getPanoramaInferenceConfig(
-        {
-          NODE_ENV: 'production',
-          AI_INFERENCE_URL_V2: 'https://ai-inference-v2.onrender.com',
-          AI_INFERENCE_API_KEY_V2: 'advanced-secret',
-        },
-        'advanced'
-      )
     ).toEqual({
       endpoint: new URL('https://ai-inference-v2.onrender.com/analyze'),
       apiKey: 'advanced-secret',
+    });
+  });
+
+  it('builds the advanced-model endpoint from its local inference URL', () => {
+    expect(
+      getPanoramaInferenceConfig({
+        NODE_ENV: 'development',
+        AI_INFERENCE_URL_V2: 'http://127.0.0.1:8000',
+        AI_INFERENCE_API_KEY_V2: 'local-advanced-secret',
+      })
+    ).toEqual({
+      endpoint: new URL('http://127.0.0.1:8000/analyze'),
+      apiKey: 'local-advanced-secret',
     });
   });
 
@@ -65,15 +50,15 @@ describe('getPanoramaInferenceConfig', () => {
     expect(
       getPanoramaInferenceConfig({
         NODE_ENV: 'production',
-        AI_INFERENCE_URL: 'not a URL',
-        AI_INFERENCE_API_KEY: 'secret',
+        AI_INFERENCE_URL_V2: 'not a URL',
+        AI_INFERENCE_API_KEY_V2: 'secret',
       })
     ).toBeNull();
     expect(
       getPanoramaInferenceConfig({
         NODE_ENV: 'production',
-        AI_INFERENCE_URL: 'http://inference.example.com',
-        AI_INFERENCE_API_KEY: 'secret',
+        AI_INFERENCE_URL_V2: 'http://inference.example.com',
+        AI_INFERENCE_API_KEY_V2: 'secret',
       })
     ).toBeNull();
   });
