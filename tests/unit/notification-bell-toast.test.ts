@@ -145,11 +145,11 @@ describe('#35 — global toast store', () => {
     expect(toastUi).toContain('backdrop-blur-xl');
   });
 
-  it('ships five semantic palettes and a 5s progress bar', () => {
+  it('ships five semantic palettes and a 6s toast duration and progress bar', () => {
     for (const t of ['success', 'error', 'info', 'warning', 'notification']) {
       expect(toastUi).toContain(`${t}: {`);
     }
-    expect(toastUi).toContain('5000');
+    expect(toastUi).toContain('6000');
     expect(toastUi).toContain("initial={{ width: '100%' }}");
     expect(toastUi).toContain("animate={{ width: '0%' }}");
   });
@@ -222,4 +222,3 @@ describe('#36 — templates manager bound to the real route contract', () => {
     expect(manager).toContain('معاينة');
   });
 });
-
