@@ -28,6 +28,7 @@ import {
   type PatientSessionStatus,
 } from '@/components/dashboard/patients/smartProfile';
 import {
+  SEARCH_FETCH_LIMIT,
   SEARCH_RESULT_LIMIT,
   formatDateLongAr,
   formatHijriAr,
@@ -45,7 +46,7 @@ import { useClinicContext } from '@/lib/useClinicContext';
  *
  * The patient panel renders UNDER the results once one is picked, while each
  * result also links directly to the full patient file. Arabic-aware
- * normalisation, ranking, the 10-row cap, and status colours live in
+ * normalisation, ranking, the result cap, and status colours live in
  * `lib/services/patientSearch.ts` so they remain unit tested.
  *
  * The API contract is unchanged: `GET /api/patients` still answers with a BARE
@@ -96,7 +97,7 @@ export default function PatientsPage() {
   );
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
 
-  /** Rows the API returned for the CURRENT debounced query (bounded by `limit`). */
+  /** Rows returned for the current debounced query (bounded by `limit`). */
   const [patients, setPatients] = useState<PatientSearchRecord[]>([]);
   const [patientsLoaded, setPatientsLoaded] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -104,7 +105,7 @@ export default function PatientsPage() {
   /** Debounced query — the bar owns the raw draft and calls back after 300ms. */
   const [query, setQuery] = useState('');
   const [treatmentFilter, setTreatmentFilter] = useState<'all' | 'active' | 'closed'>('all');
-  /** «عرض الكل (N)» lifts the 10-row display cap. */
+  /** «عرض الكل (N)» lifts the visible result cap. */
   const [showAll, setShowAll] = useState(false);
   /** The patient whose panel is open — it survives later searches. */
   const [selected, setSelected] = useState<PatientSearchRecord | null>(null);
@@ -134,15 +135,19 @@ export default function PatientsPage() {
       setError(null);
       try {
         const headers = await authHeaders();
+        const hasSearchTerm = Boolean(term.trim());
         const qs = new URLSearchParams({
           clinic_id: clinicId,
-          limit: '500',
-          date_filter: dateFilter,
+          limit: hasSearchTerm ? String(SEARCH_FETCH_LIMIT) : '500',
         });
-        if (dateFilter === 'today') {
+        if (hasSearchTerm) {
+          qs.set('q', term);
+        } else {
+          qs.set('date_filter', dateFilter);
+        }
+        if (!hasSearchTerm && dateFilter === 'today') {
           qs.set('timezone_offset', String(new Date().getTimezoneOffset()));
         }
-        if (term.trim()) qs.set('q', term);
         const res = await fetch(`/api/patients?${qs.toString()}`, { headers });
         if (!res.ok) throw new Error('بيانات المرضى غير متاحة');
         const payload = await res.json();
@@ -453,14 +458,15 @@ export default function PatientsPage() {
   const visiblePatients = useMemo(
     () =>
       patients.filter((patient) => {
+        if (query.trim()) return true;
         const status = getPatientTreatmentStatus(patient.metadata);
         if (treatmentFilter === 'all') return true;
         return treatmentFilter === 'active' ? status === 'active' : status === 'closed';
       }),
-    [patients, treatmentFilter]
+    [patients, query, treatmentFilter]
   );
 
-  /** Date-filtered rows are already ordered by creation time by the API. */
+  /** Rows are ordered by creation time by the API; active searches ignore list filters. */
   const outcome = useMemo(
     () => {
       if (!query.trim()) {
@@ -548,6 +554,7 @@ export default function PatientsPage() {
 
   const handleQueryChange = useCallback((next: string) => {
     setQuery(next);
+    if (next.trim()) setTreatmentFilter('all');
     setShowAll(false);
   }, []);
 
@@ -863,13 +870,14 @@ export default function PatientsPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="patient-date-filter" className="text-sm text-slate-400">
-            تاريخ الإضافة
+            {hasQuery ? 'تاريخ الإضافة (يُتجاهل أثناء البحث)' : 'تاريخ الإضافة'}
           </label>
           <select
             id="patient-date-filter"
             value={dateFilter}
+            disabled={hasQuery}
             onChange={(event) => handleDateFilterChange(event.target.value as 'today' | 'week' | 'all')}
-            className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100"
+            className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <option value="today">اليوم</option>
             <option value="week">آخر 7 أيام</option>
@@ -878,12 +886,13 @@ export default function PatientsPage() {
         </div>
         {patientsLoaded && !error && !clinicError ? (
           <p className="text-sm text-slate-400" aria-live="polite">
-            عدد المرضى ضمن الفترة: <span className="font-semibold text-cyan-200">{outcome.total}</span>
+            {hasQuery ? 'نتائج البحث:' : 'عدد المرضى ضمن الفترة:'}{' '}
+            <span className="font-semibold text-cyan-200">{outcome.total}</span>
           </p>
         ) : null}
       </div>
 
-      {hasPatientResults && (
+      {hasPatientResults && !hasQuery && (
         <div className="mb-4 flex flex-wrap gap-2">
           {['all', 'active', 'closed'].map((filter) => (
             <button
@@ -902,7 +911,7 @@ export default function PatientsPage() {
         </div>
       )}
 
-      {/* 🔎 Results (max 10) — the panel opens UNDER them, never in a modal. */}
+      {/* 🔎 Results — the panel opens UNDER them, never in a modal. */}
       <AnimatePresence mode="wait">
         {hasPatientResults ? (
           <motion.div

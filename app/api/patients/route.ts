@@ -17,13 +17,14 @@ const NOT_CONFIGURED_RESPONSE = {
   code: 'NOT_CONFIGURED',
 } as const;
 
-/** Default page size kept at the historic 50; callers may ask for more (N28). */
+/** Default list size; patient searches may request up to the API row cap. */
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 500;
+const MAX_LIMIT = 1000;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const dateFilter = url.searchParams.get('date_filter') ?? 'all';
+  const searchQuery = sanitizeSearchQuery(url.searchParams.get('q') ?? '');
+  const dateFilter = searchQuery ? 'all' : url.searchParams.get('date_filter') ?? 'all';
   const timezoneOffsetParam = url.searchParams.get('timezone_offset');
   const timezoneOffset = timezoneOffsetParam === null ? 0 : Number(timezoneOffsetParam);
 
@@ -83,12 +84,12 @@ export async function GET(req: Request) {
     // so a comma / parenthesis / `*` produced `failed to parse logic tree` (500).
     // Sanitising here keeps the filter syntax intact AND searches the same folded
     // shape the browser matches on (hamza forms, ة/ه, Arabic-Indic digits).
-    const searchQuery = sanitizeSearchQuery(url.searchParams.get('q') ?? '');
     const requestedLimit = Number(url.searchParams.get('limit'));
+    const defaultLimit = searchQuery ? MAX_LIMIT : DEFAULT_LIMIT;
     const limit =
       Number.isFinite(requestedLimit) && requestedLimit > 0
         ? Math.min(Math.floor(requestedLimit), MAX_LIMIT)
-        : DEFAULT_LIMIT;
+        : defaultLimit;
 
     const supabase = supabaseAdmin;
     let query = supabase

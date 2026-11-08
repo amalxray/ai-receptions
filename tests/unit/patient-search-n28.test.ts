@@ -10,6 +10,7 @@ import PatientPanel from '@/components/dashboard/patients/PatientPanel';
 import PatientSearchBar from '@/components/dashboard/patients/PatientSearchBar';
 import PatientSearchResult from '@/components/dashboard/patients/PatientSearchResult';
 import {
+  SEARCH_FETCH_LIMIT,
   SEARCH_RESULT_LIMIT,
   formatDateLongAr,
   formatHijriAr,
@@ -79,7 +80,16 @@ vi.mock('@/lib/services/clinicAuthorization', () => ({
 }));
 
 vi.mock('@/lib/supabase/admin', () => {
-  const rows = [{ id: 'p1', clinic_id: 'c1', full_name: 'خالد منى', phone_number: null, email: null, notes: null, metadata: null }];
+  const rows = [{
+    id: 'p1',
+    clinic_id: 'c1',
+    full_name: 'خالد منى',
+    phone_number: null,
+    email: null,
+    notes: null,
+    metadata: null,
+    created_at: '2020-01-01T00:00:00.000Z',
+  }];
   const builder: any = {
     select: () => builder,
     eq: () => builder,
@@ -272,18 +282,18 @@ describe('N28 — searchPatients', () => {
     expect(outcome.results.map((row) => row.id)).toEqual(['p5', 'p4']);
   });
 
-  it('caps the visible list at 10 but reports the real total', () => {
-    const many: Row[] = Array.from({ length: 25 }, (_, index) => ({
+  it('caps the visible list at the configured result limit but reports the real total', () => {
+    const many: Row[] = Array.from({ length: 60 }, (_, index) => ({
       id: `m${index}`,
       name: `مريض تجريبي ${index}`,
     }));
     const capped = searchPatients(many, 'تجريبي');
     expect(capped.results.length).toBe(SEARCH_RESULT_LIMIT);
-    expect(capped.total).toBe(25);
+    expect(capped.total).toBe(60);
     expect(capped.hasMore).toBe(true);
 
-    const expanded = searchPatients(many, 'تجريبي', 25);
-    expect(expanded.results.length).toBe(25);
+    const expanded = searchPatients(many, 'تجريبي', 60);
+    expect(expanded.results.length).toBe(60);
     expect(expanded.hasMore).toBe(false);
   });
 });
@@ -400,7 +410,7 @@ describe('N28 — wiring guards', () => {
     expect(api).toContain("url.searchParams.get('date_filter') ?? 'all'");
   });
 
-  it('the page defaults to today, offers date filters, and counts the filtered patients', () => {
+  it('the page searches across dates and reports date-filtered list counts', () => {
     expect(page).not.toContain('التالي');
     expect(page).not.toContain('السابق');
     expect(page).toContain('searchPatients');
@@ -408,7 +418,12 @@ describe('N28 — wiring guards', () => {
     expect(page).toContain('عرض الكل');
     expect(page).toContain("searchParams.get('filter') === 'new_this_week' ? 'week' : 'today'");
     expect(page).toContain('id="patient-date-filter"');
-    expect(page).toContain('date_filter: dateFilter');
+    expect(page).toContain("limit: hasSearchTerm ? String(SEARCH_FETCH_LIMIT) : '500'");
+    expect(page).toContain("if (hasSearchTerm) {");
+    expect(page).toContain("qs.set('q', term)");
+    expect(page).toContain("qs.set('date_filter', dateFilter)");
+    expect(page).toContain("if (query.trim()) return true");
+    expect(page).toContain('disabled={hasQuery}');
     expect(page).toContain('عدد المرضى ضمن الفترة:');
   });
 
@@ -456,18 +471,30 @@ describe('N28 — GET /api/patients: the comma 500 is gone', () => {
     expect(harness.or).toEqual([]);
   });
 
-  it('defaults to 50 rows, honours ?limit and caps it at 500', async () => {
+  it('defaults searches to 1000 rows, honours ?limit and caps it at 1000', async () => {
     // `harness.limit` keeps every call of this test — assert the newest one.
     await call(`q=${encodeURIComponent('خالد')}`);
-    expect(harness.limit.at(-1)).toBe(50);
+    expect(harness.limit.at(-1)).toBe(1000);
     await call(`q=${encodeURIComponent('خالد')}&limit=200`);
     expect(harness.limit.at(-1)).toBe(200);
     await call(`q=${encodeURIComponent('خالد')}&limit=99999`);
-    expect(harness.limit.at(-1)).toBe(500);
+    expect(harness.limit.at(-1)).toBe(1000);
     await call(`q=${encodeURIComponent('خالد')}&limit=0`);
-    expect(harness.limit.at(-1)).toBe(50);
+    expect(harness.limit.at(-1)).toBe(1000);
     await call(`q=${encodeURIComponent('خالد')}&limit=abc`);
-    expect(harness.limit.at(-1)).toBe(50);
+    expect(harness.limit.at(-1)).toBe(1000);
+  });
+
+  it('ignores date filters for a patient search query', async () => {
+    const response = await call(
+      `q=${encodeURIComponent('مريض قديم')}&date_filter=today&timezone_offset=0&limit=${SEARCH_FETCH_LIMIT}`
+    );
+    expect(response.status).toBe(200);
+    expect(harness.dateFilters).toEqual([]);
+    expect(harness.or[0]).toContain('full_name.ilike.%مريض قديم%');
+    expect(harness.limit.at(-1)).toBe(SEARCH_FETCH_LIMIT);
+    const patients = await response.json();
+    expect(patients[0].created_at).toBe('2020-01-01T00:00:00.000Z');
   });
 
   it('filters today by the requested local day and week by the rolling 7-day range', async () => {
