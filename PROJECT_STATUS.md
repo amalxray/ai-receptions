@@ -1,5 +1,14 @@
 # Project Status
 
+## 2026-11-08 — Recent merged updates (B123, B163, B164, B165)
+
+| Work item | Status | Changes / verification |
+|---|---|---|
+| B123 — Panorama model comparison ([PR #304](https://github.com/amalxray/ai-receptions/pull/304)) | ✅ Merged to `main` | Added `scripts/compare_models.py` and usage notes in `scripts/README.md` to compare ONNX models on image samples. A local 100-image comparison previously recorded 13.59 detections/image and 56.97% weighted confidence for the 83-class model, versus 8.17 detections/image and 46.63% for the 52-class model. These are local evaluation results, not committed result data or clinical validation; ground-truth review is still required. |
+| B163 — Search all patients ([PR #305](https://github.com/amalxray/ai-receptions/pull/305)) | ✅ Merged to `main` | Patient search now queries the API/database instead of relying only on the initially loaded records. Active search is not narrowed by date or patient-status filters; the API limit is 1,000, and the UI presents up to 50 search results. |
+| B164 — Financial patient-file uploads ([PR #306](https://github.com/amalxray/ai-receptions/pull/306)) | ✅ Merged to `main` | Replaced the financial panel's multipart upload through Next.js with the medical-file flow: request an authorized signed upload URL, upload directly to Supabase Storage, then confirm and record metadata. Removed the client-side 4 MiB limit; existing server-side file-type limits remain authoritative. Automated coverage includes a 5.9 MiB file; a live clinic upload was not performed. |
+| B165 — PDF preview ([PR #307](https://github.com/amalxray/ai-receptions/pull/307), superseded by [PR #308](https://github.com/amalxray/ai-receptions/pull/308)) | ✅ Merged to `main`; Production Ready | Added PDF preview actions to both medical and financial file lists. The initial browser-native iframe did not provide the desired full-screen document view, so PR #308 replaced it with React-PDF/PDF.js rendering in a viewport-sized dialog, with pages scaled to the viewer width. The PDF.js worker is copied to a same-origin public asset during dependency installation. Production deployment for merge commit `2cdf3c3` reached **Ready**; the production worker URL returned HTTP 200. |
+
 ## B162 — توحيد تحليل الأشعة على النموذج المتقدم (83 فئة)
 
 - **النموذج**: `best_model_upgraded.onnx`، نموذج ONNX يضم 83 فئة.
