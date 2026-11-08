@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
+import {
+  detectFileCategory,
+  inferMimeFromFilename,
+  resolveUploadFileType,
+} from '@/components/dashboard/patients/PatientMedicalFilesTab';
 
 /**
  * PHASE I — Unified patient financial + medical file panel.
@@ -493,44 +498,74 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const uploadFile = async (file: File) => {
     if (!clinicId) return;
-    const fileToUpload = await optimizeImageForUpload(file);
-    // F — حد جسم الطلب على Vercel هو 4.5MB: نرفض مبكراً برسالة عربية واضحة
-    // بدلاً من 413 نصيّ من الحافة كان يفجّر res.json() ("Unexpected token 'R'").
-    const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-    if (fileToUpload.size > MAX_UPLOAD_BYTES) {
-      setActionError(`الملف كبير جداً (${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB) — الحد الأقصى 4MB، ارفع نسخة أصغر أو مضغوطة`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
     setUploadBusy(true);
     setActionError(null);
     setActionSuccess(null);
     try {
-      const form = new FormData();
-      form.append('file', fileToUpload);
-      form.append('patient_id', patientId);
+      const originalMimeType = file.type || inferMimeFromFilename(file.name);
+      const category = detectFileCategory(file.type, file.name, originalMimeType);
+      const preservesRadiologySource = ['panorama', 'cbct', 'dicom'].includes(category);
+      const fileToUpload = preservesRadiologySource ? file : await optimizeImageForUpload(file);
+      const mimeType = fileToUpload.type || inferMimeFromFilename(fileToUpload.name);
+      const fileType = resolveUploadFileType(category, fileToUpload.name, mimeType);
       const headers = await authHeaders();
-      const res = await fetch(`/api/clinic/medical-files?clinic_id=${clinicId}&patient_id=${patientId}`, {
+
+      const startRes = await fetch('/api/clinic/medical-files/upload-start', {
         method: 'POST',
-        headers,
-        body: form,
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          clinic_id: clinicId,
+          patient_id: patientId,
+          filename: fileToUpload.name,
+          mime_type: mimeType,
+          size_bytes: fileToUpload.size,
+          file_type: fileType,
+          medical_category: category,
+        }),
       });
-      // قراءة نصية آمنة أولاً: أي خطأ حافة (413/502) يعيد HTML نصاً وليس JSON.
-      const text = await res.text();
-      let json: { error?: string } | null = null;
-      try {
-        json = text ? (JSON.parse(text) as { error?: string }) : null;
-      } catch {
-        json = null;
+      const startJson = await startRes.json().catch(() => null);
+      if (!startRes.ok || !startJson?.data?.upload_url) {
+        throw new Error(startJson?.error || 'تعذر تجهيز جلسة رفع الملف');
       }
-      if (!res.ok) {
-        throw new Error(
-          res.status === 413
-            ? 'الملف تجاوز الحد المسموح (4MB) — ارفع نسخة أصغر'
-            : json?.error || `فشل رفع الملف (${res.status})`
-        );
+
+      const { upload_url, storage_path, file_type: confirmedFileType } = startJson.data;
+      await new Promise<void>((resolve, reject) => {
+        const uploadBody = new FormData();
+        uploadBody.append('cacheControl', '3600');
+        uploadBody.append('', fileToUpload);
+
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`فشل رفع الملف إلى التخزين السحابي (كود ${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('انقطع الاتصال أثناء رفع الملف'));
+        xhr.onabort = () => reject(new Error('تم إلغاء رفع الملف'));
+        xhr.open('PUT', upload_url, true);
+        xhr.send(uploadBody);
+      });
+
+      const confirmRes = await fetch('/api/clinic/medical-files/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          clinic_id: clinicId,
+          patient_id: patientId,
+          storage_path,
+          mime_type: mimeType,
+          size_bytes: fileToUpload.size,
+          filename: fileToUpload.name,
+          file_type: confirmedFileType || fileType,
+        }),
+      });
+      const confirmJson = await confirmRes.json().catch(() => null);
+      if (!confirmRes.ok || !confirmJson?.data) {
+        throw new Error(confirmJson?.error || 'فشل توثيق وحفظ الملف');
       }
-      if (!json) throw new Error('استجابة غير صالحة من الخادم');
+
       setActionSuccess('تم رفع الملف الطبي ✓');
       await loadAll();
     } catch (err) {
