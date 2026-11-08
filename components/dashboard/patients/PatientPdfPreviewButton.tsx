@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { createPortal } from 'react-dom';
 import { Eye, Loader2, X } from 'lucide-react';
+
+const PatientPdfDocument = dynamic(() => import('./PatientPdfDocument'), {
+  ssr: false,
+});
 
 type PdfFileLike = {
   file_type?: string | null;
@@ -40,6 +46,8 @@ export default function PatientPdfPreviewButton({
   useEffect(() => {
     if (!isOpen) return;
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -51,7 +59,10 @@ export default function PatientPdfPreviewButton({
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen]);
 
   const openPreview = async () => {
@@ -99,9 +110,9 @@ export default function PatientPdfPreviewButton({
         <span>معاينة</span>
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-[70] h-[100dvh] w-screen bg-slate-950"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) closePreview();
           }}
@@ -110,9 +121,9 @@ export default function PatientPdfPreviewButton({
             role="dialog"
             aria-modal="true"
             aria-labelledby={`pdf-preview-title-${fileId}`}
-            className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+            className="flex h-full w-full flex-col overflow-hidden bg-slate-900"
           >
-            <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <header className="flex min-h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-2">
               <h2
                 id={`pdf-preview-title-${fileId}`}
                 className="min-w-0 truncate text-sm font-semibold text-white"
@@ -142,15 +153,12 @@ export default function PatientPdfPreviewButton({
                   {error}
                 </div>
               ) : signedUrl ? (
-                <iframe
-                  src={signedUrl}
-                  className="h-[80vh] w-full rounded-lg"
-                  title="معاينة PDF"
-                />
+                <PatientPdfDocument fileUrl={signedUrl} />
               ) : null}
             </div>
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
