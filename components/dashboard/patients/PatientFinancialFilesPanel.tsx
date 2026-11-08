@@ -9,6 +9,7 @@ import {
   inferMimeFromFilename,
   resolveUploadFileType,
 } from '@/components/dashboard/patients/PatientMedicalFilesTab';
+import PatientPdfPreviewButton, { isPdfMedicalFile } from '@/components/dashboard/patients/PatientPdfPreviewButton';
 
 /**
  * PHASE I — Unified patient financial + medical file panel.
@@ -77,6 +78,7 @@ type BalanceRow = {
 type MedicalFileRow = {
   id: string;
   file_type?: string | null;
+  mime_type?: string | null;
   original_filename?: string | null;
   size_bytes?: number | null;
   created_at?: string | null;
@@ -1071,13 +1073,23 @@ return (
                     {f.created_at ? new Date(f.created_at).toLocaleDateString('ar') : ''}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void openFile(f.id)}
-                  className="rounded-full bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/30"
-                >
-                  فتح
-                </button>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  {isPdfMedicalFile(f) && clinicId && (
+                    <PatientPdfPreviewButton
+                      fileId={f.id}
+                      clinicId={clinicId}
+                      filename={f.original_filename ?? 'ملف PDF'}
+                      authHeaders={authHeaders}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void openFile(f.id)}
+                    className="rounded-full bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/30"
+                  >
+                    فتح
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
