@@ -1,6 +1,7 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
+import { AlertCircle, FileText, TrendingUp, Users, Wallet, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
@@ -39,6 +40,7 @@ import {
   type PatientSearchRecord,
 } from '@/lib/services/patientSearch';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { formatMoney, formatNumber } from '@/lib/clinic/formatting';
 
 /**
  * The patients page lists a selectable creation-date range (today by default)
@@ -75,6 +77,20 @@ type DailySummary = {
 
 const EMPTY_SUMMARY: DailySummary = { appointmentsToday: null, newFiles: null, outstanding: null };
 
+type TodayStats = {
+  newPatients: number | null;
+  invoicesTotal: number | null;
+  paymentsTotal: number | null;
+  remainingTotal: number | null;
+};
+
+const EMPTY_TODAY_STATS: TodayStats = {
+  newPatients: null,
+  invoicesTotal: null,
+  paymentsTotal: null,
+  remainingTotal: null,
+};
+
 type SmartAlertCounts = {
   overdueDebts: number;
   pendingImaging: number;
@@ -96,6 +112,8 @@ export default function PatientsPage() {
     searchParams.get('filter') === 'new_this_week' ? 'week' : 'today'
   );
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const [todayStats, setTodayStats] = useState<TodayStats>(EMPTY_TODAY_STATS);
+  const [todayStatsLoading, setTodayStatsLoading] = useState(true);
 
   /** Rows returned for the current debounced query (bounded by `limit`). */
   const [patients, setPatients] = useState<PatientSearchRecord[]>([]);
@@ -123,6 +141,47 @@ export default function PatientsPage() {
   const [submitting, setSubmitting] = useState(false);
   /** Form-local validation/save message — kept separate from the search `error`. */
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!clinicId) {
+      setTodayStats(EMPTY_TODAY_STATS);
+      setTodayStatsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setTodayStatsLoading(true);
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(
+          `/api/clinic/patients/today-stats?clinic_id=${encodeURIComponent(clinicId)}`,
+          { headers }
+        );
+        if (!response.ok) throw new Error('تعذر تحميل أداء اليوم');
+        const payload = await response.json();
+        if (cancelled) return;
+
+        const data = payload?.data;
+        setTodayStats({
+          newPatients: Number.isFinite(data?.new_patients) ? data.new_patients : null,
+          invoicesTotal: Number.isFinite(data?.invoices_total) ? data.invoices_total : null,
+          paymentsTotal: Number.isFinite(data?.payments_total) ? data.payments_total : null,
+          remainingTotal: Number.isFinite(data?.remaining_total) ? data.remaining_total : null,
+        });
+      } catch {
+        if (!cancelled) setTodayStats(EMPTY_TODAY_STATS);
+      } finally {
+        if (!cancelled) setTodayStatsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, clinicId]);
 
   /**
    * The single search request. `q` is sanitised again server-side (PostgREST
@@ -586,6 +645,45 @@ export default function PatientsPage() {
         </Magnetic>
       }
     >
+      <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <TodayPerformanceCard
+          label="مرضى جدد اليوم"
+          value={todayStats.newPatients}
+          loading={todayStatsLoading}
+          icon={Users}
+          tone="blue"
+          index={0}
+        />
+        <TodayPerformanceCard
+          label="إجمالي الفواتير"
+          value={todayStats.invoicesTotal}
+          loading={todayStatsLoading}
+          icon={FileText}
+          tone="violet"
+          money
+          index={1}
+        />
+        <TodayPerformanceCard
+          label="المبلغ المسدد اليوم"
+          value={todayStats.paymentsTotal}
+          loading={todayStatsLoading}
+          icon={Wallet}
+          tone="emerald"
+          money
+          highlight
+          index={2}
+        />
+        <TodayPerformanceCard
+          label="المبلغ المتبقي اليوم"
+          value={todayStats.remainingTotal}
+          loading={todayStatsLoading}
+          icon={AlertCircle}
+          tone="orange"
+          money
+          index={3}
+        />
+      </div>
+
       {/* 🌅 Greeting + date (Gregorian · Hijri). */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -1147,4 +1245,128 @@ function SummaryTile({
       </Link>
     </motion.div>
   );
+}
+
+function TodayPerformanceCard({
+  label,
+  value,
+  loading,
+  icon: Icon,
+  tone,
+  index,
+  money = false,
+  highlight = false,
+}: {
+  label: string;
+  value: number | null;
+  loading: boolean;
+  icon: LucideIcon;
+  tone: 'blue' | 'violet' | 'emerald' | 'orange';
+  index: number;
+  money?: boolean;
+  highlight?: boolean;
+}) {
+  const toneStyles = {
+    blue: {
+      border: 'border-sky-400/20',
+      background: 'from-sky-500/15 via-slate-900/80 to-slate-950/90',
+      icon: 'bg-sky-400/15 text-sky-300',
+      label: 'text-sky-100/80',
+      value: 'text-white',
+      shadow: 'shadow-sky-950/30',
+    },
+    violet: {
+      border: 'border-violet-400/20',
+      background: 'from-violet-500/15 via-slate-900/80 to-slate-950/90',
+      icon: 'bg-violet-400/15 text-violet-300',
+      label: 'text-violet-100/80',
+      value: 'text-white',
+      shadow: 'shadow-violet-950/30',
+    },
+    emerald: {
+      border: 'border-emerald-300/35',
+      background: 'from-emerald-500/25 via-emerald-950/80 to-slate-950/90',
+      icon: 'bg-emerald-300/20 text-emerald-200',
+      label: 'text-emerald-50',
+      value: 'text-white',
+      shadow: 'shadow-emerald-950/50',
+    },
+    orange: {
+      border: 'border-orange-400/20',
+      background: 'from-orange-500/15 via-slate-900/80 to-slate-950/90',
+      icon: 'bg-orange-400/15 text-orange-300',
+      label: 'text-orange-100/80',
+      value: 'text-white',
+      shadow: 'shadow-orange-950/30',
+    },
+  }[tone];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -5 }}
+      transition={{
+        opacity: { duration: 0.4, delay: index * 0.1 },
+        y: { duration: 0.4, delay: index * 0.1, ease: [0.22, 1, 0.36, 1] },
+      }}
+      className={`group relative isolate overflow-hidden rounded-2xl border ${toneStyles.border} bg-gradient-to-br ${toneStyles.background} p-4 shadow-xl ${toneStyles.shadow} backdrop-blur-md transition-shadow duration-300 hover:shadow-2xl sm:rounded-3xl sm:p-5`}
+    >
+      {highlight ? (
+        <>
+          <span className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-emerald-300/20 blur-3xl animate-blob-drift" />
+          <span className="pointer-events-none absolute -bottom-12 left-4 h-32 w-32 rounded-full bg-teal-400/15 blur-3xl animate-blob-drift [animation-delay:-7s]" />
+        </>
+      ) : null}
+      <div className="relative z-10 flex items-start justify-between gap-2">
+        <p className={`text-xs font-semibold leading-5 sm:text-sm ${toneStyles.label}`}>{label}</p>
+        <span
+          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${toneStyles.icon} ${
+            highlight ? 'shadow-glow-emerald transition-all duration-300 group-hover:scale-110' : ''
+          }`}
+        >
+          <Icon aria-hidden="true" size={19} />
+        </span>
+      </div>
+      <div className="relative z-10 mt-4 flex min-h-8 items-center gap-2">
+        {loading ? (
+          <Skeleton className="h-7 w-24" />
+        ) : value === null ? (
+          <span className="text-sm font-medium text-slate-300">غير متاح</span>
+        ) : (
+          <>
+            <AnimatedStatValue value={value} money={money} className={`text-xl font-extrabold tracking-tight sm:text-2xl ${toneStyles.value}`} />
+            {highlight ? (
+              <TrendingUp aria-label="اتجاه صاعد" size={18} className="text-emerald-300 drop-shadow-[0_0_8px_rgba(110,231,183,0.8)]" />
+            ) : null}
+          </>
+        )}
+      </div>
+      {highlight ? (
+        <p className="relative z-10 mt-1 text-[11px] font-medium text-emerald-100/65">إجمالي ما تم تحصيله اليوم</p>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function AnimatedStatValue({
+  value,
+  money,
+  className,
+}: {
+  value: number;
+  money: boolean;
+  className: string;
+}) {
+  const animatedValue = useMotionValue(0);
+  const displayValue = useTransform(animatedValue, (current) =>
+    money ? formatMoney(current, 'ILS') : formatNumber(Math.round(current), 'ar')
+  );
+
+  useEffect(() => {
+    const controls = animate(animatedValue, value, { duration: 1.2, ease: 'easeOut' });
+    return controls.stop;
+  }, [animatedValue, value]);
+
+  return <motion.span className={className}>{displayValue}</motion.span>;
 }
