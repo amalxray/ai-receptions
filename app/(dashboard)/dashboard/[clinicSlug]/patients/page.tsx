@@ -108,12 +108,18 @@ const EMPTY_SMART_ALERT_COUNTS: SmartAlertCounts = {
 export default function PatientsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all'>(() =>
-    searchParams.get('filter') === 'new_this_week' ? 'week' : 'today'
-  );
+  const requestedDateFilter = searchParams.get('filter') === 'new_this_week' ? 'week' : 'today';
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all'>(requestedDateFilter);
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
   const [todayStats, setTodayStats] = useState<TodayStats>(EMPTY_TODAY_STATS);
   const [todayStatsLoading, setTodayStatsLoading] = useState(true);
+
+  useEffect(() => {
+    setDateFilter(requestedDateFilter);
+    setShowAll(false);
+    setSelected(null);
+    setPatientsLoaded(false);
+  }, [requestedDateFilter]);
 
   /** Rows returned for the current debounced query (bounded by `limit`). */
   const [patients, setPatients] = useState<PatientSearchRecord[]>([]);
@@ -188,12 +194,13 @@ export default function PatientsPage() {
    * `.or()` syntax), so a comma in the input can never produce a 500 again.
    */
   const runSearch = useCallback(
-    async (term: string) => {
+    async (term: string, signal: AbortSignal) => {
       if (!clinicId) return;
       setSearching(true);
       setError(null);
       try {
         const headers = await authHeaders();
+        if (signal.aborted) return;
         const hasSearchTerm = Boolean(term.trim());
         const qs = new URLSearchParams({
           clinic_id: clinicId,
@@ -207,16 +214,20 @@ export default function PatientsPage() {
         if (!hasSearchTerm && dateFilter === 'today') {
           qs.set('timezone_offset', String(new Date().getTimezoneOffset()));
         }
-        const res = await fetch(`/api/patients?${qs.toString()}`, { headers });
+        const res = await fetch(`/api/patients?${qs.toString()}`, { headers, signal });
         if (!res.ok) throw new Error('بيانات المرضى غير متاحة');
         const payload = await res.json();
+        if (signal.aborted) return;
         setPatients(Array.isArray(payload) ? payload : []);
       } catch (caughtError) {
+        if (signal.aborted) return;
         setPatients([]);
         setError(caughtError instanceof Error ? caughtError.message : 'حدث خطأ غير معروف');
       } finally {
-        setPatientsLoaded(true);
-        setSearching(false);
+        if (!signal.aborted) {
+          setPatientsLoaded(true);
+          setSearching(false);
+        }
       }
     },
     [authHeaders, clinicId, dateFilter]
@@ -231,15 +242,17 @@ export default function PatientsPage() {
    * even though `/api/supabase-config` reported `isConfigured: true`.
    */
   useEffect(() => {
+    const controller = new AbortController();
     if (clinicLoading) {
       setSearching(true);
-      return;
+      return () => controller.abort();
     }
     if (!clinicId) {
       setSearching(false);
-      return;
+      return () => controller.abort();
     }
-    void runSearch(query);
+    void runSearch(query, controller.signal);
+    return () => controller.abort();
   }, [clinicLoading, clinicId, clinicError, query, runSearch]);
 
   /** B48 — appointments for ONE patient (`patient_id` filter) + `{ data }` envelope. */
@@ -645,45 +658,6 @@ export default function PatientsPage() {
         </Magnetic>
       }
     >
-      <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <TodayPerformanceCard
-          label="مرضى جدد اليوم"
-          value={todayStats.newPatients}
-          loading={todayStatsLoading}
-          icon={Users}
-          tone="blue"
-          index={0}
-        />
-        <TodayPerformanceCard
-          label="إجمالي الفواتير"
-          value={todayStats.invoicesTotal}
-          loading={todayStatsLoading}
-          icon={FileText}
-          tone="violet"
-          money
-          index={1}
-        />
-        <TodayPerformanceCard
-          label="المبلغ المسدد اليوم"
-          value={todayStats.paymentsTotal}
-          loading={todayStatsLoading}
-          icon={Wallet}
-          tone="emerald"
-          money
-          highlight
-          index={2}
-        />
-        <TodayPerformanceCard
-          label="المبلغ المتبقي اليوم"
-          value={todayStats.remainingTotal}
-          loading={todayStatsLoading}
-          icon={AlertCircle}
-          tone="orange"
-          money
-          index={3}
-        />
-      </div>
-
       {/* 🌅 Greeting + date (Gregorian · Hijri). */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -719,147 +693,6 @@ export default function PatientsPage() {
           }}
         />
       </div>
-
-      {/* 📊 Daily summary — hidden as soon as the receptionist starts searching. */}
-      <AnimatePresence initial={false}>
-        {!hasQuery && !isFormOpen ? (
-          <motion.div
-            key="summary"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12, height: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="mb-6 space-y-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-3">
-              <SummaryTile
-                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/appointments?date=today`}
-                emoji="📅"
-                label="مواعيد اليوم"
-                value={summary.appointmentsToday}
-                loading={summaryLoading}
-                accent="from-cyan-500/20 to-sky-500/10 ring-cyan-500/25"
-              />
-              <SummaryTile
-                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/medical-files?status=new`}
-                emoji="🩻"
-                label="ملفات جديدة"
-                value={summary.newFiles}
-                loading={summaryLoading}
-                accent="from-violet-500/20 to-fuchsia-500/10 ring-violet-500/25"
-              />
-              <SummaryTile
-                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/financial-intelligence?status=unpaid`}
-                emoji="💰"
-                label="مستحقات غير مسدَّدة"
-                value={summary.outstanding}
-                loading={summaryLoading}
-                accent="from-amber-500/20 to-orange-500/10 ring-amber-500/25"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {quickActions.map((action) => {
-                const classes =
-                  action.tone === 'cyan'
-                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
-                    : action.tone === 'sky'
-                      ? 'border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20'
-                      : action.tone === 'amber'
-                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
-                        : 'border-violet-500/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20';
-
-                if (action.href === '#') {
-                  return (
-                    <QuickActionPill
-                      key={action.label}
-                      className={classes}
-                      onClick={() => {
-                        setEditingPatient(null);
-                        setFormState({ ...EMPTY_PATIENT_FORM });
-                        setFormError(null);
-                        setIsFormOpen(true);
-                        toast.info('جاري فتح نموذج إضافة مريض...', {
-                          title: 'إجراء سريع',
-                          duration: 2500,
-                        });
-                      }}
-                    >
-                      {action.label}
-                    </QuickActionPill>
-                  );
-                }
-
-                return (
-                  <QuickActionPill
-                    key={action.label}
-                    href={action.href}
-                    className={classes}
-                    onClick={() => {
-                      toast.info(`جاري فتح ${action.label}...`, {
-                        title: 'إجراء سريع',
-                        duration: 2500,
-                      });
-                      router.push(action.href);
-                    }}
-                  >
-                    {action.label}
-                  </QuickActionPill>
-                );
-              })}
-            </div>
-
-            <div className="grid gap-3">
-              <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-bold text-white">تنبيهات ذكية</p>
-                  <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
-                    4 عناصر
-                  </span>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {smartAlerts.map((alert) => (
-                    <Link
-                      key={alert.label}
-                      href={alert.href}
-                      onClick={(event) => handleAlertClick(event, alert.href, alert.label)}
-                      className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                    >
-                      <motion.div
-                        whileHover={{ y: -4, scale: 1.01 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                        className={`relative cursor-pointer overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 transition-colors duration-200 hover:border-slate-700 hover:bg-slate-900/80 ${
-                          alert.tone === 'rose'
-                            ? 'from-rose-500/10 to-red-500/5'
-                            : alert.tone === 'violet'
-                              ? 'from-violet-500/10 to-indigo-500/5'
-                              : alert.tone === 'cyan'
-                                ? 'from-cyan-500/10 to-sky-500/5'
-                                : 'from-amber-500/10 to-orange-500/5'
-                        }`}
-                      >
-                        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                        <div className="relative z-10 flex items-start gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
-                            {alert.icon}
-                          </span>
-                          <div>
-                            <p className="text-sm font-bold text-white">{alert.label}</p>
-                            <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-              {/* TODO: Restore this panel when a real clinic activity log API is available. */}
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
 
       {/* ➕ Add / edit form — unchanged behaviour, now inside a motion shell. */}
       <AnimatePresence initial={false}>
@@ -1112,6 +945,183 @@ export default function PatientsPage() {
               onSessionStatusChange={changeSessionStatus}
             />
           </div>
+        ) : null}
+      </AnimatePresence>
+
+      {!isFormOpen ? (
+        <div className="mt-7 rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-white">تنبيهات ذكية</p>
+            <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
+              4 عناصر
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {smartAlerts.map((alert) => (
+              <Link
+                key={alert.label}
+                href={alert.href}
+                onClick={(event) => handleAlertClick(event, alert.href, alert.label)}
+                className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              >
+                <motion.div
+                  whileHover={{ y: -4, scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+                  className={`relative cursor-pointer overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 transition-colors duration-200 hover:border-slate-700 hover:bg-slate-900/80 ${
+                    alert.tone === 'rose'
+                      ? 'from-rose-500/10 to-red-500/5'
+                      : alert.tone === 'violet'
+                        ? 'from-violet-500/10 to-indigo-500/5'
+                        : alert.tone === 'cyan'
+                          ? 'from-cyan-500/10 to-sky-500/5'
+                          : 'from-amber-500/10 to-orange-500/5'
+                  }`}
+                >
+                  <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                  <div className="relative z-10 flex items-start gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
+                      {alert.icon}
+                    </span>
+                    <div>
+                      <p className="text-sm font-bold text-white">{alert.label}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <TodayPerformanceCard
+          label="مرضى جدد اليوم"
+          value={todayStats.newPatients}
+          loading={todayStatsLoading}
+          icon={Users}
+          tone="blue"
+          index={0}
+        />
+        <TodayPerformanceCard
+          label="إجمالي الفواتير"
+          value={todayStats.invoicesTotal}
+          loading={todayStatsLoading}
+          icon={FileText}
+          tone="violet"
+          money
+          index={1}
+        />
+        <TodayPerformanceCard
+          label="المبلغ المسدد اليوم"
+          value={todayStats.paymentsTotal}
+          loading={todayStatsLoading}
+          icon={Wallet}
+          tone="emerald"
+          money
+          highlight
+          index={2}
+        />
+        <TodayPerformanceCard
+          label="المبلغ المتبقي اليوم"
+          value={todayStats.remainingTotal}
+          loading={todayStatsLoading}
+          icon={AlertCircle}
+          tone="orange"
+          money
+          index={3}
+        />
+      </div>
+
+      <AnimatePresence initial={false}>
+        {!hasQuery && !isFormOpen ? (
+          <motion.div
+            key="summary"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12, height: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-6 space-y-4"
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/appointments?date=today`}
+                emoji="📅"
+                label="مواعيد اليوم"
+                value={summary.appointmentsToday}
+                loading={summaryLoading}
+                accent="from-cyan-500/20 to-sky-500/10 ring-cyan-500/25"
+              />
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/medical-files?status=new`}
+                emoji="🩻"
+                label="ملفات جديدة"
+                value={summary.newFiles}
+                loading={summaryLoading}
+                accent="from-violet-500/20 to-fuchsia-500/10 ring-violet-500/25"
+              />
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/financial-intelligence?status=unpaid`}
+                emoji="💰"
+                label="مستحقات غير مسدَّدة"
+                value={summary.outstanding}
+                loading={summaryLoading}
+                accent="from-amber-500/20 to-orange-500/10 ring-amber-500/25"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {quickActions.map((action) => {
+                const classes =
+                  action.tone === 'cyan'
+                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
+                    : action.tone === 'sky'
+                      ? 'border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20'
+                      : action.tone === 'amber'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
+                        : 'border-violet-500/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20';
+
+                if (action.href === '#') {
+                  return (
+                    <QuickActionPill
+                      key={action.label}
+                      className={classes}
+                      onClick={() => {
+                        setEditingPatient(null);
+                        setFormState({ ...EMPTY_PATIENT_FORM });
+                        setFormError(null);
+                        setIsFormOpen(true);
+                        toast.info('جاري فتح نموذج إضافة مريض...', {
+                          title: 'إجراء سريع',
+                          duration: 2500,
+                        });
+                      }}
+                    >
+                      {action.label}
+                    </QuickActionPill>
+                  );
+                }
+
+                return (
+                  <QuickActionPill
+                    key={action.label}
+                    href={action.href}
+                    className={classes}
+                    onClick={() => {
+                      toast.info(`جاري فتح ${action.label}...`, {
+                        title: 'إجراء سريع',
+                        duration: 2500,
+                      });
+                      router.push(action.href);
+                    }}
+                  >
+                    {action.label}
+                  </QuickActionPill>
+                );
+              })}
+            </div>
+          </motion.div>
         ) : null}
       </AnimatePresence>
     </DashboardSection>
