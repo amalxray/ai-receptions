@@ -53,6 +53,7 @@ export default async function TenantDashboardLayout({
         clinicId: result.clinicId,
         clinicName: result.clinic.name,
         role: result.role,
+        activityType: result.clinic.activity_type,
       }}
     >
       <SubscriptionBanner>{children}</SubscriptionBanner>
