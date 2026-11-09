@@ -14,7 +14,6 @@ import SocialShareBar from '@/components/public/SocialShareBar';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import ImageCarousel from '@/components/public/ImageCarousel';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
-import ShareButtons from '@/components/ask/ShareButtons';
 import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
@@ -555,13 +554,8 @@ export function ActivitySpaceChrome({
               </p>
             </StaggerReveal>
             <StaggerReveal delay={440}>
-              <div className="mt-6 flex justify-center">
-                <div className="inline-flex rounded-2xl bg-slate-900/90 px-4 py-2 shadow-lg">
-                  <ShareButtons url={space.pageUrl} title={`${displayName} — ${headline}`} />
-                </div>
-              </div>
+              <SocialShareBar />
             </StaggerReveal>
-            <SocialShareBar />
           </div>
         </section>
 
@@ -722,11 +716,7 @@ export function ActivitySpaceChrome({
           </div>
         )}
 
-        <div style={{ order: space.sectionOrder.length + 1 }}>
-          <SocialShareBar />
-        </div>
-
-        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500" style={{ order: space.sectionOrder.length + 2 }}>
+        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500" style={{ order: space.sectionOrder.length + 1 }}>
           © AI-Receptions · مساحة {ACTIVITY_TYPE_LABELS_AR[space.activityType]} ·{' '}
           <a href="/" className="text-brand-cyan/80 hover:text-brand-cyan hover:underline">
             منصة الاستقبال الذكي
