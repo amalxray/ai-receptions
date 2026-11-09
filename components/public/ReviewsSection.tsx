@@ -1,8 +1,7 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import type { PublicReviewItem, ReviewStats } from '@/lib/services/reviewsService';
 import ReviewsPageClient from '@/app/[slug]/reviews/ReviewsPageClient';
-import PatientReviewCard from './PatientReviewCard';
+import PatientReviewList from './PatientReviewList';
 
 /**
  * PHASE 2 — patient reviews block for public tenant pages (server component).
@@ -124,18 +123,7 @@ export default function ReviewsSection({
 
         {/* Latest reviews */}
         {visibleItems.length > 0 && (
-          <motion.ul
-            className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
-            aria-label="آخر التقييمات"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: '-60px' }}
-            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 } } }}
-          >
-            {visibleItems.map((item) => (
-              <PatientReviewCard key={item.id} review={item} />
-            ))}
-          </motion.ul>
+          <PatientReviewList reviews={visibleItems} />
         )}
         {/* Phase 3b — link to the full reviews page (only when more than shown). */}
         {!hideViewAll && viewAllHref && stats.total > 5 && (
