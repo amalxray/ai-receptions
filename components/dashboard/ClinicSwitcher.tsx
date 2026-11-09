@@ -3,7 +3,7 @@
 import { useClinicContext } from '@/lib/useClinicContext';
 
 export default function ClinicSwitcher() {
-  const { memberships, clinicId, clinicName, setActiveClinicId, loading } = useClinicContext();
+  const { memberships, clinicId, clinicName, clinicSlug, setActiveClinicId, loading } = useClinicContext();
 
   if (loading) return null;
   if (memberships.length === 0) return null;
@@ -14,8 +14,21 @@ export default function ClinicSwitcher() {
       <select
         value={clinicId ?? ''}
         onChange={(e) => {
-          void setActiveClinicId(e.target.value);
-          window.location.reload();
+          const membership = memberships.find((item) => item.clinic_id === e.target.value);
+          if (!membership) return;
+
+          void setActiveClinicId(membership.clinic_id);
+          const token = membership.clinic?.slug ?? membership.clinic_id;
+          if (clinicSlug) {
+            const currentTenantPath = `/dashboard/${encodeURIComponent(clinicSlug)}`;
+            const currentPath = window.location.pathname;
+            const remainingPath = currentPath.startsWith(currentTenantPath)
+              ? currentPath.slice(currentTenantPath.length)
+              : '/overview';
+            window.location.assign(`/dashboard/${encodeURIComponent(token)}${remainingPath || '/overview'}`);
+          } else {
+            window.location.assign(`/dashboard/${encodeURIComponent(token)}/overview`);
+          }
         }}
         className="rounded-full border border-slate-800 bg-slate-950 px-3 py-1 text-sm text-slate-100"
       >
