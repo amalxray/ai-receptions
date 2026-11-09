@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Facebook, MessageCircle, Share2, Twitter } from 'lucide-react';
+import { Facebook, Instagram, MessageCircle, Share2, Twitter } from 'lucide-react';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 8, scale: 0.9 },
@@ -14,7 +14,7 @@ const itemVariants = {
 };
 
 const buttonClass =
-  'group relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300/80 bg-white/85 text-slate-700 shadow-sm backdrop-blur-md transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600';
+  'group relative inline-flex h-14 w-14 items-center justify-center rounded-full border border-slate-300/80 bg-white/85 text-slate-700 shadow-sm backdrop-blur-md transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600';
 
 function Tooltip({ children }: { children: string }) {
   return (
@@ -70,7 +70,7 @@ export default function SocialShareBar() {
         whileTap={{ scale: 0.95 }}
         onClick={() => void sharePage()}
       >
-        <Share2 aria-hidden="true" className="h-[18px] w-[18px] text-cyan-700 transition-colors group-hover:text-cyan-800" />
+        <Share2 aria-hidden="true" className="h-9 w-9 text-cyan-700 transition-colors group-hover:text-cyan-800" />
         <Tooltip>مشاركة</Tooltip>
       </motion.button>
       <motion.button
@@ -86,7 +86,7 @@ export default function SocialShareBar() {
           openShareWindow(`https://wa.me/?text=${encodeURIComponent(url)}`);
         }}
       >
-        <MessageCircle aria-hidden="true" className="h-[18px] w-[18px] text-emerald-700 transition-colors group-hover:text-emerald-800" />
+        <MessageCircle aria-hidden="true" className="h-9 w-9 text-emerald-700 transition-colors group-hover:text-emerald-800" />
         <Tooltip>واتساب</Tooltip>
       </motion.button>
       <motion.button
@@ -102,9 +102,23 @@ export default function SocialShareBar() {
           openShareWindow(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
         }}
       >
-        <Facebook aria-hidden="true" className="h-[18px] w-[18px] text-blue-700 transition-colors group-hover:text-blue-800" />
+        <Facebook aria-hidden="true" className="h-9 w-9 text-blue-700 transition-colors group-hover:text-blue-800" />
         <Tooltip>فيسبوك</Tooltip>
       </motion.button>
+      <motion.a
+        href="https://www.instagram.com/xrayamal"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="إنستغرام"
+        title="إنستغرام"
+        className={buttonClass}
+        variants={itemVariants}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <Instagram aria-hidden="true" className="h-9 w-9 text-fuchsia-700 transition-colors group-hover:text-fuchsia-800" />
+        <Tooltip>إنستغرام</Tooltip>
+      </motion.a>
       <motion.button
         type="button"
         aria-label="X"
@@ -120,7 +134,7 @@ export default function SocialShareBar() {
           );
         }}
       >
-        <Twitter aria-hidden="true" className="h-[18px] w-[18px] text-slate-900 transition-colors group-hover:text-black" />
+        <Twitter aria-hidden="true" className="h-9 w-9 text-slate-900 transition-colors group-hover:text-black" />
         <Tooltip>X</Tooltip>
       </motion.button>
     </motion.div>
