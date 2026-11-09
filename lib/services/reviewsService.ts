@@ -15,7 +15,7 @@ import { requestCache } from '@/lib/server/requestCache';
 
 export const REVIEW_SCHEMA_THRESHOLD = 5;
 export const PLATFORM_SCHEMA_THRESHOLD = 20;
-export const PUBLIC_REVIEWS_LIMIT = 5;
+export const PUBLIC_REVIEWS_LIMIT = 6;
 export const JSONLD_REVIEW_LIMIT = 10;
 
 export type PublicReviewItem = {
