@@ -22,7 +22,9 @@ export default function ClinicSwitcher() {
           if (clinicSlug) {
             const currentTenantPath = `/dashboard/${encodeURIComponent(clinicSlug)}`;
             const currentPath = window.location.pathname;
-            const remainingPath = currentPath.startsWith(currentTenantPath)
+            const isCurrentTenantPath =
+              currentPath === currentTenantPath || currentPath.startsWith(`${currentTenantPath}/`);
+            const remainingPath = isCurrentTenantPath
               ? currentPath.slice(currentTenantPath.length)
               : '/overview';
             window.location.assign(`/dashboard/${encodeURIComponent(token)}${remainingPath || '/overview'}`);
