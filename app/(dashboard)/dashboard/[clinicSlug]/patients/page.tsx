@@ -495,6 +495,7 @@ export default function PatientsPage() {
         throw new Error(body?.error || 'Unable to save patient');
       }
       const savedPatient = (await response.json()) as PatientSearchRecord;
+      toast.success('تم حفظ بيانات المريض بنجاح');
       setPatients((current) => {
         if (editingPatient) return current.map((row) => (row.id === editingPatient.id ? { ...row, ...savedPatient } : row));
         return [savedPatient, ...current.filter((row) => row.id !== savedPatient.id)];
@@ -773,7 +774,7 @@ export default function PatientsPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60"
+                className="rounded-full bg-cyan-500 px-5 py-3 text-base font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? 'جارٍ الحفظ...' : editingPatient ? 'حفظ التعديلات' : 'إنشاء مريض'}
               </button>

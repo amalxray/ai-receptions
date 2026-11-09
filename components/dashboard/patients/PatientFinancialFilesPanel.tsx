@@ -342,7 +342,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل إصدار الفاتورة');
-      setActionSuccess(`تم إصدار الفاتورة ${json.data?.invoiceNumber ?? ''} بـ ${items.length} بند`);
+      setActionSuccess(`تم إصدار الفاتورة بنجاح${json.data?.invoiceNumber ? ` (${json.data.invoiceNumber})` : ''} — عدد البنود: ${items.length}`);
       setShowInvoiceForm(false);
       setInvLines([{ key: 'l1', service_id: '', description: '', quantity: '1', unit_price: '' }]);
       setReissueFrom(null);
@@ -486,7 +486,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل تسجيل الدفعة');
-      setActionSuccess(`تم تسجيل الدفعة ${json.data?.receiptNumber ?? ''}`);
+      setActionSuccess(`تم تسجيل الدفعة بنجاح${json.data?.receiptNumber ? ` (${json.data.receiptNumber})` : ''}`);
       setShowPaymentForm(false);
       setPayAmount('');
       setPayDate(new Date().toISOString().split('T')[0]);
@@ -859,7 +859,7 @@ return (
                   type="button"
                   onClick={() => removeLine(line.key)}
                   disabled={invLines.length === 1}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-rose-500/60 hover:text-rose-300 disabled:opacity-40"
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-rose-500/60 hover:text-rose-300 disabled:opacity-40"
                 >
                   حذف
                 </button>
@@ -871,7 +871,7 @@ return (
             <button
               type="button"
               onClick={addLine}
-              className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-200 hover:border-cyan-500/60"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/60"
             >
               + إضافة بند
             </button>
@@ -885,14 +885,14 @@ return (
               type="button"
               onClick={() => void issueInvoice()}
               disabled={submitting}
-              className="rounded-full bg-cyan-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+              className="rounded-full bg-cyan-500 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
             >
               {submitting ? 'جارٍ الإصدار...' : 'إصدار الفاتورة'}
             </button>
             <button
               type="button"
               onClick={() => setShowInvoiceForm(false)}
-              className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
             >
               إلغاء
             </button>
@@ -948,14 +948,14 @@ return (
               type="button"
               onClick={() => void recordPayment()}
               disabled={submitting}
-              className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+              className="rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
             >
               {submitting ? 'جارٍ التسجيل...' : 'تسجيل الدفعة'}
             </button>
             <button
               type="button"
               onClick={() => setShowPaymentForm(false)}
-              className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
             >
               إلغاء
             </button>
