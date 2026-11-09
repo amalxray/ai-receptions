@@ -9,6 +9,7 @@ import { ACTIVITY_TYPE_LABELS_AR } from '@/lib/services/activityTypes';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
+import { buildPublicWhatsAppHref } from '@/lib/utils/whatsapp';
 import { ShareSection } from '@/components/public/ShareSection';
 import SocialShareBar from '@/components/public/SocialShareBar';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
@@ -761,6 +762,7 @@ export function WorkingHoursBlock({ space }: { space: ActivityPublicSpace }) {
 }
 
 export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
+  const whatsappHref = buildPublicWhatsAppHref(space.socialLinks?.whatsapp);
   const mapsUrl = clinicMapsUrl({
     name: space.name,
     city: space.city,
@@ -830,8 +832,8 @@ export function ContactBlock({ space }: { space: ActivityPublicSpace }) {
               <span className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-50 text-xl text-fuchsia-600 transition group-hover:bg-gradient-to-br group-hover:from-amber-400 group-hover:via-pink-500 group-hover:to-violet-600 group-hover:text-white">◎</span><span>Instagram</span>
             </a>
           )}
-          {space.socialLinks?.whatsapp && (
-            <a href={space.socialLinks.whatsapp} target="_blank" rel="noopener noreferrer" aria-label="واتساب" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-green-200 hover:text-green-700 hover:shadow-[0_0_22px_rgba(34,197,94,0.25)]" dir="ltr">
+          {whatsappHref && (
+            <a href={whatsappHref} target="_blank" rel="noopener noreferrer" aria-label="واتساب" className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-green-200 hover:text-green-700 hover:shadow-[0_0_22px_rgba(34,197,94,0.25)]" dir="ltr">
               <span className="grid h-10 w-10 place-items-center rounded-full bg-green-50 text-xl transition group-hover:bg-green-500 group-hover:text-white">☏</span><span>WhatsApp</span>
             </a>
           )}
