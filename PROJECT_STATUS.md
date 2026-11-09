@@ -1,5 +1,14 @@
 # Project Status
 
+## 2026-11-09 — Dashboard navigation performance ([PR #316](https://github.com/amalxray/ai-receptions/pull/316), [PR #317](https://github.com/amalxray/ai-receptions/pull/317), [PR #318](https://github.com/amalxray/ai-receptions/pull/318))
+
+- **Shared clinic context:** Dashboard components reuse verified tenant context and share membership data, avoiding repeated independent fetches while preserving server-side tenant authorization.
+- **Overview query:** Appointment rows are limited to the seven-day window and a maximum of 500; a separate count query preserves the historical total.
+- **Database index:** Added the partial index `idx_appointments_clinic_date_active` on `(clinic_id, appointment_date)` for non-deleted appointments. The project owner confirmed applying the migration manually through Supabase SQL Editor.
+- **Navigation:** Overview cards use tenant-scoped `next/link` routes for prefetching. Clinic switching preserves the active module and matches complete slug path segments.
+- **Shared Supabase check:** A single dashboard-level provider shares the runtime Supabase configuration check instead of triggering duplicate requests from individual components.
+- **Result:** The project owner confirmed that navigation across dashboard sections is noticeably faster after the changes.
+
 ## 2026-11-08 — Recent merged updates (B123, B163, B164, B165)
 
 | Work item | Status | Changes / verification |
