@@ -12,54 +12,70 @@ type Props = {
   form: Record<PublicContactField, string>;
   setForm: React.Dispatch<React.SetStateAction<Record<PublicContactField, string>>>;
   update: UpdateFn;
+  saving: boolean;
+  onSaveSocialLinks: () => void;
   toggleSection: (key: string, v: boolean) => void;
   toggleService: (id: string) => void;
   toggleProvider: (id: string) => void;
 };
 
 /** Content tab (moved verbatim): contact + sections + services + providers. */
-export default function ContentTab({ config, form, setForm, update, toggleSection, toggleService, toggleProvider }: Props) {
+export default function ContentTab({ config, form, setForm, update, saving, onSaveSocialLinks, toggleSection, toggleService, toggleProvider }: Props) {
   return (
     <div className="space-y-4">
       <Section title="روابط التواصل" subtitle="تظهر في قسم التواصل بالصفحة العامة.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {SOCIAL_FIELD_KEYS.map((key) => {
-            const error = validatePublicContactValue(key, form[key]);
-            const baseClass = `w-full rounded-lg border bg-slate-950 px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 ${error ? 'border-red-500/50 bg-red-950/30 text-red-200' : 'border-slate-700 text-slate-100 hover:border-slate-600'}`;
-            return (
-              <label key={key} className="block">
-                <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-400">
-                  <span aria-hidden="true">{SOCIAL_ICONS[key]}</span>
-                  {SOCIAL_LABELS[key]}
-                </span>
-                <input
-                  type={key === 'email' ? 'email' : key === 'website' ? 'url' : 'text'}
-                  value={form[key]}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  placeholder={
-                    key === 'email'
-                      ? 'example@clinic.com'
-                      : key === 'website'
-                        ? 'https://example.com'
-                        : key === 'whatsapp'
-                          ? '970599123456'
-                          : key === 'facebook'
-                            ? 'https://facebook.com/...'
-                            : 'https://instagram.com/...'
-                  }
-                  aria-invalid={Boolean(error)}
-                  className={baseClass}
-                />
-                {key === 'whatsapp' ? (
-                  <span className="mt-1 block text-xs text-slate-500">
-                    أدخل الرقم مع رمز الدولة (مثال: 970599123456) أو رابط واتساب كامل
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSaveSocialLinks();
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            {SOCIAL_FIELD_KEYS.map((key) => {
+              const error = validatePublicContactValue(key, form[key]);
+              const baseClass = `w-full rounded-lg border bg-slate-950 px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 ${error ? 'border-red-500/50 bg-red-950/30 text-red-200' : 'border-slate-700 text-slate-100 hover:border-slate-600'}`;
+              return (
+                <label key={key} className="block">
+                  <span className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-400">
+                    <span aria-hidden="true">{SOCIAL_ICONS[key]}</span>
+                    {SOCIAL_LABELS[key]}
                   </span>
-                ) : null}
-                {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
-              </label>
-            );
-          })}
-        </div>
+                  <input
+                    type={key === 'email' ? 'email' : key === 'website' ? 'url' : 'text'}
+                    value={form[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    placeholder={
+                      key === 'email'
+                        ? 'example@clinic.com'
+                        : key === 'website'
+                          ? 'https://example.com'
+                          : key === 'whatsapp'
+                            ? '970599123456'
+                            : key === 'facebook'
+                              ? 'https://facebook.com/...'
+                              : 'https://instagram.com/...'
+                    }
+                    aria-invalid={Boolean(error)}
+                    className={baseClass}
+                  />
+                  {key === 'whatsapp' ? (
+                    <span className="mt-1 block text-xs text-slate-500">
+                      أدخل الرقم مع رمز الدولة (مثال: 970599123456) أو رابط واتساب كامل
+                    </span>
+                  ) : null}
+                  {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
+                </label>
+              );
+            })}
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="mt-4 rounded-full bg-gradient-to-l from-cyan-500 to-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-950 transition-all hover:shadow-[0_0_20px_rgba(34,211,238,0.45)] hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? 'جارٍ الحفظ...' : 'حفظ روابط التواصل'}
+          </button>
+        </form>
       </Section>
 
       <Section title="أقسام الصفحة" subtitle="أظهر أو أخفِ كل قسم. الأقسام المخفية لا تعرض محتوى فارغًا.">
