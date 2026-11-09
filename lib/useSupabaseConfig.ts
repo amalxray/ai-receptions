@@ -1,37 +1,41 @@
-import { useEffect, useState } from 'react';
+'use client';
 
-type SupabaseConfigState = {
+import { createContext, createElement, useContext, useEffect, useState } from 'react';
+
+export type SupabaseConfigState = {
   isConfigured: boolean;
   supabaseUrl: string;
   supabaseAnonKey: string;
   loading: boolean;
-  /** True when the runtime health-check fetch itself failed (network/server). */
   checkFailed: boolean;
 };
 
+const INITIAL_CONFIG: SupabaseConfigState = {
+  isConfigured: false,
+  supabaseUrl: '',
+  supabaseAnonKey: '',
+  loading: true,
+  checkFailed: false,
+};
+
+const SupabaseConfigContext = createContext<SupabaseConfigState | null>(null);
+
 /**
- * Runtime health-check for Supabase client config.
- * Always fetches from the server `/api/supabase-config` so the result reflects
- * live server env (NEXT_PUBLIC_* + service role) — never a stale client bundle.
- * service-role is NOT exposed here; the route only returns booleans + public url.
+ * One runtime health-check shared by every dashboard component.
+ * The service-role key remains server-only; the route returns only public
+ * configuration metadata and booleans.
  */
-export function useSupabaseConfig(): SupabaseConfigState {
-  const [config, setConfig] = useState<SupabaseConfigState>({
-    isConfigured: false,
-    supabaseUrl: '',
-    supabaseAnonKey: '',
-    loading: true,
-    checkFailed: false,
-  });
+export function SupabaseConfigProvider({ children }: { children: React.ReactNode }) {
+  const [config, setConfig] = useState<SupabaseConfigState>(INITIAL_CONFIG);
 
   useEffect(() => {
-    let isMounted = true;
+    let active = true;
 
     async function check() {
       try {
         const res = await fetch('/api/supabase-config', { cache: 'no-store' });
         const body = await res.json();
-        if (!isMounted) return;
+        if (!active) return;
         setConfig({
           isConfigured: Boolean(body?.isConfigured),
           supabaseUrl: body?.supabaseUrl ?? '',
@@ -40,14 +44,23 @@ export function useSupabaseConfig(): SupabaseConfigState {
           checkFailed: false,
         });
       } catch {
-        if (isMounted)
-          setConfig((prev) => ({ ...prev, loading: false, checkFailed: true }));
+        if (active) setConfig((current) => ({ ...current, loading: false, checkFailed: true }));
       }
     }
 
-    check();
-    return () => { isMounted = false; };
+    void check();
+    return () => {
+      active = false;
+    };
   }, []);
 
+  return createElement(SupabaseConfigContext.Provider, { value: config }, children);
+}
+
+export function useSupabaseConfig(): SupabaseConfigState {
+  const config = useContext(SupabaseConfigContext);
+  if (!config) {
+    throw new Error('useSupabaseConfig must be used within SupabaseConfigProvider');
+  }
   return config;
 }
