@@ -40,6 +40,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               {/* N29 — sticky top bar: identity + tenant switcher + the 4-tab bento nav. */}
               <DashboardTopNav />
 
+              <p
+                dir="rtl"
+                lang="ar"
+                className="my-2 text-right font-heading text-xs text-slate-400 opacity-70"
+              >
+                ﴿لَئِن شَكَرْتُمْ لَأَزِيدَنَّكُمْ﴾
+              </p>
+
               <section className="space-y-6">{children}</section>
             </div>
 
