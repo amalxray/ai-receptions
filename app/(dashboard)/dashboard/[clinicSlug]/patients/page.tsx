@@ -1328,19 +1328,33 @@ function TodayPerformanceCard({
           <Icon aria-hidden="true" size={19} />
         </span>
       </div>
-      <div className="relative z-10 mt-4 flex min-h-8 items-center gap-2">
-        {loading ? (
-          <Skeleton className="h-7 w-24" />
-        ) : value === null ? (
-          <span className="text-sm font-medium text-slate-300">غير متاح</span>
-        ) : (
-          <>
-            <AnimatedStatValue value={value} money={money} className={`text-xl font-extrabold tracking-tight sm:text-2xl ${toneStyles.value}`} />
-            {highlight ? (
-              <TrendingUp aria-label="اتجاه صاعد" size={18} className="text-emerald-300 drop-shadow-[0_0_8px_rgba(110,231,183,0.8)]" />
-            ) : null}
-          </>
-        )}
+      <div className="relative z-10 mt-4">
+        {highlight ? (
+          <motion.p
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 0.7, y: 0 }}
+            transition={{ duration: 0.7, delay: index * 0.1 + 0.15, ease: 'easeOut' }}
+            dir="rtl"
+            lang="ar"
+            className="mb-1 font-heading text-[11px] leading-relaxed text-emerald-100 opacity-70 sm:text-xs"
+          >
+            ﴿لَئِن شَكَرْتُمْ لَأَزِيدَنَّكُمْ﴾
+          </motion.p>
+        ) : null}
+        <div className="flex min-h-8 items-center gap-2">
+          {loading ? (
+            <Skeleton className="h-7 w-24" />
+          ) : value === null ? (
+            <span className="text-sm font-medium text-slate-300">غير متاح</span>
+          ) : (
+            <>
+              <AnimatedStatValue value={value} money={money} className={`text-xl font-extrabold tracking-tight sm:text-2xl ${toneStyles.value}`} />
+              {highlight ? (
+                <TrendingUp aria-label="اتجاه صاعد" size={18} className="text-emerald-300 drop-shadow-[0_0_8px_rgba(110,231,183,0.8)]" />
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
       {highlight ? (
         <p className="relative z-10 mt-1 text-[11px] font-medium text-emerald-100/65">إجمالي ما تم تحصيله اليوم</p>
