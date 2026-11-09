@@ -10,6 +10,7 @@ import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { displayPublicClinicName } from '@/lib/services/askClinicPresentation';
 import { clinicMapsUrl } from '@/lib/services/clinicMapsUrl';
 import { ShareSection } from '@/components/public/ShareSection';
+import SocialShareBar from '@/components/public/SocialShareBar';
 import PublicGalleryLightbox from '@/components/public/PublicGalleryLightbox';
 import ImageCarousel from '@/components/public/ImageCarousel';
 import HoursStatusBadge from '@/components/public/HoursStatusBadge';
@@ -560,6 +561,7 @@ export function ActivitySpaceChrome({
                 </div>
               </div>
             </StaggerReveal>
+            <SocialShareBar />
           </div>
         </section>
 
@@ -720,7 +722,11 @@ export function ActivitySpaceChrome({
           </div>
         )}
 
-        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500" style={{ order: space.sectionOrder.length + 1 }}>
+        <div style={{ order: space.sectionOrder.length + 1 }}>
+          <SocialShareBar />
+        </div>
+
+        <footer className="mt-6 border-t border-slate-200 py-10 text-center text-xs text-slate-500" style={{ order: space.sectionOrder.length + 2 }}>
           © AI-Receptions · مساحة {ACTIVITY_TYPE_LABELS_AR[space.activityType]} ·{' '}
           <a href="/" className="text-brand-cyan/80 hover:text-brand-cyan hover:underline">
             منصة الاستقبال الذكي
