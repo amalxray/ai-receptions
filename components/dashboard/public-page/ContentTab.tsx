@@ -42,7 +42,7 @@ export default function ContentTab({ config, form, setForm, update, toggleSectio
                       : key === 'website'
                         ? 'https://example.com'
                         : key === 'whatsapp'
-                          ? '+9665...'
+                          ? '970599123456'
                           : key === 'facebook'
                             ? 'https://facebook.com/...'
                             : 'https://instagram.com/...'
@@ -50,6 +50,11 @@ export default function ContentTab({ config, form, setForm, update, toggleSectio
                   aria-invalid={Boolean(error)}
                   className={baseClass}
                 />
+                {key === 'whatsapp' ? (
+                  <span className="mt-1 block text-xs text-slate-500">
+                    أدخل الرقم مع رمز الدولة (مثال: 970599123456) أو رابط واتساب كامل
+                  </span>
+                ) : null}
                 {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
               </label>
             );

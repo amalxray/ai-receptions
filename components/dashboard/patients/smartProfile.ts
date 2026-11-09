@@ -14,6 +14,8 @@
  */
 
 import { calculatePatientAge, formatAgeAr } from '@/lib/patientAge';
+import { normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
+export { normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -848,36 +850,6 @@ export function deriveCriticalAlerts(
 /* Phone / WhatsApp / money / night mode                               */
 /* ------------------------------------------------------------------ */
 
-/**
- * Converts a human phone into wa.me digits. Defaults to Palestine (+970):
- * every clinic in this deployment is Palestinian and local numbers are written
- * 05XXXXXXXX — wa.me rejects the leading 0, so `0599123456` MUST become
- * `970599123456` or the chat button opens an invalid link (B38).
- * Returns null when the number is undialable.
- */
-export function normalizePhoneForWhatsApp(
-  phone?: string | null,
-  defaultCountryCode = '970'
-): string | null {
-  if (!phone) return null;
-  const digits = phone.replace(/[^\d+]/g, '');
-  if (!digits) return null;
-
-  if (digits.startsWith('+')) {
-    const clean = digits.slice(1);
-    return clean.length >= 8 ? clean : null;
-  }
-  if (digits.startsWith('00')) {
-    const clean = digits.slice(2);
-    return clean.length >= 8 ? clean : null;
-  }
-  if (digits.startsWith('0')) {
-    const clean = `${defaultCountryCode}${digits.replace(/^0+/, '')}`;
-    return clean.length >= 10 ? clean : null;
-  }
-  return digits.length >= 8 ? digits : null;
-}
-
 /** Builds a real https://wa.me deep link (null when the phone is unusable). */
 export function buildWhatsAppHref(phone: string | null | undefined, message: string): string | null {
   const target = normalizePhoneForWhatsApp(phone);
@@ -1697,5 +1669,3 @@ export const SESSION_STATUS_AR: Record<PatientSessionStatus, string> = {
 export function sessionStatusAr(status: unknown): string {
   return SESSION_STATUS_AR[normalizeSessionStatus(status)];
 }
-
-

@@ -132,7 +132,7 @@ const read = (rel: string) => fs.readFileSync(path.join(projectRoot, rel), 'utf8
 describe('B38/B39 — wiring guard', () => {
   const profile = read('components/dashboard/patients/SmartPatientProfile.tsx');
   const detailPage = read('app/(dashboard)/dashboard/[clinicSlug]/patients/[patientId]/page.tsx');
-  const smartProfile = read('components/dashboard/patients/smartProfile.ts');
+  const whatsappUtils = read('lib/utils/whatsapp.ts');
 
   it('the profile uses the shared normalizer and no longer hand-builds wa.me links', () => {
     expect(profile).toContain('normalizePhoneForWhatsApp');
@@ -141,8 +141,8 @@ describe('B38/B39 — wiring guard', () => {
   });
 
   it('the country-code default is Palestine, never the old Jordan default', () => {
-    expect(smartProfile).toContain("defaultCountryCode = '970'");
-    expect(smartProfile).not.toContain("defaultCountryCode = '962'");
+    expect(whatsappUtils).toContain("defaultCountryCode = '970'");
+    expect(whatsappUtils).not.toContain("defaultCountryCode = '962'");
   });
 
   it('the patient detail page offers the review request action and disables it without a phone', () => {
