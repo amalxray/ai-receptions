@@ -70,6 +70,9 @@ describe('#35 — NotificationBell wiring', () => {
     expect(header).toContain("type: 'classic'");
     expect(header).toContain("type: 'soft'");
     expect(header).toContain("type: 'alert'");
+    expect(header).toContain("type: 'strong-ring'");
+    expect(header).toContain("type: 'extended-bell'");
+    expect(header).toContain("type: 'repeating-alert'");
     expect(header).toContain("type: 'none'");
   });
 });
@@ -251,8 +254,220 @@ describe('#35 — Web Audio chime (no mp3 asset)', () => {
     }
   });
 
+  it('schedules the strong ring as three 0.8-second rising tones at volume 0.25', async () => {
+    const tones: Array<{ start: number; stop: number; frequencies: number[]; gains: number[] }> = [];
+    const timers: number[] = [];
+    class MockAudioContext {
+      currentTime = 10;
+      state = 'running';
+      destination = {};
+      createOscillator() {
+        const tone = { start: 0, stop: 0, frequencies: [] as number[], gains: [] as number[] };
+        tones.push(tone);
+        return {
+          type: '',
+          frequency: {
+            setValueAtTime: (value: number) => tone.frequencies.push(value),
+            linearRampToValueAtTime: (value: number) => tone.frequencies.push(value),
+          },
+          connect: () => undefined,
+          start: (time: number) => { tone.start = time; },
+          stop: (time: number) => { tone.stop = time; },
+        };
+      }
+      createGain() {
+        const tone = tones[tones.length - 1];
+        return {
+          gain: {
+            setValueAtTime: (value: number) => tone.gains.push(value),
+            linearRampToValueAtTime: (value: number) => tone.gains.push(value),
+          },
+          connect: () => undefined,
+        };
+      }
+      close = async () => undefined;
+      resume = async () => undefined;
+    }
+
+    vi.stubGlobal('window', {
+      AudioContext: MockAudioContext,
+      setTimeout: (_callback: () => void, delay: number) => timers.push(delay),
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => key === 'clinic_notifications_chime_muted' ? 'false' : null,
+    });
+    try {
+      const { playNotificationChime } = await import('@/lib/audio/chime');
+      playNotificationChime('strong-ring');
+
+      expect(tones).toHaveLength(3);
+      expect(tones.map(({ start }) => start)).toEqual([10, 10.95, 11.9]);
+      tones.forEach(({ stop, start }) => expect(stop - start).toBeCloseTo(0.8));
+      expect(tones.every(({ frequencies, gains }) =>
+        frequencies[0] === 880 && frequencies[1] === 1200 && gains.includes(0.25)
+      )).toBe(true);
+      expect(timers).toContain(2950);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('schedules the extended bell at C6 for four seconds with a 0.15 combined peak', async () => {
+    const tones: Array<{ start: number; stop: number; frequency?: number; peakGain: number }> = [];
+    const timers: number[] = [];
+    class MockAudioContext {
+      currentTime = 10;
+      state = 'running';
+      destination = {};
+      createOscillator() {
+        const tone: { start: number; stop: number; frequency?: number; peakGain: number } = {
+          start: 0,
+          stop: 0,
+          peakGain: 0,
+        };
+        tones.push(tone);
+        return {
+          type: '',
+          frequency: {
+            setValueAtTime: (value: number) => { tone.frequency = value; },
+            linearRampToValueAtTime: (value: number) => { tone.frequency = value; },
+          },
+          connect: () => undefined,
+          start: (time: number) => { tone.start = time; },
+          stop: (time: number) => { tone.stop = time; },
+        };
+      }
+      createGain() {
+        const tone = tones[tones.length - 1];
+        return {
+          gain: {
+            setValueAtTime: (value: number) => { tone.peakGain = Math.max(tone.peakGain, value); },
+            linearRampToValueAtTime: (value: number) => { tone.peakGain = Math.max(tone.peakGain, value); },
+          },
+          connect: () => undefined,
+        };
+      }
+      close = async () => undefined;
+      resume = async () => undefined;
+    }
+
+    vi.stubGlobal('window', {
+      AudioContext: MockAudioContext,
+      setTimeout: (_callback: () => void, delay: number) => timers.push(delay),
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => key === 'clinic_notifications_chime_muted' ? 'false' : null,
+    });
+    try {
+      const { playNotificationChime } = await import('@/lib/audio/chime');
+      playNotificationChime('extended-bell');
+
+      expect(tones).toHaveLength(2);
+      expect(tones.map(({ frequency }) => frequency)).toEqual([1046, 2092]);
+      expect(tones.every(({ stop, start }) => stop - start === 4)).toBe(true);
+      expect(tones.reduce((sum, tone) => sum + tone.peakGain, 0)).toBeCloseTo(0.15);
+      expect(timers).toContain(4250);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('schedules three 0.15-second repeating alerts with half-second gaps at volume 0.2', async () => {
+    const tones: Array<{ start: number; stop: number; frequency?: number; peakGain: number }> = [];
+    const timers: number[] = [];
+    class MockAudioContext {
+      currentTime = 10;
+      state = 'running';
+      destination = {};
+      createOscillator() {
+        const tone: { start: number; stop: number; frequency?: number; peakGain: number } = {
+          start: 0,
+          stop: 0,
+          peakGain: 0,
+        };
+        tones.push(tone);
+        return {
+          type: '',
+          frequency: {
+            setValueAtTime: (value: number) => { tone.frequency = value; },
+            linearRampToValueAtTime: (value: number) => { tone.frequency = value; },
+          },
+          connect: () => undefined,
+          start: (time: number) => { tone.start = time; },
+          stop: (time: number) => { tone.stop = time; },
+        };
+      }
+      createGain() {
+        const tone = tones[tones.length - 1];
+        return {
+          gain: {
+            setValueAtTime: (value: number) => { tone.peakGain = Math.max(tone.peakGain, value); },
+            linearRampToValueAtTime: (value: number) => { tone.peakGain = Math.max(tone.peakGain, value); },
+          },
+          connect: () => undefined,
+        };
+      }
+      close = async () => undefined;
+      resume = async () => undefined;
+    }
+
+    vi.stubGlobal('window', {
+      AudioContext: MockAudioContext,
+      setTimeout: (_callback: () => void, delay: number) => timers.push(delay),
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => key === 'clinic_notifications_chime_muted' ? 'false' : null,
+    });
+    try {
+      const { playNotificationChime } = await import('@/lib/audio/chime');
+      playNotificationChime('repeating-alert');
+
+      expect(tones).toHaveLength(3);
+      expect(tones.map(({ start }) => start)).toEqual([10, 10.65, 11.3]);
+      tones.forEach(({ stop, start }) => expect(stop - start).toBeCloseTo(0.15));
+      expect(tones.every(({ frequency, peakGain }) => frequency === 880 && peakGain === 0.2)).toBe(true);
+      expect(timers).toContain(1700);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps both none and the mute preference silent', async () => {
+    let selectedType = 'none';
+    let muted = 'false';
+    let audioContextsCreated = 0;
+    class MockAudioContext {
+      constructor() {
+        audioContextsCreated += 1;
+      }
+    }
+
+    vi.stubGlobal('window', { AudioContext: MockAudioContext });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) =>
+        key === 'clinic_notifications_chime_type' ? selectedType : muted,
+    });
+    try {
+      const { isChimeMuted, playNotificationChime } = await import('@/lib/audio/chime');
+
+      expect(isChimeMuted()).toBe(true);
+      playNotificationChime();
+      expect(audioContextsCreated).toBe(0);
+
+      selectedType = 'strong-ring';
+      muted = 'true';
+      expect(isChimeMuted()).toBe(true);
+      playNotificationChime('strong-ring');
+      expect(audioContextsCreated).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('supports selectable notification chimes and persists the selected type', () => {
-    expect(chime).toContain("export type NotificationChimeType = 'classic' | 'soft' | 'alert' | 'none'");
+    expect(chime).toContain("'strong-ring'");
+    expect(chime).toContain("'extended-bell'");
+    expect(chime).toContain("'repeating-alert'");
     expect(chime).toContain("'clinic_notifications_chime_type'");
     expect(chime).toContain('export function getNotificationChimeType');
     expect(chime).toContain('export function setNotificationChimeType');

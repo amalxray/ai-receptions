@@ -185,8 +185,11 @@ export async function middleware(request: NextRequest) {
     dashboardSegments[0] === 'dashboard' &&
     dashboardSegments.length >= 2 &&
     !isLegacyDashboardPath;
+  const isDashboardEntryPath = pathname === '/dashboard';
 
-  if (isClinicDashboardPath && !userId) {
+  // Guard the dashboard entry before its shared client shell can stream while
+  // the page's slower membership lookup is resolving its own redirect.
+  if ((isClinicDashboardPath || isDashboardEntryPath) && !userId) {
     const next = `${pathname}${request.nextUrl.search}`;
     return NextResponse.redirect(
       new URL(`/login?next=${encodeURIComponent(next)}`, request.url)
