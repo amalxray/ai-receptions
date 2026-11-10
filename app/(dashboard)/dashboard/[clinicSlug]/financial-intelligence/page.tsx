@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { CheckCircle2 } from 'lucide-react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
@@ -624,23 +625,32 @@ function PP5InsightBlocks({ data }: { data: Report }) {
 }
 
 function PP5Receivables({ data }: { data: Report }) {
+  const totalOutstanding = data.receivables.buckets.reduce((total, bucket) => total + bucket.balance, 0);
+
   return (
     <motion.div {...FADE_UP} transition={{ duration: 0.35, delay: 0.35 }}>
       <Panel title="توزيع المستحقات" hint="من aging summary — حِزم التقادم وطرق الدفع المحصَّلة.">
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-2">
-            {data.receivables.buckets.map((b) => (
-              <div key={b.bucket} className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">
-                  {b.bucket === 'current' ? 'حالي' : b.bucket} ({b.invoices} فاتورة)
-                </span>
-                <span className="text-slate-200">
-                  {fmtMoney(b.balance)} · {fmtPct(b.shareOfOutstanding)}
-                </span>
+            {totalOutstanding <= 0 ? (
+              <div
+                role="status"
+                className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-200"
+              >
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" aria-hidden="true" />
+                <span>لا توجد مستحقات مفتوحة حالياً. جميع الفواتير مدفوعة أو ملغاة.</span>
               </div>
-            ))}
-            {data.receivables.buckets.length === 0 && (
-              <p className="text-sm text-slate-500">لا توجد فواتير مستحقة.</p>
+            ) : (
+              data.receivables.buckets.map((b) => (
+                <div key={b.bucket} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-300">
+                    {b.bucket === 'current' ? 'حالي' : b.bucket} ({b.invoices} فاتورة)
+                  </span>
+                  <span className="text-slate-200">
+                    {fmtMoney(b.balance)} · {fmtPct(b.shareOfOutstanding)}
+                  </span>
+                </div>
+              ))
             )}
           </div>
 
