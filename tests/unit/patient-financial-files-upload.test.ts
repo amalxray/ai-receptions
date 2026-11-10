@@ -7,6 +7,10 @@ const source = fs.readFileSync(
   path.resolve(__dirname, '../../components/dashboard/patients/PatientFinancialFilesPanel.tsx'),
   'utf8'
 );
+const financialIntelligencePage = fs.readFileSync(
+  path.resolve(__dirname, '../../app/(dashboard)/dashboard/[clinicSlug]/financial-intelligence/page.tsx'),
+  'utf8'
+);
 
 describe('patient financial-panel medical file uploads', () => {
   it('uses the signed direct-storage upload and confirmation flow', () => {
@@ -33,5 +37,20 @@ describe('patient financial-panel medical file uploads', () => {
 
   it('retains the configured medical-image limit for DICOM studies', () => {
     expect(getMedicalSizeLimit('medical_image')).toBeGreaterThanOrEqual(2 * 1024 * 1024 * 1024);
+  });
+
+  it('refreshes only invoices and balances after issuing an invoice', () => {
+    const issueInvoiceStart = source.indexOf('const issueInvoice = async () => {');
+    const issueInvoiceEnd = source.indexOf('/** Opens the void dialog', issueInvoiceStart);
+    const issueInvoiceHandler = source.slice(issueInvoiceStart, issueInvoiceEnd);
+
+    expect(issueInvoiceHandler).toContain('Promise.allSettled([loadInvoices(), loadBalances()])');
+    expect(issueInvoiceHandler).not.toContain('await loadAll()');
+  });
+
+  it('requests patient-scoped payments and loads the comparison periods concurrently', () => {
+    expect(source).toContain('/api/clinic/accounting/payments?clinic_id=${clinicId}&patient_id=${patientId}');
+    expect(financialIntelligencePage).toContain('const [current, prior] = await Promise.all([');
+    expect(financialIntelligencePage).toContain('fetchRange(previousRange(range, months)).catch(() => null)');
   });
 });

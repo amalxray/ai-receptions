@@ -160,6 +160,14 @@ describe('accounting API — tenant isolation', () => {
     expect(res.status).toBe(200);
     expect(mockAccounting.listInvoices).toHaveBeenCalledWith(CLINIC_A, null, null, 50);
   });
+
+  it('passes an optional patient_id through to the payments service', async () => {
+    const res = await getPayments(makeRequest(
+      `/api/clinic/accounting/payments?clinic_id=${CLINIC_A}&patient_id=${USER}`
+    ));
+    expect(res.status).toBe(200);
+    expect(mockAccounting.listPayments).toHaveBeenCalledWith(CLINIC_A, null, 50, USER);
+  });
 });
 
 describe('accounting API — validation surface', () => {

@@ -305,14 +305,22 @@ export async function getInvoiceDetail(clinicId: string, invoiceId: string): Pro
   return { ...invRes.data, items: itemsRes.data ?? [], payments: payRes.data ?? [] };
 }
 
-export async function listPayments(clinicId: string, invoiceId?: string | null, limit = 50) {
+export async function listPayments(
+  clinicId: string,
+  invoiceId?: string | null,
+  limit = 50,
+  patientId?: string | null,
+) {
   let query = supabaseAdmin
     .from('clinic_payments')
-    .select('*, clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey(invoice_number, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name))')
+    .select(patientId
+      ? '*, clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey!inner(invoice_number, patient_id, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name))'
+      : '*, clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey(invoice_number, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name))')
     .eq('clinic_id', clinicId)
     .order('created_at', { ascending: false })
     .limit(limit);
   if (invoiceId) query = query.eq('invoice_id', invoiceId);
+  if (patientId) query = query.eq('clinic_invoices.patient_id', patientId);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((payment) => {

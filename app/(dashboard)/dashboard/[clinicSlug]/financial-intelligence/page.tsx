@@ -248,15 +248,12 @@ export default function FinancialIntelligencePage() {
           return (payload?.data as Report) ?? null;
         };
 
-        const current = await fetchRange(range);
         // Period-over-period comparison: the equal-length window BEFORE `range`.
         // A failure there must never blank the main report — deltas degrade to "—".
-        let prior: Report | null = null;
-        try {
-          prior = await fetchRange(previousRange(range, months));
-        } catch {
-          prior = null;
-        }
+        const [current, prior] = await Promise.all([
+          fetchRange(range),
+          fetchRange(previousRange(range, months)).catch(() => null),
+        ]);
         if (isMounted) {
           setData(current);
           setPrevious(prior);
