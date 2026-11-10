@@ -9,12 +9,27 @@ const MELODY = [659.25, 783.99, 987.77, 783.99, 659.25];
 const CHIME_TYPE_STORAGE_KEY = 'clinic_notifications_chime_type';
 const CHIME_PREFERENCE_CHANGE_EVENT = 'clinic-notification-chime-change';
 
-export type NotificationChimeType = 'classic' | 'soft' | 'alert' | 'none';
+export type NotificationChimeType =
+  | 'classic'
+  | 'soft'
+  | 'alert'
+  | 'strong-ring'
+  | 'extended-bell'
+  | 'repeating-alert'
+  | 'none';
 
-const CHIME_TYPES: NotificationChimeType[] = ['classic', 'soft', 'alert', 'none'];
+const CHIME_TYPES: NotificationChimeType[] = [
+  'classic',
+  'soft',
+  'alert',
+  'strong-ring',
+  'extended-bell',
+  'repeating-alert',
+  'none',
+];
 
 const CHIME_PRESETS: Record<
-  Exclude<NotificationChimeType, 'classic' | 'none'>,
+  'soft' | 'alert',
   { frequencies: number[]; interval: number; duration: number; waveform: OscillatorType; volume: number }
 > = {
   soft: {
@@ -37,6 +52,37 @@ function notifyPreferenceChange(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(CHIME_PREFERENCE_CHANGE_EVENT));
   }
+}
+
+function scheduleTone(
+  audioContext: AudioContext,
+  start: number,
+  duration: number,
+  frequency: number,
+  volume: number,
+  options: { frequencyEnd?: number; fadeStart?: number; waveform?: OscillatorType } = {}
+): void {
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const attack = Math.min(0.02, duration / 4);
+
+  oscillator.type = options.waveform ?? 'sine';
+  oscillator.frequency.setValueAtTime(frequency, start);
+  if (options.frequencyEnd !== undefined) {
+    oscillator.frequency.linearRampToValueAtTime(options.frequencyEnd, start + duration);
+  }
+
+  gain.gain.setValueAtTime(0.001, start);
+  gain.gain.linearRampToValueAtTime(volume, start + attack);
+  if (options.fadeStart !== undefined) {
+    gain.gain.setValueAtTime(volume, start + options.fadeStart);
+  }
+  gain.gain.linearRampToValueAtTime(0.001, start + duration);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration);
 }
 
 export function getNotificationChimeType(): NotificationChimeType {
@@ -100,6 +146,8 @@ export function playNotificationChime(
     context = audioContext;
     const now = audioContext.currentTime;
 
+    let duration: number;
+
     if (type === 'classic') {
       MELODY.forEach((frequency, index) => {
         const start = now + index * NOTE_INTERVAL_SECONDS;
@@ -127,6 +175,39 @@ export function playNotificationChime(
         fundamental.stop(start + NOTE_DURATION_SECONDS);
         overtone.stop(start + NOTE_DURATION_SECONDS);
       });
+      duration = CHIME_DURATION_SECONDS;
+    } else if (type === 'strong-ring') {
+      const ringDuration = 0.8;
+      const ringGap = 0.15;
+      for (let index = 0; index < 3; index += 1) {
+        scheduleTone(
+          audioContext,
+          now + index * (ringDuration + ringGap),
+          ringDuration,
+          880,
+          0.25,
+          { frequencyEnd: 1200, fadeStart: ringDuration - 0.08, waveform: 'triangle' }
+        );
+      }
+      duration = 3 * ringDuration + 2 * ringGap;
+    } else if (type === 'extended-bell') {
+      duration = 4;
+      scheduleTone(audioContext, now, duration, 1046, 0.12, { fadeStart: 0.04 });
+      scheduleTone(audioContext, now, duration, 2092, 0.03, { fadeStart: 0.04 });
+    } else if (type === 'repeating-alert') {
+      const toneDuration = 0.15;
+      const gap = 0.5;
+      for (let index = 0; index < 3; index += 1) {
+        scheduleTone(
+          audioContext,
+          now + index * (toneDuration + gap),
+          toneDuration,
+          880,
+          0.2,
+          { fadeStart: toneDuration - 0.04, waveform: 'square' }
+        );
+      }
+      duration = 3 * toneDuration + 2 * gap;
     } else {
       const preset = CHIME_PRESETS[type];
       preset.frequencies.forEach((frequency, index) => {
@@ -144,16 +225,13 @@ export function playNotificationChime(
         oscillator.start(start);
         oscillator.stop(start + preset.duration);
       });
+      duration =
+        (preset.frequencies.length - 1) * preset.interval + preset.duration;
     }
 
     const closeContext = () => {
       if (audioContext.state !== 'closed') void audioContext.close().catch(() => {});
     };
-    const duration =
-      type === 'classic'
-        ? CHIME_DURATION_SECONDS
-        : (CHIME_PRESETS[type].frequencies.length - 1) * CHIME_PRESETS[type].interval +
-          CHIME_PRESETS[type].duration;
     window.setTimeout(closeContext, duration * 1000 + 250);
     if (audioContext.state === 'suspended') void audioContext.resume().catch(closeContext);
   } catch {
