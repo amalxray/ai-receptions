@@ -3,11 +3,84 @@
 // No external mp3 assets needed. Respects mute toggle in localStorage.
 
 const CHIME_MUTED_STORAGE_KEY = 'clinic_notifications_chime_muted';
+const CHIME_TYPE_STORAGE_KEY = 'clinic_notifications_chime_type';
+const CHIME_PREFERENCE_CHANGE_EVENT = 'clinic-notification-chime-change';
+
+export type NotificationChimeType = 'classic' | 'soft' | 'alert' | 'none';
+
+const CHIME_TYPES: NotificationChimeType[] = ['classic', 'soft', 'alert', 'none'];
+
+type ChimeNote = {
+  frequency: number;
+  endFrequency?: number;
+  delay: number;
+  duration: number;
+  waveform: OscillatorType;
+};
+
+const CHIME_PRESETS: Record<
+  Exclude<NotificationChimeType, 'none'>,
+  { volume: number; notes: ChimeNote[] }
+> = {
+  classic: {
+    volume: 0.2,
+    notes: [
+      { frequency: 880, endFrequency: 1200, delay: 0, duration: 0.45, waveform: 'sine' },
+      { frequency: 1320, endFrequency: 1760, delay: 0.04, duration: 0.41, waveform: 'triangle' },
+    ],
+  },
+  soft: {
+    volume: 0.12,
+    notes: [
+      { frequency: 523, endFrequency: 587, delay: 0, duration: 0.55, waveform: 'sine' },
+      { frequency: 659, endFrequency: 698, delay: 0.14, duration: 0.55, waveform: 'sine' },
+    ],
+  },
+  alert: {
+    volume: 0.14,
+    notes: [
+      { frequency: 880, delay: 0, duration: 0.12, waveform: 'square' },
+      { frequency: 880, delay: 0.18, duration: 0.12, waveform: 'square' },
+      { frequency: 1175, delay: 0.36, duration: 0.24, waveform: 'square' },
+    ],
+  },
+};
+
+function notifyPreferenceChange(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(CHIME_PREFERENCE_CHANGE_EVENT));
+  }
+}
+
+export function getNotificationChimeType(): NotificationChimeType {
+  if (typeof window === 'undefined') return 'classic';
+  try {
+    const storedType = localStorage.getItem(CHIME_TYPE_STORAGE_KEY);
+    return CHIME_TYPES.includes(storedType as NotificationChimeType)
+      ? (storedType as NotificationChimeType)
+      : 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+export function setNotificationChimeType(type: NotificationChimeType): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CHIME_TYPE_STORAGE_KEY, type);
+  } catch {
+    // Keep the in-memory UI usable when browser storage is restricted.
+  }
+  notifyPreferenceChange();
+}
 
 export function isChimeMuted(): boolean {
   if (typeof window === 'undefined') return true;
   try {
-    return localStorage.getItem(CHIME_MUTED_STORAGE_KEY) === 'true';
+    return (
+      localStorage.getItem(CHIME_MUTED_STORAGE_KEY) === 'true' ||
+      getNotificationChimeType() === 'none'
+    );
   } catch {
     return false;
   }
@@ -20,11 +93,14 @@ export function setChimeMuted(muted: boolean): void {
   } catch {
     // Ignore storage errors in restricted contexts
   }
+  notifyPreferenceChange();
 }
 
-export function playNotificationChime(): void {
+export function playNotificationChime(
+  type: NotificationChimeType = getNotificationChimeType()
+): void {
   if (typeof window === 'undefined') return;
-  if (isChimeMuted()) return;
+  if (type === 'none' || isChimeMuted()) return;
 
   try {
     const AudioContextClass =
@@ -33,39 +109,46 @@ export function playNotificationChime(): void {
     if (!AudioContextClass) return;
 
     const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
+    const preset = CHIME_PRESETS[type];
+    const scheduleChime = () => {
+      let notesRemaining = preset.notes.length;
+      for (const note of preset.notes) {
+        const startAt = ctx.currentTime + note.delay;
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        const attackDuration = Math.min(0.02, note.duration / 2);
 
-    // Create a crystal dual-bell chime: Tone 1 (880Hz, A5) + Tone 2 (1320Hz, E6)
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gainNode = ctx.createGain();
+        oscillator.type = note.waveform;
+        oscillator.frequency.setValueAtTime(note.frequency, startAt);
+        if (note.endFrequency) {
+          oscillator.frequency.exponentialRampToValueAtTime(
+            note.endFrequency,
+            startAt + Math.min(0.12, note.duration / 2)
+          );
+        }
 
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now);
-    osc1.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+        gainNode.gain.setValueAtTime(0.001, startAt);
+        gainNode.gain.exponentialRampToValueAtTime(preset.volume, startAt + attackDuration);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, startAt + note.duration);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
 
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(1320, now + 0.04);
-    osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
+        oscillator.onended = () => {
+          notesRemaining -= 1;
+          if (notesRemaining === 0) void ctx.close().catch(() => {});
+        };
+        oscillator.start(startAt);
+        oscillator.stop(startAt + note.duration);
+      }
+    };
 
-    // Smooth envelope: quick attack, gentle exponential decay
-    gainNode.gain.setValueAtTime(0.001, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-
-    osc1.connect(gainNode);
-    osc2.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    osc1.start(now);
-    osc2.start(now + 0.04);
-
-    osc1.stop(now + 0.45);
-    osc2.stop(now + 0.45);
-
-    setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 600);
+    if (ctx.state === 'suspended') {
+      void ctx.resume().then(scheduleChime).catch(() => {
+        void ctx.close().catch(() => {});
+      });
+    } else {
+      scheduleChime();
+    }
   } catch {
     // AudioContext may be blocked by autoplay policies until a user gesture.
   }

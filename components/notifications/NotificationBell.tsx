@@ -5,7 +5,11 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Bell, CheckCheck, Volume2, VolumeX, ExternalLink, RefreshCw } from 'lucide-react';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { isChimeMuted, setChimeMuted } from '@/lib/audio/chime';
+import {
+  getNotificationChimeType,
+  isChimeMuted,
+  setChimeMuted,
+} from '@/lib/audio/chime';
 import { isInAppUnread } from '@/lib/notification/inAppStatus';
 import { useToast } from '@/components/ui/Toast';
 // Cookie-shared browser client (session contract — see lib/supabase.ts) and the
@@ -83,13 +87,21 @@ export default function NotificationBell() {
   const previousUnreadRef = useRef<number>(0);
 
   useEffect(() => {
-    setMutedState(isChimeMuted());
+    const syncMuteState = () => setMutedState(isChimeMuted());
+    syncMuteState();
+    window.addEventListener('clinic-notification-chime-change', syncMuteState);
+    window.addEventListener('storage', syncMuteState);
+    return () => {
+      window.removeEventListener('clinic-notification-chime-change', syncMuteState);
+      window.removeEventListener('storage', syncMuteState);
+    };
   }, []);
 
   function toggleMute() {
+    if (getNotificationChimeType() === 'none') return;
     const next = !muted;
     setChimeMuted(next);
-    setMutedState(next);
+    setMutedState(isChimeMuted());
   }
 
   // Close dropdown on click outside
@@ -270,8 +282,15 @@ export default function NotificationBell() {
               <button
                 type="button"
                 onClick={toggleMute}
-                title={muted ? 'تشغيل صوت التنبيه' : 'كتم صوت التنبيه'}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                disabled={getNotificationChimeType() === 'none'}
+                title={
+                  getNotificationChimeType() === 'none'
+                    ? 'تم اختيار بدون صوت'
+                    : muted
+                      ? 'تشغيل صوت التنبيه'
+                      : 'كتم صوت التنبيه'
+                }
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {muted ? <VolumeX className="w-4 h-4 text-slate-500" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
               </button>
