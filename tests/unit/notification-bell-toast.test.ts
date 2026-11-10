@@ -47,6 +47,12 @@ describe('#35 — NotificationBell wiring', () => {
     expect(bell).toContain('setChimeMuted');
   });
 
+  it('reflects the selected no-sound option in the bell mute control', () => {
+    expect(bell).toContain('getNotificationChimeType');
+    expect(bell).toContain("getNotificationChimeType() === 'none'");
+    expect(bell).toContain("disabled={getNotificationChimeType() === 'none'}");
+  });
+
   it('polls for newly arrived notifications', () => {
     expect(bell).toContain('setInterval');
     expect(bell).toContain('isPolling');
@@ -60,6 +66,11 @@ describe('#35 — NotificationBell wiring', () => {
   it('is mounted in the dashboard header', () => {
     expect(header).toContain("import NotificationBell from '@/components/notifications/NotificationBell'");
     expect(header).toContain('<NotificationBell />');
+    expect(header).toContain('اختيار نغمة الإشعارات');
+    expect(header).toContain("type: 'classic'");
+    expect(header).toContain("type: 'soft'");
+    expect(header).toContain("type: 'alert'");
+    expect(header).toContain("type: 'none'");
   });
 });
 
@@ -238,6 +249,15 @@ describe('#35 — Web Audio chime (no mp3 asset)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('supports selectable notification chimes and persists the selected type', () => {
+    expect(chime).toContain("export type NotificationChimeType = 'classic' | 'soft' | 'alert' | 'none'");
+    expect(chime).toContain("'clinic_notifications_chime_type'");
+    expect(chime).toContain('export function getNotificationChimeType');
+    expect(chime).toContain('export function setNotificationChimeType');
+    expect(chime).toContain('CHIME_PRESETS');
+    expect(chime).toContain("if (type === 'none' || isChimeMuted()) return;");
   });
 
   it('is a safe no-op outside the browser', async () => {
