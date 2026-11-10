@@ -231,6 +231,33 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     return sum + quantity * price;
   }, 0);
 
+  const loadInvoices = useCallback(async () => {
+    if (!clinicId) return;
+    const headers = await authHeaders();
+    const response = await fetch(
+      `/api/clinic/accounting/invoices?clinic_id=${clinicId}&patient_id=${patientId}`,
+      { headers }
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'فشل تحميل الفواتير');
+    const invoicesList: InvoiceRow[] = (payload.data ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      id: String(row.invoice_id ?? row.id ?? ''),
+    })).filter((row: InvoiceRow) => UUID_RE.test(row.id));
+    setInvoices(invoicesList);
+  }, [clinicId, patientId, authHeaders]);
+
+  const loadBalances = useCallback(async () => {
+    if (!clinicId) return;
+    const headers = await authHeaders();
+    const response = await fetch(
+      `/api/clinic/accounting/balances?clinic_id=${clinicId}&patient_id=${patientId}`,
+      { headers }
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'فشل تحميل الرصيد');
+    setBalances(payload.data ?? []);
+  }, [clinicId, patientId, authHeaders]);
 
   const loadAll = useCallback(async () => {
     if (!clinicId) return;
@@ -240,7 +267,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       const headers = await authHeaders();
       const [invRes, payRes, balRes, fileRes, svcRes] = await Promise.all([
         fetch(`/api/clinic/accounting/invoices?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
-        fetch(`/api/clinic/accounting/payments?clinic_id=${clinicId}`, { headers }),
+        fetch(`/api/clinic/accounting/payments?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/accounting/balances?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/medical-files/list?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         // Catalog for the invoice line items. A failure here must not break the
@@ -346,7 +373,13 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setShowInvoiceForm(false);
       setInvLines([{ key: 'l1', service_id: '', description: '', quantity: '1', unit_price: '' }]);
       setReissueFrom(null);
-      await loadAll();
+      const refreshResults = await Promise.allSettled([loadInvoices(), loadBalances()]);
+      const failedRefresh = refreshResults.find((result) => result.status === 'rejected');
+      if (failedRefresh?.status === 'rejected') {
+        setError(humanizePanelError(
+          failedRefresh.reason instanceof Error ? failedRefresh.reason.message : 'فشل تحديث بيانات الفاتورة'
+        ));
+      }
     } catch (err) {
       // B50 — the API answers with Arabic now; this guards any legacy path.
       setActionError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ'));

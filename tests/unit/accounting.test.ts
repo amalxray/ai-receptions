@@ -146,6 +146,17 @@ describe('accounting service — tenant-scoped reads', () => {
     expect(rows[0]).toMatchObject({ patient_name: 'A Patient', invoice_number: 'INV-1' });
     expect(paymentQuery.limit).toHaveBeenCalledWith(8);
   });
+
+  it('filters payments through the related invoice when a patient is requested', async () => {
+    const paymentQuery = createQuery({ data: [], error: null });
+    mockAdmin.supabaseAdmin.from.mockReturnValue(paymentQuery);
+
+    await listPayments(CLINIC_A, null, 50, PATIENT);
+
+    expect(paymentQuery.select).toHaveBeenCalledWith(expect.stringContaining('clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey!inner'));
+    expect(paymentQuery.eq).toHaveBeenCalledWith('clinic_invoices.patient_id', PATIENT);
+    expect(paymentQuery.eq).toHaveBeenCalledWith('clinic_id', CLINIC_A);
+  });
 });
 
 function createQuery(result: { data: unknown[]; error: null }) {

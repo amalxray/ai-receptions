@@ -72,7 +72,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'limit must be a positive integer' }, { status: 400 });
     }
     const limit = Math.min(parsedLimit, 100);
-    const data = await listPayments(clinicId, null, limit);
+    const data = await listPayments(clinicId, null, limit, url.searchParams.get('patient_id'));
     return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 500 });
