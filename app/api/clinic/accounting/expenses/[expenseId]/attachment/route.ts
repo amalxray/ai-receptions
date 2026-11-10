@@ -34,8 +34,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ expenseI
     if (expenseError) throw new Error(expenseError.message);
     if (!expense) return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
 
-    const signedUrl = await getExpenseAttachmentSignedUrl(clinicId, expenseId, expense.attachment_url ?? null, 3600);
-    return NextResponse.json({ data: { signedUrl, path: expense.attachment_url ?? null, expiresIn: 3600 } });
+    const attachmentPath = expense.attachment_url ?? null;
+    const downloadName = attachmentPath?.split('/').pop()?.replace(/^\d+-/, '');
+    const signedUrl = await getExpenseAttachmentSignedUrl(
+      clinicId,
+      expenseId,
+      attachmentPath,
+      3600,
+      url.searchParams.get('download') === 'true' ? downloadName : undefined
+    );
+    return NextResponse.json({ data: { signedUrl, path: attachmentPath, expiresIn: 3600 } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /EXPENSE_NOT_FOUND|Expense not found/.test(message) ? 404 : 500;

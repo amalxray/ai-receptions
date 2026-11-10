@@ -4,8 +4,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockAdmin = vi.hoisted(() => {
   const rpc = vi.fn();
   const from = vi.fn();
+  const createSignedUrl = vi.fn();
+  const storageFrom = vi.fn(() => ({ createSignedUrl }));
   const setRpc = (v?: unknown) => rpc.mockResolvedValue(v === undefined ? { data: null, error: null } : { data: v, error: null });
-  return { supabaseAdmin: { rpc, from }, __setRpc: setRpc };
+  const setSignedUrl = () => createSignedUrl.mockResolvedValue({ data: { signedUrl: 'https://storage.example/signed' }, error: null });
+  return {
+    supabaseAdmin: { rpc, from, storage: { from: storageFrom } },
+    __setRpc: setRpc,
+    __setSignedUrl: setSignedUrl,
+    __storageFrom: storageFrom,
+    __createSignedUrl: createSignedUrl,
+  };
 });
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: mockAdmin.supabaseAdmin }));
 
@@ -20,6 +29,7 @@ import {
   voidInvoice,
   listInvoices,
   listPayments,
+  getExpenseAttachmentSignedUrl,
 } from '@/lib/services/accounting';
 
 const CLINIC_A = '11111111-1111-1111-1111-111111111111';
@@ -30,6 +40,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAdmin.supabaseAdmin.rpc.mockReset();
   mockAdmin.__setRpc({ invoice_id: 'inv-1', invoice_number: 'INV-2026-000001', subtotal: 100, total: 100 });
+  mockAdmin.__createSignedUrl.mockReset();
+  mockAdmin.__setSignedUrl();
 });
 
 describe('accounting service — issueInvoice', () => {
@@ -102,6 +114,31 @@ describe('accounting service — tenant-scoped reads', () => {
     const rows = await listInvoices(CLINIC_A);
     expect(Array.isArray(rows)).toBe(true);
     expect(mockAdmin.supabaseAdmin.from).toHaveBeenCalledWith('clinic_invoices');
+  });
+
+  describe('accounting service — expense attachment signed URLs', () => {
+    const expensePath = `${CLINIC_A}/expense-1/receipt.pdf`;
+
+    it('creates a signed URL for a valid clinic expense attachment', async () => {
+      const url = await getExpenseAttachmentSignedUrl(CLINIC_A, 'expense-1', expensePath);
+
+      expect(url).toBe('https://storage.example/signed');
+      expect(mockAdmin.__storageFrom).toHaveBeenCalledWith('expense-attachments');
+      expect(mockAdmin.__createSignedUrl).toHaveBeenCalledWith(expensePath, 3600);
+    });
+
+    it('requests a download filename when creating a download URL', async () => {
+      await getExpenseAttachmentSignedUrl(CLINIC_A, 'expense-1', expensePath, 3600, 'receipt.pdf');
+
+      expect(mockAdmin.__createSignedUrl).toHaveBeenCalledWith(expensePath, 3600, { download: 'receipt.pdf' });
+    });
+
+    it('rejects attachment paths belonging to a different expense', async () => {
+      await expect(
+        getExpenseAttachmentSignedUrl(CLINIC_A, 'expense-1', `${CLINIC_A}/expense-2/receipt.pdf`)
+      ).rejects.toThrow('EXPENSE_ATTACHMENT_PATH_INVALID');
+      expect(mockAdmin.__createSignedUrl).not.toHaveBeenCalled();
+    });
   });
 
   it('joins the patient name and applies invoice status and limit filters', async () => {

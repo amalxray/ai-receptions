@@ -33,6 +33,7 @@ export default function EditExpenseDialog({ expense, open, onOpenChange, onSaved
   const [categoryId, setCategoryId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -79,10 +80,12 @@ export default function EditExpenseDialog({ expense, open, onOpenChange, onSaved
     setSelectedFile(null);
     setMessage(null);
     setPreviewUrl(null);
+    setAttachmentLoading(false);
 
     const currentExpenseId = expense.id;
     if (!expense.attachment_url || !currentExpenseId) return;
     let mounted = true;
+    setAttachmentLoading(true);
     void (async () => {
       try {
         const response = await fetch(
@@ -91,9 +94,13 @@ export default function EditExpenseDialog({ expense, open, onOpenChange, onSaved
         );
         const payload = await response.json().catch(() => null);
         if (!response.ok) throw new Error((payload as { error?: string } | null)?.error ?? 'تعذر تحميل معاينة المرفق.');
-        if (mounted) setPreviewUrl((payload as { data?: { signedUrl?: string | null } } | null)?.data?.signedUrl ?? null);
+        const signedUrl = (payload as { data?: { signedUrl?: string | null } } | null)?.data?.signedUrl ?? null;
+        if (!signedUrl) throw new Error('لا يوجد رابط صالح للمرفق.');
+        if (mounted) setPreviewUrl(signedUrl);
       } catch (error) {
         if (mounted) setMessage(error instanceof Error ? error.message : 'تعذر تحميل معاينة المرفق.');
+      } finally {
+        if (mounted) setAttachmentLoading(false);
       }
     })();
 
@@ -177,6 +184,27 @@ export default function EditExpenseDialog({ expense, open, onOpenChange, onSaved
     }
   };
 
+  const downloadAttachment = async () => {
+    if (!expenseId || !clinicId) return;
+    try {
+      const response = await fetch(
+        `/api/clinic/accounting/expenses/${encodeURIComponent(expenseId)}/attachment?clinic_id=${encodeURIComponent(clinicId)}&download=true`,
+        { headers: await authHeaders() }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((payload as { error?: string } | null)?.error ?? 'تعذر تنزيل المرفق.');
+      }
+      const signedUrl = (payload as { data?: { signedUrl?: string | null } } | null)?.data?.signedUrl;
+      if (!signedUrl) throw new Error('لا يوجد رابط صالح لتنزيل المرفق.');
+      window.location.assign(signedUrl);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'تعذر تنزيل المرفق.');
+    }
+  };
+
+  const attachmentName = expense.attachment_url?.split('/').pop()?.replace(/^\d+-/, '');
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true">
       <div className="w-full max-w-xl space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-5">
@@ -239,12 +267,38 @@ export default function EditExpenseDialog({ expense, open, onOpenChange, onSaved
 
           {previewUrl ? (
             <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate text-xs text-slate-300" title={attachmentName}>
+                  {attachmentName || 'الفاتورة المرفقة'}
+                </span>
+                <div className="flex gap-2">
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg border border-cyan-500/40 px-2.5 py-1.5 text-[11px] text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    معاينة
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void downloadAttachment()}
+                    className="rounded-lg border border-slate-600 px-2.5 py-1.5 text-[11px] text-slate-200 hover:bg-slate-800"
+                  >
+                    تنزيل
+                  </button>
+                </div>
+              </div>
               {previewUrl.toLowerCase().endsWith('.pdf') || previewUrl.includes('pdf') ? (
                 <iframe src={previewUrl} className="h-52 w-full rounded-lg border border-slate-700 bg-slate-900" title="Expense attachment" />
               ) : (
                 <img src={previewUrl} alt="Expense attachment" className="max-h-52 w-full rounded-lg border border-slate-700 object-contain" />
               )}
             </div>
+          ) : attachmentLoading ? (
+            <p className="text-[11px] text-slate-500">جارٍ تحميل المرفق...</p>
+          ) : expense.attachment_url ? (
+            <p className="text-[11px] text-rose-300">تعذر تحميل معاينة المرفق. حاول إغلاق النافذة وإعادة فتحها.</p>
           ) : (
             <p className="text-[11px] text-slate-500">لا توجد فاتورة مرفقة.</p>
           )}

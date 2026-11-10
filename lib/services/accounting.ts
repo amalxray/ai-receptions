@@ -665,7 +665,8 @@ export async function getExpenseAttachmentSignedUrl(
   clinicId: string,
   expenseId: string,
   path: string | null | undefined,
-  seconds = 3600
+  seconds = 3600,
+  downloadFilename?: string
 ): Promise<string | null> {
   const storagePath = (path ?? '').trim();
   if (!storagePath) return null;
@@ -673,7 +674,10 @@ export async function getExpenseAttachmentSignedUrl(
     throw new Error('EXPENSE_ATTACHMENT_PATH_INVALID');
   }
 
-  const { data, error } = await supabaseAdmin.storage.from('expense-attachments').createSignedUrl(storagePath, seconds);
+  const bucket = supabaseAdmin.storage.from('expense-attachments');
+  const { data, error } = downloadFilename
+    ? await bucket.createSignedUrl(storagePath, seconds, { download: downloadFilename })
+    : await bucket.createSignedUrl(storagePath, seconds);
   if (error) throw new Error(error.message);
   if (!data?.signedUrl) throw new Error('EXPENSE_ATTACHMENT_SIGNED_URL_FAILED');
   return data.signedUrl;
