@@ -69,6 +69,7 @@ describe('PP-5 API route — RBAC and shape', () => {
       expect.any(Request),
       'c1',
       'view_financial',
+      { allowedRoles: mockAuth.FINANCE_READ_ROLES },
     );
     const body = await res.json();
     expect(body.data.kpis.revenue).toBe(1);

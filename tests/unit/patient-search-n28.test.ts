@@ -73,6 +73,7 @@ vi.mock('@/lib/config', () => ({
 }));
 
 vi.mock('@/lib/services/clinicAuthorization', () => ({
+  DATA_ROLES: ['owner', 'manager', 'doctor', 'receptionist', 'staff'],
   authorizeClinicRequest: async () => {
     harness.authorizeCalls += 1;
     return { authorized: true, status: 200, role: 'owner' };

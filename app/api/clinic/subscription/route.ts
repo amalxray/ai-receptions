@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const permission = await permissionDenied(req, clinicId, 'manage_subscription');
+    const permission = await permissionDenied(req, clinicId, 'manage_subscription', { allowedRoles: ADMIN_ROLES });
     if (permission) return permission;
 
     // STEP 15G-A — deleted_at consistency: the entitled row lookup ignores soft-deleted rows.
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const permission = await permissionDenied(req, clinicId, 'manage_subscription');
+    const permission = await permissionDenied(req, clinicId, 'manage_subscription', { allowedRoles: ADMIN_ROLES });
     if (permission) return permission;
 
     const body = await req.json();

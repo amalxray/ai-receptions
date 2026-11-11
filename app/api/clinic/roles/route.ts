@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { clearPermissionCache, isPermissionKey } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/services/auditService';
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       { status: authorization.status }
     );
   }
-  const permission = await permissionDenied(req, clinicId, 'manage_team');
+  const permission = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (permission) return permission;
 
   if (RESERVED_ROLE_NAMES.includes(name.toLowerCase())) {

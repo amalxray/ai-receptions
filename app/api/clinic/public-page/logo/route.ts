@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
         { status: authorization.status }
       );
     }
-    const permission = await permissionDenied(req, clinicId, 'manage_public_page');
+    const permission = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
     if (permission) return permission;
 
     const form = await req.formData();

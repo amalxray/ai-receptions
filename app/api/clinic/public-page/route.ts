@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   authorizeClinicRequest,
+  ADMIN_ROLES,
   DATA_ROLES,
 } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
@@ -114,7 +115,7 @@ export async function PATCH(req: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
-    const permission = await permissionDenied(req, clinicId, 'manage_public_page');
+    const permission = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
     if (permission) return permission;
 
     const body = await req.json();

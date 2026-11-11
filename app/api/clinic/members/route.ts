@@ -55,7 +55,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team');
+  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (memberListPerm) return memberListPerm;
 
   const { data, error } = await supabaseAdmin
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       { status: authorization.status }
     );
   }
-  const addPerm = await permissionDenied(req, clinicId, 'manage_team');
+  const addPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (addPerm) return addPerm;
 
   const parsed = addSchema.safeParse(await req.json().catch(() => null));
@@ -177,7 +177,7 @@ export async function PATCH(req: Request) {
       { status: authorization.status }
     );
   }
-  const patchPerm = await permissionDenied(req, clinicId, 'manage_team');
+  const patchPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (patchPerm) return patchPerm;
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
@@ -271,7 +271,7 @@ export async function DELETE(req: Request) {
       { status: authorization.status }
     );
   }
-  const removePerm = await permissionDenied(req, clinicId, 'manage_team');
+  const removePerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
   if (removePerm) return removePerm;
 
   const parsed = deleteSchema.safeParse(await req.json().catch(() => null));

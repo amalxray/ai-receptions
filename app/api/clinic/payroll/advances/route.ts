@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { listAdvances, createAdvance } from '@/lib/services/payroll-engine';
 
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
-    const permBlocked = await permissionDenied(req, clinicId, 'view_advances');
+    const permBlocked = await permissionDenied(req, clinicId, 'view_advances', { allowedRoles: FINANCE_READ_ROLES });
     if (permBlocked) return permBlocked;
 
     const statusParam = url.searchParams.get('status');
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     if (!body?.provider_id) return NextResponse.json({ error: 'provider_id required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_advances');
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_advances', { allowedRoles: FINANCE_ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 
     const data = await createAdvance({

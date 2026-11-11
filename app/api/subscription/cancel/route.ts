@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
     }
 
-    const permission = await permissionDenied(req, clinicId, 'manage_subscription');
+    const permission = await permissionDenied(req, clinicId, 'manage_subscription', { allowedRoles: ADMIN_ROLES });
     if (permission) return permission;
 
     const { data: subscription, error: subscriptionError } = await supabaseAdmin
