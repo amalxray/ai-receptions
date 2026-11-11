@@ -11,6 +11,17 @@ const mockAuth = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
 
+vi.mock('@/lib/auth/permissions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
+  return {
+    ...actual,
+    getUserPermissionState: vi.fn(async (_userId: string, _clinicId: string, role: string) => ({
+      permissions: new Set<string>(actual.ROLE_DEFAULTS[role] ?? []),
+      overrides: new Map<string, boolean>(),
+    })),
+  };
+});
+
 const mockAccounting = vi.hoisted(() => ({
   issueInvoice: vi.fn(),
   listInvoices: vi.fn(),
@@ -141,15 +152,13 @@ describe('accounting API — RBAC (finance matrices)', () => {
 describe('accounting API — tenant isolation', () => {
   it('unauthenticated/unauthorized → 401 (not 403, not data)', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 401 });
-    mockAuth.roleDenied.mockImplementationOnce((_authorization: any, _roles: readonly string[]) => ({ authorized: false, status: _authorization.status ?? 401 }));
     const res = await getBalances(makeRequest(`/api/clinic/accounting/balances?clinic_id=${CLINIC_B}`));
     expect(res.status).toBe(401);
     expect(mockAccounting.getPatientBalances).not.toHaveBeenCalled();
   });
 
   it('member of clinic B cannot read clinic A balances → 403', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'owner' });
-    mockAuth.roleDenied.mockImplementationOnce((_authorization: any, _roles: readonly string[]) => ({ authorized: false, status: 403 }));
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
     const res = await getBalances(makeRequest(`/api/clinic/accounting/balances?clinic_id=${CLINIC_A}`));
     expect(res.status).toBe(403);
     expect(mockAccounting.getPatientBalances).not.toHaveBeenCalled();

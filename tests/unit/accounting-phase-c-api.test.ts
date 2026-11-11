@@ -9,8 +9,11 @@ const mockAuth = vi.hoisted(() => ({
   CASH_SESSION_CLOSE_ROLES: ['owner', 'accountant'],
   FINANCE_READ_ROLES: ['owner', 'accountant', 'manager', 'receptionist'],
   FINANCE_ADMIN_ROLES: ['owner', 'accountant'],
+  FINANCE_VOID_ROLES: ['owner'],
 }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
+
+const mockPermissions = vi.hoisted(() => ({ customGrants: new Set<string>() }));
 
 const mockAccounting = vi.hoisted(() => ({
   recordExpense: vi.fn(),
@@ -18,6 +21,9 @@ const mockAccounting = vi.hoisted(() => ({
   listExpenses: vi.fn(),
   listExpenseCategories: vi.fn(),
   createExpenseCategory: vi.fn(),
+  listInvoices: vi.fn(),
+  listPayments: vi.fn(),
+  getPatientBalances: vi.fn(),
   updateExpenseCategory: vi.fn(),
   openCashSession: vi.fn(),
   closeCashSession: vi.fn(),
@@ -27,18 +33,15 @@ const mockAccounting = vi.hoisted(() => ({
 vi.mock('@/lib/services/accounting', () => mockAccounting);
 
 // #43 — permissive permissions mock: legacy role-matrix expectations keep
-// passing; the flexible layer's own matrix is covered in permissions-rbac.test.ts.
-// The flexible layer is mocked as ROLE-DERIVED (base = ROLE_DEFAULTS, no
-// per-user overrides) so the REAL permissionGate runs. That is what makes the
-// legacy role sets on each route load-bearing: if a route forgets to pass
-// `allowedRoles`, a front-desk role that could call it before #43 turns 403.
+// passing; custom-grant behavior is exercised through the real permissionGate.
+// The permission state combines role defaults with test-controlled overrides.
 vi.mock('@/lib/auth/permissions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
   return {
     ...actual,
     getUserPermissionState: vi.fn(async (_userId: string, _clinicId: string, role: string) => ({
       permissions: new Set<string>(actual.ROLE_DEFAULTS[role] ?? []),
-      overrides: new Map<string, boolean>(),
+      overrides: new Map<string, boolean>([...mockPermissions.customGrants].map((permission): [string, boolean] => [permission, true])),
     })),
     getUserPermissions: vi.fn(async (_userId: string, _clinicId: string, role: string) =>
       new Set<string>(actual.ROLE_DEFAULTS[role] ?? [])
@@ -51,6 +54,9 @@ vi.mock('@/lib/auth/permissions', async () => {
 import { POST as postExpense, GET as getExpenses } from '@/app/api/clinic/accounting/expenses/route';
 import { POST as postExpenseVoid } from '@/app/api/clinic/accounting/expenses/[expenseId]/void/route';
 import { POST as postCategory, GET as getCategories } from '@/app/api/clinic/accounting/expense-categories/route';
+import { GET as getInvoices } from '@/app/api/clinic/accounting/invoices/route';
+import { GET as getPayments } from '@/app/api/clinic/accounting/payments/route';
+import { GET as getBalances } from '@/app/api/clinic/accounting/balances/route';
 import { PATCH as patchCategory } from '@/app/api/clinic/accounting/expense-categories/[categoryId]/route';
 import { POST as openSession, GET as getSessions } from '@/app/api/clinic/accounting/cash/sessions/route';
 import { POST as closeSession } from '@/app/api/clinic/accounting/cash/sessions/[sessionId]/close/route';
@@ -76,6 +82,7 @@ mockAuth.roleDenied.mockImplementation((authorization: any, roles: readonly stri
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPermissions.customGrants.clear();
   mockAuth.authorizeClinicRequest.mockReset();
   mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'owner' });
   mockAccounting.recordExpense.mockReset().mockResolvedValue({ expenseId: 'exp-1', expenseNumber: 'EXP-2026-000001', duplicate: false });
@@ -83,6 +90,9 @@ beforeEach(() => {
   mockAccounting.listExpenses.mockReset().mockResolvedValue([]);
   mockAccounting.listExpenseCategories.mockReset().mockResolvedValue([]);
   mockAccounting.createExpenseCategory.mockReset().mockResolvedValue({ id: 'cat-1', name: 'Supplies' });
+  mockAccounting.listInvoices.mockReset().mockResolvedValue([]);
+  mockAccounting.listPayments.mockReset().mockResolvedValue([]);
+  mockAccounting.getPatientBalances.mockReset().mockResolvedValue([]);
   mockAccounting.updateExpenseCategory.mockReset().mockResolvedValue({ id: 'cat-1', name: 'Supplies', is_active: false });
   mockAccounting.openCashSession.mockReset().mockResolvedValue({ sessionId: 'ses-1', openingAmount: 100 });
   mockAccounting.closeCashSession.mockReset().mockResolvedValue({ sessionId: 'ses-1', openingAmount: 100, cashIn: 300, cashOut: 75, expectedClosing: 325, countedAmount: 320, variance: -5 });
@@ -190,6 +200,35 @@ describe('Phase C API — expense categories', () => {
   it('GET list is FINANCE_READ', async () => {
     const res = await getCategories(makeRequest(`/api/clinic/accounting/expense-categories?clinic_id=${CLINIC_A}`));
     expect(res.status).toBe(200);
+  });
+
+  it('custom view_financial grant lets a receptionist read patient financial data and categories', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'receptionist' });
+    mockPermissions.customGrants.add('view_financial');
+
+    const invoices = await getInvoices(makeRequest(`/api/clinic/accounting/invoices?clinic_id=${CLINIC_A}`));
+    const payments = await getPayments(makeRequest(`/api/clinic/accounting/payments?clinic_id=${CLINIC_A}`));
+    const balances = await getBalances(makeRequest(`/api/clinic/accounting/balances?clinic_id=${CLINIC_A}`));
+    const categories = await getCategories(makeRequest(`/api/clinic/accounting/expense-categories?clinic_id=${CLINIC_A}`));
+
+    expect([invoices.status, payments.status, balances.status, categories.status]).toEqual([200, 200, 200, 200]);
+    expect(mockAccounting.listInvoices).toHaveBeenCalledWith(CLINIC_A, null, null, 50);
+    expect(mockAccounting.listPayments).toHaveBeenCalledWith(CLINIC_A, null, 50, null);
+    expect(mockAccounting.getPatientBalances).toHaveBeenCalledWith(CLINIC_A, null);
+    expect(mockAccounting.listExpenseCategories).toHaveBeenCalledWith(CLINIC_A);
+  });
+
+  it('custom manage_expenses grant lets a receptionist add expenses and categories', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'receptionist' });
+    mockPermissions.customGrants.add('manage_expenses');
+
+    const expense = await postExpense(makeRequest('/api/clinic/accounting/expenses', jsonBody({ clinic_id: CLINIC_A, amount: 20, method: 'cash' })));
+    const res = await postCategory(makeRequest('/api/clinic/accounting/expense-categories', jsonBody({ clinic_id: CLINIC_A, name: 'Supplies' })));
+
+    expect(expense.status).toBe(201);
+    expect(mockAccounting.recordExpense).toHaveBeenCalledWith(expect.objectContaining({ clinicId: CLINIC_A, amount: 20, method: 'cash' }));
+    expect(res.status).toBe(201);
+    expect(mockAccounting.createExpenseCategory).toHaveBeenCalledWith(expect.objectContaining({ clinicId: CLINIC_A, name: 'Supplies' }));
   });
 });
 
