@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { signMedicalFileUrl, deleteMedicalFileById } from '@/lib/services/medicalFiles';
 import { logEvent } from '@/lib/server/logging';
 
@@ -37,10 +37,8 @@ export async function GET(req: Request, { params }: { params: { fileId: string }
     const clinicId = url.searchParams.get('clinic_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_medical_files');
+    if (gate) return gate;
 
     const access = await assertAccess(clinicId, params.fileId);
     if (!access.ok) return NextResponse.json({ error: access.message }, { status: 403 });
@@ -60,10 +58,8 @@ export async function DELETE(req: Request, { params }: { params: { fileId: strin
     const clinicId = url.searchParams.get('clinic_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'manage_medical_files');
+    if (gate) return gate;
 
     const access = await assertAccess(clinicId, params.fileId);
     if (!access.ok) return NextResponse.json({ error: access.message }, { status: 403 });

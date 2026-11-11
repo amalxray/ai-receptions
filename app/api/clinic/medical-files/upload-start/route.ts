@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { createMedicalUploadIntent, resolveMedicalFileOrgAccess } from '@/lib/services/medicalFiles';
 import { logEvent } from '@/lib/server/logging';
 
@@ -52,8 +53,8 @@ export async function POST(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية رفع ملفات طبية' }, { status: 403 });
+    const gate = await permissionDenied(req, clinic_id, 'manage_medical_files');
+    if (gate) return gate;
 
     const access = await resolveMedicalFileOrgAccess(clinic_id, patient_id, imaging_request_id ?? null);
     if (!access.ok || !('patient' in access)) {
