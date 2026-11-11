@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { cancelWaitlistEntry, updateWaitlistEntry } from '@/lib/services/growth';
 
 const VALID_STATUSES = ['active', 'notified', 'booked', 'expired', 'cancelled'];
@@ -9,8 +10,8 @@ export async function PATCH(req: Request, context: { params: { entryId: string }
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, DATA_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, body.clinic_id, 'manage_leads', { allowedRoles: DATA_ROLES });
+    if (permission) return permission;
 
     const patch: {
       providerId?: string | null;
@@ -57,8 +58,8 @@ export async function DELETE(req: Request, context: { params: { entryId: string 
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, DATA_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, clinicId, 'manage_leads', { allowedRoles: DATA_ROLES });
+    if (permission) return permission;
     await cancelWaitlistEntry({ clinicId, entryId: context.params.entryId, actorUserId: authorization.user?.id ?? null });
     return NextResponse.json({ data: { ok: true } });
   } catch (error) {

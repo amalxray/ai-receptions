@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { isPermissionKey } from '@/lib/auth/permissions';
+import { clearPermissionCache, isPermissionKey } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/services/auditService';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 export const runtime = 'nodejs';
 
@@ -34,9 +35,8 @@ export async function PATCH(
       { status: authorization.status }
     );
   }
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const permission = await permissionDenied(req, clinicId, 'manage_team');
+  if (permission) return permission;
 
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
@@ -72,6 +72,8 @@ export async function PATCH(
     return NextResponse.json({ error: 'الدور غير موجود أو تعذر تعديله' }, { status: error?.message?.includes('duplicate') ? 409 : 404 });
   }
 
+  clearPermissionCache();
+
   await writeAuditLog({
     clinicId,
     actorUserId: authorization.user.id,
@@ -99,9 +101,8 @@ export async function DELETE(
       { status: authorization.status }
     );
   }
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const permission = await permissionDenied(req, clinicId, 'manage_team');
+  if (permission) return permission;
 
   const { data: role } = await supabaseAdmin
     .from('custom_roles')
@@ -138,6 +139,8 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: 'تعذر حذف الدور', detail: error.message }, { status: 500 });
   }
+
+  clearPermissionCache();
 
   await writeAuditLog({
     clinicId,

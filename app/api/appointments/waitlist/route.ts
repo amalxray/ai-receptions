@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, DATA_ROLES, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { addToWaitlist, listWaitlist, cancelWaitlistEntry } from '@/lib/services/waitlistService';
 import { logEvent } from '@/lib/server/logging';
 
@@ -35,10 +36,8 @@ export async function GET(req: Request) {
     const status = url.searchParams.get('status') ?? undefined;
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const permission = await permissionDenied(req, clinicId, 'view_appointments', { allowedRoles: DATA_ROLES });
+    if (permission) return permission;
 
     const entries = await listWaitlist({ clinicId, status });
     return NextResponse.json({ data: entries });
@@ -59,8 +58,8 @@ export async function POST(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الإدارة' }, { status: 403 });
+    const permission = await permissionDenied(req, clinic_id, 'manage_appointments', { allowedRoles: ADMIN_ROLES });
+    if (permission) return permission;
 
     const entry = await addToWaitlist({
       clinicId: clinic_id,
@@ -90,8 +89,8 @@ export async function PATCH(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الإدارة' }, { status: 403 });
+    const permission = await permissionDenied(req, clinic_id, 'manage_appointments', { allowedRoles: ADMIN_ROLES });
+    if (permission) return permission;
 
     await cancelWaitlistEntry(clinic_id, entry_id);
     return NextResponse.json({ data: { success: true } });

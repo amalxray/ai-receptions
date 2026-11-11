@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { cancelStripeSubscriptionAtPeriodEnd } from '@/lib/payments/stripe';
@@ -21,13 +21,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
     }
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
-
-    const gate = roleDenied(authorization, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const permission = await permissionDenied(req, clinicId, 'manage_subscription');
+    if (permission) return permission;
 
     const { data: subscription, error: subscriptionError } = await supabaseAdmin
       .from('subscriptions')

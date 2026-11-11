@@ -131,13 +131,14 @@ describe('accounting API — RBAC (finance matrices)', () => {
     expect(mockAccounting.voidPayment).not.toHaveBeenCalled();
   });
 
-  it('manager can read finance summaries but cannot refund', async () => {
+  it('manager can read finance summaries and refund payments by default', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'manager' });
     const readRes = await getInvoices(makeRequest(`/api/clinic/accounting/invoices?clinic_id=${CLINIC_A}`));
     expect(readRes.status).toBe(200);
 
     const refundRes = await postRefund(makeRequest(`/api/clinic/accounting/payments/pay-1/refund?clinic_id=${CLINIC_A}`, jsonBody({ amount: 10, reason: 'r' })), { params: Promise.resolve({ paymentId: 'pay-1' }) } as any);
-    expect(refundRes.status).toBe(403);
+    expect(refundRes.status).toBe(201);
+    expect(mockAccounting.refundPayment).toHaveBeenCalled();
   });
 
   it('accountant cannot void invoice but can refund', async () => {

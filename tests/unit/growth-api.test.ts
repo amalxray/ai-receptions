@@ -112,10 +112,10 @@ describe('growth recall-rules API', () => {
     expect(res.status).toBe(401);
   });
 
-  it('PATCH blocked for non-admin (receptionist)', async () => {
+  it('PATCH allowed for receptionist with the default manage_leads permission', async () => {
     forbidden('receptionist');
     const res = await rulePATCH(jsonBody({ clinic_id: CLINIC, enabled: false }), { params: { ruleId: 'r1' } } as any);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
   it('DELETE removes rule (owner)', async () => {
@@ -160,10 +160,12 @@ describe('waitlist API', () => {
     expect(res.status).toBe(200);
   });
 
-  it('POST match requires FINANCE_ADMIN', async () => {
+  it('POST match allows receptionist with the default manage_leads permission', async () => {
     forbidden('receptionist');
+    mocks.matchWaitlistForReleasedSlot.mockResolvedValue({ id: 'w2' });
     const res = await matchPOST(jsonBody({ clinic_id: CLINIC, appointment_id: '33333333-3333-3333-3333-333333333333', provider_id: '55555555-5555-5555-5555-555555555555', released_at: '2026-09-05T10:00:00Z' }));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(mocks.matchWaitlistForReleasedSlot).toHaveBeenCalled();
   });
 
   it('POST match succeeds for owner', async () => {

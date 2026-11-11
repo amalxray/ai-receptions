@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { getThread } from '@/lib/services/clinicMessaging';
 
@@ -13,8 +13,8 @@ export async function GET(req: Request) {
     if (!clinicId || !partnerId) {
       return NextResponse.json({ error: 'clinic_id و partner_id مطلوبان' }, { status: 400 });
     }
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'غير مخول' }, { status: auth.status });
+    const permission = await permissionDenied(req, clinicId, 'view_messages');
+    if (permission) return permission;
     const messages = await getThread(clinicId, partnerId);
     return NextResponse.json({ data: messages });
   } catch (err) {

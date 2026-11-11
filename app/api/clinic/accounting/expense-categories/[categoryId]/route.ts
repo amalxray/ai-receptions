@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, EXPENSE_CATEGORY_MANAGE_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, EXPENSE_CATEGORY_MANAGE_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { updateExpenseCategory } from '@/lib/services/accounting';
 
 // Accounting Phase C — update an expense category (rename / activate-deactivate).
@@ -11,8 +12,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ catego
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, EXPENSE_CATEGORY_MANAGE_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, clinicId, 'manage_expenses', { allowedRoles: EXPENSE_CATEGORY_MANAGE_ROLES });
+    if (permission) return permission;
     const body = await req.json();
     const data = await updateExpenseCategory({
       clinicId,

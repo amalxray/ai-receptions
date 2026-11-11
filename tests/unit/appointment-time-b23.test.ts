@@ -93,7 +93,12 @@ const baseCreate = {
 beforeEach(() => {
   vi.clearAllMocks();
   resetChain();
-  mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, status: 200 });
+  mockAuth.authorizeClinicRequest.mockResolvedValue({
+    authorized: true,
+    status: 200,
+    role: 'owner',
+    user: { id: 'test-owner' },
+  });
 });
 
 describe('B23 — default slot', () => {

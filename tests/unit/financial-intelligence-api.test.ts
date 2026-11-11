@@ -14,6 +14,9 @@ const mockAuth = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
 
+const mockPermission = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
+vi.mock('@/lib/services/permissionGate', () => ({ permissionDenied: mockPermission.permissionDenied }));
+
 const mockFI = vi.hoisted(() => ({ getFinancialIntelligence: vi.fn() }));
 vi.mock('@/lib/services/financialIntelligence', () => mockFI);
 
@@ -32,6 +35,7 @@ const req = (clinicId = 'c1') =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPermission.permissionDenied.mockResolvedValue(null);
   mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true });
   mockGate.featureGateForClinic.mockResolvedValue({ allowed: true, requiredPlan: 'growth', planNameAr: 'نمو' });
 });
@@ -44,24 +48,28 @@ describe('PP-5 API route — RBAC and shape', () => {
   });
 
   it('401 for unauthenticated callers (no data exposure)', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 401 });
+    mockPermission.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 401 }));
     const res = await GET(req());
     expect(res.status).toBe(401);
     expect(mockFI.getFinancialIntelligence).not.toHaveBeenCalled();
   });
 
   it('403 for unauthorized actors — patient portal roles cannot read FI', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
+    mockPermission.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 403 }));
     const res = await GET(req());
     expect(res.status).toBe(403);
     expect(mockFI.getFinancialIntelligence).not.toHaveBeenCalled();
-    expect(mockAuth.roleDenied).toHaveBeenCalledWith(expect.anything(), mockAuth.FINANCE_READ_ROLES);
   });
 
   it('200 with derived data for an authorized finance role; clinic_id passed through untouched', async () => {
     mockFI.getFinancialIntelligence.mockResolvedValue({ kpis: { revenue: 1 } });
     const res = await GET(req('c1'));
     expect(res.status).toBe(200);
+    expect(mockPermission.permissionDenied).toHaveBeenCalledWith(
+      expect.any(Request),
+      'c1',
+      'view_financial',
+    );
     const body = await res.json();
     expect(body.data.kpis.revenue).toBe(1);
     expect(mockFI.getFinancialIntelligence).toHaveBeenCalledWith('c1', { fromMonth: undefined, toMonth: undefined });

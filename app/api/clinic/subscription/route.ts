@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { SUBSCRIPTION_PLANS } from '@/lib/subscription/plans';
@@ -16,13 +16,8 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
-
-    const roleGate = roleDenied(authorization, ADMIN_ROLES);
-    if (roleGate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const permission = await permissionDenied(req, clinicId, 'manage_subscription');
+    if (permission) return permission;
 
     // STEP 15G-A — deleted_at consistency: the entitled row lookup ignores soft-deleted rows.
     const { data, error } = await supabaseAdmin
@@ -96,13 +91,8 @@ export async function POST(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
-
-    const roleGate = roleDenied(authorization, ADMIN_ROLES);
-    if (roleGate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const permission = await permissionDenied(req, clinicId, 'manage_subscription');
+    if (permission) return permission;
 
     const body = await req.json();
     const parsed = planIdSchema.safeParse(body);

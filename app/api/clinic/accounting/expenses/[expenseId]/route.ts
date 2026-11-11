@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, EXPENSE_RECORD_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, EXPENSE_RECORD_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { updateExpense } from '@/lib/services/accounting';
@@ -15,11 +15,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ expens
     }
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, EXPENSE_RECORD_ROLES);
-    if (denied) {
-      return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    }
-
     const permBlocked = await permissionDenied(req, clinicId, 'manage_expenses', { allowedRoles: EXPENSE_RECORD_ROLES });
     if (permBlocked) return permBlocked;
 

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { DATA_ROLES, authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { toPatientShape } from '@/lib/services/patientShape';
 import { sanitizeSearchQuery } from '@/lib/services/patientSearch';
 import { createDemoPatient, getDemoPatients, demoFallbackAllowed } from '@/lib/demoState';
@@ -79,6 +80,8 @@ export async function GET(req: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, clinicId, 'view_patients', { allowedRoles: [...DATA_ROLES, 'accountant'] });
+    if (permission) return permission;
 
     // N28 — the raw query used to be interpolated into PostgREST's `.or()` as-is,
     // so a comma / parenthesis / `*` produced `failed to parse logic tree` (500).
@@ -168,6 +171,8 @@ export async function POST(request: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(request, payload.clinic_id, 'manage_patients', { allowedRoles: [...DATA_ROLES, 'accountant'] });
+    if (permission) return permission;
 
     const supabase = supabaseAdmin;
     const { data, error } = await supabase

@@ -290,6 +290,31 @@ describe('/api/clinic/roles', () => {
     expect((await res.json()).role.name).toBe('دور محدّث');
   });
 
+  it('clears cached permissions after a custom-role update', async () => {
+    respond['custom_roles.select'] = { data: { permissions: ['view_overview'] }, error: null };
+    const before = await getUserPermissions(TARGET, CLINIC, 'custom-secretary');
+    expect(before.has('view_overview')).toBe(true);
+
+    respond['custom_roles.update'] = {
+      data: { id: 'r1', name: 'custom-secretary', permissions: ['manage_leads'] },
+      error: null,
+    };
+    const res = await patchRole(
+      req('/api/clinic/roles/r1', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ clinic_id: CLINIC, permissions: ['manage_leads'] }),
+      }),
+      { params: { roleId: 'r1' } } as never
+    );
+    expect(res.status).toBe(200);
+
+    respond['custom_roles.select'] = { data: { permissions: ['manage_leads'] }, error: null };
+    const after = await getUserPermissions(TARGET, CLINIC, 'custom-secretary');
+    expect(after.has('manage_leads')).toBe(true);
+    expect(after.has('view_overview')).toBe(false);
+  });
+
   it('DELETE refuses while members still use the role (409)', async () => {
     respond['custom_roles.select'] = { data: { id: 'r1', name: 'سكرتيرة متقدمة', is_system: false }, error: null };
     respond['clinic_users.count'] = { data: null, error: null, count: 3 };

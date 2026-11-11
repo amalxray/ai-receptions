@@ -132,7 +132,11 @@ describe('PHASE 3 — recall run/cancel API', () => {
 
 describe('PHASE 3 — patient notification preferences', () => {
   it('403 RBAC (non-admin)', async () => {
-    mockAuth.roleDenied.mockReturnValueOnce({ status: 403 });
+    mockAuth.authorizeClinicRequest.mockResolvedValue({
+      authorized: true,
+      user: { id: 'staff-user' },
+      role: 'staff',
+    });
     const res = await prefsPUT(req(`http://localhost/api/clinic/patients/${PID}/notification-preferences?clinic_id=${CID}`, {
       method: 'PUT',
       body: JSON.stringify({ opt_out: true }),

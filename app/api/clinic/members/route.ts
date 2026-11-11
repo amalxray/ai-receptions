@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
@@ -55,11 +55,7 @@ export async function GET(req: Request) {
     );
   }
 
-  // Only admins can view the member list.
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
+  const memberListPerm = await permissionDenied(req, clinicId, 'manage_team');
   if (memberListPerm) return memberListPerm;
 
   const { data, error } = await supabaseAdmin
@@ -101,15 +97,18 @@ export async function POST(req: Request) {
       { status: authorization.status }
     );
   }
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  const addPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
+  const addPerm = await permissionDenied(req, clinicId, 'manage_team');
   if (addPerm) return addPerm;
 
   const parsed = addSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   const { email, role } = parsed.data;
+
+  // Delegated team managers may add standard staff roles only. Clinic admins
+  // remain the only callers who can assign privileged or clinic-defined roles.
+  if (!ADMIN_ROLES.includes(authorization.role ?? '') && !['staff', 'doctor', 'receptionist'].includes(role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // Find existing auth user by email; do NOT create accounts here.
   let targetUserId: string | null = null;
@@ -178,15 +177,18 @@ export async function PATCH(req: Request) {
       { status: authorization.status }
     );
   }
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  const patchPerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
+  const patchPerm = await permissionDenied(req, clinicId, 'manage_team');
   if (patchPerm) return patchPerm;
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   const { user_id, role, is_active } = parsed.data;
+
+  // A manage_team grant may maintain membership, but assigning roles remains
+  // admin-only to prevent privilege escalation.
+  if (role !== undefined && !ADMIN_ROLES.includes(authorization.role ?? '')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // #43 — custom roles: a non-system role name must exist as a custom role of
   // THIS clinic before it can be assigned.
@@ -269,10 +271,7 @@ export async function DELETE(req: Request) {
       { status: authorization.status }
     );
   }
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  const removePerm = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
+  const removePerm = await permissionDenied(req, clinicId, 'manage_team');
   if (removePerm) return removePerm;
 
   const parsed = deleteSchema.safeParse(await req.json().catch(() => null));
