@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { uploadMedicalFile, resolveMedicalFileOrgAccess } from '@/lib/services/medicalFiles';
 import { logEvent } from '@/lib/server/logging';
 
@@ -20,8 +21,8 @@ export async function POST(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinicId);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية رفع ملفات طبية' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'manage_medical_files');
+    if (gate) return gate;
 
     const form = await req.formData();
     const patientId = String(form.get('patient_id') ?? url.searchParams.get('patient_id') ?? '');
@@ -62,10 +63,8 @@ export async function GET(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
     if (!patientId) return NextResponse.json({ error: 'patient_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_medical_files');
+    if (gate) return gate;
 
     const access = await resolveMedicalFileOrgAccess(clinicId, patientId, null);
     if (access.ok) {
