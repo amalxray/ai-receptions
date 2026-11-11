@@ -4,6 +4,7 @@ import { DELETE as deleteReview } from '@/app/api/clinic/reviews/[id]/route';
 import { POST as publishReview } from '@/app/api/clinic/reviews/[id]/publish/route';
 import { POST as rejectReview } from '@/app/api/clinic/reviews/[id]/reject/route';
 import { GET as statsGET } from '@/app/api/clinic/reviews/stats/route';
+import { GET as staffReviewsGET } from '@/app/api/clinic/reviews/route';
 
 /** Phase 1 Reviews — API contract (no network). Supabase = queue chain mock. */
 const CID = '11111111-1111-1111-1111-111111111111';
@@ -24,6 +25,7 @@ const h = vi.hoisted(() => {
     lastUpdate: null as any,
     checkRate: vi.fn(),
     authorize: vi.fn(),
+    permissionDenied: vi.fn(),
     logEvent: vi.fn(),
     from: vi.fn(),
   };
@@ -79,6 +81,7 @@ vi.mock('@/lib/services/clinicAuthorization', () => ({
         : null,
   ADMIN_ROLES: ['owner', 'manager'],
 }));
+vi.mock('@/lib/services/permissionGate', () => ({ permissionDenied: h.permissionDenied }));
 
 function postReq(body: Record<string, unknown>): Request {
   return new Request('http://localhost/api/public/reviews', {
@@ -105,6 +108,7 @@ beforeEach(() => {
   h.lastUpdate = null;
   h.checkRate.mockResolvedValue({ allowed: true, scope: null });
   h.authorize.mockResolvedValue({ authorized: true, role: 'owner' });
+  h.permissionDenied.mockResolvedValue(null);
 });
 
 describe('POST /api/public/reviews', () => {
@@ -251,6 +255,14 @@ describe('clinic routes — publish / reject / delete / stats', () => {
     expect(body.data.average).toBe(4.4);
     expect(body.data.distribution).toEqual({ 1: 0, 2: 0, 3: 1, 4: 1, 5: 3 });
     expect(h.chains[0].__eqs).toContainEqual(['is_published', true]);
+    expect(h.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CID, 'view_reviews', expect.any(Object));
+  });
+
+  it('uses view_reviews for the staff review list', async () => {
+    h.queue = ['list', 'list'];
+    const res = await staffReviewsGET(new Request(`http://localhost/api/clinic/reviews?clinic_id=${CID}`));
+    expect(res.status).toBe(200);
+    expect(h.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CID, 'view_reviews', expect.any(Object));
   });
 
   it('13. غير admin (role=viewer) → 403', async () => {

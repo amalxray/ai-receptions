@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, EXPENSE_RECORD_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordExpense, listExpenses } from '@/lib/services/accounting';
 
@@ -12,11 +12,12 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, EXPENSE_RECORD_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     // #43 — per-permission enforcement (global by default, owner always allowed).
-    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_expenses', { allowedRoles: EXPENSE_RECORD_ROLES });
+    const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_expenses');
     if (permBlocked) return permBlocked;
+    if (!authorization.authorized) {
+      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
+    }
 
     const result = await recordExpense({
       clinicId: body.clinic_id,
@@ -42,11 +43,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
-    // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
     if (permBlocked) return permBlocked;
     const status = url.searchParams.get('status');
     if (status && !['recorded', 'voided'].includes(status)) {

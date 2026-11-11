@@ -143,6 +143,7 @@ const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
   'medical-files': 'view_medical_files',
   conversations: 'view_conversations',
   messages: 'view_messages',
+  reviews: 'view_reviews',
   'imaging-requests': 'view_imaging_requests',
   // B20 — referrals reuse the imaging-requests permission (no new permission
   // row / migration); the sidebar stays convenience, APIs keep enforcing.
@@ -153,6 +154,7 @@ const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
   analytics: 'view_analytics',
   growth: 'view_growth',
   team: 'manage_team',
+  'communication-settings': 'manage_settings',
   ads: 'manage_ads',
   'knowledge-base': 'manage_knowledge',
   'public-page': 'view_public_page',

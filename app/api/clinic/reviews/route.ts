@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 
@@ -17,7 +18,7 @@ const querySchema = z.object({
 
 /**
  * Phase 4a — staff list of reviews with filters + stats.
- * Auth: authorizeClinicRequest + ADMIN_ROLES (same as stats/publish/reject).
+ * Auth: clinic membership plus the effective `view_reviews` permission.
  * Only non-deleted rows (deleted_at IS NULL).
  * filter: all | pending (new, unpublished, not rejected) | published |
  *   rejected | flagged (flagged_medical, unpublished).
@@ -38,10 +39,8 @@ export async function GET(req: Request) {
     }
     const { clinic_id: clinicId, filter, search, rating, limit, offset } = parsed.data;
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الإدارة' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_reviews', { allowedRoles: ADMIN_ROLES });
+    if (gate) return gate;
 
     let query = supabaseAdmin
       .from('clinic_reviews')
