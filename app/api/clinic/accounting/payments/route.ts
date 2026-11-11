@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, PAYMENT_RECORD_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, roleDenied, PAYMENT_RECORD_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordPayment, listPayments } from '@/lib/services/accounting';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
@@ -60,11 +60,8 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
     if (permBlocked) return permBlocked;
     const rawLimit = url.searchParams.get('limit');
     const parsedLimit = rawLimit === null ? 50 : Number(rawLimit);
