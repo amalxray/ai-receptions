@@ -32,6 +32,7 @@ describe('permission registry & display groups', () => {
     // added keys and a stale "28" would have been a false failure.
     expect(ALL_PERMISSION_KEYS.length).toBeGreaterThanOrEqual(28);
     expect(Object.keys(PERMISSIONS)).toHaveLength(ALL_PERMISSION_KEYS.length);
+    expect(ALL_PERMISSION_KEYS).toContain('view_reviews');
   });
 
   it('renders EVERY registry permission exactly once (no orphans, no duplicates)', () => {

@@ -92,8 +92,9 @@ function ReviewFilters({ filter, onFilter, search, onSearch, star, onStar }: {
   );
 }
 
-function ReviewCard({ r, acting, onAct }: {
+function ReviewCard({ r, acting, onAct, canManage }: {
   r: ReviewItem; acting: string | null; onAct: (id: string, a: 'publish' | 'reject' | 'delete') => void;
+  canManage: boolean;
 }) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -113,7 +114,7 @@ function ReviewCard({ r, acting, onAct }: {
         </div>
       </div>
       {r.comment && <p className="mt-2 text-sm leading-relaxed text-slate-700">{r.comment}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
+      {canManage && <div className="mt-3 flex flex-wrap gap-2">
         {!r.is_published && (
           <button
             onClick={() => onAct(r.id, 'publish')} disabled={acting === r.id}
@@ -146,7 +147,7 @@ function ReviewCard({ r, acting, onAct }: {
         >
           حذف
         </button>
-      </div>
+      </div>}
     </article>
   );
 }
@@ -169,7 +170,8 @@ function ReviewPager({ page, totalPages, onPage }: { page: number; totalPages: n
 }
 
 export default function ReviewsInboxPage() {
-  const { clinicId, authHeaders, loading: clinicLoading } = useClinicContext();
+  const { clinicId, authHeaders, loading: clinicLoading, role } = useClinicContext();
+  const canManageReviews = role === 'owner' || role === 'manager';
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<Stats>(ZERO_STATS);
@@ -276,7 +278,7 @@ export default function ReviewsInboxPage() {
           ) : items.length === 0 ? (
             <EmptyState title="لا توجد تقييمات" description="لا توجد تقييمات مطابقة للفلتر الحالي." />
           ) : (
-            items.map((r) => <ReviewCard key={r.id} r={r} acting={acting} onAct={act} />)
+            items.map((r) => <ReviewCard key={r.id} r={r} acting={acting} onAct={act} canManage={canManageReviews} />)
           )}
         </div>
         <ReviewPager page={page} totalPages={totalPages} onPage={setPage} />

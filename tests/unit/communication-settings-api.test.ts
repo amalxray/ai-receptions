@@ -1,14 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET, PUT } from '@/app/api/clinic/communication-settings/route';
 
-// Mock clinicAuthorization
-const mockAuth = vi.hoisted(() => ({
-  authorizeClinicRequest: vi.fn(),
-  roleDenied: vi.fn(() => null),
-  ADMIN_ROLES: ['owner','manager'],
-  DATA_ROLES: ['owner','manager','doctor','receptionist','staff'],
-}));
-vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
+const mockPermissionGate = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
+vi.mock('@/lib/services/permissionGate', () => mockPermissionGate);
 
 // Mock settings service
 const mockSettings = vi.hoisted(() => ({
@@ -44,7 +38,7 @@ const defaultSettings = {
 describe('GET /api/clinic/communication-settings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'user-1' }, role: 'owner' });
+    mockPermissionGate.permissionDenied.mockResolvedValue(null);
   });
 
   it('returns settings for an authorized clinic member', async () => {
@@ -56,6 +50,7 @@ describe('GET /api/clinic/communication-settings', () => {
     expect(res.status).toBe(200);
     expect(body.data).toEqual(defaultSettings);
     expect(mockSettings.getClinicCommunicationSettings).toHaveBeenCalledWith(CLINIC_A);
+    expect(mockPermissionGate.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CLINIC_A, 'manage_settings');
   });
 
   it('returns 400 when clinic_id is missing', async () => {
@@ -65,13 +60,17 @@ describe('GET /api/clinic/communication-settings', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 401 });
+    mockPermissionGate.permissionDenied.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+    );
     const res = await GET(makeRequest(`http://localhost/api/clinic/communication-settings?clinic_id=${CLINIC_A}`));
     expect(res.status).toBe(401);
   });
 
   it('returns 403 when caller is not a member of the clinic (tenant isolation)', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
+    mockPermissionGate.permissionDenied.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
+    );
     const res = await GET(makeRequest(`http://localhost/api/clinic/communication-settings?clinic_id=${CLINIC_B}`));
     expect(res.status).toBe(403);
     expect(mockSettings.getClinicCommunicationSettings).not.toHaveBeenCalled();
@@ -89,7 +88,7 @@ describe('GET /api/clinic/communication-settings', () => {
 describe('PUT /api/clinic/communication-settings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'user-1' }, role: 'owner' });
+    mockPermissionGate.permissionDenied.mockResolvedValue(null);
     mockSettings.validateAndNormalizeSettings.mockImplementation((clinicId, input) => ({
       clinicId,
       emailEnabled: input.emailEnabled ?? true,
@@ -115,6 +114,7 @@ describe('PUT /api/clinic/communication-settings', () => {
     expect(res.status).toBe(200);
     expect(body.data).toEqual(defaultSettings);
     expect(mockSettings.saveClinicCommunicationSettings).toHaveBeenCalledWith(expect.objectContaining({ clinicId: CLINIC_A }));
+    expect(mockPermissionGate.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CLINIC_A, 'manage_settings');
   });
 
   it('returns 400 for invalid channel in payload', async () => {
@@ -137,7 +137,9 @@ describe('PUT /api/clinic/communication-settings', () => {
   });
 
   it('returns 403 when caller is not a member of the clinic (tenant isolation)', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
+    mockPermissionGate.permissionDenied.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
+    );
     const res = await PUT(makeRequest(`http://localhost/api/clinic/communication-settings?clinic_id=${CLINIC_B}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
