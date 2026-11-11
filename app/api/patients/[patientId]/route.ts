@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { toPatientShape } from '@/lib/services/patientShape';
 import { deleteDemoPatient, getDemoPatients, updateDemoPatient, demoFallbackAllowed } from '@/lib/demoState';
 
@@ -61,6 +62,8 @@ export async function GET(request: Request) {
   if (!authorization.authorized) {
     return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
   }
+  const permission = await permissionDenied(request, clinicId, 'view_patients');
+  if (permission) return permission;
 
   // Only checked after authorization: a malformed id must not reach Postgres as
   // a 22P02 "invalid input syntax for type uuid" (which surfaces as a 500), and
@@ -135,6 +138,8 @@ export async function PUT(request: Request) {
   if (!authorization.authorized) {
     return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
   }
+  const permission = await permissionDenied(request, clinicId, 'manage_patients');
+  if (permission) return permission;
 
   const supabase = supabaseAdmin;
 
@@ -201,6 +206,8 @@ export async function DELETE(request: Request) {
   if (!authorization.authorized) {
     return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
   }
+  const permission = await permissionDenied(request, clinicId, 'delete_patients');
+  if (permission) return permission;
 
   const supabase = supabaseAdmin;
   const { error } = await supabase.from('patients').delete().eq('id', patientId).eq('clinic_id', clinicId);

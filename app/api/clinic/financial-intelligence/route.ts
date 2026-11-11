@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { featureGateForClinic } from '@/lib/subscription/featureGateServer';
-import { authorizeClinicRequest, roleDenied, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { getFinancialIntelligence } from '@/lib/services/financialIntelligence';
 
 /**
@@ -24,14 +25,8 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) {
-      return NextResponse.json(
-        { error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' },
-        { status: denied.status }
-      );
-    }
+    const permission = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    if (permission) return permission;
 
 
     // Feature gate (v2) — tier-restricted feature.

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { getPayslipDetail } from '@/lib/services/payroll-engine';
 import { logEvent } from '@/lib/server/logging';
 
@@ -23,6 +24,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
       );
     }
     if (!authorization.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const permission = await permissionDenied(req, clinicId, 'view_own_payslips', { allowedRoles: ADMIN_ROLES });
+    if (permission) return permission;
 
     const data = await getPayslipDetail({
       clinicId,

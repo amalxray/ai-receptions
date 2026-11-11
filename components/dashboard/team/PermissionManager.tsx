@@ -29,11 +29,13 @@ interface Props {
 }
 
 type Overrides = Record<string, boolean>;
+const LOAD_FAILED_MESSAGE = 'تعذر تحميل الصلاحيات، يرجى التحديث';
 
 export default function PermissionManager({ userId, clinicId, role, userName, authHeaders, onSaved }: Props) {
   const [overrides, setOverrides] = useState<Overrides>({});
   const [customRoles, setCustomRoles] = useState<CustomRoleLike[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -51,7 +53,10 @@ export default function PermissionManager({ userId, clinicId, role, userName, au
   useEffect(() => {
     let alive = true;
     setLoaded(false);
+    setLoadFailed(false);
     setError(null);
+    setOverrides({});
+    setCustomRoles([]);
 
     (async () => {
       try {
@@ -62,7 +67,8 @@ export default function PermissionManager({ userId, clinicId, role, userName, au
           { headers }
         );
         const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل صلاحيات العضو');
+        if (!res.ok) throw new Error(LOAD_FAILED_MESSAGE);
+        if (!Array.isArray(body?.overrides)) throw new Error(LOAD_FAILED_MESSAGE);
         if (!alive) return;
 
         const map: Overrides = {};
@@ -77,12 +83,15 @@ export default function PermissionManager({ userId, clinicId, role, userName, au
         // this lookup every switch would wrongly read as "off".
         if (isCustomRoleName(role)) {
           const roleRes = await fetch(`/api/clinic/roles?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-          if (roleRes.ok) {
-            const roleBody = await roleRes.json().catch(() => ({}));
-            if (alive) setCustomRoles((roleBody?.roles ?? []) as CustomRoleLike[]);
+          if (!roleRes.ok) throw new Error(LOAD_FAILED_MESSAGE);
+          const roleBody = await roleRes.json().catch(() => ({}));
+          if (!Array.isArray(roleBody?.roles) || !roleBody.roles.some((item: CustomRoleLike) => item.name === role)) {
+            throw new Error(LOAD_FAILED_MESSAGE);
           }
+          if (alive) setCustomRoles(roleBody.roles as CustomRoleLike[]);
         }
       } catch (e) {
+        if (alive) setLoadFailed(true);
         if (alive) setError(e instanceof Error ? e.message : 'تعذر تحميل صلاحيات العضو');
       } finally {
         if (alive) setLoaded(true);
@@ -146,7 +155,7 @@ export default function PermissionManager({ userId, clinicId, role, userName, au
         <button
           type="button"
           onClick={save}
-          disabled={saving || !loaded}
+          disabled={saving || !loaded || loadFailed}
           title={!loaded ? 'جارٍ تحميل التخصيصات الحالية…' : undefined}
           className="rounded-full bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
         >
@@ -154,9 +163,9 @@ export default function PermissionManager({ userId, clinicId, role, userName, au
         </button>
       </div>
 
-      {error && (
+      {(loadFailed || error) && (
         <p className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-300">
-          {error}
+          {loadFailed ? LOAD_FAILED_MESSAGE : error}
         </p>
       )}
       {!loaded && !error && (

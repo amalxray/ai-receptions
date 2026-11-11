@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import {
   rescheduleAppointment,
   RescheduleError,
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, clinicId, 'manage_appointments');
+    if (permission) return permission;
 
     const body = await req.json();
     const parsed = rescheduleSchema.safeParse(body);

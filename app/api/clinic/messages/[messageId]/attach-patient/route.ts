@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { DATA_ROLES } from '@/lib/services/clinicAuthorization';
 import { attachMessageToPatient } from '@/lib/services/clinicMessaging';
 import { logEvent } from '@/lib/server/logging';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 /**
  * PHASE I — Attach a message attachment to a patient's medical file.
@@ -32,15 +33,8 @@ export async function POST(req: Request, { params }: { params: { messageId: stri
       );
     }
 
-    const auth = await authorizeClinicRequest(req, parsed.data.clinic_id);
-    if (!auth.authorized) {
-      return NextResponse.json(
-        { error: auth.status === 401 ? 'يرجى تسجيل الدخول أولاً' : 'غير مخول' },
-        { status: auth.status }
-      );
-    }
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية إرفاق ملفات طبية' }, { status: 403 });
+    const gate = await permissionDenied(req, parsed.data.clinic_id, 'manage_medical_files', { allowedRoles: DATA_ROLES });
+    if (gate) return gate;
 
     const result = await attachMessageToPatient({
       clinicId: parsed.data.clinic_id,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { computeMultiServicePlan, bookMultiService } from '@/lib/services/smartScheduling';
 import { assertEntitlement, entitlementErrorResponse, releaseEntitlement } from '@/lib/subscription/entitlements';
 import { findOrCreatePatient } from '@/lib/services/bookingService';
@@ -41,8 +42,8 @@ export async function POST(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الحجز' }, { status: 403 });
+    const permission = await permissionDenied(req, clinic_id, 'manage_appointments', { allowedRoles: DATA_ROLES });
+    if (permission) return permission;
 
     let patientId = parsed.data.patient_id ?? null;
     if (!patientId) {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { logEvent } from '@/lib/server/logging';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { createConversation, getConversationById, listConversationsForClinic, updateConversationStatus } from '@/lib/services/conversationService';
 import { loadConversationSummaries, loadConversationDetailExtras } from '@/lib/services/conversationSummary';
 import { getSupabaseEnvConfig } from '@/lib/config';
@@ -71,6 +72,8 @@ export async function GET(req: Request) {
         logEvent('authorization_denied', { route: 'ai_conversations_get', clinic_id: conv.clinic_id, reason: authorization.status === 401 ? 'unauthorized' : 'forbidden' }, 'warn');
         return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
       }
+      const permission = await permissionDenied(req, conv.clinic_id, 'view_conversations');
+      if (permission) return permission;
       // Detail payload: staff-readable summary + linked appointment + patient
       // record. Extras are additive — a failure there must not break the core
       // conversation fetch.
@@ -93,6 +96,8 @@ export async function GET(req: Request) {
         logEvent('authorization_denied', { route: 'ai_conversations_get', clinic_id: clinicId, reason: authorization.status === 401 ? 'unauthorized' : 'forbidden' }, 'warn');
         return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
       }
+      const permission = await permissionDenied(req, clinicId, 'view_conversations');
+      if (permission) return permission;
       const list = await listConversationsForClinic(clinicId);
       // Staff-readable summaries instead of raw rows ("جلسة مريض" + session ids).
       try {
@@ -133,6 +138,8 @@ export async function PATCH(req: Request) {
       logEvent('authorization_denied', { route: 'ai_conversations_patch', clinic_id: conversation.clinic_id, user_id: user.id, reason: authorization.status === 401 ? 'unauthorized' : 'forbidden' }, 'warn');
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, conversation.clinic_id, 'view_conversations');
+    if (permission) return permission;
 
     const updated = await updateConversationStatus(id, status as any);
     return NextResponse.json({ data: updated });

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { updateRecallRule, deleteRecallRule } from '@/lib/services/growth';
 
@@ -9,8 +9,6 @@ export async function PATCH(req: Request, context: { params: { ruleId: string } 
     const clinicId = body?.clinic_id;
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, clinicId, 'manage_leads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 
@@ -42,8 +40,6 @@ export async function DELETE(req: Request, context: { params: { ruleId: string }
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, clinicId, 'manage_leads', { allowedRoles: ADMIN_ROLES });
     if (permBlocked) return permBlocked;
     await deleteRecallRule({ clinicId, ruleId: context.params.ruleId });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseClient } from '@/lib/supabase/client';
 import { logEvent } from '@/lib/server/logging';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { getConversationById } from '@/lib/services/conversationService';
 import { saveMessage } from '@/lib/services/messageService';
 
@@ -51,6 +52,8 @@ export async function POST(req: Request) {
       }, 'warn');
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, conversation.clinic_id, 'send_messages');
+    if (permission) return permission;
 
     const message = await saveMessage({
       conversation_id: conversationId,

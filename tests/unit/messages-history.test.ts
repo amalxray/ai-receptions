@@ -62,6 +62,10 @@ vi.mock('@/lib/services/clinicAuthorization', () => ({
   ),
 }));
 
+vi.mock('@/lib/services/permissionGate', () => ({
+  permissionDenied: vi.fn(async () => null),
+}));
+
 vi.mock('@/lib/demoState', () => ({
   demoFallbackAllowed: () => false,
   getDemoMessages: () => [],

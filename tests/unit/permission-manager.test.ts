@@ -143,9 +143,16 @@ describe('PermissionManager render contract (regression sentinel)', () => {
     expect(componentSource).not.toMatch(/\{\s*!?loaded\s*&&\s*PERMISSION_GROUPS\.map/);
   });
 
-  it('only gates the save button on saving/loaded (never on a flag that cannot clear)', () => {
+  it('gates the save button until permissions load successfully', () => {
     const disabledMatch = componentSource.match(/disabled=\{([^}]+)\}/);
-    expect(disabledMatch && disabledMatch[1]).toBe('saving || !loaded');
+    expect(disabledMatch && disabledMatch[1]).toBe('saving || !loaded || loadFailed');
+    expect(componentSource).toMatch(/setLoadFailed\(true\)/);
+    expect(componentSource).toContain('تعذر تحميل الصلاحيات، يرجى التحديث');
+  });
+
+  it('accepts an empty override list as a valid role-base permission state', () => {
+    expect(componentSource).toMatch(/Array\.isArray\(body\?\.overrides\)/);
+    expect(componentSource).not.toMatch(/body\?\.overrides\.length/);
   });
 
   it('fetches the member overrides and, for custom roles, the clinic roles API', () => {

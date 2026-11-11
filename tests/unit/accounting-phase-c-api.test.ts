@@ -246,14 +246,14 @@ describe('Phase C API — cash register sessions', () => {
     expect(res.status).toBe(409);
   });
 
-  it('manager (outside CASH_SESSION_CLOSE_ROLES) cannot CLOSE → 403', async () => {
+  it('manager with the manage_payments default may CLOSE → 200', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'manager' });
     const res = await closeSession(
       makeRequest(`/api/clinic/accounting/cash/sessions/ses-1/close?clinic_id=${CLINIC_A}`, jsonBody({ counted_amount: 320 })),
       { params: Promise.resolve({ sessionId: 'ses-1' }) }
     );
-    expect(res.status).toBe(403);
-    expect(mockAccounting.closeCashSession).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockAccounting.closeCashSession).toHaveBeenCalled();
   });
 
   it('owner closes → 200 with the variance snapshot', async () => {

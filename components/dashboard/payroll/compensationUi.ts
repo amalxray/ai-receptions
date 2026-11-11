@@ -352,10 +352,9 @@ export function translateCompensationError(status: number, rawMessage?: string |
 }
 
 /**
- * Decision #3: writing a salary is limited to owner | accountant. A manager may
- * read the screen, but sees a disabled button with a stated reason instead of a
- * button that fails with 403.
+ * The manager default permission set includes manage_payroll, so managers can
+ * edit salary contracts alongside owners and accountants.
  */
 export function canManageCompensations(role: string | null | undefined): boolean {
-  return role === 'owner' || role === 'accountant';
+  return role === 'owner' || role === 'manager' || role === 'accountant';
 }

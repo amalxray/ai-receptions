@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 
 /**
@@ -29,8 +30,8 @@ export async function GET(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinicId);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_imaging_requests', { allowedRoles: DATA_ROLES });
+    if (gate) return gate;
 
     // Accepted relationship (either direction) — same gate as referrals POST.
     const { data: rel } = await supabaseAdmin

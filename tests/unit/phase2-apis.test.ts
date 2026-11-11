@@ -12,6 +12,10 @@ const mockAuth = vi.hoisted(() => ({
   DATA_ROLES: ['owner', 'manager', 'doctor', 'receptionist', 'staff'],
 }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
+const mockPermission = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
+vi.mock('@/lib/services/permissionGate', () => ({
+  permissionDenied: mockPermission.permissionDenied,
+}));
 
 const state = vi.hoisted(() => ({
   appointment: {
@@ -125,6 +129,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'owner-1' }, role: 'owner' });
   mockAuth.roleDenied.mockReturnValue(null);
+  mockPermission.permissionDenied.mockResolvedValue(null);
   state.appointment = { data: { id: APPT, provider_id: PROVIDER, service_id: SERVICE, scheduled_at: '2026-09-07T10:00:00.000Z', status: 'scheduled' }, error: null };
 });
 
@@ -139,7 +144,7 @@ describe('PHASE 2 — multi-service security', () => {
   });
 
   it('403 non-admin role (staff)', async () => {
-    mockAuth.roleDenied.mockReturnValueOnce({ status: 403 });
+    mockPermission.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 403 }));
     const res = await multiPOST(req('http://localhost/api/appointments/multi', {
       method: 'POST',
       body: JSON.stringify(multiBody()),
@@ -201,7 +206,7 @@ describe('PHASE 2 — staff cancel + waitlist', () => {
   });
 
   it('waitlist GET is RBAC-guarded; POST and PATCH succeed for owner', async () => {
-    mockAuth.roleDenied.mockReturnValueOnce({ status: 403 });
+    mockPermission.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 403 }));
     const g = await waitlistGET(req(`http://localhost/api/appointments/waitlist?clinic_id=${CID}`));
     expect(g.status).toBe(403);
     const p = await waitlistPOST(req('http://localhost/api/appointments/waitlist', {
@@ -228,7 +233,7 @@ describe('PHASE 2 — activity-aware scheduling API', () => {
   });
 
   it('403 non-admin role', async () => {
-    mockAuth.roleDenied.mockReturnValueOnce({ status: 403 });
+    mockPermission.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 403 }));
     const res = await activityPOST(req('http://localhost/api/activity/schedule', {
       method: 'POST',
       body: JSON.stringify(activityBody()),

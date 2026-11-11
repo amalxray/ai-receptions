@@ -1,6 +1,7 @@
 // app/api/knowledge/upload/route.ts
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { KnowledgeService } from '@/lib/services/knowledgeService';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
     .from('clinic_users')
     .select('clinic_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .limit(1)
     .single();
 
@@ -26,6 +28,8 @@ export async function POST(request: Request) {
   }
 
   const clinicId = clinicUserData.clinic_id;
+  const permission = await permissionDenied(request, clinicId, 'manage_knowledge');
+  if (permission) return permission;
 
   try {
     const formData = await request.formData();

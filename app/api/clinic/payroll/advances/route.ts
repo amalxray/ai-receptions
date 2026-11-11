@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { listAdvances, createAdvance } from '@/lib/services/payroll-engine';
 
@@ -16,9 +16,6 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, clinicId, 'view_advances', { allowedRoles: FINANCE_READ_ROLES });
     if (permBlocked) return permBlocked;
 
@@ -45,8 +42,6 @@ export async function POST(req: Request) {
     if (!body?.provider_id) return NextResponse.json({ error: 'provider_id required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_advances', { allowedRoles: FINANCE_ADMIN_ROLES });
     if (permBlocked) return permBlocked;
 

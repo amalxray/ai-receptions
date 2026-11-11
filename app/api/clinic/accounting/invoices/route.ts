@@ -21,8 +21,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, INVOICE_CREATE_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_invoices', { allowedRoles: INVOICE_CREATE_ROLES });
     if (permBlocked) return permBlocked;
 

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { findOrCreatePatient } from '@/lib/services/bookingService';
 import { logEvent } from '@/lib/server/logging';
 
@@ -45,8 +46,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ requestId: str
 
     const auth = await authorizeClinicRequest(req, centerId);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, centerId, 'manage_patients', { allowedRoles: DATA_ROLES });
+    if (gate) return gate;
 
     // The request must be owned by the caller's clinic (the imaging center).
     // patient_id = the REFERRING clinic's patient (set at referral time) —
