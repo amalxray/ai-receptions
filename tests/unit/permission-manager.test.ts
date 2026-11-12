@@ -33,6 +33,9 @@ describe('permission registry & display groups', () => {
     expect(ALL_PERMISSION_KEYS.length).toBeGreaterThanOrEqual(28);
     expect(Object.keys(PERMISSIONS)).toHaveLength(ALL_PERMISSION_KEYS.length);
     expect(ALL_PERMISSION_KEYS).toContain('view_reviews');
+    expect(ALL_PERMISSION_KEYS).toContain('view_financial_intelligence');
+    expect(PERMISSIONS.view_financial_intelligence).toBe('الذكاء المالي');
+    expect(PERMISSION_GROUPS.find(([title]) => title === 'المالية')?.[1]).toContain('view_financial_intelligence');
     expect(PERMISSIONS.manage_reviews).toBe('إدارة التقييمات');
     expect(ALL_PERMISSION_KEYS).toContain('manage_reviews');
     expect(PERMISSION_GROUPS.find(([title]) => title === 'التقييمات')?.[1]).toContain('manage_reviews');
@@ -72,6 +75,12 @@ describe('basePermissionsForRole (mirrors the server resolution order)', () => {
       const base = basePermissionsForRole(role);
       expect(Array.from(base).sort()).toEqual(Array.from(ROLE_DEFAULTS[role]).sort());
     }
+  });
+
+  it('preserves financial-intelligence access for managers and accountants by default', () => {
+    expect(ROLE_DEFAULTS.owner).toContain('view_financial_intelligence');
+    expect(ROLE_DEFAULTS.manager).toContain('view_financial_intelligence');
+    expect(ROLE_DEFAULTS.accountant).toContain('view_financial_intelligence');
   });
 
   it('keeps staff at the least-privilege base (overview + own payslip)', () => {

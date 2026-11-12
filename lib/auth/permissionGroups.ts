@@ -18,7 +18,7 @@ export const PERMISSION_GROUPS: ReadonlyArray<readonly [string, readonly Permiss
   ['الرسائل', ['view_messages', 'send_messages', 'view_conversations']],
   ['التصوير', ['view_imaging_requests', 'manage_imaging_requests']],
   ['العملاء المحتملون', ['view_leads', 'manage_leads']],
-  ['المالية', ['view_financial', 'manage_invoices', 'manage_payments', 'manage_expenses']],
+  ['المالية', ['view_financial', 'view_financial_intelligence', 'manage_invoices', 'manage_payments', 'manage_expenses']],
   ['التقييمات', ['view_reviews', 'manage_reviews']],
   ['التحليلات', ['view_analytics', 'view_growth']],
   ['الإدارة', ['manage_team', 'manage_settings', 'manage_ads', 'manage_knowledge', 'manage_subscription']],
