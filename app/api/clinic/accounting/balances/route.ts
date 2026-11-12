@@ -7,7 +7,11 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
+    const permBlocked = await permissionDenied(req, clinicId, [
+      'view_financial',
+      'manage_invoices',
+      'manage_payments',
+    ]);
     if (permBlocked) return permBlocked;
     const data = await getPatientBalances(clinicId, url.searchParams.get('patient_id'));
     return NextResponse.json({ data });

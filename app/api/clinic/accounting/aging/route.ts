@@ -8,7 +8,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const permission = await permissionDenied(req, clinicId, 'view_financial');
+    const permission = await permissionDenied(req, clinicId, ['view_financial', 'manage_invoices']);
     if (permission) return permission;
     const data = await getAgingSummary(clinicId, url.searchParams.get('patient_id'));
     return NextResponse.json({ data });

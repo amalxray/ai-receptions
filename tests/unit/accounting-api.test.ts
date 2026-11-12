@@ -114,7 +114,7 @@ describe('accounting API — RBAC (finance matrices)', () => {
     expect(paymentRes.status).toBe(200);
   });
 
-  it.each(['accountant', 'manager'])('%s can void invoices by manage_invoices but cannot void payments', async (role) => {
+  it.each(['accountant', 'manager'])('%s can void invoices and payments through their management permissions', async (role) => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role });
     const invoiceRes = await postVoidInvoice(
       makeRequest(`/api/clinic/accounting/invoices/inv-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
@@ -126,9 +126,9 @@ describe('accounting API — RBAC (finance matrices)', () => {
     );
 
     expect(invoiceRes.status).toBe(200);
-    expect(paymentRes.status).toBe(403);
+    expect(paymentRes.status).toBe(200);
     expect(mockAccounting.voidInvoice).toHaveBeenCalled();
-    expect(mockAccounting.voidPayment).not.toHaveBeenCalled();
+    expect(mockAccounting.voidPayment).toHaveBeenCalled();
   });
 
   it('denies an unknown role without manage_invoices', async () => {

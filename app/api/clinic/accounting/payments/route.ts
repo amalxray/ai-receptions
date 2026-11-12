@@ -59,7 +59,7 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
+    const permBlocked = await permissionDenied(req, clinicId, ['view_financial', 'manage_payments']);
     if (permBlocked) return permBlocked;
     const rawLimit = url.searchParams.get('limit');
     const parsedLimit = rawLimit === null ? 50 : Number(rawLimit);

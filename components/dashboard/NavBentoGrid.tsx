@@ -169,6 +169,7 @@ const BUTTON_TONES: Record<string, ButtonTone> = {
   leads: BUTTON_COLORS.lime,
   'financial-intelligence': BUTTON_COLORS.amber,
   expenses: BUTTON_COLORS.orange,
+  revenues: BUTTON_COLORS.emerald,
   payroll: BUTTON_COLORS.emerald,
   'my-payslips': BUTTON_COLORS.amber,
   analytics: BUTTON_COLORS.violet,

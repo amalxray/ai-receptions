@@ -3,9 +3,8 @@
 //
 // SEMANTICS (regression-safe by design):
 //   1. authorizeClinicRequest must succeed (real token + active membership).
-//   2. An EXPLICIT per-user override of the required permission decides first:
-//        enabled = false → 403 (revocation always wins)
-//        enabled = true  → allowed (a grant can widen access)
+//   2. An EXPLICIT per-user override decides first. For a single key, false
+//      revokes it; for an any-of gate, access remains if another key is granted.
 //   3. Otherwise the LEGACY role gate still applies (`allowedRoles`): a role
 //      that could call this endpoint before #43 keeps that ability. The
 //      flexible layer ADDS capabilities and lets an owner REVOKE explicitly —
@@ -35,7 +34,7 @@ export interface PermissionGateOptions {
 export async function permissionDenied(
   req: Request,
   clinicId: string,
-  required: PermissionKey,
+  required: PermissionKey | readonly PermissionKey[],
   options: PermissionGateOptions = {}
 ): Promise<NextResponse | null> {
   const authorization = await authorizeClinicRequest(req, clinicId);
@@ -52,18 +51,20 @@ export async function permissionDenied(
   let allowed: boolean;
   try {
     const state = await getUserPermissionState(authorization.user?.id ?? '', clinicId, role);
-    const explicit = state.overrides.get(required);
-
-    if (explicit === false) {
-      // Explicit revocation beats every other source of access.
+    const requiredKeys = typeof required === 'string' ? [required] : required;
+    const explicitlyDeniedAll = requiredKeys.every((key) => state.overrides.get(key) === false);
+    if (explicitlyDeniedAll) {
+      // An explicit revocation beats every other source when no alternative key
+      // in an OR-gated read remains granted.
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (explicit === true) {
+    if (requiredKeys.some((key) => state.overrides.get(key) === true)) {
       return null;
     }
-    allowed = legacyAllowed || hasPermission(state.permissions, required);
+    allowed = legacyAllowed || requiredKeys.some((key) => hasPermission(state.permissions, key));
   } catch {
-    allowed = legacyAllowed || (ROLE_DEFAULTS[role] ?? []).includes(required);
+    const requiredKeys = typeof required === 'string' ? [required] : required;
+    allowed = legacyAllowed || requiredKeys.some((key) => (ROLE_DEFAULTS[role] ?? []).includes(key));
   }
 
   if (!allowed) {

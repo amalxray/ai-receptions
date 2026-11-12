@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordWriteOff, listWriteOffs } from '@/lib/services/accounting';
 
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const permission = await permissionDenied(req, body.clinic_id, 'manage_invoices', { allowedRoles: FINANCE_ADMIN_ROLES });
+    const permission = await permissionDenied(req, body.clinic_id, 'manage_invoices');
     if (permission) return permission;
 
     const result = await recordWriteOff({
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const permission = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    const permission = await permissionDenied(req, clinicId, ['view_financial', 'manage_invoices']);
     if (permission) return permission;
     const data = await listWriteOffs(clinicId, url.searchParams.get('invoice_id'));
     return NextResponse.json({ data });

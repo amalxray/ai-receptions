@@ -38,6 +38,7 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   'referring-clinics': 'communication',
   'imaging-centers': 'communication',
   'financial-intelligence': 'finance',
+  revenues: 'finance',
   expenses: 'finance',
   analytics: 'finance',
   growth: 'finance',
@@ -59,6 +60,43 @@ const MODULE_GROUPS: Record<string, NavGroupId> = {
   badges: 'ops',
   profile: 'settings',
 };
+
+// #43 — module → effective permission keys. A module with alternatives remains
+// visible when any one of its supported permissions is granted.
+export const NAV_MODULE_PERMISSIONS: Partial<Record<string, string | readonly string[]>> = {
+  overview: 'view_overview',
+  appointments: 'view_appointments',
+  patients: 'view_patients',
+  'medical-files': 'view_medical_files',
+  conversations: 'view_conversations',
+  messages: 'view_messages',
+  reviews: 'view_reviews',
+  'imaging-requests': 'view_imaging_requests',
+  referrals: 'view_imaging_requests',
+  leads: 'view_leads',
+  'financial-intelligence': 'view_financial',
+  revenues: ['view_financial', 'manage_invoices', 'manage_payments'],
+  expenses: ['view_financial', 'manage_expenses'],
+  analytics: 'view_analytics',
+  growth: 'view_growth',
+  team: 'manage_team',
+  'communication-settings': 'manage_settings',
+  ads: 'manage_ads',
+  'knowledge-base': 'manage_knowledge',
+  'public-page': 'view_public_page',
+  'public-content': 'manage_public_page',
+  subscription: 'manage_subscription',
+  payroll: 'view_payroll',
+  'my-payslips': 'view_own_payslips',
+};
+
+export function hasNavModulePermission(module: string, permissions: ReadonlySet<string>): boolean {
+  const required = NAV_MODULE_PERMISSIONS[module];
+  if (required === undefined) return true;
+  return typeof required === 'string'
+    ? permissions.has(required)
+    : required.some((permission) => permissions.has(permission));
+}
 
 export function groupForModule(module: string): NavGroupId {
   return MODULE_GROUPS[module] ?? 'ops';
