@@ -8,7 +8,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ invoiceI
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const permission = await permissionDenied(req, clinicId, 'view_financial');
+    const permission = await permissionDenied(req, clinicId, ['view_financial', 'manage_invoices']);
     if (permission) return permission;
     const data = await getInvoiceDetail(clinicId, invoiceId);
     if (!data) return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 });

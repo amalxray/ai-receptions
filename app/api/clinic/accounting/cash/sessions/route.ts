@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, CASH_SESSION_OPEN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, CASH_SESSION_OPEN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { openCashSession, listCashSessions } from '@/lib/services/accounting';
 
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const permission = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    const permission = await permissionDenied(req, clinicId, ['view_financial', 'manage_payments']);
     if (permission) return permission;
     const data = await listCashSessions(clinicId);
     return NextResponse.json({ data });

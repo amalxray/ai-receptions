@@ -54,11 +54,11 @@ beforeEach(() => {
 });
 
 describe('custom permission route access for staff', () => {
-  it('authorizes expense listing with view_financial', async () => {
+  it('authorizes expense listing with view_financial or manage_expenses', async () => {
     const res = await expensesGET(request('http://localhost/api/clinic/accounting/expenses?clinic_id=' + CLINIC));
 
     expect(res.status).toBe(200);
-    expect(mocks.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CLINIC, 'view_financial');
+    expect(mocks.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CLINIC, ['view_financial', 'manage_expenses']);
   });
 
   it('authorizes expense creation with manage_expenses', async () => {

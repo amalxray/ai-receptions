@@ -145,6 +145,37 @@ describe('permissionDenied — explicit per-user decisions', () => {
   });
 });
 
+describe('permissionDenied — any-of permission gates', () => {
+  it('allows a manage-only grant for a finance read', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff', { manage_expenses: true }));
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_expenses']);
+
+    expect(res).toBeNull();
+  });
+
+  it('does not let a view_financial revocation veto an alternate management grant', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(
+      roleState('staff', { view_financial: false, manage_expenses: true })
+    );
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_expenses']);
+
+    expect(res).toBeNull();
+  });
+
+  it('denies when none of the alternative permissions is granted', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff'));
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_expenses']);
+
+    expect(res?.status).toBe(403);
+  });
+});
+
 describe('permissionDenied — resolution failure is fail-safe', () => {
   it('falls back to the legacy role set when the flexible layer cannot resolve', async () => {
     mockPermissions.getUserPermissionState.mockRejectedValue(new Error('PGRST205 user_permissions missing'));

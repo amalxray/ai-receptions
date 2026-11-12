@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import DashboardNav, { getActivityNavigation } from '@/components/dashboard/DashboardNav';
 import DashboardTopNav from '@/components/dashboard/DashboardTopNav';
 import NavBentoGrid, { type BentoGroup } from '@/components/dashboard/NavBentoGrid';
-import { NAV_GROUPS, groupNavLinks } from '@/lib/services/dashboardNavModel';
+import { NAV_GROUPS, groupNavLinks, hasNavModulePermission } from '@/lib/services/dashboardNavModel';
 import {
   GROUP_TONES,
   formatCount,
@@ -27,7 +27,7 @@ import {
  * The load-bearing promise of this task is the GOLDEN RULE: nothing was deleted
  * and nothing was disabled. So this file pins, in order:
  *
- *  1. the 32 modules still exist (activity-aware) with the owner's exact emoji,
+ *  1. the 35 modules still exist (activity-aware) with the owner's exact emoji,
  *  2. the grouping never loses or duplicates a module,
  *  3. the new pure helpers (active route, stats, remembered tab) behave,
  *  4. SSR of the surfaces: the sticky bar, the drawer, a tab's bento with live
@@ -63,7 +63,7 @@ vi.mock('@/lib/useClinicContext', () => ({
   }),
 }));
 
-/** The owner's exact 32 modules → emoji contract (the "nothing was deleted" list). */
+/** The owner's exact 35 modules → emoji contract (the "nothing was deleted" list). */
 const OWNER_EMOJI: Record<string, string> = {
   overview: '🏠',
   appointments: '📅',
@@ -83,6 +83,9 @@ const OWNER_EMOJI: Record<string, string> = {
   leads: '👤',
   'imaging-centers': '🩻',
   'financial-intelligence': '💰',
+  expenses: '💸',
+  revenues: '🧾',
+  reviews: '⭐',
   payroll: '💵',
   analytics: '📈',
   growth: '📊',
@@ -99,17 +102,30 @@ const OWNER_EMOJI: Record<string, string> = {
   setup: '⚙️',
 };
 
-describe('N29 — the 32 modules survive the redesign', () => {
-  it('a clinic still has exactly 32 modules', () => {
-    expect(getActivityNavigation('clinic')).toHaveLength(32);
+describe('N29 — the 35 modules survive the redesign', () => {
+  it('a clinic includes the finance modules', () => {
+    expect(getActivityNavigation('clinic')).toHaveLength(35);
   });
 
-  it('every one of the 32 keeps its owner-specified emoji', () => {
+  it('every module keeps its owner-specified emoji', () => {
     const clinic = getActivityNavigation('clinic').map((link) => link.module);
     expect([...clinic].sort()).toEqual(Object.keys(OWNER_EMOJI).sort());
     for (const [module, emoji] of Object.entries(OWNER_EMOJI)) {
       expect(navPresentation(module).emoji, module).toBe(emoji);
     }
+  });
+
+  it('shows expenses and revenues when any matching finance permission is granted', () => {
+    expect(hasNavModulePermission('expenses', new Set(['manage_expenses']))).toBe(true);
+    expect(hasNavModulePermission('revenues', new Set(['manage_invoices']))).toBe(true);
+    expect(hasNavModulePermission('revenues', new Set(['manage_payments']))).toBe(true);
+    expect(hasNavModulePermission('expenses', new Set(['view_analytics']))).toBe(false);
+    expect(hasNavModulePermission('revenues', new Set(['view_growth']))).toBe(false);
+  });
+
+  it('keeps the finance tab and places revenues inside it', () => {
+    const finance = groupNavLinks(getActivityNavigation('clinic')).find((group) => group.id === 'finance');
+    expect(finance?.items.map((item) => item.module)).toContain('revenues');
   });
 
   it('every module of EVERY activity has a designed card (no silent blank)', () => {
@@ -303,6 +319,7 @@ describe('N29 — SSR scenarios', () => {
 describe('N29 — wiring guards', () => {
   const dock = read('components/ui/dock.tsx');
   const nav = read('components/dashboard/DashboardNav.tsx');
+  const navModel = read('lib/services/dashboardNavModel.ts');
   const topnav = read('components/dashboard/DashboardTopNav.tsx');
   const layout = read('app/(dashboard)/layout.tsx');
 
@@ -322,7 +339,8 @@ describe('N29 — wiring guards', () => {
 
   it('every gate survived the rewrite (roles, permissions, plan locks, activity nav)', () => {
     expect(nav).toContain('ADMIN_ONLY_MODULES');
-    expect(nav).toContain('MODULE_PERMISSIONS');
+    expect(nav).toContain('hasNavModulePermission');
+    expect(navModel).toContain('NAV_MODULE_PERMISSIONS');
     expect(nav).toContain('MODULE_FEATURES');
     expect(nav).toContain('getRequiredPlanNameAr');
     expect(nav).toContain('/api/clinic/permissions/me');

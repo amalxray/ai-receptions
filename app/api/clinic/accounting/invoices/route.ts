@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, INVOICE_CREATE_ROLES, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, INVOICE_CREATE_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { issueInvoice, listInvoices } from '@/lib/services/accounting';
 
@@ -25,12 +25,12 @@ export async function POST(req: Request) {
     if (permBlocked) return permBlocked;
 
     const { patient_id, appointment_id, items, discount, tax, notes, due_at, payer_type, payer_ref } = body;
-    // D-B3 — Discount authorization: any commercial discount on issuance
-    // requires FINANCE_ADMIN (owner/accountant). No hard-coded limits.
+    // D-B3 — discounts require the explicit invoice-management permission;
+    // receptionist legacy access to undiscounted invoice creation does not extend here.
     if ((discount ?? 0) > 0) {
-      const moneyDenied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
+      const moneyDenied = await permissionDenied(req, body.clinic_id, 'manage_invoices');
       if (moneyDenied) {
-        return NextResponse.json({ error: 'DISCOUNT_AUTHORIZATION_REQUIRED' }, { status: moneyDenied.status });
+        return NextResponse.json({ error: 'DISCOUNT_AUTHORIZATION_REQUIRED' }, { status: 403 });
       }
     }
     const result = await issueInvoice({
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial');
+    const permBlocked = await permissionDenied(req, clinicId, ['view_financial', 'manage_invoices']);
     if (permBlocked) return permBlocked;
     const status = url.searchParams.get('status');
     if (status && !['paid', 'unpaid', 'voided'].includes(status)) {

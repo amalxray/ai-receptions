@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { refundPayment } from '@/lib/services/accounting';
 
@@ -10,7 +10,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ payment
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const permission = await permissionDenied(req, clinicId, 'manage_payments', { allowedRoles: FINANCE_ADMIN_ROLES });
+    const permission = await permissionDenied(req, clinicId, 'manage_payments');
     if (permission) return permission;
     const body = await req.json();
     const result = await refundPayment({

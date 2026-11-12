@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { groupNavLinks, type NavGroupId, type NavModule } from '@/lib/services/dashboardNavModel';
+import { groupNavLinks, hasNavModulePermission, type NavGroupId, type NavModule } from '@/lib/services/dashboardNavModel';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import {
   moduleFromPathname,
@@ -50,6 +50,7 @@ const BASE_NAV: NavModule[] = [
   { module: 'leads', label: 'العملاء المحتملون' },
   { module: 'financial-intelligence', label: 'الذكاء المالي' },
   { module: 'expenses', label: 'المصروفات' },
+  { module: 'revenues', label: 'الفواتير والمدفوعات' },
   { module: 'payroll', label: 'الرواتب', icon: '💰' },
   { module: 'my-payslips', label: 'قسائمي', icon: '📄' },
   { module: 'analytics', label: 'التحليلات' },
@@ -130,39 +131,6 @@ const MODULE_FEATURES: Partial<Record<string, FeatureKey>> = {
   'before-after': 'before-after',
   badges: 'badges',
   team: 'team',
-};
-
-// #43 — module → permission key. Modules WITHOUT a mapping stay visible for
-// every member (Global by Default); mapped modules render only when the
-// member's EFFECTIVE permissions include the key. The sidebar is convenience
-// only — real enforcement lives in the APIs (permission gate) and RLS.
-const MODULE_PERMISSIONS: Partial<Record<string, string>> = {
-  overview: 'view_overview',
-  appointments: 'view_appointments',
-  patients: 'view_patients',
-  'medical-files': 'view_medical_files',
-  conversations: 'view_conversations',
-  messages: 'view_messages',
-  reviews: 'view_reviews',
-  'imaging-requests': 'view_imaging_requests',
-  // B20 — referrals reuse the imaging-requests permission (no new permission
-  // row / migration); the sidebar stays convenience, APIs keep enforcing.
-  referrals: 'view_imaging_requests',
-  leads: 'view_leads',
-  'financial-intelligence': 'view_financial',
-  expenses: 'view_financial',
-  analytics: 'view_analytics',
-  growth: 'view_growth',
-  team: 'manage_team',
-  'communication-settings': 'manage_settings',
-  ads: 'manage_ads',
-  'knowledge-base': 'manage_knowledge',
-  'public-page': 'view_public_page',
-  'public-content': 'manage_public_page',
-  subscription: 'manage_subscription',
-  // Payroll Phase 2 (20261016)
-  payroll: 'view_payroll',
-  'my-payslips': 'view_own_payslips',
 };
 
 /**
@@ -277,8 +245,7 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
           .filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module))
           .filter((item) => {
             if (perms === null || perms === undefined) return true; // loading/owner → fail open
-            const required = MODULE_PERMISSIONS[item.module];
-            return required === undefined || perms.has(required);
+            return hasNavModulePermission(item.module, perms);
           })
           .map((item) => {
             const feature = MODULE_FEATURES[item.module];
