@@ -123,6 +123,11 @@ describe('N29 — the 35 modules survive the redesign', () => {
     expect(hasNavModulePermission('revenues', new Set(['view_growth']))).toBe(false);
   });
 
+  it('gates financial intelligence independently from financial records', () => {
+    expect(hasNavModulePermission('financial-intelligence', new Set(['view_financial']))).toBe(false);
+    expect(hasNavModulePermission('financial-intelligence', new Set(['view_financial_intelligence']))).toBe(true);
+  });
+
   it('keeps the finance tab and places revenues inside it', () => {
     const finance = groupNavLinks(getActivityNavigation('clinic')).find((group) => group.id === 'finance');
     expect(finance?.items.map((item) => item.module)).toContain('revenues');

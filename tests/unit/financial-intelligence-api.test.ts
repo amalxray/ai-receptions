@@ -6,14 +6,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * here without shadowing the real implementation used there.
  */
 
-const mockAuth = vi.hoisted(() => ({
-  authorizeClinicRequest: vi.fn(),
-  roleDenied: vi.fn((auth: any, _roles: readonly string[]) =>
-    auth && auth.authorized === false ? { status: auth.status ?? 403 } : null),
-  FINANCE_READ_ROLES: ['owner', 'accountant', 'manager', 'receptionist'],
-}));
-vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
-
 const mockPermission = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
 vi.mock('@/lib/services/permissionGate', () => ({ permissionDenied: mockPermission.permissionDenied }));
 
@@ -36,7 +28,6 @@ const req = (clinicId = 'c1') =>
 beforeEach(() => {
   vi.clearAllMocks();
   mockPermission.permissionDenied.mockResolvedValue(null);
-  mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true });
   mockGate.featureGateForClinic.mockResolvedValue({ allowed: true, requiredPlan: 'growth', planNameAr: 'نمو' });
 });
 
@@ -44,7 +35,7 @@ describe('PP-5 API route — RBAC and shape', () => {
   it('400 when clinic_id missing', async () => {
     const res = await GET(new Request('http://localhost/api/clinic/financial-intelligence'));
     expect(res.status).toBe(400);
-    expect(mockAuth.authorizeClinicRequest).not.toHaveBeenCalled();
+    expect(mockPermission.permissionDenied).not.toHaveBeenCalled();
   });
 
   it('401 for unauthenticated callers (no data exposure)', async () => {
@@ -68,8 +59,7 @@ describe('PP-5 API route — RBAC and shape', () => {
     expect(mockPermission.permissionDenied).toHaveBeenCalledWith(
       expect.any(Request),
       'c1',
-      'view_financial',
-      { allowedRoles: mockAuth.FINANCE_READ_ROLES },
+      'view_financial_intelligence',
     );
     const body = await res.json();
     expect(body.data.kpis.revenue).toBe(1);

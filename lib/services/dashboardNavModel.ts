@@ -74,7 +74,7 @@ export const NAV_MODULE_PERMISSIONS: Partial<Record<string, string | readonly st
   'imaging-requests': 'view_imaging_requests',
   referrals: 'view_imaging_requests',
   leads: 'view_leads',
-  'financial-intelligence': 'view_financial',
+  'financial-intelligence': 'view_financial_intelligence',
   revenues: ['view_financial', 'manage_invoices', 'manage_payments'],
   expenses: ['view_financial', 'manage_expenses'],
   analytics: 'view_analytics',
