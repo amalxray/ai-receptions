@@ -6,7 +6,8 @@
  * public page is imagery-only.
  */
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { validateMediaFile, buildMediaStoragePath, mediaPublicUrl, MEDIA_BUCKET } from '@/lib/services/clinicPublicMedia';
@@ -18,12 +19,14 @@ export async function POST(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
 
     const form = await req.formData();
     const file = form.get('file');

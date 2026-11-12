@@ -3,8 +3,8 @@
  *
  * GET   — any clinic member (DATA_ROLES): read the visibility state
  *         (clinic discovery opt-in + per-provider visibility).
- * PATCH — owner/manager only (ADMIN_ROLES): set the clinic Discovery opt-in
- *         and/or the visibility of ONE provider.
+ * PATCH — manage_public_page permission (legacy owner/manager access retained):
+ *         set the clinic Discovery opt-in and/or the visibility of ONE provider.
  *
  * This endpoint ONLY manages the deny-by-default visibility state
  * (docs/pp8-product-ux-spec.md). No public consumer exists in PP-8A:
@@ -16,10 +16,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   authorizeClinicRequest,
-  roleDenied,
   ADMIN_ROLES,
   DATA_ROLES,
 } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import {
@@ -78,8 +78,8 @@ export async function GET(req: Request) {
         { status: authorization.status }
       );
     }
-    const roleGate = roleDenied(authorization, DATA_ROLES);
-    if (roleGate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const denied = await permissionDenied(req, clinicId, 'view_public_page', { allowedRoles: DATA_ROLES });
+    if (denied) return denied;
 
     const state = await getPublicVisibilityState(clinicId);
     if (!state) {
@@ -109,9 +109,9 @@ export async function PATCH(req: Request) {
         { status: authorization.status }
       );
     }
-    // owner/manager only — staff (and every other role) can never publish.
-    const roleGate = roleDenied(authorization, ADMIN_ROLES);
-    if (roleGate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // manage_public_page controls changes; the gate also preserves the legacy admin roles.
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
 
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);

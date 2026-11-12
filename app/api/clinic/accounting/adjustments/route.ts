@@ -4,7 +4,7 @@ import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordWriteOff, listWriteOffs } from '@/lib/services/accounting';
 
 // Accounting Phase B — write-offs (D-B2).
-// POST = record a write-off (FINANCE_ADMIN only). GET = list (FINANCE_READ).
+// POST = record a write-off (manage_invoices). GET = list (view_financial).
 
 export async function POST(req: Request) {
   try {

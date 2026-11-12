@@ -33,6 +33,9 @@ describe('permission registry & display groups', () => {
     expect(ALL_PERMISSION_KEYS.length).toBeGreaterThanOrEqual(28);
     expect(Object.keys(PERMISSIONS)).toHaveLength(ALL_PERMISSION_KEYS.length);
     expect(ALL_PERMISSION_KEYS).toContain('view_reviews');
+    expect(PERMISSIONS.manage_reviews).toBe('إدارة التقييمات');
+    expect(ALL_PERMISSION_KEYS).toContain('manage_reviews');
+    expect(PERMISSION_GROUPS.find(([title]) => title === 'التقييمات')?.[1]).toContain('manage_reviews');
   });
 
   it('renders EVERY registry permission exactly once (no orphans, no duplicates)', () => {
