@@ -17,6 +17,7 @@ const paramsSchema = z.object({ id: z.string().uuid() });
 
 export async function PATCH(req: Request) {
   try {
+    const body = await req.json();
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     const type = url.searchParams.get('type') as PublicContentType | null;
@@ -24,7 +25,7 @@ export async function PATCH(req: Request) {
     if (!type || !CONTENT_TYPES.includes(type)) {
       return NextResponse.json({ error: 'type must be one of achievements|testimonials|articles|news' }, { status: 400 });
     }
-    const { id } = paramsSchema.parse(await req.json());
+    const { id } = paramsSchema.parse(body);
 
     const authorization = await authorizeClinicRequest(req, clinicId);
     if (!authorization.authorized) {
@@ -35,7 +36,7 @@ export async function PATCH(req: Request) {
     }
     const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
     if (denied) return denied;
-    const result = await updatePublicContent(clinicId, type, id, jsonToPatch(await req.json()));
+    const result = await updatePublicContent(clinicId, type, id, jsonToPatch(body));
     if (!result.ok) return NextResponse.json({ error: result.message }, { status: 400 });
     await writeAuditLog({
       clinicId,
