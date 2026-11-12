@@ -148,7 +148,7 @@ describe('Phase C API — expenses RBAC (EXPENSE_RECORD_ROLES)', () => {
   });
 });
 
-describe('Phase C API — expense void (FINANCE_ADMIN only)', () => {
+describe('Phase C API — expense void (manage_expenses)', () => {
   const voidRequest = (clinic = CLINIC_A) =>
     makeRequest(`/api/clinic/accounting/expenses/exp-1/void?clinic_id=${clinic}`, jsonBody({ reason: 'wrong entry' }));
   const routeParams = { params: Promise.resolve({ expenseId: 'exp-1' }) };
@@ -159,11 +159,19 @@ describe('Phase C API — expense void (FINANCE_ADMIN only)', () => {
     expect(mockAccounting.voidExpense).toHaveBeenCalledWith(expect.objectContaining({ clinicId: CLINIC_A, expenseId: 'exp-1' }));
   });
 
-  it('manager (outside FINANCE_ADMIN_ROLES) → 403', async () => {
+  it('manager can void through the manage_expenses default', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'manager' });
     const res = await postExpenseVoid(voidRequest(), routeParams);
-    expect(res.status).toBe(403);
-    expect(mockAccounting.voidExpense).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockAccounting.voidExpense).toHaveBeenCalled();
+  });
+
+  it('an explicit manage_expenses grant allows a receptionist to void an expense', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'receptionist' });
+    mockPermissions.customGrants.add('manage_expenses');
+    const res = await postExpenseVoid(voidRequest(), routeParams);
+    expect(res.status).toBe(200);
+    expect(mockAccounting.voidExpense).toHaveBeenCalled();
   });
 
   it('EXPENSE_NOT_FOUND → 404', async () => {

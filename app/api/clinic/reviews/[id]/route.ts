@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 
@@ -26,7 +27,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
     const auth = await authorizeClinicRequest(req, review.clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
+    const gate = await permissionDenied(req, review.clinic_id, 'manage_reviews', { allowedRoles: ADMIN_ROLES });
     if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الإدارة' }, { status: 403 });
 
     const { error: delError } = await supabaseAdmin

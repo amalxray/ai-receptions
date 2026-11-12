@@ -239,6 +239,7 @@ describe('clinic routes — publish / reject / delete / stats', () => {
     expect(res.status).toBe(200);
     expect(h.lastUpdate.is_published).toBe(false);
     expect(String(h.lastUpdate.rejected_at ?? '')).not.toBe('');
+    expect(h.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CID, 'manage_reviews', expect.any(Object));
   });
 
   it('12. stats → 200 متوسط + توزيع (منشور فقط)', async () => {
@@ -268,6 +269,7 @@ describe('clinic routes — publish / reject / delete / stats', () => {
   it('13. غير admin (role=viewer) → 403', async () => {
     h.queue = ['review', 'update'];
     h.authorize.mockResolvedValue({ authorized: true, role: 'viewer' });
+    h.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 403 }));
     const res = await publishReview(new Request('http://localhost/api/clinic/reviews/p', { method: 'POST' }), { params: { id: RID } });
     expect(res.status).toBe(403);
     expect(h.lastUpdate).toBeNull(); // gate قبل أي كتابة

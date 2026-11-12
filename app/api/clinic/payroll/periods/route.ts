@@ -4,8 +4,8 @@ import { permissionDenied } from '@/lib/services/permissionGate';
 import { generatePayrollPeriod, listPayrollPeriods, type PayrollPeriodStatus } from '@/lib/services/payroll-engine';
 
 // Payroll Engine — periods list + generation (draft).
-// GET  ?clinic_id=…[&status=&from=&to=]  → FINANCE_READ
-// POST { clinic_id, period_month }       → FINANCE_ADMIN (draft regenerate allowed)
+// GET  ?clinic_id=…[&status=&from=&to=]  → view_payroll
+// POST { clinic_id, period_month }       → manage_payroll (draft regenerate allowed)
 
 const STATUSES: readonly PayrollPeriodStatus[] = ['draft', 'approved', 'paid', 'cancelled'];
 

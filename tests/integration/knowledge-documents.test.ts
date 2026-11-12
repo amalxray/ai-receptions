@@ -4,8 +4,10 @@ import { GET } from '@/app/api/ai/knowledge/documents/route';
 const originalEnv = process.env;
 
 const mockAuth = vi.hoisted(() => ({ authorizeClinicRequest: vi.fn() }));
+const mockPermission = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
 const mockAdmin = vi.hoisted(() => ({ supabaseAdmin: { from: vi.fn() } }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
+vi.mock('@/lib/services/permissionGate', () => mockPermission);
 vi.mock('@/lib/supabase/admin', () => mockAdmin);
 
 describe('Knowledge documents API', () => {
@@ -13,6 +15,7 @@ describe('Knowledge documents API', () => {
     process.env = { ...originalEnv, NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon', SUPABASE_SERVICE_ROLE_KEY: 'service' };
     vi.clearAllMocks();
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'user-1' }, role: 'owner' });
+    mockPermission.permissionDenied.mockResolvedValue(null);
   });
 
   test('returns documents for the active clinic', async () => {
@@ -29,5 +32,6 @@ describe('Knowledge documents API', () => {
 
     expect(response.status).toBe(200);
     expect(json.documents).toEqual([]);
+    expect(mockPermission.permissionDenied).toHaveBeenCalledWith(expect.any(Request), 'clinic-1', 'manage_knowledge');
   });
 });

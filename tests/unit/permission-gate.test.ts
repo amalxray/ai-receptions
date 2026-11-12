@@ -99,6 +99,18 @@ describe('permissionDenied — legacy role sets still work (no #43 regression)',
 });
 
 describe('permissionDenied — explicit per-user decisions', () => {
+  it.each(['manage_reviews', 'manage_knowledge'] as const)(
+    'honors an explicit %s grant for a staff member',
+    async (permission) => {
+      mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+      mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff', { [permission]: true }));
+
+      const res = await permissionDenied(makeRequest(), CLINIC, permission);
+
+      expect(res).toBeNull();
+    },
+  );
+
   it('an explicit revoke wins even when the legacy role set allows the call', async () => {
     mockPermissions.getUserPermissionState.mockResolvedValue(
       roleState('receptionist', { manage_invoices: false })

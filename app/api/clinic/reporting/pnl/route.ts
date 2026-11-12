@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { getProfitAndLoss } from '@/lib/services/reporting';
 
-// P&L report (D-R1) — derived read-only. FINANCE_READ only (D-P3/D-R3);
+// P&L report (D-R1) — derived read-only. view_financial (D-P3/D-R3);
 // claim kinds are structurally excluded by the view.
 export async function GET(req: Request) {
   try {

@@ -60,6 +60,7 @@ import {
 import { POST as postPeriod, GET as getPeriods } from '@/app/api/clinic/payroll/periods/route';
 import { PATCH as patchPeriod } from '@/app/api/clinic/payroll/periods/[periodId]/route';
 import { POST as postAdvance } from '@/app/api/clinic/payroll/advances/route';
+import { DELETE as deleteAdvance } from '@/app/api/clinic/payroll/advances/[advanceId]/route';
 import { POST as postAdjustment } from '@/app/api/clinic/payroll/adjustments/route';
 
 const CLINIC = '11111111-1111-1111-1111-111111111111';
@@ -302,6 +303,12 @@ describe('APIs — FINANCE RBAC + error mapping', () => {
     expect(res.status).toBe(403);
   });
 
+  it('manager can access payroll generation through manage_payroll', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'manager-payroll-user' }, role: 'manager' });
+    const res = await postPeriod(req('/api/clinic/payroll/periods', jsonBody({ clinic_id: CLINIC, period_month: 'invalid' })));
+    expect(res.status).toBe(400); // permission passed; only the month validation failed
+  });
+
   it('POST /periods returns 400 for a malformed month', async () => {
     respond['payroll_periods.select'] = { data: null, error: null };
     const res = await postPeriod(req('/api/clinic/payroll/periods', jsonBody({ clinic_id: CLINIC, period_month: 'septembre' })));
@@ -364,6 +371,18 @@ describe('APIs — FINANCE RBAC + error mapping', () => {
     const payload = writes.find((w) => w.table === 'staff_advances')!.payload as any;
     expect(payload.status).toBe('pending');
     expect(payload.amount).toBe(200);
+  });
+
+  it('manager can cancel an advance through manage_advances', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'manager-advance-user' }, role: 'manager' });
+    respond['staff_advances.select'] = { data: { id: 'adv-1', status: 'pending', amount: 100, provider_id: PROVIDER }, error: null };
+    respond['staff_advances.update'] = { data: null, error: null };
+    const res = await deleteAdvance(
+      req(`/api/clinic/payroll/advances/adv-1?clinic_id=${CLINIC}`, { method: 'DELETE' }),
+      { params: Promise.resolve({ advanceId: 'adv-1' }) } as any,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.status).toBe('cancelled');
   });
 
   it('POST /adjustments requires a reason', async () => {
