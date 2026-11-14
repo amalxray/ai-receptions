@@ -5,6 +5,7 @@ import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { toPatientShape } from '@/lib/services/patientShape';
 import { deleteDemoPatient, getDemoPatients, updateDemoPatient, demoFallbackAllowed } from '@/lib/demoState';
+import { canClosePatientTreatment, getPatientTreatmentStatus } from '@/components/dashboard/patients/smartProfile';
 
 /**
  * B51-D — fail-closed answer when the deployment has no Supabase env: in-memory
@@ -17,6 +18,12 @@ const NOT_CONFIGURED_RESPONSE = {
 
 /** `patients.id` is a `uuid` column — see 20260721_initial_schema.sql. */
 const PATIENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UNPAID_TREATMENT_ERROR = 'لا يمكن إنهاء العلاج قبل سداد كامل الفاتورة';
+
+function isTreatmentClosure(existingMetadata: unknown, nextMetadata: unknown): boolean {
+  return getPatientTreatmentStatus(existingMetadata) !== 'closed'
+    && getPatientTreatmentStatus(nextMetadata) === 'closed';
+}
 
 /**
  * B37 — single-patient read.
@@ -109,8 +116,11 @@ export async function PUT(request: Request) {
     if (!demoFallbackAllowed()) {
       return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
     }
-    const existing = updateDemoPatient(patientId, {});
-    const existingMeta = (existing?.metadata as Record<string, unknown> | undefined) ?? {};
+    const existing = getDemoPatients().find((patient) => patient.id === patientId && patient.clinic_id === clinicId);
+    if (!existing) {
+      return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
+    }
+    const existingMeta = (existing.metadata as Record<string, unknown> | undefined) ?? {};
     const mergedMeta = {
       ...existingMeta,
       source: body.source ?? existingMeta.source ?? 'موقع الويب',
@@ -118,6 +128,10 @@ export async function PUT(request: Request) {
       ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
       ...(body.date_of_birth !== undefined ? { date_of_birth: body.date_of_birth } : {}),
     };
+
+    if (isTreatmentClosure(existingMeta, mergedMeta) && !canClosePatientTreatment(existingMeta)) {
+      return NextResponse.json({ error: UNPAID_TREATMENT_ERROR }, { status: 400 });
+    }
 
     const updated = updateDemoPatient(patientId, {
       ...(body.name !== undefined ? { name: body.name } : {}),
@@ -144,12 +158,19 @@ export async function PUT(request: Request) {
   const supabase = supabaseAdmin;
 
   // Fetch current metadata to preserve existing fields
-  const { data: currentPatient } = await supabase
+  const { data: currentPatient, error: currentPatientError } = await supabase
     .from('patients')
     .select('metadata')
     .eq('id', patientId)
     .eq('clinic_id', clinicId)
     .maybeSingle();
+
+  if (currentPatientError) {
+    return NextResponse.json({ error: currentPatientError.message }, { status: 500 });
+  }
+  if (!currentPatient) {
+    return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
+  }
 
   const existingMeta = (currentPatient?.metadata as Record<string, unknown> | undefined) ?? {};
   const mergedMeta = {
@@ -159,6 +180,27 @@ export async function PUT(request: Request) {
     ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
     ...(body.date_of_birth !== undefined ? { date_of_birth: body.date_of_birth } : {}),
   };
+
+  if (isTreatmentClosure(existingMeta, mergedMeta)) {
+    const { data: balance, error: balanceError } = await supabase
+      .from('patient_balances')
+      .select('outstanding_amount')
+      .eq('clinic_id', clinicId)
+      .eq('patient_id', patientId)
+      .maybeSingle();
+
+    if (balanceError) {
+      return NextResponse.json({ error: balanceError.message }, { status: 500 });
+    }
+
+    const outstanding = Number(balance?.outstanding_amount ?? 0);
+    if (!Number.isFinite(outstanding)) {
+      return NextResponse.json({ error: 'تعذر التحقق من رصيد المريض' }, { status: 500 });
+    }
+    if (outstanding > 0) {
+      return NextResponse.json({ error: UNPAID_TREATMENT_ERROR }, { status: 400 });
+    }
+  }
 
   const updateFields: Record<string, unknown> = {
     metadata: mergedMeta,
