@@ -27,6 +27,7 @@ export type LandingSectionRow = {
 export const LANDING_SECTION_KEYS = [
   'hero',
   'features',
+  'services',
   'for_doctors',
   'how_it_works',
   'compare',
@@ -56,6 +57,7 @@ const STATIC_COPY_LOCKED_SECTIONS = new Set([
 const SECTION_TO_COPY_KEY: Record<string, string> = {
   hero: 'hero',
   features: 'features',
+  services: 'services',
   for_doctors: 'forDoctors',
   how_it_works: 'howItWorks',
   compare: 'compare',
@@ -69,6 +71,7 @@ const SECTION_TO_COPY_KEY: Record<string, string> = {
 const ARABIC_LABELS: Record<string, string> = {
   hero: 'القسم الرئيسي (Hero)',
   features: 'المميزات',
+  services: 'الخدمات والصور',
   for_doctors: 'للأطباء',
   how_it_works: 'كيف يعمل',
   compare: 'مقارنة مع/بدون',

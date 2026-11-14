@@ -4,9 +4,10 @@ import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { getLandingSection, upsertLandingSection } from '@/lib/services/landingContent';
 import { logEvent } from '@/lib/server/logging';
 import { faqContentSchema, featuresContentSchema, heroContentSchema, landingColorsContentSchema, landingSeoContentSchema, pricingContentSchema, siteIdentityContentSchema, testimonialsContentSchema, urgencyBarContentSchema } from '@/lib/landing/hero-schema';
+import { servicesContentSchema } from '@/lib/landing/services-content';
 
 const ALLOWED_KEYS = new Set([
-  'hero', 'features', 'for_doctors', 'how_it_works', 'compare',
+  'hero', 'features', 'services', 'for_doctors', 'how_it_works', 'compare',
   'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'results', 'imaging', 'clinic_ads', 'lead_form',
   'footer', 'urgency_bar', 'seo', 'colors', 'site_identity',
 ]);
@@ -47,6 +48,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ key: string }> 
     const contentSchemas = {
       hero: heroContentSchema,
       features: featuresContentSchema,
+      services: servicesContentSchema,
       faq: faqContentSchema,
       testimonials: testimonialsContentSchema,
       pricing: pricingContentSchema,

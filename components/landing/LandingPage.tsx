@@ -17,6 +17,8 @@ import Navbar from './Navbar';
 import UrgencyBar from './UrgencyBar';
 import Hero from './Hero';
 import GalleryGrid from './GalleryGrid';
+import ServicesGrid from './ServicesGrid';
+import { normalizeServicesContent } from '@/lib/landing/services-content';
 import SalesChatWidget from './SalesChatWidget';
 
 type LandingPageProps = {
@@ -25,7 +27,7 @@ type LandingPageProps = {
   sectionOrder?: string[];
 };
 
-const DEFAULT_SECTION_ORDER = ['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'results', 'imaging', 'clinic_ads', 'lead_form', 'footer'];
+const DEFAULT_SECTION_ORDER = ['hero', 'features', 'services', 'for_doctors', 'how_it_works', 'compare', 'faq', 'pricing', 'testimonials', 'gallery', 'cta', 'results', 'imaging', 'clinic_ads', 'lead_form', 'footer'];
 
 function SocialProof() {
   return (
@@ -80,10 +82,12 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
   const copy = useLandingCopy();
   const orderedSections = sectionOrder.length ? sectionOrder : DEFAULT_SECTION_ORDER;
   const hiddenSections = new Set<string>(Array.isArray(copy.__hiddenSections) ? copy.__hiddenSections : []);
+  const services = normalizeServicesContent(copy.services);
 
   const sectionMap: Record<string, React.ReactNode> = {
     hero: <><Hero /><SocialProof /></>,
     features: <WhySection key="features" />,
+    services: <ServicesGrid key="services" initialServices={services.items} />,
     for_doctors: <ForDoctorsSection key="for_doctors" />,
     how_it_works: <HowItWorksSection key="how_it_works" />,
     compare: <ComparisonSection key="compare" />,

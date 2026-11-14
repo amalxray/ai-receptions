@@ -7,6 +7,8 @@ import { CSS } from '@dnd-kit/utilities';
 import HeroEditor from '@/components/admin/editors/HeroEditor';
 import type { HeroContent } from '@/components/landing/Hero';
 import FeaturesEditor, { type FeaturesContent } from '@/components/admin/editors/FeaturesEditor';
+import ServicesEditor from '@/components/admin/editors/ServicesEditor';
+import type { ServicesContent } from '@/lib/landing/services-content';
 import FAQEditor from '@/components/admin/editors/FAQEditor';
 import TestimonialsEditor from '@/components/admin/editors/TestimonialsEditor';
 import PricingEditor from '@/components/admin/editors/PricingEditor';
@@ -228,6 +230,9 @@ export default function LandingPageBuilder() {
       {selectedSection?.section_key === 'features' && (
         <FeaturesEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: FeaturesContent) => handleSectionSaved('features', content)} />
       )}
+      {selectedSection?.section_key === 'services' && (
+        <ServicesEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: ServicesContent) => handleSectionSaved('services', content)} />
+      )}
       {selectedSection?.section_key === 'for_doctors' && (
         <ForDoctorsEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content) => handleSectionSaved('for_doctors', content)} />
       )}
@@ -267,7 +272,7 @@ export default function LandingPageBuilder() {
       {selectedSection?.section_key === 'site_identity' && (
         <SiteIdentityEditor initialContent={selectedSection.content} onClose={() => setSelectedSectionKey(null)} onSaved={(content: SiteIdentityContent) => handleSectionSaved('site_identity', content as unknown as Record<string, unknown>)} />
       )}
-      {selectedSection && !['hero', 'features', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'gallery', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo', 'site_identity'].includes(selectedSection.section_key) && (
+      {selectedSection && !['hero', 'features', 'services', 'for_doctors', 'how_it_works', 'compare', 'faq', 'testimonials', 'gallery', 'pricing', 'urgency_bar', 'cta', 'footer', 'colors', 'seo', 'site_identity'].includes(selectedSection.section_key) && (
         <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedSectionKey(null); }}>
           <section role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900">{selectedSection.label}</h3>

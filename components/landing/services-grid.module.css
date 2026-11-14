@@ -1,0 +1,320 @@
+.section {
+  overflow: hidden;
+  padding: 88px 24px;
+  color: #f8fafc;
+  background:
+    radial-gradient(ellipse at 12% 18%, rgb(34 211 238 / 8%), transparent 38%),
+    radial-gradient(ellipse at 88% 82%, rgb(168 85 247 / 8%), transparent 40%),
+    #0b0b10;
+}
+
+.container {
+  width: min(100%, 1240px);
+  margin-inline: auto;
+}
+
+.header {
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #67e8f9;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.heading {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.intro {
+  margin: 14px 0 0;
+  color: #a1a1aa;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 32px 0 24px;
+}
+
+.filterButton {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  color: #d4d4d8;
+  background: rgb(255 255 255 / 4%);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.filterButton:hover,
+.filterButtonActive {
+  border-color: rgb(103 232 249 / 55%);
+  color: #ecfeff;
+  background: rgb(34 211 238 / 12%);
+}
+
+.filterButton:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 3px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  perspective: 1100px;
+}
+
+.card {
+  --g1: hsl(calc(var(--i) * 30) 90% 65%);
+  --g2: hsl(calc(var(--i) * 30 + 60) 90% 60%);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+  min-height: 230px;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: hidden;
+  padding: 22px 20px 20px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  color: inherit;
+  background:
+    linear-gradient(160deg, #18181f, #101014) padding-box,
+    linear-gradient(160deg, rgb(255 255 255 / 12%), rgb(255 255 255 / 4%)) border-box;
+  opacity: 0;
+  transform-origin: center;
+  animation: cardEntrance 550ms cubic-bezier(.2, .9, .3, 1.15) calc(var(--i) * 60ms) both;
+  transition: transform 250ms ease, box-shadow 250ms ease;
+}
+
+.card::before {
+  position: absolute;
+  z-index: 1;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--g1), var(--g2));
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.card::after {
+  position: absolute;
+  z-index: 0;
+  top: -35%;
+  left: -65%;
+  width: 42%;
+  height: 170%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 16%), transparent);
+  content: "";
+  pointer-events: none;
+  transform: skewX(-20deg);
+}
+
+.card:hover,
+.card:focus-visible,
+.card:focus-within {
+  z-index: 2;
+  outline: none;
+  box-shadow: 0 18px 35px -22px color-mix(in srgb, var(--g1) 45%, transparent);
+  transform: translateY(-8px) rotateX(3deg);
+}
+
+.card:hover::before,
+.card:focus-visible::before,
+.card:focus-within::before {
+  opacity: 1;
+}
+
+.card:hover::after,
+.card:focus-visible::after,
+.card:focus-within::after {
+  transition: transform 650ms ease;
+  transform: translateX(390%) skewX(-20deg);
+}
+
+.iconChip,
+.cardImage,
+.category,
+.title,
+.description,
+.linkText {
+  position: relative;
+  z-index: 1;
+}
+
+.cardImage {
+  width: 100%;
+  max-height: 140px;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.iconChip {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 14px;
+  color: #111118;
+  background: linear-gradient(135deg, var(--g1), var(--g2));
+  transition: transform 220ms ease;
+}
+
+.iconChip svg {
+  width: 26px;
+  height: 26px;
+}
+
+.card:hover .iconChip,
+.card:focus-visible .iconChip,
+.card:focus-within .iconChip {
+  transform: scale(1.08) rotate(-6deg);
+}
+
+.category {
+  margin-top: 16px;
+  color: var(--g1);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 7px;
+  color: #fff;
+  font-size: 1.125rem;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 6px;
+  color: #a1a1aa;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.linkText {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 16px;
+  color: #e4e4e7;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.moreButton {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: right;
+}
+
+.moreButton:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid #67e8f9;
+  outline-offset: 4px;
+}
+
+.arrow {
+  width: 17px;
+  height: 17px;
+  transition: transform 200ms ease;
+}
+
+.card:hover .arrow,
+.card:focus-visible .arrow,
+.card:focus-within .arrow {
+  transform: translateX(-6px);
+}
+
+.gridFiltering .card {
+  animation: none;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+
+@keyframes cardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 992px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filterButton,
+  .card,
+  .card::before,
+  .iconChip,
+  .arrow {
+    transition: none;
+  }
+
+  .card,
+  .gridFiltering .card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .card::after {
+    display: none;
+  }
+}
