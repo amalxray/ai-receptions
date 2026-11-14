@@ -21,6 +21,7 @@ const PID = '33333333-3333-3333-3333-333333333333';
 
 const state = vi.hoisted(() => ({
   row: null as Record<string, unknown> | null,
+  rows: {} as Record<string, Record<string, unknown> | null>,
   dbError: null as { message: string } | null,
   calls: [] as string[],
   filters: [] as Array<[string, unknown]>,
@@ -55,7 +56,10 @@ vi.mock('@/lib/supabase/admin', () => ({
       const chain: any = new Proxy(function () {}, {
         get(_target, key: string) {
           if (key === 'then') {
-            return (resolve: (value: unknown) => void) => resolve({ data: state.row, error: state.dbError });
+            return (resolve: (value: unknown) => void) => resolve({
+              data: Object.prototype.hasOwnProperty.call(state.rows, table) ? state.rows[table] : state.row,
+              error: state.dbError,
+            });
           }
           return (...args: unknown[]) => {
             state.calls.push(String(key));
@@ -70,7 +74,7 @@ vi.mock('@/lib/supabase/admin', () => ({
   },
 }));
 
-import { GET } from '@/app/api/patients/[patientId]/route';
+import { GET, PUT } from '@/app/api/patients/[patientId]/route';
 import { toPatientShape } from '@/lib/services/patientShape';
 
 function url(patientId: string | null, clinicId?: string | null) {
@@ -81,6 +85,14 @@ function url(patientId: string | null, clinicId?: string | null) {
 function request(patientId: string | null, clinicId?: string | null, token = 'test-token') {
   return new Request(url(patientId, clinicId), {
     headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+}
+
+function updateRequest(metadata: Record<string, unknown>) {
+  return new Request(url(PID), {
+    method: 'PUT',
+    headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+    body: JSON.stringify({ metadata }),
   });
 }
 
@@ -99,6 +111,7 @@ const DB_ROW = {
 
 beforeEach(() => {
   state.row = null;
+  state.rows = {};
   state.dbError = null;
   state.calls = [];
   state.filters = [];
@@ -198,6 +211,59 @@ describe('GET /api/patients/{patientId}', () => {
     state.row = DB_ROW;
     const body = await (await GET(request(PID))).json();
     expect(Object.keys(body).sort()).toEqual(Object.keys(toPatientShape({ id: PID, clinic_id: CID })).sort());
+  });
+});
+
+describe('PUT /api/patients/{patientId} — treatment closure payment gate', () => {
+  const activePatient = {
+    ...DB_ROW,
+    metadata: {
+      current_episode_id: 'episode-1',
+      episodes: [{ id: 'episode-1', status: 'active', started_at: '2026-01-01T00:00:00Z' }],
+    },
+  };
+  const closedMetadata = {
+    current_episode_id: null,
+    episodes: [{
+      id: 'episode-1',
+      status: 'closed',
+      started_at: '2026-01-01T00:00:00Z',
+      closed_at: '2026-02-01T00:00:00Z',
+    }],
+  };
+
+  it('rejects closure when the accounting balance has an unpaid amount', async () => {
+    state.rows.patients = activePatient;
+    state.rows.patient_balances = { outstanding_amount: 125 };
+
+    const response = await PUT(updateRequest(closedMetadata));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'لا يمكن إنهاء العلاج قبل سداد كامل الفاتورة' });
+    expect(state.calls).toContain('from:patient_balances');
+    expect(state.calls).not.toContain('update');
+    expect(state.filters).toContainEqual(['clinic_id', CID]);
+    expect(state.filters).toContainEqual(['patient_id', PID]);
+  });
+
+  it('allows closure when the accounting balance is zero', async () => {
+    state.rows.patients = activePatient;
+    state.rows.patient_balances = { outstanding_amount: 0 };
+
+    const response = await PUT(updateRequest(closedMetadata));
+
+    expect(response.status).toBe(200);
+    expect(state.calls).toContain('update');
+  });
+
+  it('does not query accounting balances for unrelated metadata updates', async () => {
+    state.rows.patients = activePatient;
+    state.rows.patient_balances = { outstanding_amount: 125 };
+
+    const response = await PUT(updateRequest({ ...activePatient.metadata, notes: 'Updated note' }));
+
+    expect(response.status).toBe(200);
+    expect(state.calls).not.toContain('from:patient_balances');
   });
 });
 

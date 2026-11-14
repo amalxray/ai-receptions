@@ -144,6 +144,7 @@ export default function PatientDetailPage() {
   });
   const [savingPatient, setSavingPatient] = useState(false);
   const [transferMsg, setTransferMsg] = useState<string | null>(null);
+  const [treatmentError, setTreatmentError] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientRecord | null>(null);
   const [treatmentModal, setTreatmentModal] = useState<{
     mode: 'close' | 'reopen';
@@ -653,6 +654,7 @@ export default function PatientDetailPage() {
     (mode: 'close' | 'reopen') => {
       if (!patient) return;
       const blocked = mode === 'close' && outstandingDebt > 0;
+      setTreatmentError(null);
       setTreatmentModal({ mode, blocked });
     },
     [outstandingDebt, patient]
@@ -665,6 +667,7 @@ export default function PatientDetailPage() {
       return;
     }
 
+    setTreatmentError(null);
     try {
       const nextMetadata =
         treatmentModal?.mode === 'close'
@@ -673,7 +676,7 @@ export default function PatientDetailPage() {
       await persistPatientMetadata(nextMetadata, treatmentModal?.mode === 'close' ? 'تعذر إنهاء العلاج' : 'تعذر إعادة فتح الحساب');
       setTreatmentModal(null);
     } catch (error) {
-      setTransferMsg(error instanceof Error ? error.message : 'تعذر تحديث حالة العلاج');
+      setTreatmentError(error instanceof Error ? error.message : 'تعذر تحديث حالة العلاج');
     }
   }, [outstandingDebt, patient, persistPatientMetadata, treatmentModal]);
 
@@ -1269,10 +1272,19 @@ export default function PatientDetailPage() {
               )}
             </div>
 
+            {treatmentError && (
+              <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" role="alert">
+                {treatmentError}
+              </p>
+            )}
+
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setTreatmentModal(null)}
+                onClick={() => {
+                  setTreatmentError(null);
+                  setTreatmentModal(null);
+                }}
                 className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
               >
                 إلغاء
