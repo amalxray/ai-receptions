@@ -51,14 +51,14 @@ export const DENTAL_FILE_TABS: readonly PatientFileTab[] = [
  * The imaging-center tab set: same order and count as the dental one so the
  * muscle memory survives, with the treatment domain replaced by the referral
  * domain (طلبات الأشعة) and the file domain renamed to what an imaging center
- * actually produces (الدراسات).
+ * actually produces (الدراسات الشعاعية).
  */
 export const IMAGING_FILE_TABS: readonly PatientFileTab[] = [
   { key: 'overview', label: '📋 نظرة عامة' },
   { key: 'appointments', label: '📅 المواعيد' },
   { key: 'requests', label: '🩹 طلبات الأشعة' },
   { key: 'financial', label: '💰 المالية' },
-  { key: 'studies', label: '🩻 الدراسات' },
+  { key: 'studies', label: '🩻 الدراسات الشعاعية' },
   { key: 'communications', label: '🗨️ التواصل' },
 ] as const;
 

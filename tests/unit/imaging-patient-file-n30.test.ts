@@ -105,7 +105,7 @@ describe('N30 — activity decides the patient-file tabs', () => {
     expect(clinic).not.toContain('🩹');
     expect(clinic).not.toContain('🩻');
     expect(center).toContain('🩹 طلبات الأشعة');
-    expect(center).toContain('🩻 الدراسات');
+    expect(center).toContain('🩻 الدراسات الشعاعية');
     expect(center).not.toContain('🦷');
   });
 
