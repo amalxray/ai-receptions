@@ -6,17 +6,31 @@ import { logEvent } from '@/lib/server/logging';
 
 const PRICING_TYPES = ['unspecified', 'fixed', 'estimate', 'range', 'case_by_case'] as const;
 
-const serviceUpdateSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  description: z.string().max(1000).optional().nullable(),
-  duration_minutes: z.coerce.number().int().min(5).max(480).optional(),
-  price: z.coerce.number().min(0).optional().nullable(),
-  pricing_type: z.enum(PRICING_TYPES).optional(),
-  price_min: z.coerce.number().min(0).optional().nullable(),
-  price_max: z.coerce.number().min(0).optional().nullable(),
-  price_visible_to_patients: z.boolean().optional(),
-  active: z.boolean().optional(),
-});
+const serviceUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().max(1000).optional().nullable(),
+    duration_minutes: z.coerce.number().int().min(5).max(480).optional(),
+    price: z.coerce.number().min(0).optional().nullable(),
+    pricing_type: z.enum(PRICING_TYPES).optional(),
+    price_min: z.coerce.number().min(0).optional().nullable(),
+    price_max: z.coerce.number().min(0).optional().nullable(),
+    price_visible_to_patients: z.boolean().optional(),
+    active: z.boolean().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.pricing_type === 'range') {
+      if (val.price_min == null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_min'], message: 'الحد الأدنى للسعر مطلوب للنطاق السعري.' });
+      }
+      if (val.price_max == null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_max'], message: 'الحد الأعلى للسعر مطلوب للنطاق السعري.' });
+      }
+    }
+    if (val.price_min != null && val.price_max != null && val.price_min > val.price_max) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_max'], message: 'يجب ألا يقل السعر الأعلى عن السعر الأدنى.' });
+    }
+  });
 
 /**
  * B18 — ACTIVITY-AWARE: reads/writes the catalog owned by this tenant's
