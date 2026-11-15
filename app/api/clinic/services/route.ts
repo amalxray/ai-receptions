@@ -36,8 +36,16 @@ const serviceSchema = z
     active: z.boolean().optional().default(true),
   })
   .superRefine((val, ctx) => {
-    if ((val.pricing_type ?? 'unspecified') === 'range' && val.price_min != null && val.price_max != null && val.price_min > val.price_max) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_max'], message: 'price_max must be >= price_min' });
+    if (val.pricing_type === 'range') {
+      if (val.price_min == null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_min'], message: 'الحد الأدنى للسعر مطلوب للنطاق السعري.' });
+      }
+      if (val.price_max == null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_max'], message: 'الحد الأعلى للسعر مطلوب للنطاق السعري.' });
+      }
+    }
+    if (val.price_min != null && val.price_max != null && val.price_min > val.price_max) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_max'], message: 'يجب ألا يقل السعر الأعلى عن السعر الأدنى.' });
     }
   });
 

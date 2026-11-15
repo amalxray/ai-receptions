@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let inserted: any = null;
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: {
     from: vi.fn(() => ({
@@ -27,11 +28,18 @@ vi.mock('@/lib/services/clinicAuthorization', () => ({
 vi.mock('@/lib/server/logging', () => ({ logEvent: vi.fn() }));
 
 import { POST } from '@/app/api/clinic/services/route';
+import { PUT as updateService } from '@/app/api/clinic/services/[serviceId]/route';
 
 const CLINIC = '22222222-2222-2222-2222-222222222222';
 function req(body: unknown) {
   return new Request(`http://localhost/api/clinic/services?clinic_id=${CLINIC}`, {
     method: 'POST', headers: { authorization: 'Bearer t', 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+}
+
+function updateReq(body: unknown) {
+  return new Request(`http://localhost/api/clinic/services/svc1?clinic_id=${CLINIC}`, {
+    method: 'PUT', headers: { authorization: 'Bearer t', 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
 }
 
@@ -60,5 +68,19 @@ describe('services POST pricing handling', () => {
 
     const bad = await POST(req({ name: 'تقويم', duration_minutes: 45, pricing_type: 'range', price_min: 4000, price_max: 2000 }));
     expect(bad.status).toBe(400);
+  });
+
+  it('requires both range bounds on create and rejects inverted bounds on update', async () => {
+    const missingBound = await POST(req({ name: 'تقويم', duration_minutes: 45, pricing_type: 'range', price_min: 2000 }));
+    expect(missingBound.status).toBe(400);
+    expect((await missingBound.json()).details[0].path).toEqual(['price_max']);
+
+    const invertedUpdate = await updateService(updateReq({
+      pricing_type: 'range',
+      price_min: 4000,
+      price_max: 2000,
+    }));
+    expect(invertedUpdate.status).toBe(400);
+    expect((await invertedUpdate.json()).details[0].path).toEqual(['price_max']);
   });
 });
