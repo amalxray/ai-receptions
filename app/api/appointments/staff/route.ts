@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listAppointments } from '@/lib/services/appointmentEngine';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 const STATUS_BY_VIEW: Record<string, string | undefined> = {
   pending: 'tentative',
@@ -19,6 +20,8 @@ export async function GET(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
     if (!authorization.authorized) return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
+    const permission = await permissionDenied(req, clinicId, 'view_appointments');
+    if (permission) return permission;
     const today = new Date().toISOString().slice(0, 10);
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const data = await listAppointments({

@@ -1,12 +1,13 @@
 /**
  * PHASE L — PUBLIC PAGE CONTENT item management.
- * PATCH {type, ...patch} — update one tenant content item (ADMIN_ROLES).
- * DELETE ?type= — delete one tenant content item (ADMIN_ROLES).
+ * PATCH {type, ...patch} — update one tenant content item (manage_public_page).
+ * DELETE ?type= — delete one tenant content item (manage_public_page).
  * Tenant-scoped by clinic_id + id AFTER authorizeClinicRequest.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import { updatePublicContent, deletePublicContent, type PublicContentType } from '@/lib/services/clinicPublicContent';
@@ -16,6 +17,7 @@ const paramsSchema = z.object({ id: z.string().uuid() });
 
 export async function PATCH(req: Request) {
   try {
+    const body = await req.json();
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     const type = url.searchParams.get('type') as PublicContentType | null;
@@ -23,16 +25,18 @@ export async function PATCH(req: Request) {
     if (!type || !CONTENT_TYPES.includes(type)) {
       return NextResponse.json({ error: 'type must be one of achievements|testimonials|articles|news' }, { status: 400 });
     }
-    const { id } = paramsSchema.parse(await req.json());
+    const { id } = paramsSchema.parse(body);
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
-    const result = await updatePublicContent(clinicId, type, id, jsonToPatch(await req.json()));
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
+    const result = await updatePublicContent(clinicId, type, id, jsonToPatch(body));
     if (!result.ok) return NextResponse.json({ error: result.message }, { status: 400 });
     await writeAuditLog({
       clinicId,
@@ -62,12 +66,14 @@ export async function DELETE(req: Request) {
     const { id } = paramsSchema.parse(await req.json());
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
     const result = await deletePublicContent(clinicId, type, id);
     if (!result.ok) return NextResponse.json({ error: result.message }, { status: 400 });
     await writeAuditLog({

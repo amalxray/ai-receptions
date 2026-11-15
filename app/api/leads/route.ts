@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getLeads, createLead, createPublicLead } from '@/lib/services/leads';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { demoFallbackAllowed } from '@/lib/demoState';
+import { permissionDenied } from '@/lib/services/permissionGate';
+import type { Lead } from '@/types/lead';
 
 const NOT_CONFIGURED_RESPONSE = {
   error: 'قاعدة البيانات غير مُهيّأة على هذا النشر — تعذّر تنفيذ الطلب',
@@ -39,6 +41,15 @@ const publicLeadSchema = z.object({
   source: z.literal('landing_page_founding_offer'),
 });
 
+const clinicLeadSchema = z.object({
+  clinic_id: z.string().uuid(),
+  name: z.string().trim().min(1).max(200),
+  email: z.string().max(254),
+  phone: z.string().max(30),
+  source: z.string().max(200),
+  status: z.string().max(50),
+});
+
 type PublicLeadInput = {
   name: string;
   email: string;
@@ -46,7 +57,7 @@ type PublicLeadInput = {
   source: 'landing_page_founding_offer';
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const config = getSupabaseEnvConfig();
 
   if (!config.isConfigured) {
@@ -55,7 +66,11 @@ export async function GET() {
   }
 
   try {
-    const data = await getLeads();
+    const clinicId = new URL(request.url).searchParams.get('clinic_id');
+    if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
+    const permission = await permissionDenied(request, clinicId, 'view_leads');
+    if (permission) return permission;
+    const data = await getLeads(clinicId);
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 });
@@ -109,7 +124,19 @@ export async function POST(request: NextRequest) {
 
   // ─── Authenticated clinic-member lead path (RLS-enforced) ───
   try {
-    const lead = await createLead(body as never);
+    const parsed = clinicLeadSchema.safeParse(body);
+    if (!parsed.success) return NextResponse.json({ error: 'Invalid lead payload' }, { status: 400 });
+    const permission = await permissionDenied(request, parsed.data.clinic_id, 'manage_leads');
+    if (permission) return permission;
+    const leadData: Omit<Lead, 'id'> = {
+      clinic_id: parsed.data.clinic_id!,
+      name: parsed.data.name!,
+      email: parsed.data.email!,
+      phone: parsed.data.phone!,
+      source: parsed.data.source!,
+      status: parsed.data.status!,
+    };
+    const lead = await createLead(leadData);
     return NextResponse.json(lead);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 });

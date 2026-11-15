@@ -42,15 +42,15 @@ winget install --id Cloudflare.cloudflared --exact
 cloudflared tunnel --url http://localhost:8000
 ```
 
-انسخ عنوان `https://<random-words>.trycloudflare.com` الذي يظهر في الطرفية؛ هذا هو `AI_INFERENCE_URL` ولا تضف إليه `/analyze`. أوقف النفق بـ`Ctrl+C`. Quick Tunnel مجاني لكنه مؤقت، عنوانه يتغير عند إعادة التشغيل ولا يضمن وقت تشغيل؛ الجهاز والإنترنت يجب أن يظلا متصلين. لاختبار مستقر استخدم Named Tunnel مرتبطاً بحساب ودومين، وشغّله كخدمة Windows.
+انسخ عنوان `https://<random-words>.trycloudflare.com` الذي يظهر في الطرفية؛ هذا عنوان خدمة الاستدلال القديمة ولا تضف إليه `/analyze`. أوقف النفق بـ`Ctrl+C`. Quick Tunnel مجاني لكنه مؤقت، عنوانه يتغير عند إعادة التشغيل ولا يضمن وقت تشغيل؛ الجهاز والإنترنت يجب أن يظلا متصلين. لا تستخدم عنوان هذه الخدمة في تكامل تحليل البانوراما الحالي.
 
-في Vercel: **Project → Settings → Environment Variables**، أضف `AI_INFERENCE_URL` بعنوان HTTPS للنفق و`AI_INFERENCE_API_KEY` بالقيمة المطابقة لـ`INFERENCE_API_KEY` (Secret)، واحصرهما مبدئياً ببيئة Preview. أعد نشر Preview بعد الحفظ. لا تستخدم Quick Tunnel لبيانات مرضى أو تشغيل إنتاجي؛ كل طلب يمر عبر الإنترنت إلى جهازك.
+تكامل تحليل البانوراما الحالي لا يستخدم `AI_INFERENCE_URL` أو `AI_INFERENCE_API_KEY`. إعداد الخدمة المعتمدة ذات 83 فئة موضح في [دليل الخدمة المتقدمة](../ai-inference-advanced/README.md).
 
 ## CORS والاتصال من dentairec
 
-لا يلزم CORS عندما يستدعي `app/api/ai/panorama-analyze` خدمة الاستدلال من الخادم؛ CORS قيد متصفح ولا يحمي API key. لا تستدعِ `/analyze` مباشرة من React ولا تضع `INFERENCE_API_KEY` في متغيرات `NEXT_PUBLIC_*`. عند تشغيل Next.js محلياً، اضبط `AI_INFERENCE_URL=http://127.0.0.1:8000` و`AI_INFERENCE_API_KEY` في بيئة الخادم المحلية فقط. خادم Vercel لا يستطيع الوصول إلى localhost على جهاز المطور.
+لا يلزم CORS عندما يستدعي `app/api/ai/panorama-analyze` خدمة الاستدلال من الخادم؛ CORS قيد متصفح ولا يحمي API key. لا تستدعِ `/analyze` مباشرة من React ولا تضع `INFERENCE_API_KEY` في متغيرات `NEXT_PUBLIC_*`. المسار الحالي يستخدم خدمة النموذج المتقدم عبر `AI_INFERENCE_URL_V2` و`AI_INFERENCE_API_KEY_V2` فقط. خادم Vercel لا يستطيع الوصول إلى localhost على جهاز المطور.
 
-للاختبار من Vercel استخدم نفق HTTPS مؤقتاً (مثلاً Cloudflare Quick Tunnel أو ngrok) إلى خدمة localhost، ثم عيّن `AI_INFERENCE_URL` في بيئة Vercel إلى عنوان النفق، و`AI_INFERENCE_API_KEY` إلى المفتاح المطابق. أعد نشر Vercel بعد تعديل المتغيرات. النفق يجعل الخدمة متاحة عبر الإنترنت؛ استخدم مفتاحاً قوياً، ولا ترسل صوراً أو بيانات مرضى عبر نفق تجريبي. استخدم فقط صورة اختبار مصرحاً بها ومنزوعة البيانات التعريفية، وأوقف النفق والخدمة بعد الاختبار. هذا إعداد اختبار مؤقت وليس بديلاً عن نشر مستقر.
+لاختبار المسار الحالي من Vercel، اضبط متغيري `AI_INFERENCE_URL_V2` و`AI_INFERENCE_API_KEY_V2` على خدمة النموذج المتقدم فقط؛ لا توجههما إلى خدمة هذا الدليل القديمة. راجع [دليل الخدمة المتقدمة](../ai-inference-advanced/README.md) للتفاصيل.
 
 ## النموذج والتحويل
 

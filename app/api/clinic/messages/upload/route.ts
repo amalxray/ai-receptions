@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { uploadMessageFile } from '@/lib/services/clinicMessaging';
 
@@ -11,8 +11,8 @@ export async function POST(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id مطلوب' }, { status: 400 });
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'غير مخول' }, { status: auth.status });
+    const permission = await permissionDenied(req, clinicId, 'send_messages');
+    if (permission) return permission;
     const form = await req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) return NextResponse.json({ error: 'الملف مطلوب (file)' }, { status: 400 });

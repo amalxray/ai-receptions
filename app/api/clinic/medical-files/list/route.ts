@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 
 /**
@@ -18,10 +18,8 @@ export async function GET(req: Request) {
     const patientId = url.searchParams.get('patient_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_medical_files');
+    if (gate) return gate;
 
     let query = supabaseAdmin
       .from('medical_files')

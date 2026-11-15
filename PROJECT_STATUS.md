@@ -1,12 +1,31 @@
 # Project Status
 
-## B105 — تفعيل تحليل الأشعة بالذكاء الاصطناعي (52 فئة) — 2026-11-01
+## 2026-11-09 — Dashboard navigation performance ([PR #316](https://github.com/amalxray/ai-receptions/pull/316), [PR #317](https://github.com/amalxray/ai-receptions/pull/317), [PR #318](https://github.com/amalxray/ai-receptions/pull/318))
 
-- **النموذج**: `best_model_upgraded.onnx`، نموذج ONNX يضم 52 فئة.
-- **الاستضافة**: Render عبر خدمة Docker مجانية: [ai-xray-analyzer-nctg.onrender.com](https://ai-xray-analyzer-nctg.onrender.com).
+- **Shared clinic context:** Dashboard components reuse verified tenant context and share membership data, avoiding repeated independent fetches while preserving server-side tenant authorization.
+- **Overview query:** Appointment rows are limited to the seven-day window and a maximum of 500; a separate count query preserves the historical total.
+- **Database index:** Added the partial index `idx_appointments_clinic_date_active` on `(clinic_id, appointment_date)` for non-deleted appointments. The project owner confirmed applying the migration manually through Supabase SQL Editor.
+- **Navigation:** Overview cards use tenant-scoped `next/link` routes for prefetching. Clinic switching preserves the active module and matches complete slug path segments.
+- **Shared Supabase check:** A single dashboard-level provider shares the runtime Supabase configuration check instead of triggering duplicate requests from individual components.
+- **Result:** The project owner confirmed that navigation across dashboard sections is noticeably faster after the changes.
+
+## 2026-11-08 — Recent merged updates (B123, B163, B164, B165)
+
+| Work item | Status | Changes / verification |
+|---|---|---|
+| B123 — Panorama model comparison ([PR #304](https://github.com/amalxray/ai-receptions/pull/304)) | ✅ Merged to `main` | Added `scripts/compare_models.py` and usage notes in `scripts/README.md` to compare ONNX models on image samples. A local 100-image comparison previously recorded 13.59 detections/image and 56.97% weighted confidence for the 83-class model, versus 8.17 detections/image and 46.63% for the 52-class model. These are local evaluation results, not committed result data or clinical validation; ground-truth review is still required. |
+| B163 — Search all patients ([PR #305](https://github.com/amalxray/ai-receptions/pull/305)) | ✅ Merged to `main` | Patient search now queries the API/database instead of relying only on the initially loaded records. Active search is not narrowed by date or patient-status filters; the API limit is 1,000, and the UI presents up to 50 search results. |
+| B164 — Financial patient-file uploads ([PR #306](https://github.com/amalxray/ai-receptions/pull/306)) | ✅ Merged to `main` | Replaced the financial panel's multipart upload through Next.js with the medical-file flow: request an authorized signed upload URL, upload directly to Supabase Storage, then confirm and record metadata. Removed the client-side 4 MiB limit; existing server-side file-type limits remain authoritative. Automated coverage includes a 5.9 MiB file; a live clinic upload was not performed. |
+| B165 — PDF preview ([PR #307](https://github.com/amalxray/ai-receptions/pull/307), superseded by [PR #308](https://github.com/amalxray/ai-receptions/pull/308)) | ✅ Merged to `main`; Production Ready | Added PDF preview actions to both medical and financial file lists. The initial browser-native iframe did not provide the desired full-screen document view, so PR #308 replaced it with React-PDF/PDF.js rendering in a viewport-sized dialog, with pages scaled to the viewer width. The PDF.js worker is copied to a same-origin public asset during dependency installation. Production deployment for merge commit `2cdf3c3` reached **Ready**; the production worker URL returned HTTP 200. |
+
+## B162 — توحيد تحليل الأشعة على النموذج المتقدم (83 فئة)
+
+- **النموذج**: `best_model_upgraded.onnx`، نموذج ONNX يضم 83 فئة.
+- **الاستضافة**: Render عبر خدمة الاستدلال المتقدمة.
 - **الحماية من النوم**: UptimeRobot مضبوط على فحص الخدمة كل 5 دقائق.
-- **الربط**: Vercel يستخدم متغيري الإنتاج `AI_INFERENCE_URL` و`AI_INFERENCE_API_KEY`؛ المفتاح محفوظ كمتغير سري وليس في المستودع.
-- **الاختبار**: وفقاً لتأكيد مدير المشروع، نجح الاختبار على صورة أشعة حقيقية وسجل 21 اكتشافاً. النتائج مساعدة فقط وليست تشخيصاً طبياً.
+- **الربط**: تحليل الأشعة يستخدم `AI_INFERENCE_URL_V2` و`AI_INFERENCE_API_KEY_V2`؛ المفتاح محفوظ كمتغير سري وليس في المستودع.
+- **الواجهة**: زر تحليل واحد يوجّه الطلبات إلى إصدار النموذج `advanced`.
+- **تنبيه**: النتائج مساعدة فقط وليست تشخيصاً طبياً.
 
 ## 2026-10-31 — Stable Release: Ask & Booking Overhaul (B80-B97)
 

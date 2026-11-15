@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     MODEL_PATH=/app/models/best_model_upgraded.onnx \
-    IMAGE_SIZE=1024 \
+    IMAGE_SIZE=640 \
     ORT_INTRA_OP_THREADS=2 \
     PORT=10000
 

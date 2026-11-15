@@ -1,0 +1,7 @@
+B125 — Colab training checklist
+
+تحقق من النقاط التالية في Google Colab وDrive:
+
+1. هل الملف `dental_83_full_v1/weights/last.pt` موجود في Drive؟
+2. ما تاريخ ووقت آخر تعديل للملف `last.pt`؟
+3. هل التدريب متوقف أم ما زال مستمراً؟

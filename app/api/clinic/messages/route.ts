@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import {
   getConversations,
@@ -43,8 +43,8 @@ export async function GET(req: Request) {
     const clinicId = resolveClinicId(req);
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
+    const permission = await permissionDenied(req, clinicId, 'view_messages');
+    if (permission) return permission;
 
     const conversations = await getConversations(clinicId);
     const partners = await getAcceptedPartners(clinicId);
@@ -60,8 +60,8 @@ export async function POST(req: Request) {
     const clinicId = resolveClinicId(req);
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
+    const permission = await permissionDenied(req, clinicId, 'send_messages');
+    if (permission) return permission;
 
     const body = await req.json();
     const parsed = postSchema.safeParse(body);

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { KnowledgeService } from '@/lib/services/knowledgeService';
 import { logEvent } from '@/lib/server/logging';
@@ -14,6 +15,9 @@ export async function POST(request: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+
+    const permission = await permissionDenied(request, clinicId, 'manage_knowledge');
+    if (permission) return permission;
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;

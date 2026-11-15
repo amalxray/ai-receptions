@@ -244,16 +244,52 @@ export async function voidInvoice(input: VoidInvoiceInput): Promise<void> {
 
 // --- Read-only queries (derived balances — never stored numbers) ---
 
-export async function listInvoices(clinicId: string, patientId?: string | null) {
+export async function listInvoices(
+  clinicId: string,
+  patientId?: string | null,
+  status?: 'paid' | 'unpaid' | 'voided' | null,
+  limit = 50,
+) {
   let query = supabaseAdmin
-    .from('invoice_balances')
-    .select('*')
+    .from('clinic_invoices')
+    .select('*, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name)')
     .eq('clinic_id', clinicId)
-    .order('invoice_number', { ascending: false });
+    .order('invoice_number', { ascending: false })
+    .limit(limit);
   if (patientId) query = query.eq('patient_id', patientId);
+  if (status === 'paid') query = query.eq('status', 'paid');
+  else if (status === 'unpaid') query = query.in('status', ['issued', 'partially_paid']);
+  else if (status === 'voided') query = query.eq('status', 'voided');
+  else query = query.neq('status', 'voided');
+
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data ?? [];
+  const invoices = data ?? [];
+  if (!invoices.length) return [];
+
+  const activeInvoiceIds = invoices.filter((invoice) => invoice.status !== 'voided').map((invoice) => invoice.id);
+  const balanceByInvoiceId = new Map<string, Record<string, unknown>>();
+  if (activeInvoiceIds.length) {
+    const { data: balances, error: balanceError } = await supabaseAdmin
+      .from('invoice_balances')
+      .select('invoice_id, paid_amount, written_off_amount, balance_amount')
+      .eq('clinic_id', clinicId)
+      .in('invoice_id', activeInvoiceIds);
+    if (balanceError) throw new Error(balanceError.message);
+    for (const balance of balances ?? []) balanceByInvoiceId.set(balance.invoice_id, balance);
+  }
+
+  return invoices.map((invoice) => {
+    const patient = Array.isArray(invoice.patients) ? invoice.patients[0] : invoice.patients;
+    const balance = balanceByInvoiceId.get(invoice.id);
+    return {
+      ...invoice,
+      patient_name: patient?.full_name ?? null,
+      paid_amount: balance?.paid_amount ?? 0,
+      written_off_amount: balance?.written_off_amount ?? 0,
+      balance_amount: balance?.balance_amount ?? 0,
+    };
+  });
 }
 
 export async function getInvoiceDetail(clinicId: string, invoiceId: string): Promise<InvoiceWithItems | null> {
@@ -269,16 +305,33 @@ export async function getInvoiceDetail(clinicId: string, invoiceId: string): Pro
   return { ...invRes.data, items: itemsRes.data ?? [], payments: payRes.data ?? [] };
 }
 
-export async function listPayments(clinicId: string, invoiceId?: string | null) {
+export async function listPayments(
+  clinicId: string,
+  invoiceId?: string | null,
+  limit = 50,
+  patientId?: string | null,
+) {
   let query = supabaseAdmin
     .from('clinic_payments')
-    .select('*')
+    .select(patientId
+      ? '*, clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey!inner(invoice_number, patient_id, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name))'
+      : '*, clinic_invoices!clinic_payments_clinic_id_invoice_id_fkey(invoice_number, patients!clinic_invoices_clinic_id_patient_id_fkey(full_name))')
     .eq('clinic_id', clinicId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (invoiceId) query = query.eq('invoice_id', invoiceId);
+  if (patientId) query = query.eq('clinic_invoices.patient_id', patientId);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((payment) => {
+    const invoice = Array.isArray(payment.clinic_invoices) ? payment.clinic_invoices[0] : payment.clinic_invoices;
+    const patient = Array.isArray(invoice?.patients) ? invoice.patients[0] : invoice?.patients;
+    return {
+      ...payment,
+      invoice_number: invoice?.invoice_number ?? null,
+      patient_name: patient?.full_name ?? null,
+    };
+  });
 }
 
 export async function getPatientBalances(clinicId: string, patientId?: string | null) {
@@ -475,20 +528,159 @@ export type ExpenseRow = Record<string, unknown>;
 
 export async function listExpenses(
   clinicId: string,
-  filters?: { categoryId?: string | null; status?: string | null; from?: string | null; to?: string | null }
-): Promise<ExpenseRow[]> {
+  filters?: {
+    categoryId?: string | null;
+    status?: string | null;
+    from?: string | null;
+    to?: string | null;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ items: ExpenseRow[]; hasMore: boolean }> {
+  const limit = Math.min(100, Math.max(1, Math.floor(filters?.limit ?? 50)));
+  const offset = Math.max(0, Math.floor(filters?.offset ?? 0));
   let query = supabaseAdmin
     .from('clinic_expenses')
-    .select('*')
+    .select('*, category:clinic_expense_categories(name)')
     .eq('clinic_id', clinicId)
     .order('spent_at', { ascending: false });
   if (filters?.categoryId) query = query.eq('category_id', filters.categoryId);
   if (filters?.status) query = query.eq('status', filters.status);
   if (filters?.from) query = query.gte('spent_at', filters.from);
   if (filters?.to) query = query.lte('spent_at', filters.to);
+  query = query.range(offset, offset + limit);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data ?? []) as ExpenseRow[];
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const hasMore = rows.length > limit;
+  return {
+    items: rows.slice(0, limit).map((row) => {
+      const category = row.category as { name?: string } | Array<{ name?: string }> | null;
+      const categoryRecord = Array.isArray(category) ? category[0] : category;
+      return { ...row, category_name: categoryRecord?.name ?? null };
+    }),
+    hasMore,
+  };
+}
+
+export async function updateExpense(input: {
+  clinicId: string;
+  expenseId: string;
+  notes?: string | null;
+  vendor?: string | null;
+  categoryId?: string | null;
+  actorUserId: string | null;
+}): Promise<ExpenseRow> {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.notes !== undefined) patch.notes = input.notes;
+  if (input.vendor !== undefined) patch.vendor = input.vendor;
+  if (input.categoryId !== undefined) patch.category_id = input.categoryId;
+
+  const { data, error } = await supabaseAdmin
+    .from('clinic_expenses')
+    .update(patch)
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.expenseId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('EXPENSE_NOT_FOUND');
+
+  await writeAuditLog({
+    clinicId: input.clinicId,
+    actorUserId: input.actorUserId,
+    action: 'expense_updated',
+    resourceType: 'clinic_expenses',
+    resourceId: input.expenseId,
+    metadata: {
+      notes: input.notes ?? null,
+      vendor: input.vendor ?? null,
+      category_id: input.categoryId ?? null,
+    },
+  });
+
+  return data as ExpenseRow;
+}
+
+export async function updateExpenseAttachment(input: {
+  clinicId: string;
+  expenseId: string;
+  path: string | null;
+  actorUserId: string | null;
+}): Promise<ExpenseRow> {
+  const { data, error } = await supabaseAdmin
+    .from('clinic_expenses')
+    .update({ attachment_url: input.path, updated_at: new Date().toISOString() })
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.expenseId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('EXPENSE_NOT_FOUND');
+
+  await writeAuditLog({
+    clinicId: input.clinicId,
+    actorUserId: input.actorUserId,
+    action: input.path ? 'expense_attachment_uploaded' : 'expense_attachment_removed',
+    resourceType: 'clinic_expenses',
+    resourceId: input.expenseId,
+    metadata: { attachment_path: input.path },
+  });
+
+  return data as ExpenseRow;
+}
+
+export async function deleteExpenseAttachment(input: {
+  clinicId: string;
+  expenseId: string;
+  actorUserId: string | null;
+}): Promise<void> {
+  const { data, error } = await supabaseAdmin
+    .from('clinic_expenses')
+    .select('attachment_url')
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.expenseId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('EXPENSE_NOT_FOUND');
+  const currentPath = (data as { attachment_url?: string | null }).attachment_url ?? null;
+
+  if (currentPath) {
+    const { error: removeError } = await supabaseAdmin.storage.from('expense-attachments').remove([currentPath]);
+    if (removeError) throw new Error(removeError.message);
+  }
+
+  await updateExpenseAttachment({
+    clinicId: input.clinicId,
+    expenseId: input.expenseId,
+    path: null,
+    actorUserId: input.actorUserId,
+  });
+}
+
+export async function getExpenseAttachmentSignedUrl(
+  clinicId: string,
+  expenseId: string,
+  path: string | null | undefined,
+  seconds = 3600,
+  downloadFilename?: string
+): Promise<string | null> {
+  const storagePath = (path ?? '').trim();
+  if (!storagePath) return null;
+  if (!storagePath.startsWith(`${clinicId}/${expenseId}/`)) {
+    throw new Error('EXPENSE_ATTACHMENT_PATH_INVALID');
+  }
+
+  const bucket = supabaseAdmin.storage.from('expense-attachments');
+  const { data, error } = downloadFilename
+    ? await bucket.createSignedUrl(storagePath, seconds, { download: downloadFilename })
+    : await bucket.createSignedUrl(storagePath, seconds);
+  if (error) throw new Error(error.message);
+  if (!data?.signedUrl) throw new Error('EXPENSE_ATTACHMENT_SIGNED_URL_FAILED');
+  return data.signedUrl;
 }
 
 
@@ -681,4 +873,3 @@ export async function getDailyCashPositions(
     netCash: Number(row.net_cash ?? 0),
   }));
 }
-

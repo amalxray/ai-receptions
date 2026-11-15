@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { logEvent } from '@/lib/server/logging';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export async function GET(req: Request) {
   try {
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     }
 
     // Verify patient belongs to this clinic
-    const { data: patient, error: patientError } = await supabase
+    const { data: patient, error: patientError } = await supabaseAdmin
       .from('patients')
       .select('id')
       .eq('id', patientId)
@@ -27,12 +27,21 @@ export async function GET(req: Request) {
       .is('deleted_at', null)
       .maybeSingle();
 
-    if (patientError || !patient) {
+    if (patientError) {
+      logEvent('patient_communications_patient_lookup_error', {
+        clinic_id: clinicId,
+        patient_id: patientId,
+        error: patientError.message,
+      }, 'error');
+      return NextResponse.json({ error: 'Failed to verify patient' }, { status: 500 });
+    }
+
+    if (!patient) {
       return NextResponse.json({ error: 'Patient not found for this clinic' }, { status: 404 });
     }
 
     // Load notification history for this patient
-    const { data: notifications, error } = await supabase
+    const { data: notifications, error } = await supabaseAdmin
       .from('notification_queue')
       .select('*')
       .eq('clinic_id', clinicId)

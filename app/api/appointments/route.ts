@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { getCalendarRange } from '@/lib/services/scheduling';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { createDemoAppointment, getDemoAppointments, demoFallbackAllowed } from '@/lib/demoState';
@@ -141,6 +142,8 @@ export async function GET(req: Request) {
       logEvent('authorization_denied', { route: 'appointments_get', clinic_id: clinicId, reason: authorization.status === 401 ? 'unauthorized' : 'forbidden' }, 'warn');
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, clinicId, 'view_appointments');
+    if (permission) return permission;
 
     const access = await getClinicSubscriptionAccess(clinicId);
     if (!access.allowed) {
@@ -220,6 +223,8 @@ export async function POST(req: Request) {
       logEvent('authorization_denied', { route: 'appointments_post', clinic_id, reason: authorization.status === 401 ? 'unauthorized' : 'forbidden' }, 'warn');
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, clinic_id, 'manage_appointments');
+    if (permission) return permission;
 
     const access = await getClinicSubscriptionAccess(clinic_id);
     if (!access.allowed) {
@@ -275,6 +280,8 @@ export async function PATCH(req: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, clinicId, 'manage_appointments');
+    if (permission) return permission;
 
     const access = await getClinicSubscriptionAccess(clinicId);
     if (!access.allowed) {

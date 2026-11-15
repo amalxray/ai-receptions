@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { imagingServiceIcon } from '@/components/public/ImagingPublicSpace';
+import { imagingServiceIcon, imagingServiceImage } from '@/components/public/ImagingPublicSpace';
 
 /**
  * imagingServiceIcon — name-first mapping so a service mis-filed under a
@@ -27,6 +27,19 @@ describe('imagingServiceIcon', () => {
 
   it('falls back to a rotating decorative glyph for unknown modalities', () => {
     expect(imagingagingSafeIconFallback()).toBe(true);
+  });
+});
+
+describe('imagingServiceImage', () => {
+  it('maps service names to the matching public image before modality fallback', () => {
+    expect(imagingServiceImage('مفصل الفكين', 'cbct')?.src).toBe('/teeth-pic/tmj-pain.jpeg');
+    expect(imagingServiceImage('تصوير طبقي cbct', 'panoramic')?.src).toBe('/teeth-pic/cbct-3d.jpg');
+    expect(imagingServiceImage('تصوير بانوراما', 'cbct')?.src).toBe('/teeth-pic/panorama.png');
+  });
+
+  it('uses modality for generic service names and leaves unknown services without an image', () => {
+    expect(imagingServiceImage('تصوير ثلاثي الأبعاد', 'cbct')?.src).toBe('/teeth-pic/cbct-3d.jpg');
+    expect(imagingServiceImage('فحص عام', null)).toBeNull();
   });
 });
 

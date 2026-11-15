@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DELETE, POST } from '@/app/api/ai/knowledge/documents/[documentId]/route';
 
 const originalEnv = process.env;
+const mockPermission = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
 
 vi.mock('next/headers', () => ({
   cookies: () => ({
@@ -14,6 +15,7 @@ vi.mock('next/headers', () => ({
 vi.mock('@supabase/ssr', () => ({
   createServerClient: vi.fn(),
 }));
+vi.mock('@/lib/services/permissionGate', () => mockPermission);
 
 import { createServerClient } from '@supabase/ssr';
 
@@ -21,6 +23,7 @@ describe('Knowledge document action API', () => {
   const mockSupabaseClient = {
     auth: {
       getSession: vi.fn(),
+      getUser: vi.fn(),
     },
     from: vi.fn(),
   };
@@ -30,6 +33,8 @@ describe('Knowledge document action API', () => {
     vi.clearAllMocks();
     (createServerClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockSupabaseClient);
     mockSupabaseClient.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } } });
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    mockPermission.permissionDenied.mockResolvedValue(null);
   });
 
   test('marks a document as deleted', async () => {
@@ -50,11 +55,12 @@ describe('Knowledge document action API', () => {
       return knowledgeChain;
     });
 
-    const response = await DELETE(new Request('http://localhost/api/ai/knowledge/documents/doc-1'));
+    const response = await DELETE(new Request('http://localhost/api/ai/knowledge/documents/doc-1?clinic_id=clinic-1'));
     const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(json.success).toBe(true);
+    expect(mockPermission.permissionDenied).toHaveBeenCalledWith(expect.any(Request), 'clinic-1', 'manage_knowledge');
   });
 
   test('requeues a document for processing', async () => {
@@ -77,10 +83,11 @@ describe('Knowledge document action API', () => {
       return knowledgeChain;
     });
 
-    const response = await POST(new Request('http://localhost/api/ai/knowledge/documents/doc-1'));
+    const response = await POST(new Request('http://localhost/api/ai/knowledge/documents/doc-1?clinic_id=clinic-1'));
     const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(json.document).toEqual({ clinic_id: 'clinic-1' });
+    expect(mockPermission.permissionDenied).toHaveBeenCalledWith(expect.any(Request), 'clinic-1', 'manage_knowledge');
   });
 });

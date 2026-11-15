@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, PAYMENT_RECORD_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, PAYMENT_RECORD_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { recordPayment, listPayments } from '@/lib/services/accounting';
 import { createInAppNotification } from '@/lib/notifications/inAppNotifier';
@@ -11,8 +11,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, PAYMENT_RECORD_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_payments', { allowedRoles: PAYMENT_RECORD_ROLES });
     if (permBlocked) return permBlocked;
 
@@ -60,13 +58,16 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    const permBlocked = await permissionDenied(req, clinicId, ['view_financial', 'manage_payments']);
     if (permBlocked) return permBlocked;
-    const data = await listPayments(clinicId);
+    const rawLimit = url.searchParams.get('limit');
+    const parsedLimit = rawLimit === null ? 50 : Number(rawLimit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+      return NextResponse.json({ error: 'limit must be a positive integer' }, { status: 400 });
+    }
+    const limit = Math.min(parsedLimit, 100);
+    const data = await listPayments(clinicId, null, limit, url.searchParams.get('patient_id'));
     return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 500 });

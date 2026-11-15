@@ -3,7 +3,7 @@
  *
  * GET   — any clinic member (DATA_ROLES): the tenant's public page
  *         configuration (settings + togglable services/providers + URLs).
- * PATCH — owner/manager only (ADMIN_ROLES): update the tenant's public page
+ * PATCH — requires manage_public_page: update the tenant's public page
  *         settings (sections, description, social links, hidden services/providers,…).
  *
  * Everything is keyed by clinic_id AFTER authorizeClinicRequest, so a user can
@@ -15,10 +15,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   authorizeClinicRequest,
-  roleDenied,
   ADMIN_ROLES,
   DATA_ROLES,
 } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import { getPublicPageConfig, updatePublicPageConfig } from '@/lib/services/clinicPublicConfig';
@@ -91,13 +91,8 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, DATA_ROLES)) {
-      return NextResponse.json(
-        { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
-        { status: authorization.status }
-      );
-    }
+    const permission = await permissionDenied(req, clinicId, 'view_public_page', { allowedRoles: DATA_ROLES });
+    if (permission) return permission;
 
     const config = await getPublicPageConfig(clinicId);
     if (!config) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
@@ -117,12 +112,11 @@ export async function PATCH(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
-      return NextResponse.json(
-        { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
-        { status: authorization.status }
-      );
+    if (!authorization.authorized) {
+      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (permission) return permission;
 
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);

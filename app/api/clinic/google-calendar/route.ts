@@ -7,7 +7,8 @@ import {
   getGoogleCalendarConnectionStatus,
   isGoogleCalendarOAuthConfigured,
 } from '@/lib/services/googleCalendarOAuth';
-import { ADMIN_ROLES, authorizeClinicRequest, roleDenied } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 
 const clinicIdSchema = z.string().uuid();
@@ -18,13 +19,14 @@ async function authorize(req: Request) {
     return { clinicId: null, denial: NextResponse.json({ error: 'clinic_id is required' }, { status: 400 }) };
   }
   const authorization = await authorizeClinicRequest(req, clinicId);
-  const denied = roleDenied(authorization, ADMIN_ROLES);
-  if (denied) {
+  if (!authorization.authorized) {
     return {
       clinicId: null,
-      denial: NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status }),
+      denial: NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status }),
     };
   }
+  const permBlocked = await permissionDenied(req, clinicId, 'manage_settings');
+  if (permBlocked) return { clinicId: null, denial: permBlocked };
   return { clinicId, authorization, denial: null };
 }
 

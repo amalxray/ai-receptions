@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Image from 'next/image';
 import type { ActivityPublicSpace } from '@/lib/services/activityPublicSpace';
 import { ActivitySpaceChrome, ContactBlock, WorkingHoursBlock } from '@/components/public/ActivitySpaceChrome';
 
@@ -34,6 +35,29 @@ export function imagingServiceIcon(name: string, modality: string | null, index 
   if (modality === 'panoramic') return '🦷';
   if (modality === 'cbct') return '🩻';
   return ['📷', '✨', '🔬'][index % 3];
+}
+
+export function imagingServiceImage(name: string, modality: string | null): { src: string; alt: string } | null {
+  const n = (name ?? '').toLowerCase();
+  if (n.includes('مفصل') || n.includes('tmj')) {
+    return { src: '/teeth-pic/tmj-pain.jpeg', alt: 'صورة توضيحية لمفصل الفك' };
+  }
+  if (/بانوراما|panorama/i.test(name)) {
+    return { src: '/teeth-pic/panorama.png', alt: 'صورة توضيحية للتصوير البانورامي للأسنان' };
+  }
+  if (/cbct|طبقي|طبقية/i.test(name)) {
+    return { src: '/teeth-pic/cbct-3d.jpg', alt: 'صورة توضيحية للتصوير الطبقي ثلاثي الأبعاد CBCT' };
+  }
+  if (modality === 'panoramic') {
+    return { src: '/teeth-pic/panorama.png', alt: 'صورة توضيحية للتصوير البانورامي للأسنان' };
+  }
+  if (modality === 'cbct') {
+    return { src: '/teeth-pic/cbct-3d.jpg', alt: 'صورة توضيحية للتصوير الطبقي ثلاثي الأبعاد CBCT' };
+  }
+  if (modality === 'tmj') {
+    return { src: '/teeth-pic/tmj-pain.jpeg', alt: 'صورة توضيحية لمفصل الفك' };
+  }
+  return null;
 }
 
 /**
@@ -102,27 +126,45 @@ export function ImagingPublicSpace({ space, servicesCard }: { space: ActivityPub
             <h2 className="mb-3 text-xl font-semibold text-slate-800">خدمات التصوير والفحوصات</h2>
             {hasImaging ? (
               <ul className="grid gap-4 sm:grid-cols-2">
-                {space.imagingServices.map((svc, index) => (
-                  <li key={svc.name} className="public-card group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-white to-sky-50/80 p-5 shadow-[0_12px_35px_rgba(8,145,178,0.07)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]">
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-blue-400/20 text-3xl shadow-inner shadow-cyan-500/10 transition duration-300 group-hover:scale-110 group-hover:shadow-[0_0_24px_rgba(6,182,212,0.28)]" aria-hidden="true">
-                        {imagingServiceIcon(svc.name, svc.modality, index)}
-                      </span>
-                      {imagingServicePriceLabel(svc) && <span className="rounded-full border border-cyan-100 bg-white/85 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">{imagingServicePriceLabel(svc)}</span>}
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-800 transition group-hover:text-brand-cyan">{svc.name}</h3>
-                      {svc.description && <p className="mt-1 text-sm text-slate-500">{svc.description}</p>}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {svc.modality && <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600">{MODALITY_LABELS[svc.modality] ?? svc.modality}</span>}
-                        {svc.duration_minutes != null && <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600">⏱ {svc.duration_minutes} دقيقة</span>}
+                {space.imagingServices.map((svc, index) => {
+                  const image = imagingServiceImage(svc.name, svc.modality);
+                  const priceLabel = imagingServicePriceLabel(svc);
+                  return (
+                    <li key={svc.name} className="public-card group relative overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-white to-sky-50/80 p-5 shadow-[0_12px_35px_rgba(8,145,178,0.07)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-cyan-300 hover:shadow-[0_22px_45px_rgba(8,145,178,0.2)]">
+                      <div className="relative mb-4 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500/10 to-blue-400/15">
+                        {image ? (
+                          <div className="relative aspect-[16/9] w-full">
+                            <Image
+                              src={image.src}
+                              alt={image.alt}
+                              fill
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                              className="object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                          </div>
+                        ) : (
+                          <div className="grid aspect-[16/9] place-items-center">
+                            <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/70 text-3xl shadow-inner shadow-cyan-500/10" aria-hidden="true">
+                              {imagingServiceIcon(svc.name, svc.modality, index)}
+                            </span>
+                          </div>
+                        )}
+                        {priceLabel && <span className="absolute right-3 top-3 rounded-full border border-cyan-100 bg-white/90 px-3 py-1.5 text-xs font-bold text-brand-cyan shadow-sm">{priceLabel}</span>}
                       </div>
-                      {svc.preparation_instructions && <p className="mt-3 text-xs leading-relaxed text-slate-500">التحضير: {svc.preparation_instructions}</p>}
-                      {svc.report_policy && <p className="mt-1 text-xs leading-relaxed text-slate-500">التقرير: {svc.report_policy}</p>}
-                      {svc.delivery_methods.length > 0 && <p className="mt-1 text-xs leading-relaxed text-slate-500">التسليم: {svc.delivery_methods.join('، ')}</p>}
-                    </div>
-                  </li>
-                ))}
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800 transition group-hover:text-brand-cyan">{svc.name}</h3>
+                        {svc.description && <p className="mt-1 text-sm text-slate-500">{svc.description}</p>}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {svc.modality && <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600">{MODALITY_LABELS[svc.modality] ?? svc.modality}</span>}
+                          {svc.duration_minutes != null && <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-xs text-slate-600">⏱ {svc.duration_minutes} دقيقة</span>}
+                        </div>
+                        {svc.preparation_instructions && <p className="mt-3 text-xs leading-relaxed text-slate-500">التحضير: {svc.preparation_instructions}</p>}
+                        {svc.report_policy && <p className="mt-1 text-xs leading-relaxed text-slate-500">التقرير: {svc.report_policy}</p>}
+                        {svc.delivery_methods.length > 0 && <p className="mt-1 text-xs leading-relaxed text-slate-500">التسليم: {svc.delivery_methods.join('، ')}</p>}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : hasShared ? (
               <ul className="grid gap-4 sm:grid-cols-2">

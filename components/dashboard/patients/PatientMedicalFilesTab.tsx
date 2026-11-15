@@ -20,6 +20,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
+import PatientPdfPreviewButton, { isPdfMedicalFile } from '@/components/dashboard/patients/PatientPdfPreviewButton';
 import PanoramaAiAnalysis from '@/components/dashboard/patients/PanoramaAiAnalysis';
 import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
 
@@ -815,6 +816,7 @@ export default function PatientMedicalFilesTab({
               );
               const meta = CATEGORY_METAS[cat];
               const isImage = file.file_type === 'image' || file.mime_type.startsWith('image/');
+              const isPdf = isPdfMedicalFile(file);
               const isBusy = busyActionId === file.id;
               /** N30 — which referral produced this study (imaging variant only). */
               const linked =
@@ -888,6 +890,15 @@ export default function PatientMedicalFilesTab({
                           fileId={file.id}
                           clinicId={clinicId}
                           filename={file.original_filename ?? 'صورة'}
+                          authHeaders={authHeaders}
+                        />
+                      )}
+
+                      {isPdf && (
+                        <PatientPdfPreviewButton
+                          fileId={file.id}
+                          clinicId={clinicId}
+                          filename={file.original_filename ?? 'ملف PDF'}
                           authHeaders={authHeaders}
                         />
                       )}

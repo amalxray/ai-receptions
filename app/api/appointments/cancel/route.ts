@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { matchWaitlistAfterCancellation } from '@/lib/services/waitlistService';
 import { logEvent } from '@/lib/server/logging';
 
@@ -28,8 +29,8 @@ export async function POST(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الإلغاء' }, { status: 403 });
+    const permission = await permissionDenied(req, clinic_id, 'manage_appointments', { allowedRoles: ADMIN_ROLES });
+    if (permission) return permission;
 
     // Load the appointment (tenant-scoped) to know the freed slot.
     const { data: appointment, error: loadError } = await supabaseAdmin

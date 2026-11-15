@@ -1,12 +1,13 @@
 /**
  * PHASE L — PUBLIC PAGE CONTENT management API.
- * GET  ?type=achievements|testimonials|articles|news — list tenant content (DATA_ROLES).
- * POST {type, ...fields} — create tenant content (ADMIN_ROLES).
+ * GET  ?type=achievements|testimonials|articles|news — list tenant content (view_public_page).
+ * POST {type, ...fields} — create tenant content (manage_public_page).
  * All writes are validated by validateContentInput (bounded hex/enums/lengths)
  * and tenant-scoped AFTER authorizeClinicRequest.
  */
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
 import { writeAuditLog } from '@/lib/services/auditService';
 import {
@@ -27,12 +28,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'type must be one of achievements|testimonials|articles|news' }, { status: 400 });
     }
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, DATA_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'view_public_page', { allowedRoles: DATA_ROLES });
+    if (denied) return denied;
     const items = await listPublicContent(clinicId, type);
     return NextResponse.json({ data: items });
   } catch (err) {
@@ -54,12 +57,14 @@ export async function POST(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
 
     const body = await req.json();
     const type = body?.type as PublicContentType | undefined;

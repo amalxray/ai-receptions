@@ -23,8 +23,18 @@ import { isSafeDashboardPath } from '@/lib/services/dashboardPaths';
  */
 
 export type TenantAccessResult =
-  | { ok: true; status: 200; clinicId: string; clinic: { id: string; slug: string; name: string }; role: string }
-  | { ok: false; status: 401 | 403 | 404; clinic?: { id: string; slug: string; name: string } };
+  | {
+      ok: true;
+      status: 200;
+      clinicId: string;
+      clinic: { id: string; slug: string; name: string; activity_type: string | null };
+      role: string;
+    }
+  | {
+      ok: false;
+      status: 401 | 403 | 404;
+      clinic?: { id: string; slug: string; name: string; activity_type: string | null };
+    };
 
 /** A well-formed clinic uuid — the legacy tenant token found in stored links. */
 const UUID_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -90,7 +100,7 @@ export async function resolveTenantAccess(clinicSlug: string): Promise<TenantAcc
   if (!getSupabaseEnvConfig().isConfigured) {
     const { data: clinic } = await supabaseAdmin
       .from('clinics')
-      .select('id, slug, name')
+      .select('id, slug, name, activity_type')
       .or(tenantTokenFilter(slug))
       .is('deleted_at', null)
       .maybeSingle();
@@ -109,7 +119,7 @@ export async function resolveTenantAccess(clinicSlug: string): Promise<TenantAcc
   // 2. Resolve the clinic by slug (or by id — B20 legacy-link alias).
   const { data: clinic, error: clinicError } = await supabaseAdmin
     .from('clinics')
-    .select('id, slug, name')
+    .select('id, slug, name, activity_type')
     .or(tenantTokenFilter(slug))
     .is('deleted_at', null)
     .maybeSingle();

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { deletePayslipAdjustment } from '@/lib/services/payroll-engine';
 
 // Remove a bonus/deduction line — allowed only while its period is a draft
@@ -12,8 +13,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ adjus
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, clinicId, 'manage_payroll', { allowedRoles: FINANCE_ADMIN_ROLES });
+    if (permission) return permission;
 
     const data = await deletePayslipAdjustment({ clinicId, adjustmentId, actorUserId: authorization.user?.id ?? null });
     return NextResponse.json({ data });

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { scheduleActivityRequest } from '@/lib/services/smartScheduling';
 import { workflowErrorResponse } from '@/lib/services/workflowService';
 import { logEvent } from '@/lib/server/logging';
@@ -34,8 +35,8 @@ export async function POST(req: Request) {
 
     const auth = await authorizeClinicRequest(req, clinic_id);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الجدولة' }, { status: 403 });
+    const gate = await permissionDenied(req, clinic_id, 'manage_imaging_requests', { allowedRoles: ADMIN_ROLES });
+    if (gate) return gate;
 
     const result = await scheduleActivityRequest({
       clinicId: clinic_id,

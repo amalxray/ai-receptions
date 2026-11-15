@@ -20,6 +20,11 @@ vi.mock('@/lib/services/knowledgeService', () => ({
   KnowledgeService: vi.fn(),
 }));
 
+const mockPermission = vi.hoisted(() => ({ permissionDenied: vi.fn() }));
+vi.mock('@/lib/services/permissionGate', () => ({
+  permissionDenied: mockPermission.permissionDenied,
+}));
+
 import { createServerClient } from '@supabase/ssr';
 
 describe('Knowledge Upload API Endpoint', () => {
@@ -30,6 +35,7 @@ describe('Knowledge Upload API Endpoint', () => {
   const mockSupabaseClient = {
     auth: {
       getSession: vi.fn(),
+      getUser: vi.fn(),
     },
     from: vi.fn(),
   };
@@ -49,6 +55,7 @@ describe('Knowledge Upload API Endpoint', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPermission.permissionDenied.mockResolvedValue(null);
     (createServerClient as Mock).mockReturnValue(mockSupabaseClient);
     (KnowledgeService as Mock).mockImplementation(() => ({
       handleUpload: mockHandleUpload,
@@ -56,7 +63,7 @@ describe('Knowledge Upload API Endpoint', () => {
   });
 
   test('should return 401 if user is not authenticated', async () => {
-    mockSupabaseClient.auth.getSession.mockResolvedValue({ data: { session: null } });
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: null } });
 
     const request = new Request('http://localhost/api/knowledge/upload', {
       method: 'POST',
@@ -69,10 +76,11 @@ describe('Knowledge Upload API Endpoint', () => {
   });
 
   test('should return 401 if user has no active clinic', async () => {
-    mockSupabaseClient.auth.getSession.mockResolvedValue({ data: { session: { user: mockUser } } });
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: mockUser } });
     const chainable = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: null, error: null }),
     };
@@ -89,10 +97,11 @@ describe('Knowledge Upload API Endpoint', () => {
   });
 
   test('should return 400 if no file is provided', async () => {
-    mockSupabaseClient.auth.getSession.mockResolvedValue({ data: { session: { user: mockUser } } });
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: mockUser } });
     const chainable = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { clinic_id: mockClinicId }, error: null }),
     };
@@ -112,10 +121,11 @@ describe('Knowledge Upload API Endpoint', () => {
   });
 
   test('should successfully ingest a document and return 200', async () => {
-    mockSupabaseClient.auth.getSession.mockResolvedValue({ data: { session: { user: mockUser } } });
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: mockUser } });
     const chainable = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { clinic_id: mockClinicId }, error: null }),
     };
@@ -145,10 +155,11 @@ describe('Knowledge Upload API Endpoint', () => {
   });
 
   test('should return 500 if ingestion fails', async () => {
-    mockSupabaseClient.auth.getSession.mockResolvedValue({ data: { session: { user: mockUser } } });
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: mockUser } });
     const chainable = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { clinic_id: mockClinicId }, error: null }),
     };
@@ -172,5 +183,31 @@ describe('Knowledge Upload API Endpoint', () => {
     // Security: internal ingestion errors must NOT leak to the client.
     expect(json.error).not.toContain('Ingestion failed');
     expect(json.error).toContain('Upload failed');
+  });
+
+  test('should deny uploads without manage_knowledge', async () => {
+    mockSupabaseClient.auth.getUser.mockResolvedValue({ data: { user: mockUser } });
+    const chainable = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: { clinic_id: mockClinicId }, error: null }),
+    };
+    mockSupabaseClient.from.mockReturnValue(chainable);
+    mockPermission.permissionDenied.mockResolvedValueOnce(new Response(null, { status: 403 }));
+
+    const response = await POST(new Request('http://localhost/api/knowledge/upload', {
+      method: 'POST',
+      body: new FormData(),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(mockPermission.permissionDenied).toHaveBeenCalledWith(
+      expect.any(Request),
+      mockClinicId,
+      'manage_knowledge',
+    );
+    expect(mockHandleUpload).not.toHaveBeenCalled();
   });
 });

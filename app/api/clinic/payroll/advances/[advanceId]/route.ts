@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { cancelAdvance } from '@/lib/services/payroll-engine';
 
 // DELETE = cancel a PENDING advance (status change, never a hard delete: the
@@ -13,8 +14,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ advan
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, clinicId, 'manage_advances', { allowedRoles: FINANCE_ADMIN_ROLES });
+    if (permission) return permission;
 
     const data = await cancelAdvance({ clinicId, advanceId, actorUserId: authorization.user?.id ?? null });
     return NextResponse.json({ data });

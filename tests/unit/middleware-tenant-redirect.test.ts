@@ -151,4 +151,17 @@ describe('middleware — legacy URL → tenant subdomain (301)', () => {
     expect(authMocks.createServerClient).not.toHaveBeenCalled();
     expect(authMocks.getUser).not.toHaveBeenCalled();
   });
+
+  it('redirects unauthenticated dashboard entry requests before rendering the dashboard shell', async () => {
+    supabaseConfig.supabaseUrl = 'https://supabase.example.test';
+    supabaseConfig.anonKey = 'anon-test-key';
+
+    const res = await middleware(request('https://www.dentairec.com/dashboard'));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toBe(
+      'https://www.dentairec.com/login?next=%2Fdashboard'
+    );
+    expect(authMocks.getUser).toHaveBeenCalledOnce();
+  });
 });

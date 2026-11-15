@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { CalendarDays, Users, MessageSquare, BellRing, Clock, ArrowUpRight, CalendarCheck2 } from 'lucide-react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import Skeleton from '@/components/ui/Skeleton';
@@ -10,6 +11,7 @@ import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, WEEKDAY_AR } from '@/lib/dashboard/labels-ar';
 import { getActivityLabels } from '@/lib/clinic/activityLabels';
+import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 
 type OverviewAppointment = {
   id: string;
@@ -51,7 +53,7 @@ function AppointmentCard({ item }: { item: OverviewAppointment }) {
 
 export default function OverviewPage() {
   const { isConfigured: isSupabaseConfigured, checkFailed } = useSupabaseConfig();
-  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError, activityType } = useClinicContext();
+  const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError, activityType } = useClinicContext();
   const labels = getActivityLabels(activityType);
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,11 +87,11 @@ export default function OverviewPage() {
 
   const metricCards = data
     ? [
-        { icon: <Users size={18} className="text-cyan-300" />, label: 'إجمالي المرضى', value: String(data.patients_count), href: '/dashboard/patients' },
-        { icon: <CalendarDays size={18} className="text-emerald-300" />, label: labels.appointmentsToday, value: String(data.today_appointments.length), href: '/dashboard/appointments' },
-        { icon: <CalendarCheck2 size={18} className="text-cyan-300" />, label: labels.appointmentsUpcoming, value: String(data.upcoming_appointments.length), href: '/dashboard/appointments' },
-        { icon: <MessageSquare size={18} className="text-violet-300" />, label: 'محادثات جديدة (7 أيام)', value: String(data.new_conversations_count), href: '/dashboard/conversations' },
-        { icon: <BellRing size={18} className="text-amber-300" />, label: 'تحتاج متابعة الفريق', value: String(data.needs_attention_count), href: '/dashboard/conversations' },
+        { icon: <Users size={18} className="text-cyan-300" />, label: 'إجمالي المرضى', value: String(data.patients_count), module: 'patients' },
+        { icon: <CalendarDays size={18} className="text-emerald-300" />, label: labels.appointmentsToday, value: String(data.today_appointments.length), module: 'appointments' },
+        { icon: <CalendarCheck2 size={18} className="text-cyan-300" />, label: labels.appointmentsUpcoming, value: String(data.upcoming_appointments.length), module: 'appointments' },
+        { icon: <MessageSquare size={18} className="text-violet-300" />, label: 'محادثات جديدة (7 أيام)', value: String(data.new_conversations_count), module: 'conversations' },
+        { icon: <BellRing size={18} className="text-amber-300" />, label: 'تحتاج متابعة الفريق', value: String(data.needs_attention_count), module: 'conversations' },
       ]
     : [];
 
@@ -109,13 +111,17 @@ export default function OverviewPage() {
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {metricCards.map((card) => (
-              <a key={card.label} href={card.href} className="rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5 transition hover:border-cyan-500/50">
+              <Link
+                key={card.label}
+                href={clinicSlug ? tenantDashboardUrl(clinicSlug, card.module) : `/dashboard/${card.module}`}
+                className="rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5 transition hover:border-cyan-500/50"
+              >
                 <div className="flex items-center justify-between gap-3 text-sm text-slate-400">
                   <span>{card.label}</span>
                   {card.icon}
                 </div>
                 <p className="mt-3 text-3xl font-bold text-white">{card.value}</p>
-              </a>
+              </Link>
             ))}
           </div>
 

@@ -167,7 +167,7 @@ export default function ClinicSetupManager() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Failed to save profile');
       setProfile(body.data);
-      setSuccess('Clinic profile saved.');
+      setSuccess('تم حفظ ملف العيادة بنجاح');
       await loadStatus(clinicId);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save profile');
@@ -290,7 +290,7 @@ export default function ClinicSetupManager() {
             )}
           </div>
           <div className="md:col-span-2 flex justify-end">
-            <button type="submit" disabled={saving} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">
+            <button type="submit" disabled={saving} className="rounded-full bg-cyan-500 px-5 py-3 text-base font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60">
               {saving ? 'جارٍ الحفظ...' : 'حفظ الملف'}
             </button>
           </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { useClinicContext } from '@/lib/useClinicContext';
 
 type Lead = {
   id: number;
@@ -12,23 +13,40 @@ type Lead = {
 };
 
 export default function LeadsPage() {
+  const { clinicId, authHeaders } = useClinicContext();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', source: '' });
 
   useEffect(() => {
-    fetch('/api/leads')
-      .then((res) => res.json())
-      .then((data) => setLeads(data))
-      .finally(() => setLoading(false));
-  }, []);
+    let active = true;
+    if (!clinicId) return () => { active = false; };
+
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(`/api/leads?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        if (!response.ok) throw new Error('تعذر جلب العملاء المحتملين');
+        const data = await response.json();
+        if (active) setLeads(Array.isArray(data) ? data : []);
+      } catch (caughtError) {
+        if (active) setError(caughtError instanceof Error ? caughtError.message : 'تعذر جلب العملاء المحتملين');
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => { active = false; };
+  }, [clinicId, authHeaders]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const response = await fetch('/api/leads', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
+        clinic_id: clinicId,
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
@@ -37,11 +55,14 @@ export default function LeadsPage() {
       }),
     });
 
-    if (response.ok) {
-      const newLead = await response.json();
-      setLeads((current) => [newLead, ...current]);
-      setFormData({ name: '', email: '', phone: '', source: '' });
+    if (!response.ok) {
+      setError('تعذر حفظ العميل المحتمل');
+      return;
     }
+    const newLead = await response.json();
+    setLeads((current) => [newLead, ...current]);
+    setFormData({ name: '', email: '', phone: '', source: '' });
+    setError(null);
   }
 
   return (
@@ -55,6 +76,7 @@ export default function LeadsPage() {
         </div>
 
         <div className="mt-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950/80">
+          {error && <p role="alert" className="px-6 py-3 text-sm text-rose-300">{error}</p>}
           <div className="overflow-x-auto">
           <table className="w-full border-collapse text-right text-sm">
             <thead className="bg-slate-900/80 text-slate-400">

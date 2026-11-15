@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { matchWaitlistForReleasedSlot } from '@/lib/services/growth';
 
 /**
@@ -14,11 +15,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    // #43 — legacy FINANCE_ADMIN gate kept verbatim (internal caller flow, not
-    // dashboard surface). Accountant access must not silently regress; the
-    // flexible permission layer gates the growth dashboard APIs instead.
-    const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, body.clinic_id, 'manage_leads', { allowedRoles: FINANCE_ADMIN_ROLES });
+    if (permission) return permission;
 
     if (!body.appointment_id || !body.released_at || !body.provider_id) {
       return NextResponse.json({ error: 'appointment_id, provider_id, released_at required' }, { status: 400 });

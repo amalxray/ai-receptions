@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   authorizeClinicRequest,
-  roleDenied,
   ADMIN_ROLES,
   DATA_ROLES,
 } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import {
   listClinicMedia,
   createClinicMedia,
@@ -31,12 +31,14 @@ export async function GET(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, DATA_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'view_public_page', { allowedRoles: DATA_ROLES });
+    if (denied) return denied;
 
     const data = await listClinicMedia(clinicId);
     return NextResponse.json({ data });
@@ -48,7 +50,7 @@ export async function GET(req: Request) {
 }
 
 /**
- * POST /api/clinic/public-media — owner upload.
+ * POST /api/clinic/public-media — manage_public_page upload.
  * multipart/form-data: file (required), title, caption, alt_text.
  * Server-side MIME/size validation + tenant-isolated storage path.
  */
@@ -59,12 +61,14 @@ export async function POST(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
 
     if (req.headers.get('content-type')?.includes('application/json')) {
       const parsed = uploadedMediaSchema.safeParse(await req.json());

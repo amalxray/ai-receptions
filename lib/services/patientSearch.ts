@@ -21,11 +21,11 @@
  * tokens before they ever reach the filter string.
  */
 
-/** Visible result cap — "قائمة 10 نتائج (حد أقصى)". */
-export const SEARCH_RESULT_LIMIT = 10;
+/** Visible result cap before the receptionist chooses to show all matches. */
+export const SEARCH_RESULT_LIMIT = 50;
 
-/** Rows the page asks the API for; the cap keeps the payload bounded. */
-export const SEARCH_FETCH_LIMIT = 200;
+/** Maximum search rows requested from the API for one query. */
+export const SEARCH_FETCH_LIMIT = 1000;
 
 /** The fields `searchPatients` reads. Every record shape in the app satisfies it. */
 export type PatientSearchable = {

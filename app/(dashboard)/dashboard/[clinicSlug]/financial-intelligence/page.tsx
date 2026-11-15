@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { CheckCircle2 } from 'lucide-react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import Skeleton from '@/components/ui/Skeleton';
@@ -248,15 +249,12 @@ export default function FinancialIntelligencePage() {
           return (payload?.data as Report) ?? null;
         };
 
-        const current = await fetchRange(range);
         // Period-over-period comparison: the equal-length window BEFORE `range`.
         // A failure there must never blank the main report — deltas degrade to "—".
-        let prior: Report | null = null;
-        try {
-          prior = await fetchRange(previousRange(range, months));
-        } catch {
-          prior = null;
-        }
+        const [current, prior] = await Promise.all([
+          fetchRange(range),
+          fetchRange(previousRange(range, months)).catch(() => null),
+        ]);
         if (isMounted) {
           setData(current);
           setPrevious(prior);
@@ -445,7 +443,7 @@ export default function FinancialIntelligencePage() {
                 hint={`مقابل ${periodLabel} سابقة`}
                 delta={deltas.revenue}
                 tone={TONES.revenue}
-                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'analytics') : undefined}
+                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'revenues') : undefined}
               />
               <FlowCard
                 index={1}
@@ -455,7 +453,7 @@ export default function FinancialIntelligencePage() {
                 delta={deltas.payroll}
                 tone={TONES.payroll}
                 invert
-                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'payroll') : undefined}
+                href={clinicSlug ? `${tenantDashboardUrl(clinicSlug, 'payroll')}?status=paid` : undefined}
               />
               <FlowCard
                 index={2}
@@ -465,10 +463,7 @@ export default function FinancialIntelligencePage() {
                 delta={deltas.operating}
                 tone={TONES.expenses}
                 invert
-                onClick={() => {
-                  setActiveSegment('مصروفات تشغيلية');
-                  setExpenseOpen(true);
-                }}
+                href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'expenses') : undefined}
               />
               <FlowCard
                 index={3}
@@ -630,23 +625,32 @@ function PP5InsightBlocks({ data }: { data: Report }) {
 }
 
 function PP5Receivables({ data }: { data: Report }) {
+  const totalOutstanding = data.receivables.buckets.reduce((total, bucket) => total + bucket.balance, 0);
+
   return (
     <motion.div {...FADE_UP} transition={{ duration: 0.35, delay: 0.35 }}>
       <Panel title="توزيع المستحقات" hint="من aging summary — حِزم التقادم وطرق الدفع المحصَّلة.">
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-2">
-            {data.receivables.buckets.map((b) => (
-              <div key={b.bucket} className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">
-                  {b.bucket === 'current' ? 'حالي' : b.bucket} ({b.invoices} فاتورة)
-                </span>
-                <span className="text-slate-200">
-                  {fmtMoney(b.balance)} · {fmtPct(b.shareOfOutstanding)}
-                </span>
+            {totalOutstanding <= 0 ? (
+              <div
+                role="status"
+                className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-200"
+              >
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" aria-hidden="true" />
+                <span>لا توجد مستحقات مفتوحة حالياً. جميع الفواتير مدفوعة أو ملغاة.</span>
               </div>
-            ))}
-            {data.receivables.buckets.length === 0 && (
-              <p className="text-sm text-slate-500">لا توجد فواتير مستحقة.</p>
+            ) : (
+              data.receivables.buckets.map((b) => (
+                <div key={b.bucket} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-300">
+                    {b.bucket === 'current' ? 'حالي' : b.bucket} ({b.invoices} فاتورة)
+                  </span>
+                  <span className="text-slate-200">
+                    {fmtMoney(b.balance)} · {fmtPct(b.shareOfOutstanding)}
+                  </span>
+                </div>
+              ))
             )}
           </div>
 
@@ -784,6 +788,12 @@ function PnlHero({ net, delta, months, spark }: { net: number; delta: Delta; mon
           <p className="mt-2 text-[11px] text-slate-500">صافي الربح شهريًا خلال الفترة المختارة.</p>
         </div>
       </div>
+      <a
+        href="#pnl-details"
+        className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-cyan-300 transition hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+      >
+        عرض التفاصيل ←
+      </a>
     </motion.div>
   );
 }
@@ -816,7 +826,7 @@ function RevenueStack({
   const share = (value: number) => (revenue > 0 ? fmtPct(Math.round((value / revenue) * 1000) / 10) : '—');
 
   return (
-    <motion.div {...FADE_UP} transition={{ duration: 0.35, delay: 0.15 }}>
+    <motion.div id="pnl-details" {...FADE_UP} transition={{ duration: 0.35, delay: 0.15 }}>
       <Panel
         title="من الإيراد إلى صافي الربح"
         hint="نسب الإيرادات المُسجَّلة في الفترة — المصروفات تشمل الرواتب المدفوعة (وليست بندًا إضافيًا)."

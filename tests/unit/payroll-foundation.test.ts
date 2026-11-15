@@ -131,7 +131,11 @@ describe('payroll API (D-P3 — FINANCE RBAC)', () => {
   });
 
   it('403 for non-FINANCE roles on configuration write', async () => {
-    mockAuth.roleDenied.mockImplementationOnce(() => ({ authorized: false, status: 403 }));
+    mockAuth.authorizeClinicRequest.mockResolvedValue({
+      authorized: true,
+      user: { id: 'u1' },
+      role: 'staff',
+    });
     const res = await postCompensation(makeRequest('/api/clinic/payroll/compensations', jsonBody({
       clinic_id: CLINIC, provider_id: 'prov1', model: 'fixed_monthly', fixed_monthly_amount: 1000, effective_from: '2026-01-01',
     })));

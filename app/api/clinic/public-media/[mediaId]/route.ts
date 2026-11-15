@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   authorizeClinicRequest,
-  roleDenied,
   ADMIN_ROLES,
 } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import {
   updateClinicMedia,
   deleteClinicMedia,
@@ -22,7 +22,7 @@ const patchSchema = z.object({
 
 type Ctx = { params: { mediaId: string } };
 
-/** PATCH /api/clinic/public-media/[mediaId] — owner updates metadata / order / visibility. */
+/** PATCH /api/clinic/public-media/[mediaId] — manage_public_page updates metadata / order / visibility. */
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
     const url = new URL(req.url);
@@ -30,12 +30,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
 
     const body = await req.json();
     const parsed = patchSchema.safeParse(body);
@@ -71,12 +73,14 @@ export async function DELETE(req: Request, { params }: Ctx) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized || roleDenied(authorization, ADMIN_ROLES)) {
+    if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' },
         { status: authorization.status }
       );
     }
+    const denied = await permissionDenied(req, clinicId, 'manage_public_page', { allowedRoles: ADMIN_ROLES });
+    if (denied) return denied;
 
     const result = await deleteClinicMedia(clinicId, params.mediaId);
     if (!result.ok) return NextResponse.json({ error: result.message }, { status: result.message === 'Media not found' ? 404 : 400 });

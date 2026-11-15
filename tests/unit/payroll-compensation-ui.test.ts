@@ -275,14 +275,14 @@ describe('compensationSummary — النص العربي المعروض', () => {
   });
 });
 
-describe('canManageCompensations — القرار ٣: owner | accountant فقط', () => {
-  it('allows owner and accountant', () => {
+describe('canManageCompensations — roles with manage_payroll defaults', () => {
+  it('allows owner, manager, and accountant', () => {
     expect(canManageCompensations('owner')).toBe(true);
+    expect(canManageCompensations('manager')).toBe(true);
     expect(canManageCompensations('accountant')).toBe(true);
   });
 
-  it('denies manager (reads only) and everyone else', () => {
-    expect(canManageCompensations('manager')).toBe(false);
+  it('denies roles without manage_payroll defaults', () => {
     expect(canManageCompensations('doctor')).toBe(false);
     expect(canManageCompensations(null)).toBe(false);
   });
@@ -422,10 +422,14 @@ describe('PATCH /api/clinic/payroll/compensations/[id] — إنهاء العقد
       body: JSON.stringify({ clinic_id: CLINIC, status: 'ended' }),
     });
 
-  it('403 for a manager — the screen disables the button for exactly this reason', async () => {
-    mockAuth.roleDenied.mockImplementationOnce(() => ({ authorized: false, status: 403 }));
+  it('allows a manager with the default manage_payroll permission', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({
+      authorized: true,
+      user: { id: 'manager-user' },
+      role: 'manager',
+    });
     const res = await patchCompensation(patchRequest(), handlerContext);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
   it('200 for owner with status=ended', async () => {

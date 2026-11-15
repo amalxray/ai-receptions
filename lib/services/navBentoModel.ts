@@ -1,7 +1,7 @@
 /**
  * N29 — navigation BENTO model: pure presentation data + pure helpers.
  *
- * The dashboard's 32 modules already have a single source of WHICH modules exist
+ * The dashboard modules already have a single source of WHICH modules exist
  * (`getActivityNavigation`) and of their GROUP (`dashboardNavModel`). What was
  * missing — and what this file adds — is everything the new top-bar bento needs:
  *
@@ -73,7 +73,7 @@ export const GROUP_TONES: Record<NavGroupId, NavTone> = {
 };
 
 /**
- * The 32 clinic modules (+ the two imaging-centre/lab workflow modules) with the
+ * The clinic modules (+ the two imaging-centre/lab workflow modules) with the
  * owner's emoji set. `span` shapes the bento rhythm: a hero per group, wides for
  * the daily drivers, units for the rest.
  */
@@ -101,6 +101,9 @@ export const NAV_PRESENTATION: Record<string, NavPresentation> = {
   'referring-clinics': { emoji: '🔗', description: 'العيادات المحوِّلة', span: 'unit' },
   // 📊 المالية والنمو
   'financial-intelligence': { emoji: '💰', description: 'المستحقات والتدفق النقدي', span: 'hero' },
+  expenses: { emoji: '💸', description: 'المصروفات المسجلة وتصنيفاتها', span: 'wide' },
+  revenues: { emoji: '🧾', description: 'الفواتير والمدفوعات المسجلة', span: 'wide' },
+  reviews: { emoji: '⭐', description: 'تقييمات المرضى ومتابعتها', span: 'unit' },
   payroll: { emoji: '💵', description: 'رواتب الفريق', span: 'wide' },
   analytics: { emoji: '📈', description: 'مؤشرات الأداء', span: 'unit' },
   growth: { emoji: '📊', description: 'النمو وقمع المبيعات', span: 'unit' },

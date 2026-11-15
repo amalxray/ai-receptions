@@ -18,6 +18,9 @@ const CHIME_OPTIONS: { type: NotificationChimeType; label: string }[] = [
   { type: 'classic', label: 'كلاسيكية' },
   { type: 'soft', label: 'هادئة' },
   { type: 'alert', label: 'تنبيه' },
+  { type: 'strong-ring', label: 'رنين قوي' },
+  { type: 'extended-bell', label: 'جرس ممتد' },
+  { type: 'repeating-alert', label: 'تنبيه متكرر' },
   { type: 'none', label: 'بدون صوت' },
 ];
 

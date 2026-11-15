@@ -32,6 +32,13 @@ describe('permission registry & display groups', () => {
     // added keys and a stale "28" would have been a false failure.
     expect(ALL_PERMISSION_KEYS.length).toBeGreaterThanOrEqual(28);
     expect(Object.keys(PERMISSIONS)).toHaveLength(ALL_PERMISSION_KEYS.length);
+    expect(ALL_PERMISSION_KEYS).toContain('view_reviews');
+    expect(ALL_PERMISSION_KEYS).toContain('view_financial_intelligence');
+    expect(PERMISSIONS.view_financial_intelligence).toBe('الذكاء المالي');
+    expect(PERMISSION_GROUPS.find(([title]) => title === 'المالية')?.[1]).toContain('view_financial_intelligence');
+    expect(PERMISSIONS.manage_reviews).toBe('إدارة التقييمات');
+    expect(ALL_PERMISSION_KEYS).toContain('manage_reviews');
+    expect(PERMISSION_GROUPS.find(([title]) => title === 'التقييمات')?.[1]).toContain('manage_reviews');
   });
 
   it('renders EVERY registry permission exactly once (no orphans, no duplicates)', () => {
@@ -68,6 +75,12 @@ describe('basePermissionsForRole (mirrors the server resolution order)', () => {
       const base = basePermissionsForRole(role);
       expect(Array.from(base).sort()).toEqual(Array.from(ROLE_DEFAULTS[role]).sort());
     }
+  });
+
+  it('preserves financial-intelligence access for managers and accountants by default', () => {
+    expect(ROLE_DEFAULTS.owner).toContain('view_financial_intelligence');
+    expect(ROLE_DEFAULTS.manager).toContain('view_financial_intelligence');
+    expect(ROLE_DEFAULTS.accountant).toContain('view_financial_intelligence');
   });
 
   it('keeps staff at the least-privilege base (overview + own payslip)', () => {
@@ -142,9 +155,16 @@ describe('PermissionManager render contract (regression sentinel)', () => {
     expect(componentSource).not.toMatch(/\{\s*!?loaded\s*&&\s*PERMISSION_GROUPS\.map/);
   });
 
-  it('only gates the save button on saving/loaded (never on a flag that cannot clear)', () => {
+  it('gates the save button until permissions load successfully', () => {
     const disabledMatch = componentSource.match(/disabled=\{([^}]+)\}/);
-    expect(disabledMatch && disabledMatch[1]).toBe('saving || !loaded');
+    expect(disabledMatch && disabledMatch[1]).toBe('saving || !loaded || loadFailed');
+    expect(componentSource).toMatch(/setLoadFailed\(true\)/);
+    expect(componentSource).toContain('تعذر تحميل الصلاحيات، يرجى التحديث');
+  });
+
+  it('accepts an empty override list as a valid role-base permission state', () => {
+    expect(componentSource).toMatch(/Array\.isArray\(body\?\.overrides\)/);
+    expect(componentSource).not.toMatch(/body\?\.overrides\.length/);
   });
 
   it('fetches the member overrides and, for custom roles, the clinic roles API', () => {

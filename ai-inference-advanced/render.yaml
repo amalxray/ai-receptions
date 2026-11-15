@@ -1,0 +1,17 @@
+﻿services:
+  - type: web
+    name: ai-inference-v2
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: INFERENCE_API_KEY
+        sync: false
+      - key: MODEL_PATH
+        value: /app/models/best_model_advanced.onnx
+      - key: HF_MODEL_FILENAME
+        value: best_model_advanced.onnx
+      - key: MODEL_VERSION
+        value: dental-yolo-83class
+

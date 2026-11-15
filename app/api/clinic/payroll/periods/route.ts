@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, FINANCE_ADMIN_ROLES, FINANCE_READ_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { generatePayrollPeriod, listPayrollPeriods, type PayrollPeriodStatus } from '@/lib/services/payroll-engine';
 
 // Payroll Engine — periods list + generation (draft).
-// GET  ?clinic_id=…[&status=&from=&to=]  → FINANCE_READ
-// POST { clinic_id, period_month }       → FINANCE_ADMIN (draft regenerate allowed)
+// GET  ?clinic_id=…[&status=&from=&to=]  → view_payroll
+// POST { clinic_id, period_month }       → manage_payroll (draft regenerate allowed)
 
 const STATUSES: readonly PayrollPeriodStatus[] = ['draft', 'approved', 'paid', 'cancelled'];
 
@@ -15,8 +16,8 @@ export async function GET(req: Request) {
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, clinicId, 'view_payroll', { allowedRoles: FINANCE_READ_ROLES });
+    if (permission) return permission;
 
     const statusParam = url.searchParams.get('status');
     const data = await listPayrollPeriods(clinicId, {
@@ -39,8 +40,8 @@ export async function POST(req: Request) {
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
 
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, body.clinic_id, 'manage_payroll', { allowedRoles: FINANCE_ADMIN_ROLES });
+    if (permission) return permission;
 
     const result = await generatePayrollPeriod({
       clinicId: body.clinic_id,

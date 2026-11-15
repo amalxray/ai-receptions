@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, INVOICE_CREATE_ROLES, FINANCE_READ_ROLES, FINANCE_ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, INVOICE_CREATE_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { issueInvoice, listInvoices } from '@/lib/services/accounting';
 
@@ -21,18 +21,16 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (!body?.clinic_id) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, body.clinic_id);
-    const denied = roleDenied(authorization, INVOICE_CREATE_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     const permBlocked = await permissionDenied(req, body.clinic_id, 'manage_invoices', { allowedRoles: INVOICE_CREATE_ROLES });
     if (permBlocked) return permBlocked;
 
     const { patient_id, appointment_id, items, discount, tax, notes, due_at, payer_type, payer_ref } = body;
-    // D-B3 — Discount authorization: any commercial discount on issuance
-    // requires FINANCE_ADMIN (owner/accountant). No hard-coded limits.
+    // D-B3 — discounts require the explicit invoice-management permission;
+    // receptionist legacy access to undiscounted invoice creation does not extend here.
     if ((discount ?? 0) > 0) {
-      const moneyDenied = roleDenied(authorization, FINANCE_ADMIN_ROLES);
+      const moneyDenied = await permissionDenied(req, body.clinic_id, 'manage_invoices');
       if (moneyDenied) {
-        return NextResponse.json({ error: 'DISCOUNT_AUTHORIZATION_REQUIRED' }, { status: moneyDenied.status });
+        return NextResponse.json({ error: 'DISCOUNT_AUTHORIZATION_REQUIRED' }, { status: 403 });
       }
     }
     const result = await issueInvoice({
@@ -66,13 +64,25 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, FINANCE_READ_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
     // #43 — flexible layer on top of the legacy role matrix (never replaces it).
-    const permBlocked = await permissionDenied(req, clinicId, 'view_financial', { allowedRoles: FINANCE_READ_ROLES });
+    const permBlocked = await permissionDenied(req, clinicId, ['view_financial', 'manage_invoices']);
     if (permBlocked) return permBlocked;
-    const data = await listInvoices(clinicId, url.searchParams.get('patient_id'));
+    const status = url.searchParams.get('status');
+    if (status && !['paid', 'unpaid', 'voided'].includes(status)) {
+      return NextResponse.json({ error: 'status must be paid, unpaid, or voided' }, { status: 400 });
+    }
+    const rawLimit = url.searchParams.get('limit');
+    const parsedLimit = rawLimit === null ? 50 : Number(rawLimit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+      return NextResponse.json({ error: 'limit must be a positive integer' }, { status: 400 });
+    }
+    const limit = Math.min(parsedLimit, 100);
+    const data = await listInvoices(
+      clinicId,
+      url.searchParams.get('patient_id'),
+      status as 'paid' | 'unpaid' | 'voided' | null,
+      limit,
+    );
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

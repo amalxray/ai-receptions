@@ -99,6 +99,18 @@ describe('permissionDenied — legacy role sets still work (no #43 regression)',
 });
 
 describe('permissionDenied — explicit per-user decisions', () => {
+  it.each(['manage_reviews', 'manage_knowledge'] as const)(
+    'honors an explicit %s grant for a staff member',
+    async (permission) => {
+      mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+      mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff', { [permission]: true }));
+
+      const res = await permissionDenied(makeRequest(), CLINIC, permission);
+
+      expect(res).toBeNull();
+    },
+  );
+
   it('an explicit revoke wins even when the legacy role set allows the call', async () => {
     mockPermissions.getUserPermissionState.mockResolvedValue(
       roleState('receptionist', { manage_invoices: false })
@@ -129,6 +141,68 @@ describe('permissionDenied — explicit per-user decisions', () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'owner' });
     mockPermissions.getUserPermissionState.mockResolvedValue(roleState('owner'));
     const res = await permissionDenied(makeRequest(), CLINIC, 'manage_invoices');
+    expect(res).toBeNull();
+  });
+});
+
+describe('permissionDenied — any-of permission gates', () => {
+  it('continues to allow view_financial-only readers on shared finance routes', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff', { view_financial: true }));
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_invoices']);
+
+    expect(res).toBeNull();
+  });
+
+  it('allows a manage-only grant for a finance read', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff', { manage_expenses: true }));
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_expenses']);
+
+    expect(res).toBeNull();
+  });
+
+  it('does not let a view_financial revocation veto an alternate management grant', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(
+      roleState('staff', { view_financial: false, manage_expenses: true })
+    );
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_expenses']);
+
+    expect(res).toBeNull();
+  });
+
+  it('denies when none of the alternative permissions is granted', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff'));
+
+    const res = await permissionDenied(makeRequest(), CLINIC, ['view_financial', 'manage_expenses']);
+
+    expect(res?.status).toBe(403);
+  });
+});
+
+describe('permissionDenied — financial intelligence is independent', () => {
+  it('denies view_financial-only callers', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(roleState('staff', { view_financial: true }));
+
+    const res = await permissionDenied(makeRequest(), CLINIC, 'view_financial_intelligence');
+
+    expect(res?.status).toBe(403);
+  });
+
+  it('allows financial-intelligence-only callers', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'staff' });
+    mockPermissions.getUserPermissionState.mockResolvedValue(
+      roleState('staff', { view_financial: false, view_financial_intelligence: true })
+    );
+
+    const res = await permissionDenied(makeRequest(), CLINIC, 'view_financial_intelligence');
+
     expect(res).toBeNull();
   });
 });

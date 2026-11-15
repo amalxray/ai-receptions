@@ -1,8 +1,9 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
+import { AlertCircle, FileText, TrendingUp, Users, Wallet, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardSection from '@/components/dashboard/DashboardSection';
 import EmptyState from '@/components/dashboard/EmptyState';
@@ -39,16 +40,16 @@ import {
   type PatientSearchRecord,
 } from '@/lib/services/patientSearch';
 import { useClinicContext } from '@/lib/useClinicContext';
+import { formatMoney, formatNumber } from '@/lib/clinic/formatting';
 
 /**
- * N28 — the patients page is SEARCH, not a list.
+ * The patients page lists a selectable creation-date range (today by default)
+ * and keeps Arabic-aware search and quick patient previews.
  *
- * There is deliberately no patient list on open (B47 removed the paged table,
- * and a list is what also made the demo/seeded rows look wrong): the page opens
- * on a greeting + a big search field + a three-tile day summary, and the patient
- * panel renders UNDER the results once one is picked. Everything Arabic-aware
- * (normalisation, ranking, the 10-row cap, status colours) lives in
- * `lib/services/patientSearch.ts` so it is unit tested.
+ * The patient panel renders UNDER the results once one is picked, while each
+ * result also links directly to the full patient file. Arabic-aware
+ * normalisation, ranking, the result cap, and status colours live in
+ * `lib/services/patientSearch.ts` so they remain unit tested.
  *
  * The API contract is unchanged: `GET /api/patients` still answers with a BARE
  * ARRAY (only `q` sanitising, a `notes` arm and an optional `limit` were added),
@@ -76,18 +77,59 @@ type DailySummary = {
 
 const EMPTY_SUMMARY: DailySummary = { appointmentsToday: null, newFiles: null, outstanding: null };
 
+type TodayStats = {
+  newPatients: number | null;
+  invoicesTotal: number | null;
+  paymentsTotal: number | null;
+  remainingTotal: number | null;
+};
+
+const EMPTY_TODAY_STATS: TodayStats = {
+  newPatients: null,
+  invoicesTotal: null,
+  paymentsTotal: null,
+  remainingTotal: null,
+};
+
+type SmartAlertCounts = {
+  overdueDebts: number;
+  pendingImaging: number;
+  newPatients: number;
+  unreadMessages: number;
+};
+
+const EMPTY_SMART_ALERT_COUNTS: SmartAlertCounts = {
+  overdueDebts: 0,
+  pendingImaging: 0,
+  newPatients: 0,
+  unreadMessages: 0,
+};
+
 export default function PatientsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedDateFilter = searchParams.get('filter') === 'new_this_week' ? 'week' : 'today';
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all'>(requestedDateFilter);
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const [todayStats, setTodayStats] = useState<TodayStats>(EMPTY_TODAY_STATS);
+  const [todayStatsLoading, setTodayStatsLoading] = useState(true);
 
-  /** Rows the API returned for the CURRENT debounced query (bounded by `limit`). */
+  useEffect(() => {
+    setDateFilter(requestedDateFilter);
+    setShowAll(false);
+    setSelected(null);
+    setPatientsLoaded(false);
+  }, [requestedDateFilter]);
+
+  /** Rows returned for the current debounced query (bounded by `limit`). */
   const [patients, setPatients] = useState<PatientSearchRecord[]>([]);
+  const [patientsLoaded, setPatientsLoaded] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Debounced query — the bar owns the raw draft and calls back after 300ms. */
   const [query, setQuery] = useState('');
   const [treatmentFilter, setTreatmentFilter] = useState<'all' | 'active' | 'closed'>('all');
-  /** «عرض الكل (N)» lifts the 10-row display cap. */
+  /** «عرض الكل (N)» lifts the visible result cap. */
   const [showAll, setShowAll] = useState(false);
   /** The patient whose panel is open — it survives later searches. */
   const [selected, setSelected] = useState<PatientSearchRecord | null>(null);
@@ -97,6 +139,7 @@ export default function PatientsPage() {
   /** Starts TRUE: the first paint (SSR included) shows skeletons, never a fake
    *  «غير متاح» while the three requests are still in flight. */
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [smartAlertCounts, setSmartAlertCounts] = useState<SmartAlertCounts>(EMPTY_SMART_ALERT_COUNTS);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<PatientSearchRecord | null>(null);
@@ -105,31 +148,89 @@ export default function PatientsPage() {
   /** Form-local validation/save message — kept separate from the search `error`. */
   const [formError, setFormError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!clinicId) {
+      setTodayStats(EMPTY_TODAY_STATS);
+      setTodayStatsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setTodayStatsLoading(true);
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(
+          `/api/clinic/patients/today-stats?clinic_id=${encodeURIComponent(clinicId)}`,
+          { headers }
+        );
+        if (!response.ok) throw new Error('تعذر تحميل أداء اليوم');
+        const payload = await response.json();
+        if (cancelled) return;
+
+        const data = payload?.data;
+        setTodayStats({
+          newPatients: Number.isFinite(data?.new_patients) ? data.new_patients : null,
+          invoicesTotal: Number.isFinite(data?.invoices_total) ? data.invoices_total : null,
+          paymentsTotal: Number.isFinite(data?.payments_total) ? data.payments_total : null,
+          remainingTotal: Number.isFinite(data?.remaining_total) ? data.remaining_total : null,
+        });
+      } catch {
+        if (!cancelled) setTodayStats(EMPTY_TODAY_STATS);
+      } finally {
+        if (!cancelled) setTodayStatsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, clinicId]);
+
   /**
    * The single search request. `q` is sanitised again server-side (PostgREST
    * `.or()` syntax), so a comma in the input can never produce a 500 again.
    */
   const runSearch = useCallback(
-    async (term: string) => {
+    async (term: string, signal: AbortSignal) => {
       if (!clinicId) return;
       setSearching(true);
       setError(null);
       try {
         const headers = await authHeaders();
-        const qs = new URLSearchParams({ clinic_id: clinicId, limit: String(SEARCH_FETCH_LIMIT) });
-        if (term.trim()) qs.set('q', term);
-        const res = await fetch(`/api/patients?${qs.toString()}`, { headers });
+        if (signal.aborted) return;
+        const hasSearchTerm = Boolean(term.trim());
+        const qs = new URLSearchParams({
+          clinic_id: clinicId,
+          limit: hasSearchTerm ? String(SEARCH_FETCH_LIMIT) : '500',
+        });
+        if (hasSearchTerm) {
+          qs.set('q', term);
+        } else {
+          qs.set('date_filter', dateFilter);
+        }
+        if (!hasSearchTerm && dateFilter === 'today') {
+          qs.set('timezone_offset', String(new Date().getTimezoneOffset()));
+        }
+        const res = await fetch(`/api/patients?${qs.toString()}`, { headers, signal });
         if (!res.ok) throw new Error('بيانات المرضى غير متاحة');
         const payload = await res.json();
+        if (signal.aborted) return;
         setPatients(Array.isArray(payload) ? payload : []);
       } catch (caughtError) {
+        if (signal.aborted) return;
         setPatients([]);
         setError(caughtError instanceof Error ? caughtError.message : 'حدث خطأ غير معروف');
       } finally {
-        setSearching(false);
+        if (!signal.aborted) {
+          setPatientsLoaded(true);
+          setSearching(false);
+        }
       }
     },
-    [authHeaders, clinicId]
+    [authHeaders, clinicId, dateFilter]
   );
 
   /**
@@ -141,20 +242,17 @@ export default function PatientsPage() {
    * even though `/api/supabase-config` reported `isConfigured: true`.
    */
   useEffect(() => {
+    const controller = new AbortController();
     if (clinicLoading) {
       setSearching(true);
-      return;
+      return () => controller.abort();
     }
     if (!clinicId) {
       setSearching(false);
-      return;
+      return () => controller.abort();
     }
-    if (!query.trim()) {
-      setPatients([]);
-      setSearching(false);
-      return;
-    }
-    void runSearch(query);
+    void runSearch(query, controller.signal);
+    return () => controller.abort();
   }, [clinicLoading, clinicId, clinicError, query, runSearch]);
 
   /** B48 — appointments for ONE patient (`patient_id` filter) + `{ data }` envelope. */
@@ -239,6 +337,70 @@ export default function PatientsPage() {
     return () => {
       cancelled = true;
     };
+  }, [authHeaders, clinicId]);
+
+  /** Smart alert totals come from clinic-scoped APIs; failed sources stay at zero. */
+  useEffect(() => {
+    let cancelled = false;
+    setSmartAlertCounts(EMPTY_SMART_ALERT_COUNTS);
+    if (!clinicId) return () => { cancelled = true; };
+
+    (async () => {
+      const headers = await authHeaders();
+      const getJson = (url: string) =>
+        fetch(url, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(url))));
+      const now = Date.now();
+      const [aging, referrals, patientsResponse, messages] = await Promise.allSettled([
+        getJson(`/api/clinic/accounting/aging?clinic_id=${encodeURIComponent(clinicId)}`),
+        getJson(`/api/imaging/referrals?clinic_id=${encodeURIComponent(clinicId)}&direction=outgoing`),
+        getJson(`/api/patients?clinic_id=${encodeURIComponent(clinicId)}&limit=500`),
+        getJson(`/api/clinic/messages?clinic_id=${encodeURIComponent(clinicId)}`),
+      ]);
+      if (cancelled) return;
+
+      const outstandingRows = aging.status === 'fulfilled' && Array.isArray(aging.value?.data?.rows)
+        ? aging.value.data.rows
+        : [];
+      const referralRows = referrals.status === 'fulfilled' && Array.isArray(referrals.value?.data)
+        ? referrals.value.data
+        : [];
+      const patientRows = patientsResponse.status === 'fulfilled' && Array.isArray(patientsResponse.value)
+        ? patientsResponse.value
+        : [];
+      const conversationRows = messages.status === 'fulfilled' && Array.isArray(messages.value?.data)
+        ? messages.value.data
+        : [];
+      const activeReferralStatuses = new Set([
+        'pending', 'requested', 'submitted', 'accepted', 'scheduled',
+        'in_progress', 'ready', 'needs_clarification',
+      ]);
+      const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+      setSmartAlertCounts({
+        overdueDebts: aging.status === 'fulfilled'
+          ? outstandingRows.filter((row: any) => Number(row?.balance_amount) > 0 && Number(row?.age_days) > 0).length
+          : 0,
+        pendingImaging: referrals.status === 'fulfilled'
+          ? referralRows.filter((row: any) => activeReferralStatuses.has(String(row?.status ?? '').toLowerCase())).length
+          : 0,
+        newPatients: patientsResponse.status === 'fulfilled'
+          ? patientRows.filter((row: any) => {
+              const createdAt = Date.parse(row?.created_at ?? '');
+              return Number.isFinite(createdAt) && createdAt >= weekAgo && createdAt <= now;
+            }).length
+          : 0,
+        unreadMessages: messages.status === 'fulfilled'
+          ? conversationRows.reduce(
+              (total: number, row: any) => total + Math.max(0, Number(row?.unread_count) || 0),
+              0
+            )
+          : 0,
+      });
+    })().catch(() => {
+      if (!cancelled) setSmartAlertCounts(EMPTY_SMART_ALERT_COUNTS);
+    });
+
+    return () => { cancelled = true; };
   }, [authHeaders, clinicId]);
 
   /**
@@ -333,6 +495,7 @@ export default function PatientsPage() {
         throw new Error(body?.error || 'Unable to save patient');
       }
       const savedPatient = (await response.json()) as PatientSearchRecord;
+      toast.success('تم حفظ بيانات المريض بنجاح');
       setPatients((current) => {
         if (editingPatient) return current.map((row) => (row.id === editingPatient.id ? { ...row, ...savedPatient } : row));
         return [savedPatient, ...current.filter((row) => row.id !== savedPatient.id)];
@@ -368,17 +531,28 @@ export default function PatientsPage() {
   const visiblePatients = useMemo(
     () =>
       patients.filter((patient) => {
+        if (query.trim()) return true;
         const status = getPatientTreatmentStatus(patient.metadata);
         if (treatmentFilter === 'all') return true;
         return treatmentFilter === 'active' ? status === 'active' : status === 'closed';
       }),
-    [patients, treatmentFilter]
+    [patients, query, treatmentFilter]
   );
 
-  /** Ranked + capped view of the API rows for the current query. */
+  /** Rows are ordered by creation time by the API; active searches ignore list filters. */
   const outcome = useMemo(
-    () =>
-      searchPatients(visiblePatients, query, showAll ? Math.max(visiblePatients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT),
+    () => {
+      if (!query.trim()) {
+        const limit = showAll ? visiblePatients.length : SEARCH_RESULT_LIMIT;
+        return {
+          results: visiblePatients.slice(0, limit),
+          total: visiblePatients.length,
+          hasMore: visiblePatients.length > limit,
+          query: '',
+        };
+      }
+      return searchPatients(visiblePatients, query, showAll ? Math.max(visiblePatients.length, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT);
+    },
     [visiblePatients, query, showAll]
   );
 
@@ -401,35 +575,35 @@ export default function PatientsPage() {
       return [
         {
           icon: '⚠️',
-          label: '3 مديونيات متأخرة',
+          label: `${smartAlertCounts.overdueDebts} مديونيات متأخرة`,
           tone: 'rose',
           description: 'إجراءات متابعة مطلوبة خلال 24 ساعة',
-          href: `${base}/patients?filter=overdue`,
+          href: `${base}/debts`,
         },
         {
           icon: '🩻',
-          label: '2 بانتظار نتائج أشعة',
+          label: `${smartAlertCounts.pendingImaging} بانتظار نتائج أشعة`,
           tone: 'violet',
           description: 'نتائج قادمة من المعمل أو الأشعة',
           href: `${base}/imaging?filter=pending`,
         },
         {
           icon: '📅',
-          label: '5 مرضى جدد هذا الأسبوع',
+          label: `${smartAlertCounts.newPatients} مرضى جدد هذا الأسبوع`,
           tone: 'cyan',
           description: 'تحديثات حديثة في قائمة المرضى',
-          href: `${base}/patients?filter=recent`,
+          href: `${base}/patients?filter=new_this_week`,
         },
         {
           icon: '💬',
-          label: '1 رسالة غير مقروءة',
+          label: `${smartAlertCounts.unreadMessages} رسالة غير مقروءة`,
           tone: 'amber',
           description: 'رسالة جديدة من المريض أو من العيادة',
           href: `${base}/messages`,
         },
       ];
     },
-    [clinicSlug]
+    [clinicSlug, smartAlertCounts]
   );
 
   const handleAlertClick = useCallback(
@@ -445,29 +619,29 @@ export default function PatientsPage() {
     [router]
   );
 
-  const recentActivities = useMemo(
-    () => [
-      { name: 'عمر صقر', action: 'أُضيف ملف أشعة', time: 'قبل 5 د', tone: 'violet', icon: '🩻' },
-      { name: 'نبيله جابر', action: 'موعد جديد', time: 'اليوم', tone: 'cyan', icon: '📅' },
-      { name: 'سارة عبد الله', action: 'دفعة تم استلامها', time: 'قبل 20 د', tone: 'emerald', icon: '💰' },
-      { name: 'فهد حمود', action: 'تحديث ملف طبي', time: 'قبل ساعة', tone: 'amber', icon: '📝' },
-      { name: 'مريم عزيز', action: 'رسالة جديدة', time: 'قبل 2 س', tone: 'sky', icon: '💬' },
-    ],
-    []
-  );
+  // TODO: Restore a real activity feed when the clinic activity log API is available.
 
   const hasQuery = query.trim().length > 0;
-  const hint = hasQuery ? (outcome.total === 1 ? 'نتيجة واحدة' : `${outcome.total} نتائج`) : null;
+  const hasPatientResults = hasQuery || patientsLoaded;
+  const hint = hasPatientResults ? (outcome.total === 1 ? 'نتيجة واحدة' : `${outcome.total} نتائج`) : null;
 
   const handleQueryChange = useCallback((next: string) => {
     setQuery(next);
+    if (next.trim()) setTreatmentFilter('all');
     setShowAll(false);
+  }, []);
+
+  const handleDateFilterChange = useCallback((next: 'today' | 'week' | 'all') => {
+    setDateFilter(next);
+    setShowAll(false);
+    setSelected(null);
+    setPatientsLoaded(false);
   }, []);
 
   return (
     <DashboardSection
       title="المرضى"
-      subtitle="ابحث عن المريض وافتح ملفه دون مغادرة الصفحة — لا قوائم ولا ترقيم."
+      subtitle="اعرض المرضى حسب تاريخ الإضافة، وابحث وافتح الملف الطبي الكامل."
       action={
         <Magnetic>
           <ShimmerButton
@@ -485,7 +659,7 @@ export default function PatientsPage() {
         </Magnetic>
       }
     >
-      {/* 🌅 The open state: greeting + date (Gregorian · Hijri). */}
+      {/* 🌅 Greeting + date (Gregorian · Hijri). */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -502,7 +676,7 @@ export default function PatientsPage() {
           </p>
         </div>
         <p className="rounded-full border border-slate-800 px-3 py-1 text-[11px] text-slate-500">
-          🔍 ابحث لتظهر النتائج أسفل الصفحة
+          🔍 النتائج حسب الفترة والبحث
         </p>
       </motion.div>
 
@@ -520,184 +694,6 @@ export default function PatientsPage() {
           }}
         />
       </div>
-
-      {/* 📊 Daily summary — hidden as soon as the receptionist starts searching. */}
-      <AnimatePresence initial={false}>
-        {!hasQuery && !isFormOpen ? (
-          <motion.div
-            key="summary"
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12, height: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="mb-6 space-y-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-3">
-              <SummaryTile
-                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/appointments?date=today`}
-                emoji="📅"
-                label="مواعيد اليوم"
-                value={summary.appointmentsToday}
-                loading={summaryLoading}
-                accent="from-cyan-500/20 to-sky-500/10 ring-cyan-500/25"
-              />
-              <SummaryTile
-                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/medical-files?status=new`}
-                emoji="🩻"
-                label="ملفات جديدة"
-                value={summary.newFiles}
-                loading={summaryLoading}
-                accent="from-violet-500/20 to-fuchsia-500/10 ring-violet-500/25"
-              />
-              <SummaryTile
-                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/financial-intelligence?status=unpaid`}
-                emoji="💰"
-                label="مستحقات غير مسدَّدة"
-                value={summary.outstanding}
-                loading={summaryLoading}
-                accent="from-amber-500/20 to-orange-500/10 ring-amber-500/25"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {quickActions.map((action) => {
-                const classes =
-                  action.tone === 'cyan'
-                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
-                    : action.tone === 'sky'
-                      ? 'border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20'
-                      : action.tone === 'amber'
-                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
-                        : 'border-violet-500/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20';
-
-                if (action.href === '#') {
-                  return (
-                    <QuickActionPill
-                      key={action.label}
-                      className={classes}
-                      onClick={() => {
-                        setEditingPatient(null);
-                        setFormState({ ...EMPTY_PATIENT_FORM });
-                        setFormError(null);
-                        setIsFormOpen(true);
-                        toast.info('جاري فتح نموذج إضافة مريض...', {
-                          title: 'إجراء سريع',
-                          duration: 2500,
-                        });
-                      }}
-                    >
-                      {action.label}
-                    </QuickActionPill>
-                  );
-                }
-
-                return (
-                  <QuickActionPill
-                    key={action.label}
-                    href={action.href}
-                    className={classes}
-                    onClick={() => {
-                      toast.info(`جاري فتح ${action.label}...`, {
-                        title: 'إجراء سريع',
-                        duration: 2500,
-                      });
-                      router.push(action.href);
-                    }}
-                  >
-                    {action.label}
-                  </QuickActionPill>
-                );
-              })}
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-bold text-white">تنبيهات ذكية</p>
-                  <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
-                    4 عناصر
-                  </span>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {smartAlerts.map((alert) => (
-                    <Link
-                      key={alert.label}
-                      href={alert.href}
-                      onClick={(event) => handleAlertClick(event, alert.href, alert.label)}
-                      className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                    >
-                      <motion.div
-                        whileHover={{ y: -4, scale: 1.01 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                        className={`relative cursor-pointer overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 transition-colors duration-200 hover:border-slate-700 hover:bg-slate-900/80 ${
-                          alert.tone === 'rose'
-                            ? 'from-rose-500/10 to-red-500/5'
-                            : alert.tone === 'violet'
-                              ? 'from-violet-500/10 to-indigo-500/5'
-                              : alert.tone === 'cyan'
-                                ? 'from-cyan-500/10 to-sky-500/5'
-                                : 'from-amber-500/10 to-orange-500/5'
-                        }`}
-                      >
-                        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                        <div className="relative z-10 flex items-start gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
-                            {alert.icon}
-                          </span>
-                          <div>
-                            <p className="text-sm font-bold text-white">{alert.label}</p>
-                            <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-bold text-white">آخر النشاطات</p>
-                  <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
-                    5 آخرين
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {recentActivities.map((activity) => (
-                    <motion.div
-                      key={`${activity.name}-${activity.action}`}
-                      whileHover={{ x: 2 }}
-                      whileTap={{ scale: 0.99 }}
-                      transition={{ type: 'spring', stiffness: 240, damping: 24 }}
-                      className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 px-3 py-2.5"
-                    >
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-sm ${
-                        activity.tone === 'violet'
-                          ? 'bg-violet-500/10'
-                          : activity.tone === 'cyan'
-                            ? 'bg-cyan-500/10'
-                            : activity.tone === 'emerald'
-                              ? 'bg-emerald-500/10'
-                              : activity.tone === 'amber'
-                                ? 'bg-amber-500/10'
-                                : 'bg-sky-500/10'
-                      }`}>
-                        {activity.icon}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-white">{activity.name}</p>
-                        <p className="truncate text-[11px] text-slate-400">{activity.action}</p>
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-500">{activity.time}</span>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
 
       {/* ➕ Add / edit form — unchanged behaviour, now inside a motion shell. */}
       <AnimatePresence initial={false}>
@@ -778,7 +774,7 @@ export default function PatientsPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60"
+                className="rounded-full bg-cyan-500 px-5 py-3 text-base font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? 'جارٍ الحفظ...' : editingPatient ? 'حفظ التعديلات' : 'إنشاء مريض'}
               </button>
@@ -803,7 +799,32 @@ export default function PatientsPage() {
         ) : null}
       </AnimatePresence>
 
-      {hasQuery && (
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="patient-date-filter" className="text-sm text-slate-400">
+            {hasQuery ? 'تاريخ الإضافة (يُتجاهل أثناء البحث)' : 'تاريخ الإضافة'}
+          </label>
+          <select
+            id="patient-date-filter"
+            value={dateFilter}
+            disabled={hasQuery}
+            onChange={(event) => handleDateFilterChange(event.target.value as 'today' | 'week' | 'all')}
+            className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <option value="today">اليوم</option>
+            <option value="week">آخر 7 أيام</option>
+            <option value="all">الكل</option>
+          </select>
+        </div>
+        {patientsLoaded && !error && !clinicError ? (
+          <p className="text-sm text-slate-400" aria-live="polite">
+            {hasQuery ? 'نتائج البحث:' : 'عدد المرضى ضمن الفترة:'}{' '}
+            <span className="font-semibold text-cyan-200">{outcome.total}</span>
+          </p>
+        ) : null}
+      </div>
+
+      {hasPatientResults && !hasQuery && (
         <div className="mb-4 flex flex-wrap gap-2">
           {['all', 'active', 'closed'].map((filter) => (
             <button
@@ -822,9 +843,9 @@ export default function PatientsPage() {
         </div>
       )}
 
-      {/* 🔎 Results (max 10) — the panel opens UNDER them, never in a modal. */}
+      {/* 🔎 Results — the panel opens UNDER them, never in a modal. */}
       <AnimatePresence mode="wait">
-        {hasQuery ? (
+        {hasPatientResults ? (
           <motion.div
             key="results"
             initial="hidden"
@@ -833,7 +854,7 @@ export default function PatientsPage() {
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
           >
             {searching && outcome.results.length === 0 ? (
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
                 {[0, 1, 2, 3].map((index) => (
                   <Skeleton key={index} className="h-24" />
                 ))}
@@ -847,16 +868,18 @@ export default function PatientsPage() {
               />
             ) : (
               <>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {outcome.results.map((result) => (
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+                  {outcome.results.map((result, index) => (
                     <PatientSearchResult
                       key={result.id}
+                      index={index}
                       patient={{
                         ...result,
                         status: patientTreatmentStatusLabel(result.metadata),
                       }}
                       query={outcome.query}
                       active={selected?.id === result.id}
+                      clinicSlug={clinicSlug}
                       onSelect={(next) => setSelected({ ...next, status: patientTreatmentStatusLabel(next.metadata) })}
                     />
                   ))}
@@ -923,6 +946,183 @@ export default function PatientsPage() {
               onSessionStatusChange={changeSessionStatus}
             />
           </div>
+        ) : null}
+      </AnimatePresence>
+
+      {!isFormOpen ? (
+        <div className="mt-7 rounded-[1.5rem] border border-slate-800 bg-slate-950/60 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-white">تنبيهات ذكية</p>
+            <span className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-bold text-slate-300">
+              4 عناصر
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {smartAlerts.map((alert) => (
+              <Link
+                key={alert.label}
+                href={alert.href}
+                onClick={(event) => handleAlertClick(event, alert.href, alert.label)}
+                className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              >
+                <motion.div
+                  whileHover={{ y: -4, scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+                  className={`relative cursor-pointer overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br px-3 py-3 transition-colors duration-200 hover:border-slate-700 hover:bg-slate-900/80 ${
+                    alert.tone === 'rose'
+                      ? 'from-rose-500/10 to-red-500/5'
+                      : alert.tone === 'violet'
+                        ? 'from-violet-500/10 to-indigo-500/5'
+                        : alert.tone === 'cyan'
+                          ? 'from-cyan-500/10 to-sky-500/5'
+                          : 'from-amber-500/10 to-orange-500/5'
+                  }`}
+                >
+                  <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.14),_transparent_35%)] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                  <div className="relative z-10 flex items-start gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-lg">
+                      {alert.icon}
+                    </span>
+                    <div>
+                      <p className="text-sm font-bold text-white">{alert.label}</p>
+                      <p className="mt-1 text-[11px] text-slate-400">{alert.description}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <TodayPerformanceCard
+          label="مرضى جدد اليوم"
+          value={todayStats.newPatients}
+          loading={todayStatsLoading}
+          icon={Users}
+          tone="blue"
+          index={0}
+        />
+        <TodayPerformanceCard
+          label="إجمالي الفواتير"
+          value={todayStats.invoicesTotal}
+          loading={todayStatsLoading}
+          icon={FileText}
+          tone="violet"
+          money
+          index={1}
+        />
+        <TodayPerformanceCard
+          label="المبلغ المسدد اليوم"
+          value={todayStats.paymentsTotal}
+          loading={todayStatsLoading}
+          icon={Wallet}
+          tone="emerald"
+          money
+          highlight
+          index={2}
+        />
+        <TodayPerformanceCard
+          label="المبلغ المتبقي اليوم"
+          value={todayStats.remainingTotal}
+          loading={todayStatsLoading}
+          icon={AlertCircle}
+          tone="orange"
+          money
+          index={3}
+        />
+      </div>
+
+      <AnimatePresence initial={false}>
+        {!hasQuery && !isFormOpen ? (
+          <motion.div
+            key="summary"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12, height: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-6 space-y-4"
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/appointments?date=today`}
+                emoji="📅"
+                label="مواعيد اليوم"
+                value={summary.appointmentsToday}
+                loading={summaryLoading}
+                accent="from-cyan-500/20 to-sky-500/10 ring-cyan-500/25"
+              />
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/medical-files?status=new`}
+                emoji="🩻"
+                label="ملفات جديدة"
+                value={summary.newFiles}
+                loading={summaryLoading}
+                accent="from-violet-500/20 to-fuchsia-500/10 ring-violet-500/25"
+              />
+              <SummaryTile
+                href={`/dashboard/${encodeURIComponent(clinicSlug || 'clinic')}/financial-intelligence?status=unpaid`}
+                emoji="💰"
+                label="مستحقات غير مسدَّدة"
+                value={summary.outstanding}
+                loading={summaryLoading}
+                accent="from-amber-500/20 to-orange-500/10 ring-amber-500/25"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {quickActions.map((action) => {
+                const classes =
+                  action.tone === 'cyan'
+                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20'
+                    : action.tone === 'sky'
+                      ? 'border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20'
+                      : action.tone === 'amber'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
+                        : 'border-violet-500/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20';
+
+                if (action.href === '#') {
+                  return (
+                    <QuickActionPill
+                      key={action.label}
+                      className={classes}
+                      onClick={() => {
+                        setEditingPatient(null);
+                        setFormState({ ...EMPTY_PATIENT_FORM });
+                        setFormError(null);
+                        setIsFormOpen(true);
+                        toast.info('جاري فتح نموذج إضافة مريض...', {
+                          title: 'إجراء سريع',
+                          duration: 2500,
+                        });
+                      }}
+                    >
+                      {action.label}
+                    </QuickActionPill>
+                  );
+                }
+
+                return (
+                  <QuickActionPill
+                    key={action.label}
+                    href={action.href}
+                    className={classes}
+                    onClick={() => {
+                      toast.info(`جاري فتح ${action.label}...`, {
+                        title: 'إجراء سريع',
+                        duration: 2500,
+                      });
+                      router.push(action.href);
+                    }}
+                  >
+                    {action.label}
+                  </QuickActionPill>
+                );
+              })}
+            </div>
+          </motion.div>
         ) : null}
       </AnimatePresence>
     </DashboardSection>
@@ -1056,4 +1256,142 @@ function SummaryTile({
       </Link>
     </motion.div>
   );
+}
+
+function TodayPerformanceCard({
+  label,
+  value,
+  loading,
+  icon: Icon,
+  tone,
+  index,
+  money = false,
+  highlight = false,
+}: {
+  label: string;
+  value: number | null;
+  loading: boolean;
+  icon: LucideIcon;
+  tone: 'blue' | 'violet' | 'emerald' | 'orange';
+  index: number;
+  money?: boolean;
+  highlight?: boolean;
+}) {
+  const toneStyles = {
+    blue: {
+      border: 'border-sky-400/20',
+      background: 'from-sky-500/15 via-slate-900/80 to-slate-950/90',
+      icon: 'bg-sky-400/15 text-sky-300',
+      label: 'text-sky-100/80',
+      value: 'text-white',
+      shadow: 'shadow-sky-950/30',
+    },
+    violet: {
+      border: 'border-violet-400/20',
+      background: 'from-violet-500/15 via-slate-900/80 to-slate-950/90',
+      icon: 'bg-violet-400/15 text-violet-300',
+      label: 'text-violet-100/80',
+      value: 'text-white',
+      shadow: 'shadow-violet-950/30',
+    },
+    emerald: {
+      border: 'border-emerald-300/35',
+      background: 'from-emerald-500/25 via-emerald-950/80 to-slate-950/90',
+      icon: 'bg-emerald-300/20 text-emerald-200',
+      label: 'text-emerald-50',
+      value: 'text-white',
+      shadow: 'shadow-emerald-950/50',
+    },
+    orange: {
+      border: 'border-orange-400/20',
+      background: 'from-orange-500/15 via-slate-900/80 to-slate-950/90',
+      icon: 'bg-orange-400/15 text-orange-300',
+      label: 'text-orange-100/80',
+      value: 'text-white',
+      shadow: 'shadow-orange-950/30',
+    },
+  }[tone];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -5 }}
+      transition={{
+        opacity: { duration: 0.4, delay: index * 0.1 },
+        y: { duration: 0.4, delay: index * 0.1, ease: [0.22, 1, 0.36, 1] },
+      }}
+      className={`group relative isolate overflow-hidden rounded-2xl border ${toneStyles.border} bg-gradient-to-br ${toneStyles.background} p-4 shadow-xl ${toneStyles.shadow} backdrop-blur-md transition-shadow duration-300 hover:shadow-2xl sm:rounded-3xl sm:p-5`}
+    >
+      {highlight ? (
+        <>
+          <span className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-emerald-300/20 blur-3xl animate-blob-drift" />
+          <span className="pointer-events-none absolute -bottom-12 left-4 h-32 w-32 rounded-full bg-teal-400/15 blur-3xl animate-blob-drift [animation-delay:-7s]" />
+        </>
+      ) : null}
+      <div className="relative z-10 flex items-start justify-between gap-2">
+        <p className={`text-xs font-semibold leading-5 sm:text-sm ${toneStyles.label}`}>{label}</p>
+        <span
+          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${toneStyles.icon} ${
+            highlight ? 'shadow-glow-emerald transition-all duration-300 group-hover:scale-110' : ''
+          }`}
+        >
+          <Icon aria-hidden="true" size={19} />
+        </span>
+      </div>
+      <div className="relative z-10 mt-4">
+        {highlight ? (
+          <motion.p
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 0.7, y: 0 }}
+            transition={{ duration: 0.7, delay: index * 0.1 + 0.15, ease: 'easeOut' }}
+            dir="rtl"
+            lang="ar"
+            className="mb-1 font-heading text-[11px] leading-relaxed text-emerald-100 opacity-70 sm:text-xs"
+          >
+            ﴿لَئِن شَكَرْتُمْ لَأَزِيدَنَّكُمْ﴾
+          </motion.p>
+        ) : null}
+        <div className="flex min-h-8 items-center gap-2">
+          {loading ? (
+            <Skeleton className="h-7 w-24" />
+          ) : value === null ? (
+            <span className="text-sm font-medium text-slate-300">غير متاح</span>
+          ) : (
+            <>
+              <AnimatedStatValue value={value} money={money} className={`text-xl font-extrabold tracking-tight sm:text-2xl ${toneStyles.value}`} />
+              {highlight ? (
+                <TrendingUp aria-label="اتجاه صاعد" size={18} className="text-emerald-300 drop-shadow-[0_0_8px_rgba(110,231,183,0.8)]" />
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+      {highlight ? (
+        <p className="relative z-10 mt-1 text-[11px] font-medium text-emerald-100/65">إجمالي ما تم تحصيله اليوم</p>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function AnimatedStatValue({
+  value,
+  money,
+  className,
+}: {
+  value: number;
+  money: boolean;
+  className: string;
+}) {
+  const animatedValue = useMotionValue(0);
+  const displayValue = useTransform(animatedValue, (current) =>
+    money ? formatMoney(current, 'ILS') : formatNumber(Math.round(current), 'ar')
+  );
+
+  useEffect(() => {
+    const controls = animate(animatedValue, value, { duration: 1.2, ease: 'easeOut' });
+    return controls.stop;
+  }, [animatedValue, value]);
+
+  return <motion.span className={className}>{displayValue}</motion.span>;
 }

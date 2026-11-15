@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authorizeClinicRequest, roleDenied, CASH_SESSION_CLOSE_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, CASH_SESSION_CLOSE_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { closeCashSession } from '@/lib/services/accounting';
 
 // Accounting Phase C — close a cash register session (FINANCE_ADMIN only).
@@ -13,8 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ session
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id required' }, { status: 400 });
     const authorization = await authorizeClinicRequest(req, clinicId);
-    const denied = roleDenied(authorization, CASH_SESSION_CLOSE_ROLES);
-    if (denied) return NextResponse.json({ error: denied.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: denied.status });
+    const permission = await permissionDenied(req, clinicId, 'manage_payments', { allowedRoles: CASH_SESSION_CLOSE_ROLES });
+    if (permission) return permission;
     const body = await req.json();
     const data = await closeCashSession({
       clinicId,

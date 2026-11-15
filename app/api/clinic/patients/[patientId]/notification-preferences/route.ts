@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import {
   getPatientNotificationPreferences,
   upsertPatientNotificationPreferences,
@@ -26,10 +27,8 @@ export async function GET(req: Request, { params }: { params: { patientId: strin
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_patients', { allowedRoles: ADMIN_ROLES });
+    if (gate) return gate;
 
     const prefs = await getPatientNotificationPreferences(clinicId, params.patientId);
     return NextResponse.json({ data: prefs });
@@ -49,10 +48,8 @@ export async function PUT(req: Request, { params }: { params: { patientId: strin
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
-    const auth = await authorizeClinicRequest(req, clinicId);
-    if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية الإدارة' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'manage_patients', { allowedRoles: ADMIN_ROLES });
+    if (gate) return gate;
 
     const prefs = await upsertPatientNotificationPreferences({
       clinicId,

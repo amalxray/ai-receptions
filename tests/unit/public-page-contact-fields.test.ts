@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validatePublicContactValue } from '@/components/dashboard/clinic/PublicPageManager';
+import { buildPublicWhatsAppHref } from '@/lib/utils/whatsapp';
 
 describe('public page contact validation', () => {
   it('keeps email and website separate and validates them independently', () => {
@@ -20,5 +21,21 @@ describe('public page contact validation', () => {
     // junk rejected
     expect(validatePublicContactValue('whatsapp', 'abc')).toBe('يرجى إدخال رقم واتساب أو رابط wa.me صحيح');
     expect(validatePublicContactValue('whatsapp', 'https://wa.me/abc')).toBe('يرجى إدخال رقم واتساب أو رابط wa.me صحيح');
+  });
+
+  it('builds working links from local and international phone formats', () => {
+    expect(buildPublicWhatsAppHref('0599 509 093')).toBe('https://wa.me/970599509093');
+    expect(buildPublicWhatsAppHref('970599509093')).toBe('https://wa.me/970599509093');
+    expect(buildPublicWhatsAppHref('+970 (599) 509-093')).toBe('https://wa.me/970599509093');
+    expect(buildPublicWhatsAppHref('not a phone number')).toBeNull();
+    expect(buildPublicWhatsAppHref(null)).toBeNull();
+  });
+
+  it('preserves supported full WhatsApp links', () => {
+    const waMeUrl = 'https://wa.me/970599509093?text=hello';
+    const apiUrl = 'https://api.whatsapp.com/send?phone=970599509093';
+
+    expect(buildPublicWhatsAppHref(waMeUrl)).toBe(waMeUrl);
+    expect(buildPublicWhatsAppHref(apiUrl)).toBe(apiUrl);
   });
 });

@@ -57,14 +57,34 @@ export async function GET(req: Request) {
 
     const supabase = supabaseAdmin;
 
-    const [patientsCountRes, appointmentsRes, conversationsRes, revenueCountRes] = await Promise.all([
+    // Today in the clinic timezone (fallback Asia/Jerusalem).
+    let todayIso: string;
+    try {
+      todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
+    } catch {
+      todayIso = new Date().toISOString().slice(0, 10);
+    }
+    const sevenDaysAgoDate = new Date(`${todayIso}T00:00:00.000Z`);
+    sevenDaysAgoDate.setUTCDate(sevenDaysAgoDate.getUTCDate() - 7);
+    const sevenDaysAgo = sevenDaysAgoDate.toISOString().slice(0, 10);
+
+    const [
+      patientsCountRes,
+      appointmentsRes,
+      appointmentTotalRes,
+      conversationsRes,
+      revenueCountRes,
+    ] = await Promise.all([
       supabase.from('patients').select('*', { count: 'exact', head: true }).eq('clinic_id', clinicId).is('deleted_at', null),
       supabase
         .from('appointments')
-        .select('id, appointment_date, scheduled_at, status, patient_id, service_id, provider_id', { count: 'exact' })
+        .select('id, appointment_date, scheduled_at, status, patient_id, service_id, provider_id')
         .eq('clinic_id', clinicId)
         .is('deleted_at', null)
-        .order('appointment_date', { ascending: true }),
+        .gte('appointment_date', sevenDaysAgo)
+        .order('appointment_date', { ascending: true })
+        .limit(500),
+      supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('clinic_id', clinicId).is('deleted_at', null),
       supabase
         .from('conversations')
         .select('id, status, started_at, metadata', { count: 'exact' })
@@ -74,10 +94,17 @@ export async function GET(req: Request) {
       supabase.from('revenue').select('*', { count: 'exact', head: true }).eq('clinic_id', clinicId),
     ]);
 
-    if (patientsCountRes.error || appointmentsRes.error || conversationsRes.error || revenueCountRes.error) {
+    if (
+      patientsCountRes.error ||
+      appointmentsRes.error ||
+      appointmentTotalRes.error ||
+      conversationsRes.error ||
+      revenueCountRes.error
+    ) {
       throw new Error(
         patientsCountRes.error?.message ||
           appointmentsRes.error?.message ||
+          appointmentTotalRes.error?.message ||
           conversationsRes.error?.message ||
           revenueCountRes.error?.message ||
           'overview query failed'
@@ -94,14 +121,6 @@ export async function GET(req: Request) {
       provider_id: string | null;
     };
     const appointments = (appointmentsRes.data ?? []) as ApptRow[];
-
-    // Today in the clinic timezone (fallback Asia/Jerusalem).
-    let todayIso: string;
-    try {
-      todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
-    } catch {
-      todayIso = new Date().toISOString().slice(0, 10);
-    }
 
     const isCancelled = (s: string | null) => s === 'cancelled';
     const activeAppointments = appointments.filter((a) => !isCancelled(a.status));
@@ -134,7 +153,7 @@ export async function GET(req: Request) {
         patients_count: patientsCountRes.count ?? 0,
         today_appointments: decorate(todays),
         upcoming_appointments: decorate(upcoming),
-        appointments_count: appointmentsRes.count ?? appointments.length,
+        appointments_count: appointmentTotalRes.count ?? 0,
         new_conversations_count: conversationsRes.count ?? conversations.length,
         needs_attention_count: needsAttention.length,
         revenue_count: revenueCountRes.count ?? 0,

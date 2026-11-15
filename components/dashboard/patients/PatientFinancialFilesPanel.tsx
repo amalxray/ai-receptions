@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
+import {
+  detectFileCategory,
+  inferMimeFromFilename,
+  resolveUploadFileType,
+} from '@/components/dashboard/patients/PatientMedicalFilesTab';
+import PatientPdfPreviewButton, { isPdfMedicalFile } from '@/components/dashboard/patients/PatientPdfPreviewButton';
 
 /**
  * PHASE I — Unified patient financial + medical file panel.
@@ -72,6 +78,7 @@ type BalanceRow = {
 type MedicalFileRow = {
   id: string;
   file_type?: string | null;
+  mime_type?: string | null;
   original_filename?: string | null;
   size_bytes?: number | null;
   created_at?: string | null;
@@ -224,6 +231,33 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     return sum + quantity * price;
   }, 0);
 
+  const loadInvoices = useCallback(async () => {
+    if (!clinicId) return;
+    const headers = await authHeaders();
+    const response = await fetch(
+      `/api/clinic/accounting/invoices?clinic_id=${clinicId}&patient_id=${patientId}`,
+      { headers }
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'فشل تحميل الفواتير');
+    const invoicesList: InvoiceRow[] = (payload.data ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      id: String(row.invoice_id ?? row.id ?? ''),
+    })).filter((row: InvoiceRow) => UUID_RE.test(row.id));
+    setInvoices(invoicesList);
+  }, [clinicId, patientId, authHeaders]);
+
+  const loadBalances = useCallback(async () => {
+    if (!clinicId) return;
+    const headers = await authHeaders();
+    const response = await fetch(
+      `/api/clinic/accounting/balances?clinic_id=${clinicId}&patient_id=${patientId}`,
+      { headers }
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'فشل تحميل الرصيد');
+    setBalances(payload.data ?? []);
+  }, [clinicId, patientId, authHeaders]);
 
   const loadAll = useCallback(async () => {
     if (!clinicId) return;
@@ -233,7 +267,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       const headers = await authHeaders();
       const [invRes, payRes, balRes, fileRes, svcRes] = await Promise.all([
         fetch(`/api/clinic/accounting/invoices?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
-        fetch(`/api/clinic/accounting/payments?clinic_id=${clinicId}`, { headers }),
+        fetch(`/api/clinic/accounting/payments?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/accounting/balances?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/medical-files/list?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         // Catalog for the invoice line items. A failure here must not break the
@@ -335,11 +369,17 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل إصدار الفاتورة');
-      setActionSuccess(`تم إصدار الفاتورة ${json.data?.invoiceNumber ?? ''} بـ ${items.length} بند`);
+      setActionSuccess(`تم إصدار الفاتورة بنجاح${json.data?.invoiceNumber ? ` (${json.data.invoiceNumber})` : ''} — عدد البنود: ${items.length}`);
       setShowInvoiceForm(false);
       setInvLines([{ key: 'l1', service_id: '', description: '', quantity: '1', unit_price: '' }]);
       setReissueFrom(null);
-      await loadAll();
+      const refreshResults = await Promise.allSettled([loadInvoices(), loadBalances()]);
+      const failedRefresh = refreshResults.find((result) => result.status === 'rejected');
+      if (failedRefresh?.status === 'rejected') {
+        setError(humanizePanelError(
+          failedRefresh.reason instanceof Error ? failedRefresh.reason.message : 'فشل تحديث بيانات الفاتورة'
+        ));
+      }
     } catch (err) {
       // B50 — the API answers with Arabic now; this guards any legacy path.
       setActionError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ'));
@@ -479,7 +519,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل تسجيل الدفعة');
-      setActionSuccess(`تم تسجيل الدفعة ${json.data?.receiptNumber ?? ''}`);
+      setActionSuccess(`تم تسجيل الدفعة بنجاح${json.data?.receiptNumber ? ` (${json.data.receiptNumber})` : ''}`);
       setShowPaymentForm(false);
       setPayAmount('');
       setPayDate(new Date().toISOString().split('T')[0]);
@@ -493,44 +533,74 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const uploadFile = async (file: File) => {
     if (!clinicId) return;
-    const fileToUpload = await optimizeImageForUpload(file);
-    // F — حد جسم الطلب على Vercel هو 4.5MB: نرفض مبكراً برسالة عربية واضحة
-    // بدلاً من 413 نصيّ من الحافة كان يفجّر res.json() ("Unexpected token 'R'").
-    const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-    if (fileToUpload.size > MAX_UPLOAD_BYTES) {
-      setActionError(`الملف كبير جداً (${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB) — الحد الأقصى 4MB، ارفع نسخة أصغر أو مضغوطة`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
     setUploadBusy(true);
     setActionError(null);
     setActionSuccess(null);
     try {
-      const form = new FormData();
-      form.append('file', fileToUpload);
-      form.append('patient_id', patientId);
+      const originalMimeType = file.type || inferMimeFromFilename(file.name);
+      const category = detectFileCategory(file.type, file.name, originalMimeType);
+      const preservesRadiologySource = ['panorama', 'cbct', 'dicom'].includes(category);
+      const fileToUpload = preservesRadiologySource ? file : await optimizeImageForUpload(file);
+      const mimeType = fileToUpload.type || inferMimeFromFilename(fileToUpload.name);
+      const fileType = resolveUploadFileType(category, fileToUpload.name, mimeType);
       const headers = await authHeaders();
-      const res = await fetch(`/api/clinic/medical-files?clinic_id=${clinicId}&patient_id=${patientId}`, {
+
+      const startRes = await fetch('/api/clinic/medical-files/upload-start', {
         method: 'POST',
-        headers,
-        body: form,
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          clinic_id: clinicId,
+          patient_id: patientId,
+          filename: fileToUpload.name,
+          mime_type: mimeType,
+          size_bytes: fileToUpload.size,
+          file_type: fileType,
+          medical_category: category,
+        }),
       });
-      // قراءة نصية آمنة أولاً: أي خطأ حافة (413/502) يعيد HTML نصاً وليس JSON.
-      const text = await res.text();
-      let json: { error?: string } | null = null;
-      try {
-        json = text ? (JSON.parse(text) as { error?: string }) : null;
-      } catch {
-        json = null;
+      const startJson = await startRes.json().catch(() => null);
+      if (!startRes.ok || !startJson?.data?.upload_url) {
+        throw new Error(startJson?.error || 'تعذر تجهيز جلسة رفع الملف');
       }
-      if (!res.ok) {
-        throw new Error(
-          res.status === 413
-            ? 'الملف تجاوز الحد المسموح (4MB) — ارفع نسخة أصغر'
-            : json?.error || `فشل رفع الملف (${res.status})`
-        );
+
+      const { upload_url, storage_path, file_type: confirmedFileType } = startJson.data;
+      await new Promise<void>((resolve, reject) => {
+        const uploadBody = new FormData();
+        uploadBody.append('cacheControl', '3600');
+        uploadBody.append('', fileToUpload);
+
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`فشل رفع الملف إلى التخزين السحابي (كود ${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('انقطع الاتصال أثناء رفع الملف'));
+        xhr.onabort = () => reject(new Error('تم إلغاء رفع الملف'));
+        xhr.open('PUT', upload_url, true);
+        xhr.send(uploadBody);
+      });
+
+      const confirmRes = await fetch('/api/clinic/medical-files/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          clinic_id: clinicId,
+          patient_id: patientId,
+          storage_path,
+          mime_type: mimeType,
+          size_bytes: fileToUpload.size,
+          filename: fileToUpload.name,
+          file_type: confirmedFileType || fileType,
+        }),
+      });
+      const confirmJson = await confirmRes.json().catch(() => null);
+      if (!confirmRes.ok || !confirmJson?.data) {
+        throw new Error(confirmJson?.error || 'فشل توثيق وحفظ الملف');
       }
-      if (!json) throw new Error('استجابة غير صالحة من الخادم');
+
       setActionSuccess('تم رفع الملف الطبي ✓');
       await loadAll();
     } catch (err) {
@@ -822,7 +892,7 @@ return (
                   type="button"
                   onClick={() => removeLine(line.key)}
                   disabled={invLines.length === 1}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:border-rose-500/60 hover:text-rose-300 disabled:opacity-40"
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-rose-500/60 hover:text-rose-300 disabled:opacity-40"
                 >
                   حذف
                 </button>
@@ -834,7 +904,7 @@ return (
             <button
               type="button"
               onClick={addLine}
-              className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-200 hover:border-cyan-500/60"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500/60"
             >
               + إضافة بند
             </button>
@@ -848,14 +918,14 @@ return (
               type="button"
               onClick={() => void issueInvoice()}
               disabled={submitting}
-              className="rounded-full bg-cyan-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+              className="rounded-full bg-cyan-500 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
             >
               {submitting ? 'جارٍ الإصدار...' : 'إصدار الفاتورة'}
             </button>
             <button
               type="button"
               onClick={() => setShowInvoiceForm(false)}
-              className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
             >
               إلغاء
             </button>
@@ -911,14 +981,14 @@ return (
               type="button"
               onClick={() => void recordPayment()}
               disabled={submitting}
-              className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+              className="rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
             >
               {submitting ? 'جارٍ التسجيل...' : 'تسجيل الدفعة'}
             </button>
             <button
               type="button"
               onClick={() => setShowPaymentForm(false)}
-              className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700"
+              className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
             >
               إلغاء
             </button>
@@ -1036,13 +1106,23 @@ return (
                     {f.created_at ? new Date(f.created_at).toLocaleDateString('ar') : ''}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void openFile(f.id)}
-                  className="rounded-full bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/30"
-                >
-                  فتح
-                </button>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  {isPdfMedicalFile(f) && clinicId && (
+                    <PatientPdfPreviewButton
+                      fileId={f.id}
+                      clinicId={clinicId}
+                      filename={f.original_filename ?? 'ملف PDF'}
+                      authHeaders={authHeaders}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void openFile(f.id)}
+                    className="rounded-full bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/30"
+                  >
+                    فتح
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

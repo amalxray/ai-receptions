@@ -4,6 +4,8 @@ import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
 import './globals.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 
 
 const tajawal = Tajawal({

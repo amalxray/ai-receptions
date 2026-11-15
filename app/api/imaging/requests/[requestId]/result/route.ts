@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES, DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { notifyReferral } from '@/lib/notifications/referralNotifier';
 import { logEvent } from '@/lib/server/logging';
 
@@ -28,8 +29,8 @@ export async function POST(req: Request, { params }: { params: { requestId: stri
 
     const auth = await authorizeClinicRequest(req, clinicId);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, ADMIN_ROLES);
-    if (gate) return NextResponse.json({ error: 'لا تملك صلاحية توثيق النتائج' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'manage_imaging_requests', { allowedRoles: ADMIN_ROLES });
+    if (gate) return gate;
 
     const { data: request } = await supabaseAdmin
       .from('imaging_requests')
@@ -110,8 +111,8 @@ export async function GET(req: Request, { params }: { params: { requestId: strin
 
     const auth = await authorizeClinicRequest(req, clinicId);
     if (!auth.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
-    const gate = roleDenied(auth, DATA_ROLES);
-    if (gate) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const gate = await permissionDenied(req, clinicId, 'view_imaging_requests', { allowedRoles: DATA_ROLES });
+    if (gate) return gate;
 
     const { data: request } = await supabaseAdmin
       .from('imaging_requests')

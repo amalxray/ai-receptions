@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
@@ -15,6 +16,8 @@ const n = (value: number | string | null | undefined) => {
 
 /** Payroll periods: list, yearly summary, and draft generation. */
 export default function PayrollPage() {
+  const searchParams = useSearchParams();
+  const paidOnly = searchParams.get('status') === 'paid';
   const { isConfigured } = useSupabaseConfig();
   const { clinicId, clinicSlug, role, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
 
@@ -33,7 +36,8 @@ export default function PayrollPage() {
     setLoading(true);
     try {
       const headers = await authHeaders();
-      const res = await fetch(`/api/clinic/payroll/periods?clinic_id=${clinicId}`, { headers });
+      const statusQuery = paidOnly ? '&status=paid' : '';
+      const res = await fetch(`/api/clinic/payroll/periods?clinic_id=${clinicId}${statusQuery}`, { headers });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'تعذر جلب فترات الرواتب');
       setPeriods((json.data ?? []) as PayrollPeriodRow[]);
@@ -43,7 +47,7 @@ export default function PayrollPage() {
     } finally {
       setLoading(false);
     }
-  }, [clinicId, authHeaders]);
+  }, [clinicId, authHeaders, paidOnly]);
 
   useEffect(() => {
     void load();
@@ -56,8 +60,8 @@ export default function PayrollPage() {
   }, [periods]);
 
   const visible = useMemo(
-    () => periods.filter((p) => p.period_month.startsWith(year)),
-    [periods, year]
+    () => periods.filter((p) => p.period_month.startsWith(year) && (!paidOnly || p.status === 'paid')),
+    [periods, year, paidOnly]
   );
 
   const yearTotals = useMemo(

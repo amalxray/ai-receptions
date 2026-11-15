@@ -75,7 +75,7 @@ export default function PublicPageManager() {
   useEffect(() => { void load(); }, [load]);
 
   const update = useCallback(
-    async (patch: UpdatePatch) => {
+    async (patch: UpdatePatch, successMessage = 'تم حفظ التغييرات بنجاح') => {
       if (!clinicId) return false;
       setSaving(true);
       setError(null);
@@ -90,7 +90,7 @@ export default function PublicPageManager() {
         const body = (await res.json().catch(() => null)) as { data?: PageConfig; error?: string } | null;
         if (!res.ok) throw new Error(body?.error ?? `فشل الحفظ (${res.status})`);
         if (body?.data) setConfig(body.data);
-        toast.success('تم حفظ التغييرات بنجاح');
+        toast.success(successMessage);
         return true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'تعذر حفظ التغييرات');
@@ -103,17 +103,26 @@ export default function PublicPageManager() {
   );
 
   const saveInfo = () => {
-    const invalidField = SOCIAL_FIELD_KEYS.find((key) => validatePublicContactValue(key, contactForm[key]) !== null);
-    if (invalidField) {
-      toast.error('يرجى تصحيح بيانات التواصل قبل الحفظ');
-      return;
-    }
     void update({
       description: infoForm.description.trim() || null,
       tagline: infoForm.tagline.trim() || null,
       about: infoForm.about.trim() || null,
       cover_url: infoForm.cover_url.trim() || null,
       logo: infoForm.logo.trim() || null,
+      show_providers: infoForm.show_providers,
+      discovery_enabled: infoForm.discovery_enabled,
+    }, 'تم حفظ الهوية بنجاح').then((saved) => {
+      if (saved) void load();
+    });
+  };
+
+  const saveSocialLinks = () => {
+    const invalidField = SOCIAL_FIELD_KEYS.find((key) => validatePublicContactValue(key, contactForm[key]) !== null);
+    if (invalidField) {
+      toast.error('يرجى تصحيح بيانات التواصل قبل الحفظ');
+      return;
+    }
+    void update({
       social_links: {
         whatsapp: contactForm.whatsapp.trim() || null,
         facebook: contactForm.facebook.trim() || null,
@@ -121,9 +130,7 @@ export default function PublicPageManager() {
         website: contactForm.website.trim() || null,
         email: contactForm.email.trim() || null,
       },
-    }).then((saved) => {
-      if (saved) void load();
-    });
+    }, 'تم حفظ روابط التواصل بنجاح');
   };
 
   const toggleSection = (key: string, value: boolean) => {
@@ -238,6 +245,7 @@ export default function PublicPageManager() {
         {tab === 'appearance' && <AppearanceTab config={config} update={update} load={load} />}
         {tab === 'content' && (
           <ContentTab config={config} form={contactForm} setForm={setContactForm} update={update}
+            saving={saving} onSaveSocialLinks={saveSocialLinks}
             toggleSection={toggleSection} toggleService={toggleService} toggleProvider={toggleProvider} />
         )}
       </div>

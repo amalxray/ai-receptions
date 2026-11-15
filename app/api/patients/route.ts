@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseEnvConfig } from '@/lib/config';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { DATA_ROLES } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { toPatientShape } from '@/lib/services/patientShape';
 import { sanitizeSearchQuery } from '@/lib/services/patientSearch';
 import { createDemoPatient, getDemoPatients, demoFallbackAllowed } from '@/lib/demoState';
@@ -17,38 +18,77 @@ const NOT_CONFIGURED_RESPONSE = {
   code: 'NOT_CONFIGURED',
 } as const;
 
-/** Default page size kept at the historic 50; callers may ask for more (N28). */
+/** Default list size; patient searches may request up to the API row cap. */
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 500;
+const MAX_LIMIT = 1000;
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const searchQuery = sanitizeSearchQuery(url.searchParams.get('q') ?? '');
+  const dateFilter = searchQuery ? 'all' : url.searchParams.get('date_filter') ?? 'all';
+  const timezoneOffsetParam = url.searchParams.get('timezone_offset');
+  const timezoneOffset = timezoneOffsetParam === null ? 0 : Number(timezoneOffsetParam);
+
+  if (!['today', 'week', 'all'].includes(dateFilter)) {
+    return NextResponse.json({ error: 'date_filter must be today, week, or all' }, { status: 400 });
+  }
+  if (
+    dateFilter === 'today' &&
+    (!Number.isInteger(timezoneOffset) || Math.abs(timezoneOffset) > 14 * 60)
+  ) {
+    return NextResponse.json({ error: 'timezone_offset must be a whole number between -840 and 840' }, { status: 400 });
+  }
+
+  const now = new Date();
+  let createdAtFrom: Date | null = null;
+  let createdAtUntil: Date | null = null;
+  if (dateFilter === 'today') {
+    const localNow = new Date(now.getTime() - timezoneOffset * 60_000);
+    const localMidnightAsUtc = Date.UTC(
+      localNow.getUTCFullYear(),
+      localNow.getUTCMonth(),
+      localNow.getUTCDate()
+    );
+    createdAtFrom = new Date(localMidnightAsUtc + timezoneOffset * 60_000);
+    createdAtUntil = new Date(createdAtFrom.getTime() + 24 * 60 * 60_000);
+  } else if (dateFilter === 'week') {
+    createdAtFrom = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
+    createdAtUntil = now;
+  }
+
   const config = getSupabaseEnvConfig();
   if (!config.isConfigured) {
     // B51-D — demo data is development/test only (see demoFallbackAllowed).
-    if (demoFallbackAllowed()) return NextResponse.json(getDemoPatients());
+    if (demoFallbackAllowed()) {
+      const demoPatients = getDemoPatients();
+      const filteredPatients = createdAtFrom && createdAtUntil
+        ? demoPatients.filter((patient) => {
+            const createdAt = Date.parse(patient.created_at);
+            return createdAt >= createdAtFrom.getTime() && createdAt < createdAtUntil.getTime();
+          })
+        : demoPatients;
+      return NextResponse.json(filteredPatients);
+    }
     return NextResponse.json(NOT_CONFIGURED_RESPONSE, { status: 503 });
   }
 
   try {
-    const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
+    const permission = await permissionDenied(req, clinicId, 'view_patients', { allowedRoles: [...DATA_ROLES, 'accountant'] });
+    if (permission) return permission;
 
     // N28 — the raw query used to be interpolated into PostgREST's `.or()` as-is,
     // so a comma / parenthesis / `*` produced `failed to parse logic tree` (500).
     // Sanitising here keeps the filter syntax intact AND searches the same folded
     // shape the browser matches on (hamza forms, ة/ه, Arabic-Indic digits).
-    const searchQuery = sanitizeSearchQuery(url.searchParams.get('q') ?? '');
     const requestedLimit = Number(url.searchParams.get('limit'));
+    const defaultLimit = searchQuery ? MAX_LIMIT : DEFAULT_LIMIT;
     const limit =
       Number.isFinite(requestedLimit) && requestedLimit > 0
         ? Math.min(Math.floor(requestedLimit), MAX_LIMIT)
-        : DEFAULT_LIMIT;
+        : defaultLimit;
 
     const supabase = supabaseAdmin;
     let query = supabase
@@ -57,6 +97,12 @@ export async function GET(req: Request) {
       .eq('clinic_id', clinicId)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (createdAtFrom && createdAtUntil) {
+      query = query
+        .gte('created_at', createdAtFrom.toISOString())
+        .lt('created_at', createdAtUntil.toISOString());
+    }
 
     if (searchQuery) {
       // N28 — `notes` joins the three original columns: "الملاحظة" is one of the
@@ -117,10 +163,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const authorization = await authorizeClinicRequest(request, payload.clinic_id);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
+    const permission = await permissionDenied(request, payload.clinic_id, 'manage_patients', { allowedRoles: [...DATA_ROLES, 'accountant'] });
+    if (permission) return permission;
 
     const supabase = supabaseAdmin;
     const { data, error } = await supabase

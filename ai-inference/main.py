@@ -5,7 +5,6 @@ import ast
 import io
 import json
 import logging
-import math
 import os
 import secrets
 import time
@@ -16,42 +15,63 @@ from typing import Any
 
 import numpy as np
 import onnxruntime as ort
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 DEFAULT_CLASS_NAMES = [
-    "Bone Loss",
-    "Caries",
-    "Crown",
-    "Cyst",
-    "Filling",
-    "Fracture teeth",
-    "Implant",
-    "Malaligned",
-    "Mandibular Canal",
-    "Missing teeth",
-    "Periapical lesion",
-    "Permanent Teeth",
-    "Primary teeth",
-    "Retained root",
-    "Root Canal Treatment",
-    "Root Piece",
-    "Root resorption",
-    "Supra Eruption",
-    "TAD",
+    "bone_loss",
+    "caries",
+    "crown",
+    "cyst",
+    "filling",
+    "fracture_teeth",
+    "implant",
+    "malaligned",
+    "mandibular_canal",
+    "missing_teeth",
+    "periapical_lesion",
+    "permanent_teeth",
+    "primary_teeth",
+    "retained_root",
+    "root_canal_treatment",
+    "root_piece",
+    "root_resorption",
+    "supra_eruption",
+    "tad",
     "abutment",
     "attrition",
-    "bone defect",
-    "gingival former",
-    "impacted tooth",
-    "maxillary sinus",
-    "metal band",
-    "orthodontic brackets",
-    "permanent retainer",
+    "bone_defect",
+    "gingival_former",
+    "impacted_tooth",
+    "maxillary_sinus",
+    "metal_band",
+    "orthodontic_brackets",
+    "permanent_retainer",
     "plating",
-    "post - core",
+    "post_core",
     "wire",
+    "amalgam_restoration",
+    "composite_restoration",
+    "dental_caries",
+    "dental_crown",
+    "dental_implant",
+    "endodontic_post",
+    "endodontic_treatment",
+    "fractured_tooth",
+    "inferior_alveolar_nerve",
+    "interdental_bone_loss",
+    "mental_foramen",
+    "orthodontic_retainer_wire",
+    "permenant_tooth_bud",
+    "primary_tooth",
+    "proximal_dental_caries",
+    "pulp_canal_obliteration",
+    "pulpectomy_chamber",
+    "root_caries",
+    "space_maintainer",
+    "taurodontism",
+    "temporary_restoration",
 ]
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -59,7 +79,7 @@ logger = logging.getLogger("ai-inference")
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 MAX_IMAGE_PIXELS = int(os.getenv("MAX_IMAGE_PIXELS", "40000000"))
-IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "1024"))
+IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "640"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.25"))
 IOU_THRESHOLD = float(os.getenv("IOU_THRESHOLD", "0.50"))
 MAX_DETECTIONS = int(os.getenv("MAX_DETECTIONS", "100"))
@@ -67,7 +87,10 @@ MAX_CANDIDATES = int(os.getenv("MAX_CANDIDATES", "3000"))
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 MODEL_PATH = os.getenv("MODEL_PATH", "/models/best_model_upgraded.onnx")
-MODEL_VERSION = os.getenv("MODEL_VERSION", "yolov8l-20261011")
+HF_MODEL_REPO_ID = os.getenv("HF_MODEL_REPO_ID", "")
+HF_MODEL_FILENAME = os.getenv("HF_MODEL_FILENAME", "best_model_upgraded.onnx")
+HF_TOKEN = os.getenv("HF_TOKEN")
+MODEL_VERSION = os.getenv("MODEL_VERSION", "dental-yolo-52class")
 API_KEY = os.getenv("INFERENCE_API_KEY", "")
 ORT_INTRA_OP_THREADS = int(os.getenv("ORT_INTRA_OP_THREADS", "2"))
 ENABLE_API_DOCS = os.getenv("ENABLE_API_DOCS", "false").lower() == "true"
@@ -95,6 +118,21 @@ if not 0 < CONFIDENCE_THRESHOLD <= 1 or not 0 < IOU_THRESHOLD <= 1:
     raise RuntimeError("Confidence and IoU thresholds must be between 0 and 1.")
 if min(MAX_DETECTIONS, MAX_CANDIDATES, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SECONDS) <= 0:
     raise RuntimeError("Detection and rate-limit settings must be positive.")
+
+_request_times: deque[float] = deque()
+_rate_lock = asyncio.Lock()
+
+
+def _resolve_model_path() -> str:
+    if HF_MODEL_REPO_ID:
+        from huggingface_hub import hf_hub_download
+
+        return hf_hub_download(
+            repo_id=HF_MODEL_REPO_ID,
+            filename=HF_MODEL_FILENAME,
+            token=HF_TOKEN or None,
+        )
+    return MODEL_PATH
 
 
 def _metadata_class_names(session: ort.InferenceSession) -> list[str] | None:
@@ -132,60 +170,57 @@ def _metadata_class_names(session: ort.InferenceSession) -> list[str] | None:
     return names
 
 
-def _model_class_count(output_shape: list[Any]) -> int:
-    dimensions = (
-        output_shape[1:]
-        if len(output_shape) == 3 and output_shape[0] == 1
-        else output_shape
-    )
-    if len(dimensions) != 2:
-        raise RuntimeError(f"Unsupported ONNX output shape: {output_shape}.")
-
-    fixed_dimensions = [
-        dimension
-        for dimension in dimensions
-        if isinstance(dimension, int) and dimension > 4
-    ]
-    if len(fixed_dimensions) != 2:
-        raise RuntimeError(f"Cannot determine class count from ONNX output shape: {output_shape}.")
-    return min(fixed_dimensions) - 4
-
-
 def _resolve_model_class_names(session: ort.InferenceSession) -> list[str]:
     output_shape = session.get_outputs()[0].shape
-    class_count = _model_class_count(output_shape)
+    if len(output_shape) != 3 or output_shape[0] != 1:
+        raise RuntimeError(f"Unsupported ONNX output shape: {output_shape}.")
+
+    output_dimensions = output_shape[1:]
     metadata_names = _metadata_class_names(session)
-    if (
-        metadata_names
-        and len(metadata_names) == class_count
-        and len(CLASS_NAMES) != class_count
-    ):
+    if metadata_names:
         class_names = metadata_names
-    elif len(CLASS_NAMES) == class_count:
-        class_names = CLASS_NAMES
-    elif metadata_names and len(metadata_names) == class_count:
-        class_names = metadata_names
-    elif len(DEFAULT_CLASS_NAMES) == class_count:
-        class_names = DEFAULT_CLASS_NAMES
     else:
-        class_names = [f"Class {class_id}" for class_id in range(class_count)]
-        logger.warning(
-            "ONNX model has %s classes but no matching class names; using neutral labels.",
-            class_count,
+        fixed_dimensions = [
+            dimension
+            for dimension in output_dimensions
+            if isinstance(dimension, int) and dimension > 4
+        ]
+        if len(fixed_dimensions) != 2:
+            raise RuntimeError(
+                f"Cannot determine class count from ONNX output shape: {output_shape}."
+            )
+        class_count = min(fixed_dimensions) - 4
+        if len(CLASS_NAMES) == class_count:
+            class_names = CLASS_NAMES
+        elif len(DEFAULT_CLASS_NAMES) == class_count:
+            class_names = DEFAULT_CLASS_NAMES
+        else:
+            logger.warning(
+                "ONNX model has %s classes but no matching class-name metadata; "
+                "using neutral labels.",
+                class_count,
+            )
+            class_names = [f"Class {class_id}" for class_id in range(class_count)]
+
+    expected_channels = len(class_names) + 4
+    if expected_channels not in output_dimensions:
+        raise RuntimeError(
+            f"Expected ONNX output with {expected_channels} channels for "
+            f"{len(class_names)} classes, got {output_shape}."
         )
 
-    logger.info("Configured inference for %s ONNX model classes.", class_count)
+    logger.info("Resolved %s ONNX model classes.", len(class_names))
     return class_names
-
-
-_request_times: deque[float] = deque()
-_rate_lock = asyncio.Lock()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not os.path.isfile(MODEL_PATH):
-        raise RuntimeError(f"ONNX model does not exist at configured path: {MODEL_PATH}")
+    model_path = _resolve_model_path()
+    if not os.path.isfile(model_path):
+        raise RuntimeError(
+            "ONNX model is unavailable. Set HF_MODEL_REPO_ID or provide "
+            f"MODEL_PATH pointing to an existing file: {model_path}"
+        )
     if "CPUExecutionProvider" not in ort.get_available_providers():
         raise RuntimeError("ONNX Runtime CPUExecutionProvider is unavailable.")
 
@@ -194,7 +229,7 @@ async def lifespan(app: FastAPI):
     options.inter_op_num_threads = 1
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     session = ort.InferenceSession(
-        MODEL_PATH,
+        model_path,
         sess_options=options,
         providers=["CPUExecutionProvider"],
     )
@@ -204,12 +239,16 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             f"Expected fixed ONNX input {expected_shape}, got {model_input.shape}."
         )
-
-    app.state.class_names = _resolve_model_class_names(session)
+    class_names = _resolve_model_class_names(session)
+    app.state.class_names = class_names
     app.state.session = session
     app.state.input_name = model_input.name
     app.state.inference_lock = asyncio.Semaphore(1)
-    logger.info("Loaded ONNX model version %s on CPUExecutionProvider.", MODEL_VERSION)
+    logger.info(
+        "Loaded ONNX model version %s with %d classes on CPUExecutionProvider.",
+        MODEL_VERSION,
+        len(class_names),
+    )
     yield
 
 
@@ -287,6 +326,16 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, threshold: float) -> list[int]:
     return kept
 
 
+def _coerce_confidence_threshold(raw_value: Any, fallback: float = CONFIDENCE_THRESHOLD) -> float:
+    try:
+        value = float(raw_value) if raw_value is not None else fallback
+    except (TypeError, ValueError):
+        return float(fallback)
+    if not np.isfinite(value):
+        return float(fallback)
+    return float(min(1.0, max(0.0, value)))
+
+
 def _postprocess(
     output: Any,
     width: int,
@@ -294,7 +343,7 @@ def _postprocess(
     scale: float,
     pad_x: int,
     pad_y: int,
-    confidence_threshold: float,
+    confidence_threshold: float = CONFIDENCE_THRESHOLD,
     class_names: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     class_names = class_names or CLASS_NAMES
@@ -379,22 +428,26 @@ async def health(request: Request) -> dict[str, str]:
 async def analyze(
     request: Request,
     image: UploadFile = File(...),
-    confidence_threshold: float = Form(default=CONFIDENCE_THRESHOLD),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    confidence_threshold: float | None = None,
 ) -> dict[str, Any]:
     if not x_api_key or not secrets.compare_digest(x_api_key, API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized.")
-    if not math.isfinite(confidence_threshold) or not 0 < confidence_threshold <= 1:
-        raise HTTPException(
-            status_code=422,
-            detail="Confidence threshold must be greater than 0 and at most 1.",
-        )
     if not await _allow_request():
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded.",
             headers={"Retry-After": str(RATE_LIMIT_WINDOW_SECONDS)},
         )
+
+    effective_threshold = _coerce_confidence_threshold(confidence_threshold)
+    if confidence_threshold is None and request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            payload = await request.json()
+            if isinstance(payload, dict) and "confidence_threshold" in payload:
+                effective_threshold = _coerce_confidence_threshold(payload.get("confidence_threshold"))
+        except Exception:
+            pass
 
     image_bytes = await image.read(MAX_UPLOAD_BYTES + 1)
     await image.close()
@@ -418,8 +471,8 @@ async def analyze(
             scale,
             pad_x,
             pad_y,
-            confidence_threshold,
-            request.app.state.class_names,
+            confidence_threshold=effective_threshold,
+            class_names=request.app.state.class_names,
         )
     except HTTPException:
         raise
@@ -433,3 +486,14 @@ async def analyze(
         "image_height": height,
         "predictions": predictions,
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "7860")),
+        workers=1,
+    )

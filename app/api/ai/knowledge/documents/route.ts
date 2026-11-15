@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 export async function GET(request: Request) {
   try {
@@ -13,6 +14,8 @@ export async function GET(request: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(request, clinicId, 'manage_knowledge');
+    if (permission) return permission;
 
     const supabase = supabaseAdmin;
     const { data, error } = await supabase
@@ -43,6 +46,8 @@ export async function DELETE(request: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(request, clinicId, 'manage_knowledge');
+    if (permission) return permission;
 
     const supabase = supabaseAdmin;
     const { error } = await supabase
@@ -72,6 +77,8 @@ export async function POST(request: Request) {
     if (!authorization.authorized) {
       return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
     }
+    const permission = await permissionDenied(request, clinicId, 'manage_knowledge');
+    if (permission) return permission;
 
     const supabase = supabaseAdmin;
     const { data, error } = await supabase

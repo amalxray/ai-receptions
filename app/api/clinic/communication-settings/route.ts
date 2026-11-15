@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
+import { permissionDenied } from '@/lib/services/permissionGate';
 import { getClinicCommunicationSettings, saveClinicCommunicationSettings, validateAndNormalizeSettings } from '@/lib/communications/settings';
 import { logEvent } from '@/lib/server/logging';
 
@@ -21,10 +21,8 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
+    const permBlocked = await permissionDenied(req, clinicId, 'manage_settings');
+    if (permBlocked) return permBlocked;
 
     const settings = await getClinicCommunicationSettings(clinicId);
     return NextResponse.json({ data: settings });
@@ -41,10 +39,8 @@ export async function PUT(req: Request) {
     const clinicId = url.searchParams.get('clinic_id');
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
 
-    const authorization = await authorizeClinicRequest(req, clinicId);
-    if (!authorization.authorized) {
-      return NextResponse.json({ error: authorization.status === 401 ? 'Unauthorized' : 'Forbidden' }, { status: authorization.status });
-    }
+    const permBlocked = await permissionDenied(req, clinicId, 'manage_settings');
+    if (permBlocked) return permBlocked;
 
     const body = await req.json();
     const parsed = settingsSchema.safeParse(body);

@@ -31,6 +31,8 @@ const state = vi.hoisted(() => ({
   rejectedFilters: [] as string[],
   confirmCalls: [] as Array<Record<string, unknown>>,
   forceError: null as { code: string; message: string } | null,
+  authorize: vi.fn(),
+  permissionDenied: vi.fn(),
 }));
 
 /** Faithful emulator of the single PostgREST query the session guard makes. */
@@ -67,11 +69,12 @@ function makeQuery(table: string) {
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: { from: (table: string) => makeQuery(table) } }));
 vi.mock('@/lib/server/logging', () => ({ logEvent: () => {} }));
 vi.mock('@/lib/services/clinicAuthorization', () => ({
-  authorizeClinicRequest: async () => ({ authorized: true, user: { id: USER_ID }, role: 'owner' }),
+  authorizeClinicRequest: state.authorize,
   roleDenied: () => null,
   ADMIN_ROLES: ['owner', 'manager'],
   DATA_ROLES: ['owner', 'manager', 'doctor', 'receptionist', 'accountant', 'staff'],
 }));
+vi.mock('@/lib/services/permissionGate', () => ({ permissionDenied: state.permissionDenied }));
 vi.mock('@/lib/services/medicalFiles', () => ({
   resolveMedicalFileOrgAccess: async () => ({ ok: true, patient: { id: PATIENT_ID, clinic_id: CLINIC_ID } }),
   confirmMedicalUpload: async (input: Record<string, unknown>) => {
@@ -125,6 +128,8 @@ const confirmRequest = (body: Record<string, unknown> = validBody) =>
 
 describe('B22 — PostgREST emulator fidelity (documents why the old code broke)', () => {
   beforeEach(() => {
+    state.authorize.mockResolvedValue({ authorized: true, user: { id: USER_ID }, role: 'owner' });
+    state.permissionDenied.mockResolvedValue(null);
     state.sessions = [];
     state.rejectedFilters = [];
     state.forceError = null;
@@ -145,6 +150,8 @@ describe('B22 — PostgREST emulator fidelity (documents why the old code broke)
 
 describe('B22 — confirm accepts the upload session this org started', () => {
   beforeEach(() => {
+    state.authorize.mockResolvedValue({ authorized: true, user: { id: USER_ID }, role: 'owner' });
+    state.permissionDenied.mockResolvedValue(null);
     state.rejectedFilters = [];
     state.confirmCalls = [];
     state.forceError = null;
@@ -169,6 +176,14 @@ describe('B22 — confirm accepts the upload session this org started', () => {
     expect(state.confirmCalls[0].clinicId).toBe(CLINIC_ID);
     expect(state.confirmCalls[0].medicalCategory).toBe('panorama');
     expect(state.rejectedFilters).toEqual([]); // no invalid `is` filter was ever sent
+    expect(state.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CLINIC_ID, 'manage_medical_files');
+  });
+
+  it('allows a custom-granted non-admin member to confirm an upload', async () => {
+    state.authorize.mockResolvedValueOnce({ authorized: true, user: { id: USER_ID }, role: 'receptionist' });
+    const res = await confirmUpload(confirmRequest());
+    expect(res.status).toBe(201);
+    expect(state.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CLINIC_ID, 'manage_medical_files');
   });
 
   it('keeps the IDOR guard: a path nobody started is still refused (403)', async () => {

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authorizeClinicRequest, roleDenied, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
+import { authorizeClinicRequest, ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { isPermissionKey } from '@/lib/auth/permissions';
+import { clearPermissionCache, isPermissionKey } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/services/auditService';
+import { permissionDenied } from '@/lib/services/permissionGate';
 
 export const runtime = 'nodejs';
 
@@ -60,9 +61,8 @@ export async function POST(req: Request) {
       { status: authorization.status }
     );
   }
-  if (roleDenied(authorization, ADMIN_ROLES)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const permission = await permissionDenied(req, clinicId, 'manage_team', { allowedRoles: ADMIN_ROLES });
+  if (permission) return permission;
 
   if (RESERVED_ROLE_NAMES.includes(name.toLowerCase())) {
     return NextResponse.json({ error: 'هذا الاسم محجوز للأدوار الأساسية' }, { status: 400 });
@@ -93,6 +93,8 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: 'تعذر إنشاء الدور', detail: error.message }, { status: 500 });
   }
+
+  clearPermissionCache();
 
   await writeAuditLog({
     clinicId,

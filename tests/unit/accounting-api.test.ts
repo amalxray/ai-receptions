@@ -7,8 +7,20 @@ const mockAuth = vi.hoisted(() => ({
   FINANCE_READ_ROLES: ['owner', 'accountant', 'manager', 'receptionist'],
   PAYMENT_RECORD_ROLES: ['owner', 'accountant', 'manager', 'receptionist'],
   FINANCE_ADMIN_ROLES: ['owner', 'accountant'],
+  FINANCE_VOID_ROLES: ['owner'],
 }));
 vi.mock('@/lib/services/clinicAuthorization', () => mockAuth);
+
+vi.mock('@/lib/auth/permissions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth/permissions')>('@/lib/auth/permissions');
+  return {
+    ...actual,
+    getUserPermissionState: vi.fn(async (_userId: string, _clinicId: string, role: string) => ({
+      permissions: new Set<string>(actual.ROLE_DEFAULTS[role] ?? []),
+      overrides: new Map<string, boolean>(),
+    })),
+  };
+});
 
 const mockAccounting = vi.hoisted(() => ({
   issueInvoice: vi.fn(),
@@ -52,6 +64,18 @@ mockAuth.roleDenied.mockImplementation((authorization: any, roles: readonly stri
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'owner' });
+  mockAccounting.issueInvoice.mockResolvedValue({ invoiceId: 'inv-1', invoiceNumber: 'INV-2026-000001' });
+  mockAccounting.recordPayment.mockResolvedValue({ paymentId: 'pay-1', receiptNumber: 'RCP-2026-000001' });
+  mockAccounting.refundPayment.mockResolvedValue({ refundPaymentId: 'refund-1' });
+  mockAccounting.listInvoices.mockResolvedValue([]);
+  mockAccounting.getInvoiceDetail.mockResolvedValue({ id: 'inv-1', items: [], payments: [] });
+  mockAccounting.listPayments.mockResolvedValue([]);
+  mockAccounting.getPatientBalances.mockResolvedValue([]);
+  mockAccounting.voidInvoice.mockResolvedValue(undefined);
+  mockAccounting.voidPayment.mockResolvedValue(undefined);
+});
+
 describe('accounting API — RBAC (finance matrices)', () => {
   it('owner can issue an invoice → 201', async () => {
     const res = await postInvoice(makeRequest('/api/clinic/accounting/invoices', jsonBody({ clinic_id: CLINIC_A, patient_id: 'p1', items: [{ description: 'x', quantity: 1, unit_price: 10 }] })));
@@ -68,7 +92,7 @@ describe('accounting API — RBAC (finance matrices)', () => {
 
   it('receptionist can record a payment but cannot void (admin-only)', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'receptionist' });
-    const payRes = await postPayment(makeRequest('/api/clinic/accounting/payments', jsonBody({ clinic_id: CLINIC_A, invoice_id: 'inv-1', amount: 50, method: 'cash' })));
+    const payRes = await postPayment(makeRequest('/api/clinic/accounting/payments', jsonBody({ clinic_id: CLINIC_A, invoice_id: '11111111-1111-1111-1111-111111111111', amount: 50, method: 'cash' })));
     expect(payRes.status).toBe(201);
 
     const voidRes = await postVoidPayment(makeRequest(`/api/clinic/accounting/payments/pay-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'x' })), { params: Promise.resolve({ paymentId: 'pay-1' }) } as any);
@@ -76,46 +100,82 @@ describe('accounting API — RBAC (finance matrices)', () => {
     expect(mockAccounting.voidPayment).not.toHaveBeenCalled();
   });
 
-  it('manager can read finance summaries but cannot refund', async () => {
+  it('owner can void both invoices and payments', async () => {
+    const invoiceRes = await postVoidInvoice(
+      makeRequest(`/api/clinic/accounting/invoices/inv-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
+      { params: Promise.resolve({ invoiceId: 'inv-1' }) } as any,
+    );
+    const paymentRes = await postVoidPayment(
+      makeRequest(`/api/clinic/accounting/payments/pay-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
+      { params: Promise.resolve({ paymentId: 'pay-1' }) } as any,
+    );
+
+    expect(invoiceRes.status).toBe(200);
+    expect(paymentRes.status).toBe(200);
+  });
+
+  it.each(['accountant', 'manager'])('%s can void invoices and payments through their management permissions', async (role) => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role });
+    const invoiceRes = await postVoidInvoice(
+      makeRequest(`/api/clinic/accounting/invoices/inv-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
+      { params: Promise.resolve({ invoiceId: 'inv-1' }) } as any,
+    );
+    const paymentRes = await postVoidPayment(
+      makeRequest(`/api/clinic/accounting/payments/pay-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
+      { params: Promise.resolve({ paymentId: 'pay-1' }) } as any,
+    );
+
+    expect(invoiceRes.status).toBe(200);
+    expect(paymentRes.status).toBe(200);
+    expect(mockAccounting.voidInvoice).toHaveBeenCalled();
+    expect(mockAccounting.voidPayment).toHaveBeenCalled();
+  });
+
+  it('denies an unknown role without manage_invoices', async () => {
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'admin' });
+    const invoiceRes = await postVoidInvoice(
+      makeRequest(`/api/clinic/accounting/invoices/inv-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
+      { params: Promise.resolve({ invoiceId: 'inv-1' }) } as any,
+    );
+    expect(invoiceRes.status).toBe(403);
+    expect(mockAccounting.voidInvoice).not.toHaveBeenCalled();
+  });
+
+  it('manager can read finance summaries, void invoices, and refund payments by default', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'manager' });
     const readRes = await getInvoices(makeRequest(`/api/clinic/accounting/invoices?clinic_id=${CLINIC_A}`));
     expect(readRes.status).toBe(200);
 
+    const invoiceRes = await postVoidInvoice(
+      makeRequest(`/api/clinic/accounting/invoices/inv-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })),
+      { params: Promise.resolve({ invoiceId: 'inv-1' }) } as any,
+    );
+    expect(invoiceRes.status).toBe(200);
+
     const refundRes = await postRefund(makeRequest(`/api/clinic/accounting/payments/pay-1/refund?clinic_id=${CLINIC_A}`, jsonBody({ amount: 10, reason: 'r' })), { params: Promise.resolve({ paymentId: 'pay-1' }) } as any);
-    expect(refundRes.status).toBe(403);
+    expect(refundRes.status).toBe(201);
+    expect(mockAccounting.refundPayment).toHaveBeenCalled();
   });
 
-  it('accountant can void invoice and refund', async () => {
+  it('accountant can void invoices and refund payments through their permission defaults', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'accountant' });
     const voidRes = await postVoidInvoice(makeRequest(`/api/clinic/accounting/invoices/inv-1/void?clinic_id=${CLINIC_A}`, jsonBody({ reason: 'duplicate' })), { params: Promise.resolve({ invoiceId: 'inv-1' }) } as any);
     expect(voidRes.status).toBe(200);
+    expect(mockAccounting.voidInvoice).toHaveBeenCalled();
     const refundRes = await postRefund(makeRequest(`/api/clinic/accounting/payments/pay-1/refund?clinic_id=${CLINIC_A}`, jsonBody({ amount: 5, reason: 'r' })), { params: Promise.resolve({ paymentId: 'pay-1' }) } as any);
     expect(refundRes.status).toBe(201);
   });
 });
-  mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'owner' });
-  mockAccounting.issueInvoice.mockResolvedValue({ invoiceId: 'inv-1', invoiceNumber: 'INV-2026-000001' });
-  mockAccounting.recordPayment.mockResolvedValue({ paymentId: 'pay-1', receiptNumber: 'RCP-2026-000001' });
-  mockAccounting.refundPayment.mockResolvedValue({ refundPaymentId: 'refund-1' });
-  mockAccounting.listInvoices.mockResolvedValue([]);
-  mockAccounting.getInvoiceDetail.mockResolvedValue({ id: 'inv-1', items: [], payments: [] });
-  mockAccounting.listPayments.mockResolvedValue([]);
-  mockAccounting.getPatientBalances.mockResolvedValue([]);
-  mockAccounting.voidInvoice.mockResolvedValue(undefined);
-  mockAccounting.voidPayment.mockResolvedValue(undefined);
-});
 describe('accounting API — tenant isolation', () => {
   it('unauthenticated/unauthorized → 401 (not 403, not data)', async () => {
     mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 401 });
-    mockAuth.roleDenied.mockImplementationOnce((_authorization: any, _roles: readonly string[]) => ({ authorized: false, status: _authorization.status ?? 401 }));
     const res = await getBalances(makeRequest(`/api/clinic/accounting/balances?clinic_id=${CLINIC_B}`));
     expect(res.status).toBe(401);
     expect(mockAccounting.getPatientBalances).not.toHaveBeenCalled();
   });
 
   it('member of clinic B cannot read clinic A balances → 403', async () => {
-    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: USER }, role: 'owner' });
-    mockAuth.roleDenied.mockImplementationOnce((_authorization: any, _roles: readonly string[]) => ({ authorized: false, status: 403 }));
+    mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: false, status: 403 });
     const res = await getBalances(makeRequest(`/api/clinic/accounting/balances?clinic_id=${CLINIC_A}`));
     expect(res.status).toBe(403);
     expect(mockAccounting.getPatientBalances).not.toHaveBeenCalled();
@@ -124,7 +184,15 @@ describe('accounting API — tenant isolation', () => {
   it('service calls always receive the exact clinicId from the request (no leakage)', async () => {
     const res = await getInvoices(makeRequest(`/api/clinic/accounting/invoices?clinic_id=${CLINIC_A}`));
     expect(res.status).toBe(200);
-    expect(mockAccounting.listInvoices).toHaveBeenCalledWith(CLINIC_A, null);
+    expect(mockAccounting.listInvoices).toHaveBeenCalledWith(CLINIC_A, null, null, 50);
+  });
+
+  it('passes an optional patient_id through to the payments service', async () => {
+    const res = await getPayments(makeRequest(
+      `/api/clinic/accounting/payments?clinic_id=${CLINIC_A}&patient_id=${USER}`
+    ));
+    expect(res.status).toBe(200);
+    expect(mockAccounting.listPayments).toHaveBeenCalledWith(CLINIC_A, null, 50, USER);
   });
 });
 
