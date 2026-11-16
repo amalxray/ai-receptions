@@ -5,7 +5,12 @@ import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifes
 import { requestCache } from '@/lib/server/requestCache';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getClinicSubscriptionAccess } from '@/lib/subscription/access';
-import { buildClinicSchema, sanitizePublicSocialLinks } from '@/lib/services/doctorJsonLd';
+import {
+  buildClinicFaqItems,
+  buildClinicSchema,
+  buildFaqJsonLd,
+  sanitizePublicSocialLinks,
+} from '@/lib/services/doctorJsonLd';
 import {
   buildClinicReviewsJsonLd,
   getClinicReviewsForPublic,
@@ -173,7 +178,28 @@ function buildSpaceJsonLd(
     if (reviewsLd) Object.assign(schema, reviewsLd);
   }
 
-  return JSON.stringify(schema).replace(/</g, '\u003c');
+  const faqSchema = buildFaqJsonLd({
+    name: space.name,
+    pageUrl: space.pageUrl,
+    bookingUrl: new URL(space.bookingUrl, space.pageUrl).toString(),
+    workingHours: space.workingHours,
+    services: [
+      ...space.services,
+      ...space.imagingServices,
+      ...space.labServices,
+    ],
+    city: space.city,
+    area: space.area,
+    address: space.address,
+    insurance: space.insurance,
+    faq: space.faq,
+  });
+  const clinicNode = { ...schema };
+  delete clinicNode['@context'];
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@graph': [clinicNode, faqSchema],
+  }).replace(/</g, '\\u003c');
 }
 
 export default async function ActivitySpacePage({ params }: ActivitySpacePageProps) {
@@ -199,6 +225,18 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   ]);
   const { data: services } = servicesResult;
   const publicSpace = { ...space, subscriptionExpired: subscriptionAccess.expired };
+  const faqItems = buildClinicFaqItems({
+    name: space.name,
+    pageUrl: space.pageUrl,
+    bookingUrl: new URL(space.bookingUrl, space.pageUrl).toString(),
+    workingHours: space.workingHours,
+    services: [...space.services, ...space.imagingServices, ...space.labServices],
+    city: space.city,
+    area: space.area,
+    address: space.address,
+    insurance: space.insurance,
+    faq: space.faq,
+  });
 
   const jsonLd = buildSpaceJsonLd(space, reviews);
   const schemaScript = (
@@ -220,6 +258,19 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   const reviewsSection = (
     <ReviewsSection clinicName={space.name} clinicSlug={params.slug} stats={reviews.stats} items={reviews.items} viewAllHref={`/${params.slug}/reviews`} />
   );
+  const faqSection = (
+    <section id="faq" dir="rtl" className="mx-auto my-8 w-full max-w-5xl px-4 sm:px-6">
+      <h2 className="mb-4 text-2xl font-bold text-slate-900">الأسئلة الشائعة — {space.name}</h2>
+      <div className="space-y-3">
+        {faqItems.map((item) => (
+          <details key={item.question} className="rounded-xl border border-slate-200 bg-white p-4">
+            <summary className="cursor-pointer font-semibold text-slate-900">{item.question}</summary>
+            <p className="mt-3 whitespace-pre-line leading-7 text-slate-700">{item.answer}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
   // PWA — every activity space renders the same self-hiding install banner.
   switch (space.activityType) {
     case 'imaging_center':
@@ -228,6 +279,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
           {schemaScript}
           <ImagingPublicSpace space={publicSpace} servicesCard={servicesCard} />
           {reviewsSection}
+          {faqSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -237,6 +289,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
           {schemaScript}
           <DentalLabPublicSpace space={publicSpace} servicesCard={servicesCard} />
           {reviewsSection}
+          {faqSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );
@@ -246,6 +299,7 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
           {schemaScript}
           <ClinicPublicSpace space={publicSpace} servicesCard={servicesCard} />
           {reviewsSection}
+          {faqSection}
           <InstallPWA variant="floating" appName={space.name} />
         </>
       );

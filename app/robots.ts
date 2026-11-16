@@ -27,6 +27,7 @@ export default function robots(): MetadataRoute.Robots {
     'anthropic-ai',
     'Applebot-Extended',
     'Bytespider',
+    'CCBot',
   ];
   const disallow = ['/dashboard/', '/admin/', '/portal/', '/api/'];
   return {

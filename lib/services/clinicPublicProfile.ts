@@ -7,6 +7,8 @@ import { logEvent } from '@/lib/server/logging';
 import { readDisplaySettings, readTheme, type PublicDisplaySettings, type PublicThemeSettings } from '@/lib/services/clinicPublicConfig';
 import { localStorageImageUrl } from '@/lib/media/localStorageImages';
 
+export type PublicClinicFaqItem = { question: string; answer: string };
+
 /**
  * STEP 15D — Public Clinic Profile projection.
  *
@@ -92,6 +94,8 @@ export type PublicClinicProfile = {
   longitude: number | null;
   google_maps_url: string | null;
   phone: string | null; // null unless public_profile.show_phone === true
+  faq: PublicClinicFaqItem[];
+  insurance: string | null;
   services: PublicService[];
   providers: PublicProvider[];
   ads: PublicAd[];
@@ -147,6 +151,8 @@ type PublicProfileShape = {
   show_providers?: unknown;
   hidden_services?: unknown;
   hidden_providers?: unknown;
+  faq?: unknown;
+  insurance?: unknown;
 };
 
 type ClinicSettingsShape = {
@@ -195,6 +201,30 @@ function readFlag(value: unknown): boolean {
   return value === true;
 }
 
+function readPublicFaq(value: unknown): PublicClinicFaqItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .filter((item) => typeof item.question === 'string' && typeof item.answer === 'string')
+    .map((item) => ({
+      question: (item.question as string).trim().slice(0, 300),
+      answer: (item.answer as string).trim().slice(0, 2000),
+    }))
+    .filter((item) => item.question.length > 0 && item.answer.length > 0)
+    .slice(0, 20);
+}
+
+function readPublicInsurance(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 1000);
+  if (Array.isArray(value)) {
+    const names = value
+      .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      .map((item) => item.trim());
+    return names.length > 0 ? names.join('، ').slice(0, 1000) : null;
+  }
+  return null;
+}
+
 /**
  * Resolves the full public profile for a clinic by slug or id.
  * Returns null when the clinic does not exist or is soft-deleted.
@@ -229,6 +259,7 @@ export async function getPublicClinicProfile(
   // the loader previously read top-level flags only, silently dropping
   // every nested value the dashboard saved.
   const pp = (settings.public_profile ?? {}) as PublicProfileShape;
+  const metadata = (settings as { metadata?: { faq?: unknown; insurance?: unknown } | null }).metadata;
   const showPhone = readFlag(pp.show_phone) || readFlag(settings.show_phone);
   const showPrices = readFlag(pp.show_prices) || readFlag(settings.show_prices);
   // Providers on the public space default ON (booking shows them anyway);
@@ -382,6 +413,8 @@ export async function getPublicClinicProfile(
     longitude: typeof clinicRow.longitude === 'number' ? clinicRow.longitude : null,
     google_maps_url: clinicRow.google_maps_url ?? null,
     phone: showPhone ? (clinicRow.phone ?? null) : null,
+    faq: readPublicFaq(pp.faq ?? metadata?.faq),
+    insurance: readPublicInsurance(pp.insurance ?? metadata?.insurance),
     services,
     providers,
     ads,

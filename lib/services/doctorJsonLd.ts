@@ -13,6 +13,80 @@ const JSON_LD_DAY_NAMES = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 ];
 
+const ARABIC_DAY_NAMES = [
+  'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت',
+];
+
+export type ClinicFaqItem = { question: string; answer: string };
+
+export type ClinicFaqInput = {
+  name: string;
+  pageUrl: string;
+  bookingUrl: string;
+  workingHours?: Array<{ weekday: number; start_time: string; end_time: string }> | null;
+  services?: Array<{ name: string }> | null;
+  city?: string | null;
+  area?: string | null;
+  address?: string | null;
+  insurance?: string | null;
+  faq?: ClinicFaqItem[] | null;
+};
+
+export function buildClinicFaqItems(clinic: ClinicFaqInput): ClinicFaqItem[] {
+  const customFaq = (clinic.faq ?? [])
+    .filter((item) => item.question.trim() && item.answer.trim())
+    .map((item) => ({ question: item.question.trim(), answer: item.answer.trim() }));
+  if (customFaq.length > 0) return customFaq;
+
+  const hours = (clinic.workingHours ?? [])
+    .filter((item) => Number.isInteger(item.weekday) && item.start_time && item.end_time)
+    .map((item) => `${ARABIC_DAY_NAMES[item.weekday] ?? 'يوم آخر'}: ${item.start_time}–${item.end_time}`)
+    .join('، ');
+  const services = (clinic.services ?? []).map((item) => item.name.trim()).filter(Boolean);
+  const location = [clinic.address, clinic.area, clinic.city].filter(Boolean).join('، ');
+  const items: ClinicFaqItem[] = [
+    {
+      question: 'ما هي ساعات العمل؟',
+      answer: hours || 'لم تُنشر ساعات العمل حالياً. يرجى التواصل مع العيادة للتأكد من أوقات الدوام.',
+    },
+    {
+      question: 'كيف أحجز موعدًا؟',
+      answer: `يمكنك حجز موعد عبر صفحة الحجز: ${clinic.bookingUrl}`,
+    },
+    {
+      question: 'ما هي الخدمات المتاحة؟',
+      answer: services.length > 0
+        ? `تشمل الخدمات المنشورة: ${services.join('، ')}.`
+        : 'لم تُنشر قائمة الخدمات حالياً. يرجى التواصل مع العيادة للاستفسار.',
+    },
+    {
+      question: 'أين تقع العيادة؟',
+      answer: location || 'لم يُنشر عنوان العيادة حالياً. يرجى التواصل معها لمعرفة الموقع.',
+    },
+  ];
+
+  if (clinic.insurance?.trim()) {
+    items.push({
+      question: 'هل تقبلون التأمين؟',
+      answer: clinic.insurance.trim(),
+    });
+  }
+  return items;
+}
+
+export function buildFaqJsonLd(clinic: ClinicFaqInput): Record<string, unknown> {
+  return {
+    '@type': 'FAQPage',
+    name: `الأسئلة الشائعة — ${clinic.name}`,
+    url: `${clinic.pageUrl.replace(/\/+$/, '')}#faq`,
+    mainEntity: buildClinicFaqItems(clinic).map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: { '@type': 'Answer', text: item.answer },
+    })),
+  };
+}
+
 export function buildOpeningHoursSchema(hours: Array<{ weekday: number; start_time: string; end_time: string }> = []) {
   return hours
     .filter((hour) => typeof hour?.weekday === 'number' && hour.start_time && hour.end_time)

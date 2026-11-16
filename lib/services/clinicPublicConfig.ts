@@ -295,6 +295,8 @@ export type PublicProfileSettings = {
   about?: string;
   cover_url?: string;
   logo?: string;
+  faq?: Array<{ question: string; answer: string }>;
+  insurance?: string;
   show_phone?: boolean;
   show_prices?: boolean;
   social_links?: SocialLinks;
@@ -391,6 +393,8 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
     about: typeof p.about === 'string' ? p.about : undefined,
     cover_url: typeof p.cover_url === 'string' ? p.cover_url : undefined,
     logo: typeof p.logo === 'string' ? p.logo : undefined,
+    faq: Array.isArray(p.faq) ? p.faq as PublicProfileSettings['faq'] : undefined,
+    insurance: typeof p.insurance === 'string' ? p.insurance : undefined,
     show_phone: p.show_phone === true,
     show_prices: p.show_prices === true,
     show_providers: p.show_providers !== false,
@@ -522,7 +526,7 @@ export async function updatePublicPageConfig(
 
   // Scalar/profile fields (with empty-string → delete so users can clear them).
   const scalarFields: (keyof PublicProfileSettings)[] = [
-    'description', 'tagline', 'about', 'cover_url', 'logo',
+    'description', 'tagline', 'about', 'cover_url', 'logo', 'insurance',
     'show_phone', 'show_prices', 'show_providers', 'discovery_enabled',
   ];
   for (const key of scalarFields) {
@@ -531,6 +535,8 @@ export async function updatePublicPageConfig(
     if (v === '' || v === null) delete updated[key];
     else updated[key] = v;
   }
+
+  if (patch.faq !== undefined) updated.faq = patch.faq;
 
   // social_links — merge only provided keys; empty strings mean delete a link.
   if (patch.social_links !== undefined) {

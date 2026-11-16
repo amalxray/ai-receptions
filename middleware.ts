@@ -74,6 +74,14 @@ function tenantRewrite(request: NextRequest, slug: string): URL | null {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // The public fallback file shadows an App Router route at the same path.
+  // Rewrite the public URL to the dynamic handler before filesystem routing.
+  if (pathname === '/llms.txt') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/llms-dynamic';
+    return NextResponse.rewrite(url);
+  }
+
   const hostname = normalizeHostname(hostHeader(request).split(',')[0] ?? '');
   const isPlatformSubdomain =
     hostname.endsWith(`.${TENANT_ROOT_DOMAIN}`) &&
