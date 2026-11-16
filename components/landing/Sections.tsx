@@ -11,26 +11,41 @@ import { FadeUp, Stagger, staggerItem } from './motion';
 export function PainStats() {
   const copy = useLandingCopy();
   return (
-    <section className="bg-landing-bg py-20 lg:py-28">
+    <section className="bg-slate-950 py-20 text-white lg:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FadeUp>
-          <h2 className="text-center font-heading text-3xl font-extrabold text-landing-text sm:text-4xl">
+          <h2 className="text-center font-heading text-3xl font-extrabold text-white sm:text-4xl">
             {copy.painStats.title}
           </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-base leading-7 text-slate-300 sm:text-lg">
+            {copy.painStats.description}
+          </p>
         </FadeUp>
-        <Stagger className="mt-12 grid gap-6 md:grid-cols-3">
+        <Stagger className="mt-12 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
           {copy.painStats.cards.map((card, i) => (
             <motion.div
               key={i}
               variants={staggerItem}
-              className="rounded-3xl border border-landing-indigo/10 bg-white p-8 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-landing-btn"
+              className="rounded-3xl border border-white/10 bg-white/5 p-5 text-center transition hover:-translate-y-1 hover:border-emerald-400/40 hover:bg-white/10 sm:p-8"
             >
-              <p className="font-mono text-5xl font-bold text-landing-indigo">{card.value}</p>
-              <p className="mt-4 text-base font-semibold text-landing-text">{card.label}</p>
-              <p className="mt-3 text-sm leading-6 text-landing-text/60">{card.footnote}</p>
+              <p
+                className={`font-mono font-bold leading-tight ${
+                  card.value.length > 10
+                    ? 'text-3xl text-emerald-400 sm:text-4xl md:text-5xl'
+                    : `text-5xl ${i % 2 === 0 ? 'text-emerald-400' : 'text-cyan-300'} md:text-6xl`
+                }`}
+              >
+                {card.value}
+              </p>
+              <p className="mt-4 text-sm font-semibold leading-6 text-slate-200 sm:text-base">{card.label}</p>
             </motion.div>
           ))}
         </Stagger>
+        <div className="mt-10 text-center">
+          <LandingButton href="/register" variant="white" size="lg">
+            {copy.painStats.cta}
+          </LandingButton>
+        </div>
       </div>
     </section>
   );

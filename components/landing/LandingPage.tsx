@@ -5,7 +5,7 @@ import WhySection from './WhySection';
 import ResultsSection from './ResultsSection';
 import ForDoctorsSection from './ForDoctorsSection';
 import HowItWorksSection from './HowItWorksSection';
-import { Imaging } from './Sections';
+import { Imaging, PainStats } from './Sections';
 import PricingSection from './PricingSection';
 import { ClinicAds } from './Sections';
 import ComparisonSection from './ComparisonSection';
@@ -85,7 +85,7 @@ export default function LandingPage({ galleryImages = [], galleryVideos = [], se
   const services = normalizeServicesContent(copy.services);
 
   const sectionMap: Record<string, React.ReactNode> = {
-    hero: <><Hero /><SocialProof /></>,
+    hero: <><Hero /><PainStats /><SocialProof /></>,
     features: <WhySection key="features" />,
     services: <ServicesGrid key="services" initialServices={services.items} />,
     for_doctors: <ForDoctorsSection key="for_doctors" />,
