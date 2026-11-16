@@ -34,6 +34,11 @@ const patchSchema = z.object({
   tagline: z.string().max(300).nullable().optional(),
   about: z.string().max(6000).nullable().optional(),
   cover_url: z.string().max(600).nullable().optional(),
+  faq: z.array(z.object({
+    question: z.string().trim().min(1).max(300),
+    answer: z.string().trim().min(1).max(2000),
+  }).strict().required()).max(20).optional(),
+  insurance: z.string().trim().max(1000).nullable().optional(),
   show_phone: z.boolean().optional(),
   show_prices: z.boolean().optional(),
   show_providers: z.boolean().optional(),
@@ -127,7 +132,11 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const result = await updatePublicPageConfig(clinicId, parsed.data);
+    const faq = parsed.data.faq?.map((item) => {
+      if (!item.question || !item.answer) throw new Error('Validated FAQ item is missing required text');
+      return { question: item.question, answer: item.answer };
+    });
+    const result = await updatePublicPageConfig(clinicId, { ...parsed.data, faq });
     if (!result.ok) return NextResponse.json({ error: result.message }, { status: 400 });
 
     await writeAuditLog({

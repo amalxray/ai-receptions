@@ -112,6 +112,8 @@ export type ActivityPublicSpace = {
   longitude: number | null;
   google_maps_url: string | null;
   phone: string | null;
+  faq: { question: string; answer: string }[];
+  insurance: string | null;
   bookingUrl: string;
   chatUrl: string;
   pageUrl: string;
@@ -361,6 +363,8 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     longitude: profile.longitude ?? null,
     google_maps_url: profile.google_maps_url ?? null,
     phone: profile.phone,
+    faq: profile.faq,
+    insurance: profile.insurance,
     bookingUrl: profile.bookingUrl,
     chatUrl: profile.chatUrl,
     // Readiness-aware: the tenant subdomain when it is registered on the Vercel

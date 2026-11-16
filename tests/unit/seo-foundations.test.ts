@@ -34,7 +34,11 @@ vi.mock('@/lib/vercel/subdomainReadiness', () => ({
 
 import sitemap from '@/app/sitemap';
 import robots from '@/app/robots';
-import { buildDoctorJsonLd } from '@/lib/services/doctorJsonLd';
+import {
+  buildClinicFaqItems,
+  buildDoctorJsonLd,
+  buildFaqJsonLd,
+} from '@/lib/services/doctorJsonLd';
 import type { DoctorPublicProfile } from '@/lib/services/doctorPublicProfile';
 
 function baseProfile(overrides: Record<string, unknown> = {}): DoctorPublicProfile {
@@ -125,12 +129,60 @@ describe('PP-8C — robots.txt', () => {
     // noindex directive from crawlers.
     const answerEngines = ruleList.filter((rule) => rule.userAgent !== '*');
     expect(answerEngines.length).toBeGreaterThan(0);
+    expect(answerEngines.find((rule) => rule.userAgent === 'CCBot')).toBeDefined();
     for (const rule of answerEngines) {
       expect(rule.allow).toBe('/');
       expect(rule.disallow).toEqual(disallow);
     }
 
     expect(rules.sitemap).toBe('https://clinics.example.com/sitemap.xml');
+  });
+
+  describe('clinic FAQ structured data', () => {
+    const clinic = {
+      name: 'عيادة النور',
+      pageUrl: 'https://alnoor.dentairec.com',
+      bookingUrl: 'https://alnoor.dentairec.com/book?slug=alnoor',
+      workingHours: [{ weekday: 1, start_time: '09:00', end_time: '17:00' }],
+      services: [{ name: 'تنظيف الأسنان' }],
+      city: 'نابلس',
+      area: 'رفيديا',
+      address: 'شارع الجامعة',
+      insurance: 'تأمين الاتحاد',
+    };
+
+    it('builds truthful FAQ defaults from public clinic data and insurance metadata', () => {
+      const items = buildClinicFaqItems(clinic);
+      expect(items).toContainEqual({
+        question: 'ما هي ساعات العمل؟',
+        answer: 'الاثنين: 09:00–17:00',
+      });
+      expect(items).toContainEqual({
+        question: 'ما هي الخدمات المتاحة؟',
+        answer: 'تشمل الخدمات المنشورة: تنظيف الأسنان.',
+      });
+      expect(items).toContainEqual({
+        question: 'هل تقبلون التأمين؟',
+        answer: 'تأمين الاتحاد',
+      });
+      expect(items.find((item) => item.question === 'أين تقع العيادة؟')?.answer).toContain('نابلس');
+    });
+
+    it('prefers clinic-authored questions and emits FAQPage as a graph entity', () => {
+      const faq = [{ question: 'هل يتوفر موقف؟', answer: 'نعم، يتوفر موقف للزوار.' }];
+      const items = buildClinicFaqItems({ ...clinic, faq });
+      const schema = buildFaqJsonLd({ ...clinic, faq });
+
+      expect(items).toEqual(faq);
+      expect(schema['@type']).toBe('FAQPage');
+      expect(schema.mainEntity).toEqual([
+        {
+          '@type': 'Question',
+          name: faq[0].question,
+          acceptedAnswer: { '@type': 'Answer', text: faq[0].answer },
+        },
+      ]);
+    });
   });
 });
 
