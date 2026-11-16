@@ -60,7 +60,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
   verification: {
     other: {
-      'msvalidate.01': 'AB6893BB9C46704C823CBA7063CE0B53',
+      'msvalidate.01': 'F245B3D50E3DF72EF83E1C005CDB46B2',
       'facebook-domain-verification': '9y4qsfipauvr9qcgibd5ei4r2ez6tf',
     },
   },
