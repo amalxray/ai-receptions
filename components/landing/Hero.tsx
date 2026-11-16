@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useScroll, useTransform, useSpring } from 'framer-motion';
 import Link from 'next/link';
 import { useLandingCopy } from '@/components/landing/LandingContent';
@@ -11,6 +11,7 @@ import { Magnetic } from '@/components/ui/magnetic';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { TextShimmer } from '@/components/ui/text-shimmer';
 import { landingCopy } from '@/lib/landing/landing-copy';
+import HeroCoverSlider from './HeroCoverSlider';
 
 export type HeroContent = {
   headline1: string;
@@ -65,6 +66,20 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
     ...content,
     stats: content?.stats ?? copy.hero?.stats ?? landingCopy.hero.stats,
   };
+  const heroImages = useMemo(() => {
+    const configuredSource: unknown = copy.hero?.images;
+    const configuredImages = Array.isArray(configuredSource)
+      ? configuredSource.filter((image): image is string => typeof image === 'string' && image.trim().length > 0)
+      : [];
+    const customImage = content?.image?.trim() ||
+      (typeof copy.hero?.image === 'string' && copy.hero.image !== landingCopy.hero.image
+        ? copy.hero.image
+        : '');
+    const fallbackImages = configuredImages.length > 0
+      ? configuredImages
+      : (heroContent.image ? [heroContent.image] : []);
+    return Array.from(new Set(customImage ? [...fallbackImages, customImage] : fallbackImages));
+  }, [content?.image, copy.hero?.image, copy.hero?.images, heroContent.image]);
   const paragraphHighlightIndex = heroContent.paragraph.indexOf('مريض');
   const sectionRef = useRef<HTMLElement>(null);
   const imageRef = useRef<HTMLDivElement>(null);
@@ -141,21 +156,15 @@ export default function Hero({ content }: { content?: Partial<HeroContent> }) {
         <motion.div style={{ y: blobY }} animate={{ x: [0, -24, 0] }} transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }} className="absolute right-0 top-32 h-96 w-96 rounded-full bg-[#22D3EE]/25 blur-[100px]" />
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-violet-950/80 to-transparent" />
       </div>
-    {heroContent.image && (
+    {heroImages.length > 0 && (
       <div
         ref={imageRef}
         onMouseMove={handleImageMouseMove}
         onMouseLeave={resetTilt}
         className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 group cursor-crosshair [perspective:900px]"
       >
-        {/* 3D Tilt — copied pattern from components/ui-lab/CardsShowcase.tsx TiltCard */}
-        <motion.img
-          src={heroContent.image}
-          alt="صورة الغلاف لمركز أمل"
-          width={1200}
-          height={630}
-          sizes="(max-width: 1024px) 100vw, 50vw"
-          className="w-full rounded-2xl object-cover shadow-2xl"
+        <HeroCoverSlider
+          images={heroImages}
           style={{
             rotateX: tiltX,
             rotateY: tiltY,
