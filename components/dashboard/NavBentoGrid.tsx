@@ -329,7 +329,9 @@ function SortableButton({
           <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-base ${tone.accent}`} aria-hidden>
             {presentation.emoji}
           </span>
-          <span className="min-w-0 flex-1 truncate font-semibold leading-5 text-white">{item.label}</span>
+          <span className="min-w-0 flex-1 whitespace-normal break-words font-semibold leading-5 text-white sm:truncate sm:break-normal">
+            {item.label}
+          </span>
           {item.locked ? (
             <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${tone.chip}`}>🔒</span>
           ) : chip ? (
