@@ -166,9 +166,8 @@ const allSummariesCache = new Map<string, { at: number; value: AllSummaries }>()
 
 const ZERO_STATS: ReviewStats = { total: 0, average: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
 
-/** Published-review stats for one clinic (errors degrade to empty stats — a DB
- *  hiccup must never blank a tenant page that was working). */
-export const getClinicReviewsStats = requestCache(async (clinicId: string): Promise<ReviewStats> => {
+/** Published-review stats when the read succeeds, or null when it cannot be verified. */
+export const getClinicReviewsStatsWithAvailability = requestCache(async (clinicId: string): Promise<ReviewStats | null> => {
   const cached = readCache(statsCache, clinicId);
   if (cached) return cached;
   try {
@@ -178,12 +177,18 @@ export const getClinicReviewsStats = requestCache(async (clinicId: string): Prom
       .eq('clinic_id', clinicId)
       .eq('is_published', true)
       .is('deleted_at', null);
-    const value = error ? { ...ZERO_STATS } : summarizeRatings((data ?? []).map((row) => Number(row.rating)));
+    if (error) return null;
+    const value = summarizeRatings((data ?? []).map((row) => Number(row.rating)));
     writeCache(statsCache, clinicId, value);
     return value;
   } catch {
-    return { ...ZERO_STATS };
+    return null;
   }
+});
+
+/** Public-page callers degrade to empty stats; dashboards can distinguish failures. */
+export const getClinicReviewsStats = requestCache(async (clinicId: string): Promise<ReviewStats> => {
+  return (await getClinicReviewsStatsWithAvailability(clinicId)) ?? { ...ZERO_STATS };
 });
 
 /** Latest PUBLIC_REVIEWS_LIMIT published reviews, newest first. */
