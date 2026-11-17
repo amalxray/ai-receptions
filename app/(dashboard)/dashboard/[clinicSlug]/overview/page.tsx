@@ -7,6 +7,7 @@ import DashboardSection from '@/components/dashboard/DashboardSection';
 import Skeleton from '@/components/ui/Skeleton';
 import EmptyState from '@/components/dashboard/EmptyState';
 import StatusPill from '@/components/dashboard/StatusPill';
+import GEOStatusCard from '@/components/dashboard/GEOStatusCard';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, WEEKDAY_AR } from '@/lib/dashboard/labels-ar';
@@ -124,6 +125,8 @@ export default function OverviewPage() {
               </Link>
             ))}
           </div>
+
+          {clinicId ? <GEOStatusCard clinicId={clinicId} clinicSlug={clinicSlug} authHeaders={authHeaders} /> : null}
 
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <section className="rounded-[1.75rem] border border-slate-800 bg-slate-950/70 p-5">
