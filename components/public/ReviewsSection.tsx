@@ -80,7 +80,7 @@ export default function ReviewsSection({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 id="reviews-heading" className="text-2xl font-bold text-white">
-              ماذا يقول مرضانا
+              آراء مراجعي مركز أمل
             </h2>
             <p className="mt-1 text-sm text-slate-300">آراء مراجعي {clinicName}</p>
           </div>
