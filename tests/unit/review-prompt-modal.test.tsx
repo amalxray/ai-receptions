@@ -9,13 +9,18 @@ import { describe, it, expect } from 'vitest';
 import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 
 describe('ReviewPromptModal (Phase 3a)', () => {
-  it('أ) renders title + 5 stars + name/comment fields + skip', () => {
+  it('أ) renders title + 5 stars + optional category + name/comment fields + skip', () => {
     const html = renderToStaticMarkup(
       <ReviewPromptModal open clinicSlug="amal-x-ray-center" source="form" patientName="أحمد" onClose={() => {}} />
     );
     expect(html).toContain('كيف كانت تجربة الحجز؟');
     expect((html.match(/من 5 نجوم/g) || []).length).toBe(5);
     expect(html).toContain('value="أحمد"');
+    expect(html).toContain('صفتك');
+    expect(html).toContain('طبيب أسنان');
+    expect(html).toContain('مراجع');
+    expect(html).toContain('أخرى');
+    expect(html).toContain('بدون تصنيف');
     expect(html).toContain('تخطي');
     expect(html).toContain('إرسال التقييم');
     expect(html).toContain('role="dialog"');
@@ -50,9 +55,9 @@ describe('ReviewPromptModal (Phase 3a)', () => {
   });
 
   it('هـ) review API contract — payload shape the modal posts', () => {
-    // The modal posts { clinic_slug, rating, author_name, comment, source }
+    // The modal posts { clinic_slug, rating, reviewer_category, author_name, comment, source }
     // to POST /api/public/reviews — mirror of the zod schema there.
-    const payload = { clinic_slug: 'amal-x-ray-center', rating: 5, author_name: 'أحمد', comment: null, source: 'form' };
+    const payload = { clinic_slug: 'amal-x-ray-center', rating: 5, reviewer_category: null, author_name: 'أحمد', comment: null, source: 'form' };
     expect(payload.rating).toBeGreaterThanOrEqual(1);
     expect(payload.rating).toBeLessThanOrEqual(5);
     expect(['form', 'chat', 'booking', 'cron', 'public']).toContain(payload.source);

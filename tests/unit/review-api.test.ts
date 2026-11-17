@@ -40,12 +40,12 @@ const h = vi.hoisted(() => {
     const result = () => key === 'insert' && st.insertResults.length > 0
       ? st.insertResults.shift()!
       : results[key]!();
-    const q: any = { __eqs: [] as any[][], __range: null as number[] | null };
+    const q: any = { __eqs: [] as any[][], __is: [] as any[][], __range: null as number[] | null };
     q.select = vi.fn(() => q);
     q.insert = vi.fn((payload: any) => { st.lastInsert = payload; return q; });
     q.update = vi.fn((payload: any) => { st.lastUpdate = payload; return q; });
     q.eq = vi.fn((k: any, v: any) => { q.__eqs.push([k, v]); return q; });
-    q.is = vi.fn(() => q);
+    q.is = vi.fn((k: any, v: any) => { q.__is.push([k, v]); return q; });
     q.gte = vi.fn(() => q);
     q.order = vi.fn(() => q);
     q.range = vi.fn((a: number, b: number) => { q.__range = [a, b]; return q; });
@@ -121,6 +121,16 @@ describe('POST /api/public/reviews', () => {
     expect(body.data.flagged_medical).toBe(false);
     expect(h.lastInsert.is_published).toBe(true);
     expect(h.lastInsert.flag_reason).toBeNull();
+    expect(h.lastInsert.reviewer_category).toBeNull();
+  });
+
+  it('stores the selected dentist or reviewer category', async () => {
+    for (const reviewer_category of ['dentist', 'reviewer', 'other'] as const) {
+      h.queue = ['clinic', 'insert'];
+      const res = await publicPOST(postReq({ ...baseBody, reviewer_category }));
+      expect(res.status).toBe(201);
+      expect(h.lastInsert.reviewer_category).toBe(reviewer_category);
+    }
   });
 
   it('2. مُعلَّم طبياً → is_published=false + reason', async () => {
@@ -137,6 +147,12 @@ describe('POST /api/public/reviews', () => {
 
   it('3. rating=6 → 400 (validation قبل أي DB)', async () => {
     const res = await publicPOST(postReq({ ...baseBody, rating: 6 }));
+    expect(res.status).toBe(400);
+    expect(h.from).not.toHaveBeenCalled();
+  });
+
+  it('rejects categories outside the supported values', async () => {
+    const res = await publicPOST(postReq({ ...baseBody, reviewer_category: 'unknown' }));
     expect(res.status).toBe(400);
     expect(h.from).not.toHaveBeenCalled();
   });
@@ -264,6 +280,31 @@ describe('clinic routes — publish / reject / delete / stats', () => {
     const res = await staffReviewsGET(new Request(`http://localhost/api/clinic/reviews?clinic_id=${CID}`));
     expect(res.status).toBe(200);
     expect(h.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CID, 'view_reviews', expect.any(Object));
+  });
+
+  it('filters uncategorized legacy reviews without changing global totals or average', async () => {
+    h.queue = ['list', 'list'];
+    h.listResult = {
+      data: [
+        { rating: 5, reviewer_category: 'dentist', is_published: true, rejected_at: null, flagged_medical: false },
+        { rating: 4, reviewer_category: null, is_published: true, rejected_at: null, flagged_medical: false },
+      ],
+      error: null,
+      count: 1,
+    };
+
+    const res = await staffReviewsGET(
+      new Request(`http://localhost/api/clinic/reviews?clinic_id=${CID}&reviewer_category=unknown`),
+    );
+
+    expect(res.status).toBe(200);
+    expect(h.chains[0].__is).toContainEqual(['reviewer_category', null]);
+    expect(h.chains[1].__eqs).not.toContainEqual(['reviewer_category', 'unknown']);
+    const body = await res.json();
+    expect(body.data.total).toBe(1);
+    expect(body.data.items[1].reviewer_category).toBeNull();
+    expect(body.data.stats.total).toBe(2);
+    expect(body.data.stats.average).toBe(4.5);
   });
 
   it('13. غير admin (role=viewer) → 403', async () => {

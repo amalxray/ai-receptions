@@ -10,6 +10,7 @@ const querySchema = z.object({
   filter: z.enum(['all', 'pending', 'published', 'rejected', 'flagged']).default('all'),
   search: z.string().trim().max(200).optional(),
   rating: z.coerce.number().int().min(1).max(5).optional(),
+  reviewer_category: z.enum(['all', 'dentist', 'reviewer', 'other', 'unknown']).default('all'),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -33,6 +34,12 @@ describe('Staff reviews list API (Phase 4a)', () => {
     }
   });
 
+  it('accepts each reviewer category filter, including unclassified legacy reviews', () => {
+    for (const reviewer_category of ['all', 'dentist', 'reviewer', 'other', 'unknown']) {
+      expect(querySchema.safeParse({ clinic_id: UUID, reviewer_category }).success).toBe(true);
+    }
+  });
+
   it('ج) rejects invalid clinic_id / rating', () => {
     expect(querySchema.safeParse({ clinic_id: 'not-uuid' }).success).toBe(false);
     expect(querySchema.safeParse({ clinic_id: UUID, rating: '9' }).success).toBe(false);
@@ -41,7 +48,7 @@ describe('Staff reviews list API (Phase 4a)', () => {
   it('د) dashboard page file exists with required sections', async () => {
     const fs = await import('fs');
     const src = fs.readFileSync('app/(dashboard)/dashboard/[clinicSlug]/reviews/page.tsx', 'utf8');
-    for (const s of ['المتوسط', 'بانتظار المراجعة', 'فلترة التقييمات', 'بحث بالاسم', 'فلترة بالنجوم', 'نشر', 'رفض', 'حذف']) {
+    for (const s of ['المتوسط', 'بانتظار المراجعة', 'فلترة التقييمات', 'فلترة حسب صفة المقيّم', 'غير مصنف', 'بحث بالاسم', 'فلترة بالنجوم', 'نشر', 'رفض', 'حذف']) {
       expect(src).toContain(s);
     }
   });

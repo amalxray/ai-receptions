@@ -8,6 +8,7 @@ import { logEvent } from '@/lib/server/logging';
 const createReviewSchema = z.object({
   clinic_slug: z.string().trim().min(1).max(120),
   rating: z.coerce.number().int().min(1).max(5),
+  reviewer_category: z.enum(['dentist', 'reviewer', 'other']).optional().nullable(),
   author_name: z.string().trim().min(1).max(100),
   comment: z.string().trim().max(1000).optional().nullable(),
   patient_phone: z.string().trim().min(5).max(30).optional().nullable(),
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
       .insert({
         clinic_id: clinicId,
         rating: input.rating,
+        reviewer_category: input.reviewer_category ?? null,
         author_name: input.author_name,
         comment: comment || null,
         source,

@@ -15,6 +15,7 @@ import { useClinicContext } from '@/lib/useClinicContext';
 type ReviewItem = {
   id: string;
   rating: number;
+  reviewer_category: 'dentist' | 'reviewer' | 'other' | null;
   author_name: string;
   comment: string | null;
   source: string;
@@ -41,8 +42,23 @@ const TABS = [
 
 type FilterKey = (typeof TABS)[number]['key'];
 
+const CATEGORY_TABS = [
+  { key: 'all', label: 'كل الفئات' },
+  { key: 'dentist', label: 'طبيب أسنان' },
+  { key: 'reviewer', label: 'مراجع' },
+  { key: 'other', label: 'أخرى' },
+  { key: 'unknown', label: 'غير مصنف' },
+] as const;
+
+type CategoryFilter = (typeof CATEGORY_TABS)[number]['key'];
+
 const PAGE_SIZE = 20;
 const SOURCE_LABEL: Record<string, string> = { form: 'نموذج', chat: 'محادثة', cron: 'تذكير', public: 'عام' };
+const CATEGORY_LABEL: Record<Exclude<CategoryFilter, 'all' | 'unknown'>, string> = {
+  dentist: 'طبيب أسنان',
+  reviewer: 'مراجع',
+  other: 'أخرى',
+};
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -54,8 +70,9 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function ReviewFilters({ filter, onFilter, search, onSearch, star, onStar }: {
+function ReviewFilters({ filter, onFilter, category, onCategory, search, onSearch, star, onStar }: {
   filter: FilterKey; onFilter: (f: FilterKey) => void;
+  category: CategoryFilter; onCategory: (category: CategoryFilter) => void;
   search: string; onSearch: (v: string) => void;
   star: number | null; onStar: (s: number | null) => void;
 }) {
@@ -67,6 +84,18 @@ function ReviewFilters({ filter, onFilter, search, onSearch, star, onStar }: {
             key={t.key} role="tab" aria-selected={filter === t.key} onClick={() => onFilter(t.key)}
             className={`rounded-full px-4 py-2 text-sm font-semibold ${
               filter === t.key ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="فلترة حسب صفة المقيّم">
+        {CATEGORY_TABS.map((t) => (
+          <button
+            key={t.key} role="tab" aria-selected={category === t.key} onClick={() => onCategory(t.key)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold ${
+              category === t.key ? 'bg-amber-400 text-slate-900' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
             {t.label}
@@ -101,6 +130,9 @@ function ReviewCard({ r, acting, onAct, canManage }: {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-800">{r.author_name}</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+            {r.reviewer_category ? CATEGORY_LABEL[r.reviewer_category] : 'غير مصنف'}
+          </span>
           {r.is_verified && <StatusPill tone="success">موثّق</StatusPill>}
           {r.flagged_medical && <StatusPill tone="warning">{r.flag_reason ?? 'مُعلَّم طبي'}</StatusPill>}
           {!r.is_published && !r.rejected_at && <StatusPill tone="warning">جديد</StatusPill>}
@@ -176,6 +208,7 @@ export default function ReviewsInboxPage() {
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<Stats>(ZERO_STATS);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [category, setCategory] = useState<CategoryFilter>('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [star, setStar] = useState<number | null>(null);
@@ -189,13 +222,14 @@ export default function ReviewsInboxPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const load = useCallback(async (id: string, f: FilterKey, q: string, s: number | null, p: number) => {
+  const load = useCallback(async (id: string, f: FilterKey, c: CategoryFilter, q: string, s: number | null, p: number) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({
         clinic_id: id, filter: f, limit: String(PAGE_SIZE), offset: String(p * PAGE_SIZE),
       });
+      if (c !== 'all') params.set('reviewer_category', c);
       if (q) params.set('search', q);
       if (s) params.set('rating', String(s));
       const headers = await authHeaders();
@@ -215,13 +249,13 @@ export default function ReviewsInboxPage() {
   useEffect(() => {
     if (clinicLoading || !clinicId) return;
     setPage(0);
-    void load(clinicId, filter, debouncedSearch, star, 0);
+    void load(clinicId, filter, category, debouncedSearch, star, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicLoading, clinicId, filter, debouncedSearch, star]);
+  }, [clinicLoading, clinicId, filter, category, debouncedSearch, star]);
 
   useEffect(() => {
     if (!clinicId) return;
-    void load(clinicId, filter, debouncedSearch, star, page);
+    void load(clinicId, filter, category, debouncedSearch, star, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -234,7 +268,7 @@ export default function ReviewsInboxPage() {
       const headers = await authHeaders();
       const res = await fetch(url, { method: action === 'delete' ? 'DELETE' : 'POST', headers });
       if (!res.ok) throw new Error('فشل الإجراء');
-      await load(clinicId, filter, debouncedSearch, star, page);
+      await load(clinicId, filter, category, debouncedSearch, star, page);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'حدث خطأ');
     } finally {
@@ -266,6 +300,7 @@ export default function ReviewsInboxPage() {
       <DashboardSection title="القائمة">
         <ReviewFilters
           filter={filter} onFilter={(f) => { setFilter(f); setPage(0); }}
+          category={category} onCategory={(c) => { setCategory(c); setPage(0); }}
           search={search} onSearch={setSearch} star={star}
           onStar={(s) => { setStar(s); setPage(0); }}
         />
