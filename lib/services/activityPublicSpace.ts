@@ -49,6 +49,7 @@ export type ActivityPublicSpace = {
   activityType: ActivityType;
   name: string;
   logo: string | null;
+  logoSourceUrl: string | null;
   description: string | null;
   /** Owner-managed short hero line (public_profile.tagline). */
   tagline: string | null;
@@ -349,6 +350,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     activityType,
     name: profile.name,
     logo: profile.logo,
+    logoSourceUrl: profile.logoSourceUrl,
     description: profile.description,
     tagline: profile.tagline ?? null,
     about: profile.about ?? null,
