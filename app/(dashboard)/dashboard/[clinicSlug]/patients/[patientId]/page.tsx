@@ -95,7 +95,7 @@ const REVIEW_REQUEST_MESSAGE = `نرجو منكم تقييم خدمتنا في �
 
 رأيكم يهمّنا ويساعدنا على تطوير خدماتنا. تفضّلوا بتقييمنا عبر الرابط:
 
-[https://amal-x-ray-center.dentairec.com/reviews](https://amal-x-ray-center.dentairec.com/reviews)
+https://amal-x-ray-center.dentairec.com/reviews
 
 شكرًا لثقتكم بمركز أمل 💙`;
 

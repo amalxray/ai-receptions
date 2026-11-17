@@ -53,14 +53,6 @@ describe('B38 — WhatsApp link normalization', () => {
     expect(buildWhatsAppHref('12345', 'مرحبا')).toBeNull();
     expect(buildWhatsAppHref(null, 'مرحبا')).toBeNull();
   });
-
-  it('builds the review request link with the encoded clinic review message', () => {
-    const message =
-      'شكراً لزيارتكم مركز أمل لتصوير الأسنان والفكين. نسعد بتقييمكم لخدمتنا عبر الرابط التالي: https://amal-x-ray-center.dentairec.com/reviews';
-    expect(buildWhatsAppHref('059 875 7557', message)).toBe(
-      `https://wa.me/970598757557?text=${encodeURIComponent(message)}`
-    );
-  });
 });
 
 describe('B39 — quick notes are stored, not just toggled', () => {
@@ -152,6 +144,29 @@ describe('B38/B39 — wiring guard', () => {
     expect(detailPage).toContain('window.open(reviewWhatsAppHref,');
     expect(detailPage).toContain('⭐ طلب تقييم');
     expect(detailPage).toContain('https://amal-x-ray-center.dentairec.com/reviews');
+  });
+
+  it('keeps the review URL raw and valid after WhatsApp message encoding', () => {
+    const messageMatch = detailPage.match(/const REVIEW_REQUEST_MESSAGE = `([\s\S]*?)`;/);
+    expect(messageMatch).not.toBeNull();
+
+    const message = messageMatch![1];
+    const reviewUrl = 'https://amal-x-ray-center.dentairec.com/reviews';
+    expect(message.split(/\r?\n/)).toContain(reviewUrl);
+    expect(message).not.toContain(`[${reviewUrl}](${reviewUrl})`);
+    expect(message).not.toMatch(/https:\/(?!\/)/);
+
+    const whatsAppHref = buildWhatsAppHref('059 875 7557', message);
+    expect(whatsAppHref).not.toBeNull();
+
+    const whatsAppUrl = new URL(whatsAppHref!);
+    expect(whatsAppUrl.origin).toBe('https://wa.me');
+    expect(whatsAppUrl.pathname).toBe('/970598757557');
+    expect(whatsAppUrl.searchParams.get('text')).toBe(message);
+
+    const links = [...message.matchAll(/https?:\/\/[^\s]+/g)].map(([url]) => url);
+    expect(links).toEqual([reviewUrl]);
+    expect(new URL(links[0]).href).toBe(reviewUrl);
   });
 
   it('the quick-note button opens the composer instead of toggling the notes block', () => {
