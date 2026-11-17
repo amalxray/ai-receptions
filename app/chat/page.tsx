@@ -1,8 +1,9 @@
 import { headers } from 'next/headers';
+import { resolvePublicClinic } from '@/lib/services/clinics';
 import ChatInterface from '../../components/chat/ChatInterface';
 import ChatInterfaceV2 from '../../components/chat/ChatInterfaceV2';
 
-export default function Page({ searchParams }: { searchParams?: { clinic?: string } }) {
+export default async function Page({ searchParams }: { searchParams?: { clinic?: string } }) {
   const clinic = searchParams?.clinic ?? 'demo';
 
   // ── Voice (Web Speech API) is TENANT-ONLY ──
@@ -12,6 +13,10 @@ export default function Page({ searchParams }: { searchParams?: { clinic?: strin
   const isTenant =
     /^(?!www\.)[^.]+\.dentairec\.com$/.test(host) ||
     /^[^.]+\.localhost$/.test(host);
+  const isClinicId = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(clinic);
+  const publicClinic = isTenant
+    ? await resolvePublicClinic(isClinicId ? { id: clinic } : { slug: clinic })
+    : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 p-6">
@@ -22,7 +27,11 @@ export default function Page({ searchParams }: { searchParams?: { clinic?: strin
         </header>
 
         <main>
-          {isTenant ? <ChatInterfaceV2 clinicId={clinic} /> : <ChatInterface clinicId={clinic} />}
+          {isTenant ? (
+            <ChatInterfaceV2 clinicId={clinic} activityType={publicClinic?.activity_type ?? null} />
+          ) : (
+            <ChatInterface clinicId={clinic} />
+          )}
         </main>
       </div>
     </div>

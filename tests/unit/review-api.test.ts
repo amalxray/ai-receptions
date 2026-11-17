@@ -154,6 +154,15 @@ describe('POST /api/public/reviews', () => {
     expect(h.lastInsert).not.toHaveProperty('reviewer_category');
   });
 
+  it('does not store a reviewer category for dental labs, even if sent by a client', async () => {
+    h.clinicResult = { data: { id: CID, activity_type: 'dental_lab' }, error: null };
+    h.queue = ['clinic', 'insert'];
+    const res = await publicPOST(postReq({ ...baseBody, reviewer_category: 'reviewer' }));
+
+    expect(res.status).toBe(201);
+    expect(h.lastInsert).not.toHaveProperty('reviewer_category');
+  });
+
   it('2. مُعلَّم طبياً → is_published=false + reason', async () => {
     h.queue = ['clinic', 'insert'];
     const res = await publicPOST(postReq({ ...baseBody, comment: 'شفيت بعد الجلسة' }));
