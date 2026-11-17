@@ -91,8 +91,13 @@ type PatientCommunication = {
   last_error: string | null;
 };
 
-const REVIEW_REQUEST_MESSAGE =
-  'شكراً لزيارتكم مركز أمل لتصوير الأسنان والفكين. نسعد بتقييمكم لخدمتنا عبر الرابط التالي: https://amal-x-ray-center.dentairec.com/reviews';
+const REVIEW_REQUEST_MESSAGE = `نرجو منكم تقييم خدمتنا في مركز أمل لتصوير الأسنان والفكين ⭐
+
+رأيكم يهمّنا ويساعدنا على تطوير خدماتنا. تفضّلوا بتقييمنا عبر الرابط:
+
+[https://amal-x-ray-center.dentairec.com/reviews](https://amal-x-ray-center.dentairec.com/reviews)
+
+شكرًا لثقتكم بمركز أمل 💙`;
 
 /**
  * N30 — the tab set is NOT a local constant anymore: it is derived per activity
