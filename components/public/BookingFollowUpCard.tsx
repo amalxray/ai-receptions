@@ -12,6 +12,7 @@ type Props = {
   clinicName: string;
   clinicPhone?: string | null;
   clinicSlug?: string | null;
+  showReviewerCategory?: boolean;
   onVisible?: () => void;
   patientName: string;
   serviceName: string;
@@ -24,6 +25,7 @@ export default function BookingFollowUpCard({
   clinicName,
   clinicPhone,
   clinicSlug,
+  showReviewerCategory = false,
   onVisible,
   patientName,
   serviceName,
@@ -91,6 +93,7 @@ export default function BookingFollowUpCard({
         clinicSlug={clinicSlug}
         source="booking"
         patientName={patientName}
+        showReviewerCategory={showReviewerCategory}
         onClose={() => setReviewOpen(false)}
       />
     </section>

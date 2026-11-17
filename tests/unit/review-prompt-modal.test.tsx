@@ -11,7 +11,14 @@ import ReviewPromptModal from '@/components/public/ReviewPromptModal';
 describe('ReviewPromptModal (Phase 3a)', () => {
   it('أ) renders title + 5 stars + optional category + name/comment fields + skip', () => {
     const html = renderToStaticMarkup(
-      <ReviewPromptModal open clinicSlug="amal-x-ray-center" source="form" patientName="أحمد" onClose={() => {}} />
+      <ReviewPromptModal
+        open
+        clinicSlug="amal-x-ray-center"
+        source="form"
+        patientName="أحمد"
+        showReviewerCategory
+        onClose={() => {}}
+      />
     );
     expect(html).toContain('كيف كانت تجربة الحجز؟');
     expect((html.match(/من 5 نجوم/g) || []).length).toBe(5);
@@ -25,6 +32,26 @@ describe('ReviewPromptModal (Phase 3a)', () => {
     expect(html).toContain('إرسال التقييم');
     expect(html).toContain('role="dialog"');
     expect(html).toContain('dir="rtl"');
+  });
+
+  it('does not render category options unless the tenant is an imaging center', () => {
+    const clinicHtml = renderToStaticMarkup(
+      <ReviewPromptModal open clinicSlug="amal-x-ray-center" source="form" onClose={() => {}} />,
+    );
+    const imagingHtml = renderToStaticMarkup(
+      <ReviewPromptModal
+        open
+        clinicSlug="imaging-center"
+        source="form"
+        showReviewerCategory
+        onClose={() => {}}
+      />,
+    );
+
+    expect(clinicHtml).not.toContain('صفتك');
+    expect(clinicHtml).not.toContain('طبيب أسنان');
+    expect(imagingHtml).toContain('صفتك');
+    expect(imagingHtml).toContain('طبيب أسنان');
   });
 
   it('ب) closed modal renders nothing', () => {

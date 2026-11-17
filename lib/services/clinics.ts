@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { Clinic } from '@/types/clinic';
+import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
 
 /**
  * Public-safe clinic shape returned by resolvePublicClinic.
@@ -9,6 +10,7 @@ export type PublicClinic = {
   id: string;
   slug: string;
   name: string;
+  activity_type: ActivityType;
   /** Location (booking success directions card) — null when not set by the owner. */
   latitude: number | null;
   longitude: number | null;
@@ -69,7 +71,7 @@ export async function resolvePublicClinic(params: { id?: string; publicId?: stri
 
   let query = supabaseAdmin
     .from('clinics')
-    .select('id, slug, name, latitude, longitude, phone, city, area, address_detail, settings')
+    .select('id, slug, name, activity_type, latitude, longitude, phone, city, area, address_detail, settings')
     .is('deleted_at', null);
 
   if (params.id) {
@@ -99,6 +101,7 @@ export async function resolvePublicClinic(params: { id?: string; publicId?: stri
     id: data.id,
     slug: data.slug,
     name: data.name,
+    activity_type: normalizeActivityType(data.activity_type),
     latitude: typeof data.latitude === 'number' ? data.latitude : null,
     longitude: typeof data.longitude === 'number' ? data.longitude : null,
     address: addressBits.length > 0 ? addressBits.join(' — ') : null,

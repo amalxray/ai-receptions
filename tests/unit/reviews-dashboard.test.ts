@@ -2,8 +2,23 @@
  * Phase 4a — staff reviews list API contract.
  * Verifies the query schema accepts all tabs/filters the dashboard sends.
  */
-import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
+
+const h = vi.hoisted(() => ({ activityType: 'clinic' }));
+vi.mock('@/lib/useClinicContext', () => ({
+  useClinicContext: () => ({
+    clinicId: null,
+    authHeaders: async () => ({}),
+    loading: false,
+    role: 'owner',
+    activityType: h.activityType,
+  }),
+}));
+
+import ReviewsInboxPage from '@/app/(dashboard)/dashboard/[clinicSlug]/reviews/page';
 
 const querySchema = z.object({
   clinic_id: z.string().uuid(),
@@ -40,6 +55,20 @@ describe('Staff reviews list API (Phase 4a)', () => {
     }
   });
 
+  it('renders category filters only for imaging-center dashboards', () => {
+    vi.stubGlobal('React', React);
+    h.activityType = 'clinic';
+    const clinicHtml = renderToStaticMarkup(React.createElement(ReviewsInboxPage));
+    h.activityType = 'imaging_center';
+    const imagingHtml = renderToStaticMarkup(React.createElement(ReviewsInboxPage));
+
+    expect(clinicHtml).not.toContain('فلترة حسب صفة المقيّم');
+    expect(clinicHtml).not.toContain('غير مصنف');
+    expect(imagingHtml).toContain('فلترة حسب صفة المقيّم');
+    expect(imagingHtml).toContain('غير مصنف');
+    vi.unstubAllGlobals();
+  });
+
   it('ج) rejects invalid clinic_id / rating', () => {
     expect(querySchema.safeParse({ clinic_id: 'not-uuid' }).success).toBe(false);
     expect(querySchema.safeParse({ clinic_id: UUID, rating: '9' }).success).toBe(false);
@@ -51,6 +80,12 @@ describe('Staff reviews list API (Phase 4a)', () => {
     for (const s of ['المتوسط', 'بانتظار المراجعة', 'فلترة التقييمات', 'فلترة حسب صفة المقيّم', 'غير مصنف', 'بحث بالاسم', 'فلترة بالنجوم', 'نشر', 'رفض', 'حذف']) {
       expect(src).toContain(s);
     }
+    expect(src).toContain("activityType === 'imaging_center'");
+    expect(src).toContain('showReviewerCategory={imagingCenter}');
+    const publicPage = fs.readFileSync('app/[slug]/page.tsx', 'utf8');
+    const publicReviewsPage = fs.readFileSync('app/[slug]/reviews/page.tsx', 'utf8');
+    expect(publicPage).toContain("showReviewerCategory={space.activityType === 'imaging_center'}");
+    expect(publicReviewsPage).toContain("showReviewerCategory={space.activityType === 'imaging_center'}");
   });
 
   it('هـ) nav includes reviews module', async () => {

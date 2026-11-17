@@ -31,7 +31,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ data: clinic });
+    const { activity_type, ...publicClinic } = clinic;
+    return NextResponse.json({
+      data: activity_type === 'imaging_center' ? { ...publicClinic, activity_type } : publicClinic,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logEvent('booking_clinic_resolution_error', { error: message }, 'error');

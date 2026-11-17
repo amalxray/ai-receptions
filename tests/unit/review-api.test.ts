@@ -16,6 +16,7 @@ const h = vi.hoisted(() => {
     tables: [] as string[],
     chains: [] as any[],
     clinicResult: { data: null as any, error: null as any },
+    activityResult: { data: null as any, error: null as any },
     reviewResult: { data: null as any, error: null as any },
     insertResult: { data: null as any, error: null as any },
     updateResult: { data: null as any, error: null as any },
@@ -31,6 +32,7 @@ const h = vi.hoisted(() => {
   };
   const results: Record<string, () => any> = {
     clinic: () => st.clinicResult,
+    clinicType: () => st.activityResult,
     review: () => st.reviewResult,
     insert: () => st.insertResult,
     update: () => st.updateResult,
@@ -99,6 +101,7 @@ beforeEach(() => {
   h.tables = [];
   h.chains = [];
   h.clinicResult = { data: { id: CID }, error: null };
+  h.activityResult = { data: { activity_type: 'clinic' }, error: null };
   h.reviewResult = { data: { id: RID, clinic_id: CID, deleted_at: null }, error: null };
   h.insertResult = { data: { id: 'rev-1', is_published: true, flagged_medical: false }, error: null };
   h.insertResults = [];
@@ -121,16 +124,34 @@ describe('POST /api/public/reviews', () => {
     expect(body.data.flagged_medical).toBe(false);
     expect(h.lastInsert.is_published).toBe(true);
     expect(h.lastInsert.flag_reason).toBeNull();
-    expect(h.lastInsert.reviewer_category).toBeNull();
+    expect(h.lastInsert).not.toHaveProperty('reviewer_category');
   });
 
   it('stores the selected dentist or reviewer category', async () => {
+    h.clinicResult = { data: { id: CID, activity_type: 'imaging_center' }, error: null };
     for (const reviewer_category of ['dentist', 'reviewer', 'other'] as const) {
       h.queue = ['clinic', 'insert'];
       const res = await publicPOST(postReq({ ...baseBody, reviewer_category }));
       expect(res.status).toBe(201);
       expect(h.lastInsert.reviewer_category).toBe(reviewer_category);
     }
+  });
+
+  it('accepts and stores an imaging-center review when no category is selected', async () => {
+    h.clinicResult = { data: { id: CID, activity_type: 'imaging_center' }, error: null };
+    h.queue = ['clinic', 'insert'];
+    const res = await publicPOST(postReq(baseBody));
+
+    expect(res.status).toBe(201);
+    expect(h.lastInsert).not.toHaveProperty('reviewer_category');
+  });
+
+  it('does not store a reviewer category for dental clinics, even if sent by a client', async () => {
+    h.queue = ['clinic', 'insert'];
+    const res = await publicPOST(postReq({ ...baseBody, reviewer_category: 'dentist' }));
+
+    expect(res.status).toBe(201);
+    expect(h.lastInsert).not.toHaveProperty('reviewer_category');
   });
 
   it('2. مُعلَّم طبياً → is_published=false + reason', async () => {
@@ -152,9 +173,11 @@ describe('POST /api/public/reviews', () => {
   });
 
   it('rejects categories outside the supported values', async () => {
+    h.clinicResult = { data: { id: CID, activity_type: 'imaging_center' }, error: null };
+    h.queue = ['clinic'];
     const res = await publicPOST(postReq({ ...baseBody, reviewer_category: 'unknown' }));
     expect(res.status).toBe(400);
-    expect(h.from).not.toHaveBeenCalled();
+    expect(h.lastInsert).toBeNull();
   });
 
   it('4. clinic غير موجود → 404', async () => {
@@ -276,14 +299,36 @@ describe('clinic routes — publish / reject / delete / stats', () => {
   });
 
   it('uses view_reviews for the staff review list', async () => {
-    h.queue = ['list', 'list'];
+    h.queue = ['clinicType', 'list', 'list'];
     const res = await staffReviewsGET(new Request(`http://localhost/api/clinic/reviews?clinic_id=${CID}`));
     expect(res.status).toBe(200);
     expect(h.permissionDenied).toHaveBeenCalledWith(expect.any(Request), CID, 'view_reviews', expect.any(Object));
+    expect(h.chains[1].select.mock.calls[0][0]).not.toContain('reviewer_category');
+  });
+
+  it('only enables category filters and response fields for imaging centers', async () => {
+    h.queue = ['clinicType', 'list', 'list'];
+    h.activityResult = { data: { activity_type: 'imaging_center' }, error: null };
+    h.listResult = {
+      data: [{ id: 'r1', rating: 5, reviewer_category: 'dentist' }],
+      error: null,
+      count: 1,
+    };
+
+    const res = await staffReviewsGET(
+      new Request(`http://localhost/api/clinic/reviews?clinic_id=${CID}&reviewer_category=dentist`),
+    );
+
+    expect(res.status).toBe(200);
+    expect(h.chains[1].select.mock.calls[0][0]).toContain('reviewer_category');
+    expect(h.chains[1].__eqs).toContainEqual(['reviewer_category', 'dentist']);
+    const body = await res.json();
+    expect(body.data.items[0].reviewer_category).toBe('dentist');
   });
 
   it('filters uncategorized legacy reviews without changing global totals or average', async () => {
-    h.queue = ['list', 'list'];
+    h.queue = ['clinicType', 'list', 'list'];
+    h.activityResult = { data: { activity_type: 'imaging_center' }, error: null };
     h.listResult = {
       data: [
         { rating: 5, reviewer_category: 'dentist', is_published: true, rejected_at: null, flagged_medical: false },
@@ -298,8 +343,8 @@ describe('clinic routes — publish / reject / delete / stats', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(h.chains[0].__is).toContainEqual(['reviewer_category', null]);
-    expect(h.chains[1].__eqs).not.toContainEqual(['reviewer_category', 'unknown']);
+    expect(h.chains[1].__is).toContainEqual(['reviewer_category', null]);
+    expect(h.chains[2].__eqs).not.toContainEqual(['reviewer_category', 'unknown']);
     const body = await res.json();
     expect(body.data.total).toBe(1);
     expect(body.data.items[1].reviewer_category).toBeNull();

@@ -4,6 +4,7 @@ import { ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { normalizeActivityType } from '@/lib/services/activityTypes';
 
 export const runtime = 'nodejs';
 
@@ -44,9 +45,22 @@ export async function GET(req: Request) {
     const gate = await permissionDenied(req, clinicId, 'view_reviews', { allowedRoles: ADMIN_ROLES });
     if (gate) return gate;
 
+    const { data: clinic, error: clinicError } = await supabaseAdmin
+      .from('clinics')
+      .select('activity_type')
+      .eq('id', clinicId)
+      .maybeSingle();
+    if (clinicError) {
+      logEvent('review_clinic_activity_type_unavailable', { clinic_id: clinicId, error: clinicError.message }, 'warn');
+    }
+    const showReviewerCategory = !clinicError && normalizeActivityType(clinic?.activity_type) === 'imaging_center';
+
+    const reviewColumns: string = showReviewerCategory
+      ? 'id, rating, reviewer_category, author_name, comment, source, is_published, is_verified, flagged_medical, flag_reason, published_at, rejected_at, created_at'
+      : 'id, rating, author_name, comment, source, is_published, is_verified, flagged_medical, flag_reason, published_at, rejected_at, created_at';
     let query = supabaseAdmin
       .from('clinic_reviews')
-      .select('id, rating, reviewer_category, author_name, comment, source, is_published, is_verified, flagged_medical, flag_reason, published_at, rejected_at, created_at', { count: 'exact' })
+      .select(reviewColumns, { count: 'exact' })
       .eq('clinic_id', clinicId)
       .is('deleted_at', null);
 
@@ -60,10 +74,12 @@ export async function GET(req: Request) {
       query = query.eq('flagged_medical', true).eq('is_published', false);
     }
     if (rating) query = query.eq('rating', rating);
-    if (reviewerCategory === 'unknown') {
-      query = query.is('reviewer_category', null);
-    } else if (reviewerCategory !== 'all') {
-      query = query.eq('reviewer_category', reviewerCategory);
+    if (showReviewerCategory) {
+      if (reviewerCategory === 'unknown') {
+        query = query.is('reviewer_category', null);
+      } else if (reviewerCategory !== 'all') {
+        query = query.eq('reviewer_category', reviewerCategory);
+      }
     }
     if (search) query = query.or(`author_name.ilike.%${search}%,comment.ilike.%${search}%`);
 

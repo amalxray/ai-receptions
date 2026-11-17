@@ -70,9 +70,10 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function ReviewFilters({ filter, onFilter, category, onCategory, search, onSearch, star, onStar }: {
+function ReviewFilters({ filter, onFilter, category, onCategory, showReviewerCategory, search, onSearch, star, onStar }: {
   filter: FilterKey; onFilter: (f: FilterKey) => void;
   category: CategoryFilter; onCategory: (category: CategoryFilter) => void;
+  showReviewerCategory: boolean;
   search: string; onSearch: (v: string) => void;
   star: number | null; onStar: (s: number | null) => void;
 }) {
@@ -90,18 +91,20 @@ function ReviewFilters({ filter, onFilter, category, onCategory, search, onSearc
           </button>
         ))}
       </div>
-      <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="فلترة حسب صفة المقيّم">
-        {CATEGORY_TABS.map((t) => (
-          <button
-            key={t.key} role="tab" aria-selected={category === t.key} onClick={() => onCategory(t.key)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${
-              category === t.key ? 'bg-amber-400 text-slate-900' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {showReviewerCategory && (
+        <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="فلترة حسب صفة المقيّم">
+          {CATEGORY_TABS.map((t) => (
+            <button
+              key={t.key} role="tab" aria-selected={category === t.key} onClick={() => onCategory(t.key)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                category === t.key ? 'bg-amber-400 text-slate-900' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-3">
         <input
           type="search" value={search} onChange={(e) => onSearch(e.target.value)}
@@ -121,18 +124,21 @@ function ReviewFilters({ filter, onFilter, category, onCategory, search, onSearc
   );
 }
 
-function ReviewCard({ r, acting, onAct, canManage }: {
+function ReviewCard({ r, acting, onAct, canManage, showReviewerCategory }: {
   r: ReviewItem; acting: string | null; onAct: (id: string, a: 'publish' | 'reject' | 'delete') => void;
   canManage: boolean;
+  showReviewerCategory: boolean;
 }) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-slate-800">{r.author_name}</span>
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-            {r.reviewer_category ? CATEGORY_LABEL[r.reviewer_category] : 'غير مصنف'}
-          </span>
+          {showReviewerCategory && (
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+              {r.reviewer_category ? CATEGORY_LABEL[r.reviewer_category] : 'غير مصنف'}
+            </span>
+          )}
           {r.is_verified && <StatusPill tone="success">موثّق</StatusPill>}
           {r.flagged_medical && <StatusPill tone="warning">{r.flag_reason ?? 'مُعلَّم طبي'}</StatusPill>}
           {!r.is_published && !r.rejected_at && <StatusPill tone="warning">جديد</StatusPill>}
@@ -202,7 +208,8 @@ function ReviewPager({ page, totalPages, onPage }: { page: number; totalPages: n
 }
 
 export default function ReviewsInboxPage() {
-  const { clinicId, authHeaders, loading: clinicLoading, role } = useClinicContext();
+  const { clinicId, authHeaders, loading: clinicLoading, role, activityType } = useClinicContext();
+  const imagingCenter = activityType === 'imaging_center';
   const canManageReviews = role === 'owner' || role === 'manager';
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -229,7 +236,7 @@ export default function ReviewsInboxPage() {
       const params = new URLSearchParams({
         clinic_id: id, filter: f, limit: String(PAGE_SIZE), offset: String(p * PAGE_SIZE),
       });
-      if (c !== 'all') params.set('reviewer_category', c);
+      if (imagingCenter && c !== 'all') params.set('reviewer_category', c);
       if (q) params.set('search', q);
       if (s) params.set('rating', String(s));
       const headers = await authHeaders();
@@ -244,20 +251,20 @@ export default function ReviewsInboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, imagingCenter]);
 
   useEffect(() => {
     if (clinicLoading || !clinicId) return;
     setPage(0);
-    void load(clinicId, filter, category, debouncedSearch, star, 0);
+    void load(clinicId, filter, imagingCenter ? category : 'all', debouncedSearch, star, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicLoading, clinicId, filter, category, debouncedSearch, star]);
+  }, [clinicLoading, clinicId, filter, category, debouncedSearch, star, imagingCenter]);
 
   useEffect(() => {
     if (!clinicId) return;
-    void load(clinicId, filter, category, debouncedSearch, star, page);
+    void load(clinicId, filter, imagingCenter ? category : 'all', debouncedSearch, star, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, imagingCenter]);
 
   async function act(id: string, action: 'publish' | 'reject' | 'delete') {
     if (!clinicId || acting) return;
@@ -268,7 +275,7 @@ export default function ReviewsInboxPage() {
       const headers = await authHeaders();
       const res = await fetch(url, { method: action === 'delete' ? 'DELETE' : 'POST', headers });
       if (!res.ok) throw new Error('فشل الإجراء');
-      await load(clinicId, filter, category, debouncedSearch, star, page);
+      await load(clinicId, filter, imagingCenter ? category : 'all', debouncedSearch, star, page);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'حدث خطأ');
     } finally {
@@ -301,6 +308,7 @@ export default function ReviewsInboxPage() {
         <ReviewFilters
           filter={filter} onFilter={(f) => { setFilter(f); setPage(0); }}
           category={category} onCategory={(c) => { setCategory(c); setPage(0); }}
+          showReviewerCategory={imagingCenter}
           search={search} onSearch={setSearch} star={star}
           onStar={(s) => { setStar(s); setPage(0); }}
         />
@@ -313,7 +321,16 @@ export default function ReviewsInboxPage() {
           ) : items.length === 0 ? (
             <EmptyState title="لا توجد تقييمات" description="لا توجد تقييمات مطابقة للفلتر الحالي." />
           ) : (
-            items.map((r) => <ReviewCard key={r.id} r={r} acting={acting} onAct={act} canManage={canManageReviews} />)
+            items.map((r) => (
+              <ReviewCard
+                key={r.id}
+                r={r}
+                acting={acting}
+                onAct={act}
+                canManage={canManageReviews}
+                showReviewerCategory={imagingCenter}
+              />
+            ))
           )}
         </div>
         <ReviewPager page={page} totalPages={totalPages} onPage={setPage} />
