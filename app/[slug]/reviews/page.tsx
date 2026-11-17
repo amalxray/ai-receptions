@@ -29,10 +29,34 @@ type PageProps = { params: { slug: string }; searchParams?: { page?: string } };
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const space = await loadSpace(params.slug);
   if (!space) return { title: 'غير موجودة', robots: { index: false, follow: false } };
+  const title = `تقييمات المرضى — ${space.name}`;
+  const description = `آراء وتقييمات المرضى في ${space.name}.`;
+  const amalSocialMetadata: Metadata =
+    params.slug === 'amal-x-ray-center' && space.logo
+      ? {
+          openGraph: {
+            title,
+            description,
+            url: `${space.pageUrl}/reviews`,
+            siteName: space.name,
+            locale: 'ar_PS',
+            type: 'website',
+            images: [{ url: space.logo, alt: space.name }],
+          },
+          twitter: {
+            card: 'summary',
+            title,
+            description,
+            images: [space.logo],
+          },
+        }
+      : {};
+
   return {
-    title: `تقييمات المرضى — ${space.name}`,
-    description: `آراء وتقييمات المرضى في ${space.name}.`,
+    title,
+    description,
     alternates: { canonical: `${space.pageUrl}/reviews` },
+    ...amalSocialMetadata,
   };
 }
 
