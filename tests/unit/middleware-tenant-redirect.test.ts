@@ -164,4 +164,40 @@ describe('middleware — legacy URL → tenant subdomain (301)', () => {
     );
     expect(authMocks.getUser).toHaveBeenCalledOnce();
   });
+
+  it('preserves Supabase cookie clearing on unauthorized admin API responses', async () => {
+    supabaseConfig.supabaseUrl = 'https://supabase.example.test';
+    supabaseConfig.anonKey = 'anon-test-key';
+    authMocks.createServerClient.mockImplementation((_url, _key, options) => ({
+      auth: {
+        getUser: async () => {
+          options.cookies.setAll([
+            { name: 'sb-test-auth-token', value: '', options: { path: '/', maxAge: 0 } },
+          ]);
+          return { data: { user: null }, error: new Error('session expired') };
+        },
+      },
+    }));
+
+    const res = await middleware(request('https://www.dentairec.com/api/admin/stats'));
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' });
+    expect(res.cookies.get('sb-test-auth-token')?.value).toBe('');
+  });
+
+  it('allows an authenticated session through the admin stats middleware', async () => {
+    supabaseConfig.supabaseUrl = 'https://supabase.example.test';
+    supabaseConfig.anonKey = 'anon-test-key';
+    authMocks.createServerClient.mockReturnValue({
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'owner-test' } }, error: null }),
+      },
+    });
+
+    const res = await middleware(request('https://www.dentairec.com/api/admin/stats'));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-middleware-next')).toBe('1');
+  });
 });
