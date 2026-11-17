@@ -4,6 +4,7 @@ import {
   readPublicProfile,
   updatePublicPageConfig,
 } from '@/lib/services/clinicPublicConfig';
+import { revalidatePath } from 'next/cache';
 
 // CLINIC PUBLIC PAGE OWNER EXPERIENCE — service tests.
 // Covers: activity-aware default templates, profile reading with defaults,
@@ -50,6 +51,7 @@ vi.mock('@/lib/supabase/admin', () => ({
     }),
   },
 }));
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 describe('defaultPublicPageSections — activity-aware ready-made templates', () => {
   it('clinic gets the full set of sections', () => {
@@ -144,6 +146,25 @@ describe('updatePublicPageConfig — tenant-scoped save', () => {
     expect(res.ok).toBe(true);
     expect(mockState.updateCall.settings.public_profile.cover_url).toBe(coverUrl);
     expect(mockState.updateCall.settings.public_profile.tagline).toBe('المركز');
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('persists the uploaded logo URL and invalidates only that clinic public-page routes', async () => {
+    mockState.row = {
+      id: CID,
+      slug: 'demo-clinic',
+      activity_type: 'clinic',
+      settings: { public_profile: {} },
+    };
+    const logoUrl = 'https://storage.example/clinic/demo/current-logo.png';
+
+    const result = await updatePublicPageConfig(CID, { logo: logoUrl });
+
+    expect(result.ok).toBe(true);
+    expect(mockState.updateCall.settings.public_profile.logo).toBe(logoUrl);
+    expect(revalidatePath).toHaveBeenNthCalledWith(1, '/demo-clinic');
+    expect(revalidatePath).toHaveBeenNthCalledWith(2, '/demo-clinic/reviews');
+    expect(revalidatePath).toHaveBeenNthCalledWith(3, '/c/demo-clinic');
   });
 
   it('empty string deletes a field instead of storing it', async () => {

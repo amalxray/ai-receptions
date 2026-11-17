@@ -105,6 +105,7 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
       'slug',
       'name',
       'logo',
+      'logoSourceUrl',
       'description',
       'city',
       'area',
@@ -162,6 +163,42 @@ describe('15D — getPublicClinicProfile (public projection)', () => {
     };
     const profile = await getPublicClinicProfile({ slug: 'demo-clinic' });
     expect(profile?.phone).toBe('0791234567');
+  });
+
+  it('uses the owner-managed logo URL from settings ahead of the legacy clinics.logo column', async () => {
+    const savedLogoUrl =
+      'https://ixlsrurenboseoelwixs.supabase.co/storage/v1/object/public/clinic-public-media/clinic/14f6ad3a-f9bf-4108-a809-7e96ad3e2bf5/public-media/4e48861e-f2d4-4fbc-a42b-723d55065650.png';
+    mockState.results = {
+      clinics: baseClinicRow({
+        logo: 'https://storage.example/clinic/amal/old-logo.png',
+        settings: { public_profile: { logo: savedLogoUrl } },
+      }),
+      clinic_services: [],
+      providers: [],
+      clinic_ads: [],
+      provider_schedules: [],
+    };
+
+    const profile = await getPublicClinicProfile({ slug: 'demo-clinic' });
+
+    expect(profile?.logoSourceUrl).toBe(savedLogoUrl);
+    expect(profile?.logo).not.toBeNull();
+  });
+
+  it('falls back to the legacy clinic logo only when the owner-managed logo is absent', async () => {
+    const legacyLogoUrl = 'https://storage.example/clinic/legacy-logo.png';
+    mockState.results = {
+      clinics: baseClinicRow({ logo: legacyLogoUrl, settings: { public_profile: {} } }),
+      clinic_services: [],
+      providers: [],
+      clinic_ads: [],
+      provider_schedules: [],
+    };
+
+    const profile = await getPublicClinicProfile({ slug: 'demo-clinic' });
+
+    expect(profile?.logoSourceUrl).toBe(legacyLogoUrl);
+    expect(profile?.logo).toBe(legacyLogoUrl);
   });
 
   it('shows prices only when show_prices AND per-service visibility are both on', async () => {

@@ -14,6 +14,7 @@
  * by the caller AFTER authorizeClinicRequest. Never trusted from client input.
  */
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { revalidatePath } from 'next/cache';
 import { logEvent } from '@/lib/server/logging';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
 import type { ClinicTenantProvisioning } from '@/lib/services/clinicProvisioning';
@@ -620,6 +621,13 @@ export async function updatePublicPageConfig(
   if (error || !data) {
     logEvent('public_config_save_error', { clinicId, error: error?.message ?? 'no row' }, 'error');
     return { ok: false, message: 'Failed to save public page configuration' };
+  }
+
+  if (patch.logo !== undefined && typeof data.slug === 'string') {
+    const slugPath = `/${encodeURIComponent(data.slug)}`;
+    revalidatePath(slugPath);
+    revalidatePath(`${slugPath}/reviews`);
+    revalidatePath(`/c/${encodeURIComponent(data.slug)}`);
   }
 
   logEvent('public_config_saved', { clinic_id: clinicId });

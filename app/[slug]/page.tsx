@@ -5,6 +5,7 @@ import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifes
 import { requestCache } from '@/lib/server/requestCache';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getClinicSubscriptionAccess } from '@/lib/subscription/access';
+import { buildClinicSocialMetadata } from '@/lib/seo/clinicSocialMetadata';
 import {
   buildClinicFaqItems,
   buildClinicSchema,
@@ -85,6 +86,13 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
   const description =
     space.description ??
     `${space.name} — ${space.city ?? ''} ${space.area ?? ''}`.trim();
+  const socialMetadata = buildClinicSocialMetadata({
+    title: space.name,
+    description,
+    url: canonical,
+    clinicName: space.name,
+    logoUrl: space.logoSourceUrl,
+  });
   return {
     title: space.name,
     description,
@@ -96,22 +104,7 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
     icons: brandMetadataIcons(space.logo),
     alternates: { canonical },
     robots: { index: true, follow: true },
-    openGraph: {
-      title: space.name,
-      description,
-      type: 'website',
-      url: canonical,
-      siteName: space.name,
-      // Phase 5 — per-clinic OG image (logo) + locale for social previews.
-      ...(space.logo ? { images: [{ url: space.logo, alt: space.name }] } : {}),
-      locale: 'ar_PS',
-    },
-    twitter: {
-      card: 'summary',
-      title: space.name,
-      description,
-      ...(space.logo ? { images: [space.logo] } : {}),
-    },
+    ...socialMetadata,
   };
 }
 

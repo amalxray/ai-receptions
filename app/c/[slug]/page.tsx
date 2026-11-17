@@ -8,6 +8,7 @@ import { ClinicPublicSpace } from '@/components/public/ClinicPublicSpace';
 import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
 import InstallPWA from '@/components/pwa/InstallPWA';
+import { buildClinicSocialMetadata } from '@/lib/seo/clinicSocialMetadata';
 
 /**
  * LEGACY compatibility page: /c/{slug}
@@ -35,6 +36,13 @@ export async function generateMetadata({ params }: ClinicPublicPageProps): Promi
   }
 
   const description = space.description ?? `${space.name} — ${space.city ?? ''} ${space.area ?? ''}`.trim();
+  const socialMetadata = buildClinicSocialMetadata({
+    title: space.name,
+    description,
+    url: space.pageUrl,
+    clinicName: space.name,
+    logoUrl: space.logoSourceUrl,
+  });
   return {
     title: space.name,
     description,
@@ -43,13 +51,7 @@ export async function generateMetadata({ params }: ClinicPublicPageProps): Promi
     icons: brandMetadataIcons(space.logo),
     manifest: `/manifest.json?slug=${encodeURIComponent(params.slug)}`,
     robots: { index: false, follow: false },
-    openGraph: {
-      title: space.name,
-      description,
-      type: 'website',
-      siteName: space.name,
-      url: space.pageUrl,
-    },
+    ...socialMetadata,
     alternates: { canonical: space.pageUrl },
   };
 }
