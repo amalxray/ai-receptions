@@ -9,10 +9,46 @@
  */
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { logEvent } from '@/lib/server/logging';
 
 export const MEDICAL_BUCKET = 'medical-files';
 export type MedicalFileType = 'image' | 'video' | 'pdf' | 'document' | 'medical_report' | 'medical_image';
 export type MedicalFileCategory = 'panorama' | 'cbct' | 'dicom' | 'report' | 'other';
+export type MedicalFilesCursor = { created_at: string; id: string };
+
+export function parseMedicalFilesPage(url: URL): { limit: number; cursor: MedicalFilesCursor | null } | null {
+  const rawLimit = url.searchParams.get('limit');
+  const limit = rawLimit === null ? 200 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) return null;
+
+  const createdAt = url.searchParams.get('cursor_created_at');
+  const id = url.searchParams.get('cursor_id');
+  if (createdAt === null && id === null) return { limit, cursor: null };
+  if (!createdAt || !id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return null;
+  }
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(createdAt) ||
+    !Number.isFinite(Date.parse(createdAt))
+  ) {
+    return null;
+  }
+  return { limit, cursor: { created_at: createdAt, id } };
+}
+
+export function buildMedicalFilesPage<T extends { id: string; created_at: string | null }>(
+  rows: T[],
+  limit: number,
+): { data: T[]; has_more: boolean; next_cursor: MedicalFilesCursor | null } {
+  const hasMore = rows.length > limit;
+  const data = hasMore ? rows.slice(0, limit) : rows;
+  const last = data[data.length - 1];
+  return {
+    data,
+    has_more: hasMore,
+    next_cursor: hasMore && last?.created_at ? { created_at: last.created_at, id: last.id } : null,
+  };
+}
 
 const MIME_MAP: Record<string, { type: MedicalFileType; ext: string }> = {
   'image/jpeg': { type: 'image', ext: '.jpg' },
@@ -141,8 +177,14 @@ export function buildMedicalFileStoragePath(patientClinicId: string, patientId: 
 }
 
 /** Short-lived authenticated signed URL (never a public URL). */
-export async function signMedicalFileUrl(storagePath: string, seconds = 3600): Promise<string> {
-  const { data, error } = await supabaseAdmin.storage.from(MEDICAL_BUCKET).createSignedUrl(storagePath, seconds);
+export async function signMedicalFileUrl(
+  storagePath: string,
+  seconds = 900,
+  transform?: { width: number; height: number; resize: 'contain' | 'cover' | 'fill' },
+): Promise<string> {
+  const { data, error } = await supabaseAdmin.storage
+    .from(MEDICAL_BUCKET)
+    .createSignedUrl(storagePath, seconds, transform ? { transform } : undefined);
   if (error || !data?.signedUrl) throw new Error(error?.message ?? 'تعذر إنشاء رابط مؤقت للملف');
   return data.signedUrl;
 }
@@ -224,6 +266,7 @@ export type MedicalUploadIntentInput = {
   clinicId: string;
   patientClinicId: string;
   patientId: string;
+  clientUploadId?: string | null;
   imagingRequestId: string | null;
   appointmentId: string | null;
   filename: string;
@@ -241,6 +284,11 @@ export type MedicalUploadIntent =
       storagePath: string;
       uploadUrl: string;
       token: string;
+      resumableEndpoint: string;
+      clientUploadId: string;
+      uploadRequired: boolean;
+      alreadyConfirmed: boolean;
+      confirmedFileId: string | null;
       fileType: MedicalFileType;
       medicalCategory: MedicalFileCategory;
       maxBytes: number;
@@ -260,7 +308,92 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
     return { ok: false, message: 'توقيع الملف غير مطابق لنوعه المعلن (فشل التحقق من المحتوى)' };
   }
 
-  const path = buildMedicalFileStoragePath(input.patientClinicId, input.patientId, validation.ext);
+  const clientUploadId = input.clientUploadId ?? randomUUID();
+  const { data: existingSession, error: existingSessionError } = await supabaseAdmin
+    .from('medical_upload_sessions')
+    .select('id, clinic_id, patient_id, imaging_request_id, storage_path, mime_type, size_bytes, file_type, medical_category, original_filename, status, expires_at, created_by')
+    .eq('clinic_id', input.clinicId)
+    .eq('client_upload_id', clientUploadId)
+    .maybeSingle();
+  if (existingSessionError) {
+    return { ok: false, message: `تعذر التحقق من جلسة الرفع السابقة: ${existingSessionError.message}` };
+  }
+
+  if (existingSession) {
+    const matchesRequest = (existingSession.imaging_request_id ?? null) === input.imagingRequestId;
+    if (
+      existingSession.patient_id !== input.patientId ||
+      !matchesRequest ||
+      existingSession.created_by !== input.uploadedBy ||
+      existingSession.mime_type !== input.mimeType ||
+      Number(existingSession.size_bytes) !== input.sizeBytes ||
+      existingSession.original_filename !== input.filename
+    ) {
+      return { ok: false, message: 'معرّف الرفع مرتبط بملف أو مستخدم مختلف' };
+    }
+
+    if (existingSession.status === 'confirmed') {
+      const { data: confirmedFile, error: confirmedFileError } = await supabaseAdmin
+        .from('medical_files')
+        .select('id')
+        .eq('clinic_id', input.clinicId)
+        .eq('storage_path', existingSession.storage_path)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (confirmedFileError) {
+        return { ok: false, message: `تعذر التحقق من اكتمال الرفع: ${confirmedFileError.message}` };
+      }
+      if (confirmedFile) {
+        return {
+          ok: true,
+          storagePath: existingSession.storage_path,
+          uploadUrl: '',
+          token: '',
+          resumableEndpoint: getMedicalResumableUploadEndpoint(),
+          clientUploadId,
+          uploadRequired: false,
+          alreadyConfirmed: true,
+          confirmedFileId: confirmedFile.id,
+          fileType: existingSession.file_type as MedicalFileType,
+          medicalCategory: existingSession.medical_category as MedicalFileCategory,
+          maxBytes: validation.maxBytes,
+        };
+      }
+      return { ok: false, message: 'جلسة الرفع مؤكدة لكن سجل الملف غير موجود؛ أعد المحاولة بعد تحديث الصفحة' };
+    }
+
+    if (existingSession.status !== 'started' || (existingSession.expires_at && new Date(existingSession.expires_at).getTime() <= Date.now())) {
+      return { ok: false, message: 'انتهت صلاحية جلسة الرفع. أعد اختيار الملف لبدء رفع جديد' };
+    }
+  }
+
+  const path = existingSession?.storage_path ?? buildMedicalFileStoragePath(input.patientClinicId, input.patientId, validation.ext);
+
+  if (existingSession) {
+    const parent = path.slice(0, path.lastIndexOf('/'));
+    const objectName = path.slice(path.lastIndexOf('/') + 1);
+    const { data: listed, error: listError } = await supabaseAdmin.storage.from(MEDICAL_BUCKET).list(parent, { search: objectName });
+    if (listError) {
+      return { ok: false, message: `تعذر استعادة جلسة الرفع: ${listError.message}` };
+    }
+    if ((listed ?? []).some((object) => object.name === objectName)) {
+      return {
+        ok: true,
+        storagePath: path,
+        uploadUrl: '',
+        token: '',
+        resumableEndpoint: getMedicalResumableUploadEndpoint(),
+        clientUploadId,
+        uploadRequired: false,
+        alreadyConfirmed: false,
+        confirmedFileId: null,
+        fileType: existingSession.file_type as MedicalFileType,
+        medicalCategory: existingSession.medical_category as MedicalFileCategory,
+        maxBytes: validation.maxBytes,
+      };
+    }
+  }
+
   const { data, error } = await supabaseAdmin.storage
     .from(MEDICAL_BUCKET)
     .createSignedUploadUrl(path, { upsert: false });
@@ -268,11 +401,11 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
     return { ok: false, message: `تعذر فتح قناة رفع مباشرة: ${error?.message ?? 'unknown'}` };
   }
 
-  // Record the intented upload session (for orphan reconciliation).
-  await supabaseAdmin.from('medical_upload_sessions').upsert(
+  const { error: sessionWriteError } = await supabaseAdmin.from('medical_upload_sessions').insert(
     {
       clinic_id: input.clinicId,
       patient_id: input.patientId,
+      client_upload_id: clientUploadId,
       imaging_request_id: input.imagingRequestId,
       storage_path: path,
       token: data.token,
@@ -283,20 +416,41 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
       original_filename: input.filename,
       status: 'started',
       created_by: input.uploadedBy,
-      expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     },
-    { onConflict: 'clinic_id,storage_path' }
   );
+  if (sessionWriteError) {
+    return { ok: false, message: `تعذر حفظ جلسة الرفع: ${sessionWriteError.message}` };
+  }
 
   return {
     ok: true,
     storagePath: path,
     uploadUrl: data.signedUrl,
     token: data.token,
+    resumableEndpoint: getMedicalResumableUploadEndpoint(),
+    clientUploadId,
+    uploadRequired: true,
+    alreadyConfirmed: false,
+    confirmedFileId: null,
     fileType: resolvedType,
     medicalCategory: input.medicalCategory ?? 'other',
     maxBytes: validation.maxBytes,
   };
+}
+
+function getMedicalResumableUploadEndpoint(): string {
+  const configuredUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!configuredUrl) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured');
+
+  const url = new URL(configuredUrl);
+  if (url.hostname.endsWith('.supabase.co') && !url.hostname.endsWith('.storage.supabase.co')) {
+    url.hostname = url.hostname.replace(/\.supabase\.co$/, '.storage.supabase.co');
+  }
+  url.pathname = '/storage/v1/upload/resumable';
+  url.search = '';
+  url.hash = '';
+  return url.toString().replace(/\/$/, '');
 }
 
 export type MedicalUploadConfirmInput = {
@@ -346,6 +500,36 @@ export async function confirmMedicalUpload(
   }
 
   // 3) Write the metadata row (authoritative).
+  const { data: existingFile, error: existingFileError } = await supabaseAdmin
+    .from('medical_files')
+    .select('*')
+    .eq('clinic_id', input.clinicId)
+    .eq('storage_path', input.storagePath)
+    .maybeSingle();
+  if (existingFileError) {
+    return { ok: false, message: `تعذر التحقق من بيانات الملف السابقة: ${existingFileError.message}` };
+  }
+  if (existingFile) {
+    const matchesExisting =
+      existingFile.patient_id === input.patientId &&
+      (existingFile.imaging_request_id ?? null) === input.imagingRequestId &&
+      existingFile.mime_type === input.mimeType &&
+      Number(existingFile.size_bytes) === input.sizeBytes &&
+      existingFile.original_filename === input.originalFilename;
+    if (!matchesExisting) {
+      return { ok: false, message: 'مسار التخزين مرتبط بسجل ملف مختلف؛ لم يتم حذف أي ملف' };
+    }
+    const { error: finalizeError } = await supabaseAdmin
+      .from('medical_upload_sessions')
+      .update({ status: 'confirmed', finalized_at: new Date().toISOString() })
+      .eq('storage_path', input.storagePath)
+      .eq('clinic_id', input.clinicId);
+    if (finalizeError) {
+      logEvent('medical_files_upload_session_finalize_failed', { clinic_id: input.clinicId, error: finalizeError.message }, 'error');
+    }
+    return { ok: true, item: existingFile as MedicalFileMeta };
+  }
+
   const { data, error } = await supabaseAdmin
     .from('medical_files')
     .insert({
@@ -364,13 +548,38 @@ export async function confirmMedicalUpload(
     .select('*')
     .single();
   if (error) {
-    // Failed-upload recovery: drop the orphan object and mark the session.
-    await supabaseAdmin.storage.from(MEDICAL_BUCKET).remove([input.storagePath]);
-    await supabaseAdmin.from('medical_upload_sessions').update({ status: 'orphan', finalized_at: new Date().toISOString() }).eq('storage_path', input.storagePath);
+    // A network failure may happen after the metadata insert committed. Never
+    // delete the binary until a follow-up read proves there is no saved row.
+    const { data: committedFile, error: committedFileError } = await supabaseAdmin
+      .from('medical_files')
+      .select('*')
+      .eq('clinic_id', input.clinicId)
+      .eq('storage_path', input.storagePath)
+      .maybeSingle();
+    if (committedFileError) {
+      return { ok: false, message: `تعذر تأكيد حفظ بيانات الملف بعد خطأ قاعدة البيانات: ${error.message}` };
+    }
+    if (committedFile) return { ok: true, item: committedFile as MedicalFileMeta };
+
+    const { error: removeError } = await supabaseAdmin.storage.from(MEDICAL_BUCKET).remove([input.storagePath]);
+    await supabaseAdmin
+      .from('medical_upload_sessions')
+      .update({ status: 'orphan', finalized_at: new Date().toISOString() })
+      .eq('storage_path', input.storagePath);
+    if (removeError) {
+      return { ok: false, message: `تعذر حفظ بيانات الملف (${error.message}) وتعذر تنظيف الملف المؤقت (${removeError.message})` };
+    }
     return { ok: false, message: `تعذر حفظ بيانات الملف: ${error.message}` };
   }
 
-  await supabaseAdmin.from('medical_upload_sessions').update({ status: 'confirmed', finalized_at: new Date().toISOString() }).eq('storage_path', input.storagePath).eq('clinic_id', input.clinicId);
+  const { error: finalizeError } = await supabaseAdmin
+    .from('medical_upload_sessions')
+    .update({ status: 'confirmed', finalized_at: new Date().toISOString() })
+    .eq('storage_path', input.storagePath)
+    .eq('clinic_id', input.clinicId);
+  if (finalizeError) {
+    logEvent('medical_files_upload_session_finalize_failed', { clinic_id: input.clinicId, error: finalizeError.message }, 'error');
+  }
   return { ok: true, item: data as MedicalFileMeta };
 }
 // ----------------------------------------------------------------------------

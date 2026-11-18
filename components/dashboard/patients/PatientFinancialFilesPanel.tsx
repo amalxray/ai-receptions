@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useClinicContext } from '@/lib/useClinicContext';
-import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
+import {
+  clearMedicalClientUploadId,
+  getMedicalClientUploadId,
+  startMedicalTusUpload,
+} from '@/lib/services/medicalFileTusUpload';
 import {
   detectFileCategory,
   inferMimeFromFilename,
@@ -157,6 +161,8 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [balances, setBalances] = useState<BalanceRow[]>([]);
   const [files, setFiles] = useState<MedicalFileRow[]>([]);
+  const [filesCursor, setFilesCursor] = useState<{ created_at: string; id: string } | null>(null);
+  const [loadingMoreFiles, setLoadingMoreFiles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -193,6 +199,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
   const [uploadBusy, setUploadBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cancelTusUploadRef = useRef<(() => void) | null>(null);
 
   // ── Invoice line helpers ─────────────────────────────────────────────────
   const serviceName = (serviceId: string): string =>
@@ -269,7 +276,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         fetch(`/api/clinic/accounting/invoices?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/accounting/payments?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
         fetch(`/api/clinic/accounting/balances?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
-        fetch(`/api/clinic/medical-files/list?clinic_id=${clinicId}&patient_id=${patientId}`, { headers }),
+        fetch(`/api/clinic/medical-files/list?clinic_id=${clinicId}&patient_id=${patientId}&limit=50`, { headers }),
         // Catalog for the invoice line items. A failure here must not break the
         // panel: free-text lines stay available as a fallback.
         fetch(`/api/clinic/services?clinic_id=${clinicId}`, { headers }),
@@ -303,6 +310,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       setPayments(paymentsList);
       setBalances(bal.data ?? []);
       setFiles(fl.data ?? []);
+      setFilesCursor(fl.next_cursor ?? null);
     } catch (err) {
       setError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ في تحميل البيانات'));
     } finally {
@@ -313,6 +321,35 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
   useEffect(() => {
     void loadAll();
   }, [loadAll, patientId]);
+
+  useEffect(() => () => {
+    cancelTusUploadRef.current?.();
+    cancelTusUploadRef.current = null;
+  }, []);
+
+  const loadMoreMedicalFiles = async () => {
+    if (!clinicId || !filesCursor || loadingMoreFiles) return;
+    setLoadingMoreFiles(true);
+    try {
+      const headers = await authHeaders();
+      const params = new URLSearchParams({
+        clinic_id: clinicId,
+        patient_id: patientId,
+        limit: '50',
+        cursor_created_at: filesCursor.created_at,
+        cursor_id: filesCursor.id,
+      });
+      const response = await fetch(`/api/clinic/medical-files/list?${params.toString()}`, { headers });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'تعذر تحميل المزيد من الملفات');
+      setFiles((previous) => [...previous, ...(payload?.data ?? [])]);
+      setFilesCursor(payload?.next_cursor ?? null);
+    } catch (loadError) {
+      setActionError(humanizePanelError(loadError instanceof Error ? loadError.message : 'تعذر تحميل المزيد من الملفات'));
+    } finally {
+      setLoadingMoreFiles(false);
+    }
+  };
 
   const openFile = useCallback(
     async (fileId: string) => {
@@ -539,11 +576,12 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
     try {
       const originalMimeType = file.type || inferMimeFromFilename(file.name);
       const category = detectFileCategory(file.type, file.name, originalMimeType);
-      const preservesRadiologySource = ['panorama', 'cbct', 'dicom'].includes(category);
-      const fileToUpload = preservesRadiologySource ? file : await optimizeImageForUpload(file);
+      // Preserve the exact selected patient attachment, including image bytes.
+      const fileToUpload = file;
       const mimeType = fileToUpload.type || inferMimeFromFilename(fileToUpload.name);
       const fileType = resolveUploadFileType(category, fileToUpload.name, mimeType);
       const headers = await authHeaders();
+      const clientUploadId = await getMedicalClientUploadId(clinicId, patientId, fileToUpload);
 
       const startRes = await fetch('/api/clinic/medical-files/upload-start', {
         method: 'POST',
@@ -551,6 +589,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         body: JSON.stringify({
           clinic_id: clinicId,
           patient_id: patientId,
+          client_upload_id: clientUploadId,
           filename: fileToUpload.name,
           mime_type: mimeType,
           size_bytes: fileToUpload.size,
@@ -559,29 +598,30 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         }),
       });
       const startJson = await startRes.json().catch(() => null);
-      if (!startRes.ok || !startJson?.data?.upload_url) {
+      if (!startRes.ok || !startJson?.data?.storage_path) {
         throw new Error(startJson?.error || 'تعذر تجهيز جلسة رفع الملف');
       }
 
-      const { upload_url, storage_path, file_type: confirmedFileType } = startJson.data;
-      await new Promise<void>((resolve, reject) => {
-        const uploadBody = new FormData();
-        uploadBody.append('cacheControl', '3600');
-        uploadBody.append('', fileToUpload);
+      const { storage_path, file_type: confirmedFileType } = startJson.data;
+      if (startJson.data.already_confirmed) {
+        await clearMedicalClientUploadId(clinicId, patientId, fileToUpload);
+        setActionSuccess('تم حفظ الملف مسبقًا؛ تم تحديث قائمة الملفات.');
+        await loadAll();
+        return;
+      }
 
-        const xhr = new XMLHttpRequest();
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`فشل رفع الملف إلى التخزين السحابي (كود ${xhr.status})`));
-          }
-        };
-        xhr.onerror = () => reject(new Error('انقطع الاتصال أثناء رفع الملف'));
-        xhr.onabort = () => reject(new Error('تم إلغاء رفع الملف'));
-        xhr.open('PUT', upload_url, true);
-        xhr.send(uploadBody);
-      });
+      if (startJson.data.upload_required !== false) {
+        const tusUpload = startMedicalTusUpload({
+          file: fileToUpload,
+          endpoint: String(startJson.data.resumable_endpoint ?? ''),
+          storagePath: String(storage_path),
+          clientUploadId: String(startJson.data.client_upload_id ?? clientUploadId),
+          onProgress: () => {},
+        });
+        cancelTusUploadRef.current = tusUpload.cancel;
+        await tusUpload.promise;
+        cancelTusUploadRef.current = null;
+      }
 
       const confirmRes = await fetch('/api/clinic/medical-files/confirm', {
         method: 'POST',
@@ -601,11 +641,13 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         throw new Error(confirmJson?.error || 'فشل توثيق وحفظ الملف');
       }
 
+      await clearMedicalClientUploadId(clinicId, patientId, fileToUpload);
       setActionSuccess('تم رفع الملف الطبي ✓');
       await loadAll();
     } catch (err) {
       setActionError(humanizePanelError(err instanceof Error ? err.message : 'حدث خطأ في الرفع'));
     } finally {
+      cancelTusUploadRef.current = null;
       setUploadBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -1126,6 +1168,18 @@ return (
               </li>
             ))}
           </ul>
+        )}
+        {filesCursor && (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() => void loadMoreMedicalFiles()}
+              disabled={loadingMoreFiles}
+              className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+            >
+              {loadingMoreFiles ? 'جارٍ التحميل...' : 'تحميل المزيد من الملفات'}
+            </button>
+          </div>
         )}
       </div>
 

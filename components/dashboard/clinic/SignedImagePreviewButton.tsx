@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import ImageMorphViewer, { type ViewingImage } from '@/components/ui/ImageMorphViewer';
+import { getCachedMedicalFileUrl } from '@/lib/services/medicalFileSignedUrlCache';
 
 /**
  * SIGNED IMAGE PREVIEW BUTTON — dashboard preview for stored medical images.
@@ -29,12 +30,9 @@ export default function SignedImagePreviewButton({
     setBusy(true);
     setErr(null);
     try {
-      const headers = await authHeaders();
-      const res = await fetch(`/api/clinic/medical-files/${encodeURIComponent(fileId)}?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.data?.signed_url) throw new Error(body?.error ?? 'تعذر توليد رابط المعاينة');
+      const signedUrl = await getCachedMedicalFileUrl({ fileId, clinicId, variant: 'preview', authHeaders });
       setViewing({
-        src: String(body.data.signed_url),
+        src: signedUrl,
         alt: filename,
         rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
       });

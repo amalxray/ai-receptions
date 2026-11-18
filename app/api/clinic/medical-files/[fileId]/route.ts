@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 async function assertAccess(clinicId: string, fileId: string) {
   const { data: file } = await supabaseAdmin
     .from('medical_files')
-    .select('id, clinic_id, patient_id, imaging_request_id, storage_path, deleted_at')
+    .select('id, clinic_id, patient_id, imaging_request_id, storage_path, file_type, mime_type, deleted_at')
     .eq('id', fileId)
     .maybeSingle();
   if (!file || file.deleted_at) return { ok: false as const, message: 'الملف غير موجود' };
@@ -21,9 +21,10 @@ async function assertAccess(clinicId: string, fileId: string) {
   if (file.imaging_request_id) {
     const { data: req } = await supabaseAdmin
       .from('imaging_requests')
-      .select('id')
+      .select('id, patient_id')
       .eq('id', file.imaging_request_id)
       .or(`clinic_id.eq.${clinicId},referring_clinic_id.eq.${clinicId}`)
+      .eq('patient_id', file.patient_id)
       .is('deleted_at', null)
       .maybeSingle();
     if (req) return { ok: true as const, file };
@@ -35,7 +36,11 @@ export async function GET(req: Request, { params }: { params: { fileId: string }
   try {
     const url = new URL(req.url);
     const clinicId = url.searchParams.get('clinic_id') ?? '';
+    const variant = url.searchParams.get('variant') ?? 'original';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
+    if (variant !== 'original' && variant !== 'preview') {
+      return NextResponse.json({ error: 'variant must be original or preview' }, { status: 400 });
+    }
 
     const gate = await permissionDenied(req, clinicId, 'view_medical_files');
     if (gate) return gate;
@@ -43,9 +48,19 @@ export async function GET(req: Request, { params }: { params: { fileId: string }
     const access = await assertAccess(clinicId, params.fileId);
     if (!access.ok) return NextResponse.json({ error: access.message }, { status: 403 });
 
-    const signedUrl = await signMedicalFileUrl(access.file.storage_path);
-    logEvent('medical_file_signed', { clinic_id: clinicId, file_id: params.fileId });
-    return NextResponse.json({ data: { id: access.file.id, signed_url: signedUrl } });
+    const supportsTransform = ['image/jpeg', 'image/png', 'image/webp'].includes(access.file.mime_type);
+    if (variant === 'preview' && !access.file.mime_type.startsWith('image/')) {
+      return NextResponse.json({ error: 'معاينة هذا النوع غير مدعومة' }, { status: 415 });
+    }
+    const transform = variant === 'preview' && supportsTransform
+      ? { width: 1200, height: 900, resize: 'contain' as const }
+      : undefined;
+    const signedUrl = await signMedicalFileUrl(access.file.storage_path, 900, transform);
+    logEvent('medical_file_signed', { clinic_id: clinicId, file_id: params.fileId, variant });
+    return NextResponse.json(
+      { data: { id: access.file.id, signed_url: signedUrl, variant } },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (err) {
     logEvent('medical_file_signed_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
     return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });

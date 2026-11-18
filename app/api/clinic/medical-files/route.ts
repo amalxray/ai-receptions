@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeClinicRequest } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
-import { uploadMedicalFile, resolveMedicalFileOrgAccess } from '@/lib/services/medicalFiles';
+import {
+  buildMedicalFilesPage,
+  parseMedicalFilesPage,
+  uploadMedicalFile,
+  resolveMedicalFileOrgAccess,
+} from '@/lib/services/medicalFiles';
 import { logEvent } from '@/lib/server/logging';
 
 /**
@@ -62,21 +67,31 @@ export async function GET(req: Request) {
     const patientId = url.searchParams.get('patient_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
     if (!patientId) return NextResponse.json({ error: 'patient_id is required' }, { status: 400 });
+    const pagination = parseMedicalFilesPage(url);
+    if (!pagination) return NextResponse.json({ error: 'Invalid pagination cursor or limit' }, { status: 400 });
 
     const gate = await permissionDenied(req, clinicId, 'view_medical_files');
     if (gate) return gate;
 
     const access = await resolveMedicalFileOrgAccess(clinicId, patientId, null);
     if (access.ok) {
-      const { data, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('medical_files')
         .select('*')
         .eq('clinic_id', clinicId)
         .eq('patient_id', patientId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(pagination.limit + 1);
+      if (pagination.cursor) {
+        query = query.or(
+          `created_at.lt.${pagination.cursor.created_at},and(created_at.eq.${pagination.cursor.created_at},id.lt.${pagination.cursor.id})`,
+        );
+      }
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
-      return NextResponse.json({ data: data ?? [] });
+      return NextResponse.json(buildMedicalFilesPage(data ?? [], pagination.limit));
     }
 
     // Partner org: only files tied to an imaging request connecting both orgs.
@@ -90,15 +105,23 @@ export async function GET(req: Request) {
     if (ids.length === 0) {
       return NextResponse.json({ error: 'لا تملك صلاحية على ملفات هذا المريض' }, { status: 403 });
     }
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('medical_files')
       .select('*')
       .eq('patient_id', patientId)
       .in('imaging_request_id', ids)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(pagination.limit + 1);
+    if (pagination.cursor) {
+      query = query.or(
+        `created_at.lt.${pagination.cursor.created_at},and(created_at.eq.${pagination.cursor.created_at},id.lt.${pagination.cursor.id})`,
+      );
+    }
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return NextResponse.json({ data: data ?? [] });
+    return NextResponse.json(buildMedicalFilesPage(data ?? [], pagination.limit));
   } catch (err) {
     logEvent('medical_files_list_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
     return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { logEvent } from '@/lib/server/logging';
+import { buildMedicalFilesPage, parseMedicalFilesPage } from '@/lib/services/medicalFiles';
 
 /**
  * MEDICAL FILES — clinic-wide listing for the imaging center dashboard.
@@ -17,6 +18,8 @@ export async function GET(req: Request) {
     const clinicId = url.searchParams.get('clinic_id') ?? '';
     const patientId = url.searchParams.get('patient_id') ?? '';
     if (!clinicId) return NextResponse.json({ error: 'clinic_id is required' }, { status: 400 });
+    const pagination = parseMedicalFilesPage(url);
+    if (!pagination) return NextResponse.json({ error: 'Invalid pagination cursor or limit' }, { status: 400 });
 
     const gate = await permissionDenied(req, clinicId, 'view_medical_files');
     if (gate) return gate;
@@ -27,12 +30,18 @@ export async function GET(req: Request) {
       .eq('clinic_id', clinicId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
-      .limit(200);
+      .order('id', { ascending: false })
+      .limit(pagination.limit + 1);
+    if (pagination.cursor) {
+      query = query.or(
+        `created_at.lt.${pagination.cursor.created_at},and(created_at.eq.${pagination.cursor.created_at},id.lt.${pagination.cursor.id})`,
+      );
+    }
     if (patientId) query = query.eq('patient_id', patientId);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return NextResponse.json({ data: data ?? [] });
+    return NextResponse.json(buildMedicalFilesPage(data ?? [], pagination.limit));
   } catch (err) {
     logEvent('medical_files_list_all_error', { error: err instanceof Error ? err.message : String(err) }, 'error');
     return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
