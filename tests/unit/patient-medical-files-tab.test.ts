@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   detectFileCategory,
   formatFileSize,
@@ -172,5 +174,33 @@ describe('upload ceilings mirror the server-side validation', () => {
       if (type === 'medical_image') continue;
       expect(limits.medical_image).toBeGreaterThan(limit);
     }
+  });
+});
+
+describe('medical image preview and upload safety', () => {
+  const projectRoot = resolve(__dirname, '../..');
+  const readSource = (relativePath: string) =>
+    readFileSync(resolve(projectRoot, relativePath), 'utf8');
+
+  it('preserves original patient images and does not load or analyze them on mount', () => {
+    const patientFiles = readSource('components/dashboard/patients/PatientMedicalFilesTab.tsx');
+    const financialFiles = readSource('components/dashboard/patients/PatientFinancialFilesPanel.tsx');
+    const panoramaAnalysis = readSource('components/dashboard/patients/PanoramaAiAnalysis.tsx');
+
+    expect(patientFiles).not.toContain('optimizeImageForUpload');
+    expect(financialFiles).not.toContain('optimizeImageForUpload');
+    expect(panoramaAnalysis).not.toMatch(/useEffect\s*\(/);
+    expect(panoramaAnalysis).toContain('onClick={() => void openAnalysis()}');
+  });
+
+  it('uses an authenticated transformed preview only after the user clicks preview', () => {
+    const previewButton = readSource('components/dashboard/clinic/SignedImagePreviewButton.tsx');
+    const fileRoute = readSource('app/api/clinic/medical-files/[fileId]/route.ts');
+
+    expect(previewButton).toContain("variant: 'preview'");
+    expect(previewButton).toContain('onClick={(e) => void open');
+    expect(fileRoute).toContain("variant === 'preview'");
+    expect(fileRoute).toContain('width: 1200, height: 900');
+    expect(fileRoute).toContain("'Cache-Control': 'private, no-store'");
   });
 });

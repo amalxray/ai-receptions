@@ -7,16 +7,22 @@ const source = fs.readFileSync(
   path.resolve(__dirname, '../../components/dashboard/patients/PatientFinancialFilesPanel.tsx'),
   'utf8'
 );
+const tusUploadSource = fs.readFileSync(
+  path.resolve(__dirname, '../../lib/services/medicalFileTusUpload.ts'),
+  'utf8'
+);
 const financialIntelligencePage = fs.readFileSync(
   path.resolve(__dirname, '../../app/(dashboard)/dashboard/[clinicSlug]/financial-intelligence/page.tsx'),
   'utf8'
 );
 
 describe('patient financial-panel medical file uploads', () => {
-  it('uses the signed direct-storage upload and confirmation flow', () => {
+  it('uses authenticated resumable TUS upload and confirmation', () => {
     expect(source).toContain("fetch('/api/clinic/medical-files/upload-start'");
-    expect(source).toContain("xhr.open('PUT', upload_url, true)");
+    expect(source).toContain('startMedicalTusUpload({');
     expect(source).toContain("fetch('/api/clinic/medical-files/confirm'");
+    expect(tusUploadSource).toContain('authorization: `Bearer ${accessToken}`');
+    expect(tusUploadSource).toContain('onBeforeRequest: async (request)');
     expect(source).not.toContain("fetch(`/api/clinic/medical-files?clinic_id=");
     expect(source).not.toContain('4 * 1024 * 1024');
   });

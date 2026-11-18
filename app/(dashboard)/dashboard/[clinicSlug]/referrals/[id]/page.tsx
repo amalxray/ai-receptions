@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import DashboardSection from '@/components/dashboard/DashboardSection';
@@ -10,6 +10,11 @@ import StatusPill from '@/components/dashboard/StatusPill';
 import { useClinicContext } from '@/lib/useClinicContext';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import { allowedTransitionsFor } from '@/lib/services/workflowStates';
+import {
+  clearMedicalClientUploadId,
+  getMedicalClientUploadId,
+  startMedicalTusUpload,
+} from '@/lib/services/medicalFileTusUpload';
 import {
   clip,
   imagingTypeLabel,
@@ -139,6 +144,7 @@ export default function ReferralDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const cancelTusUploadRef = useRef<(() => void) | null>(null);
 
   // Reverse leg (referrer → activity).
   const [clarifyOpen, setClarifyOpen] = useState(false);
@@ -173,6 +179,11 @@ export default function ReferralDetailPage() {
     if (loading) return;
     void load();
   }, [loading, load]);
+
+  useEffect(() => () => {
+    cancelTusUploadRef.current?.();
+    cancelTusUploadRef.current = null;
+  }, []);
 
   const request = detail?.request ?? null;
   const direction = request ? referralDirection(clinicId, request) : detail?.direction ?? null;
@@ -280,6 +291,7 @@ export default function ReferralDetailPage() {
 
       for (const file of resultFiles) {
         const magic = await readMagic(file);
+        const clientUploadId = await getMedicalClientUploadId(clinicId, request.patient_id, file);
 
         // 1) signed channel — the server enforces MIME / extension / size /
         //    magic signature BEFORE any URL is issued.
@@ -289,6 +301,7 @@ export default function ReferralDetailPage() {
           body: JSON.stringify({
             clinic_id: clinicId,
             patient_id: request.patient_id,
+            client_upload_id: clientUploadId,
             imaging_request_id: request.id,
             filename: file.name,
             mime_type: file.type,
@@ -297,17 +310,30 @@ export default function ReferralDetailPage() {
           }),
         });
         if (!startRes.ok) throw new Error(await readError(startRes, `تعذر تجهيز رفع ${file.name}`));
-        const start = ((await startRes.json())?.data ?? {}) as Record<string, string | number>;
+        const start = ((await startRes.json())?.data ?? {}) as Record<string, unknown>;
 
-        // 2) the binary goes straight to storage (no server buffering).
-        const uploadBody = new FormData();
-        uploadBody.append('cacheControl', '3600');
-        uploadBody.append('', file);
-        const put = await fetch(String(start.upload_url), {
-          method: 'PUT',
-          body: uploadBody,
-        });
-        if (!put.ok) throw new Error(`تعذر رفع ${file.name} إلى المخزن`);
+        if (typeof start.storage_path !== 'string') {
+          throw new Error(`تعذر تجهيز مسار رفع ${file.name}`);
+        }
+        if (start.already_confirmed && typeof start.confirmed_file_id === 'string') {
+          imageIds.push(start.confirmed_file_id);
+          await clearMedicalClientUploadId(clinicId, request.patient_id, file);
+          continue;
+        }
+
+        // 2) Upload in resumable 6 MiB chunks directly to the private bucket.
+        if (start.upload_required !== false) {
+          const tusUpload = startMedicalTusUpload({
+            file,
+            endpoint: String(start.resumable_endpoint ?? ''),
+            storagePath: start.storage_path,
+            clientUploadId: String(start.client_upload_id ?? clientUploadId),
+            onProgress: () => {},
+          });
+          cancelTusUploadRef.current = tusUpload.cancel;
+          await tusUpload.promise;
+          cancelTusUploadRef.current = null;
+        }
 
         // 3) authoritative metadata row.
         const confirmRes = await fetch('/api/clinic/medical-files/confirm', {
@@ -328,6 +354,7 @@ export default function ReferralDetailPage() {
         if (!confirmRes.ok) throw new Error(await readError(confirmRes, `تعذر توثيق ${file.name}`));
         const confirmed = (await confirmRes.json())?.data;
         if (confirmed?.id) imageIds.push(confirmed.id as string);
+        await clearMedicalClientUploadId(clinicId, request.patient_id, file);
       }
 
       const res = await fetch(
@@ -346,6 +373,7 @@ export default function ReferralDetailPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'حدث خطأ');
     } finally {
+      cancelTusUploadRef.current = null;
       setBusy(null);
     }
   }

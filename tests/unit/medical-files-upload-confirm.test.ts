@@ -159,8 +159,15 @@ describe('B22 — confirm accepts the upload session this org started', () => {
       {
         id: 'session-1',
         clinic_id: CLINIC_ID,
+        patient_id: PATIENT_ID,
+        imaging_request_id: null,
         storage_path: STORAGE_PATH,
         status: 'started',
+        mime_type: 'image/png',
+        size_bytes: 2033624,
+        original_filename: 'ابو_خليل_فريتخ_20260928_134218.png',
+        created_by: USER_ID,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
         file_type: 'image',
         medical_category: 'panorama',
       },
@@ -217,6 +224,37 @@ describe('B22 — confirm accepts the upload session this org started', () => {
     const json = (await res.json()) as { error?: string };
     expect(res.status).toBe(500);
     expect(json.error).not.toContain('لم يُعثر على جلسة رفع');
+    expect(state.confirmCalls).toHaveLength(0);
+  });
+
+  it('rejects a confirmation whose file size does not match the authorized upload session', async () => {
+    const res = await confirmUpload(confirmRequest({ ...validBody, size_bytes: validBody.size_bytes + 1 }));
+    expect(res.status).toBe(403);
+    expect(state.confirmCalls).toHaveLength(0);
+  });
+
+  it('rejects a session created by a different signed-in user', async () => {
+    state.sessions[0].created_by = OTHER_CLINIC_ID;
+    const res = await confirmUpload(confirmRequest());
+    expect(res.status).toBe(403);
+    expect(state.confirmCalls).toHaveLength(0);
+  });
+
+  it('binds referral uploads to the imaging request stored in the upload session', async () => {
+    const imagingRequestId = 'c0d34f02-aec8-49a4-9b2b-28f7abf4d0d1';
+    state.sessions[0].imaging_request_id = imagingRequestId;
+    const res = await confirmUpload(confirmRequest({ ...validBody, imaging_request_id: imagingRequestId }));
+    expect(res.status).toBe(201);
+    expect(state.confirmCalls[0].imagingRequestId).toBe(imagingRequestId);
+  });
+
+  it('rejects a referral confirmation that substitutes a different imaging request', async () => {
+    state.sessions[0].imaging_request_id = 'c0d34f02-aec8-49a4-9b2b-28f7abf4d0d1';
+    const res = await confirmUpload(confirmRequest({
+      ...validBody,
+      imaging_request_id: 'a0d34f02-aec8-49a4-9b2b-28f7abf4d0d1',
+    }));
+    expect(res.status).toBe(403);
     expect(state.confirmCalls).toHaveLength(0);
   });
 });

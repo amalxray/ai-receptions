@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
 import { Eye, Loader2, X } from 'lucide-react';
+import { getCachedMedicalFileUrl } from '@/lib/services/medicalFileSignedUrlCache';
 
 const PatientPdfDocument = dynamic(() => import('./PatientPdfDocument'), {
   ssr: false,
@@ -72,16 +73,7 @@ export default function PatientPdfPreviewButton({
     setLoading(true);
 
     try {
-      const headers = await authHeaders();
-      const response = await fetch(
-        `/api/clinic/medical-files/${encodeURIComponent(fileId)}?clinic_id=${encodeURIComponent(clinicId)}`,
-        { headers },
-      );
-      const json = await response.json().catch(() => null);
-      if (!response.ok || typeof json?.data?.signed_url !== 'string') {
-        throw new Error(json?.error || 'تعذر إنشاء رابط معاينة صالح');
-      }
-      setSignedUrl(json.data.signed_url);
+      setSignedUrl(await getCachedMedicalFileUrl({ fileId, clinicId, variant: 'original', authHeaders }));
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : 'تعذرت معاينة الملف');
     } finally {

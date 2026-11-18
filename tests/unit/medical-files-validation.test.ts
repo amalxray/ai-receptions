@@ -82,12 +82,18 @@ it('magicBytesMatch: true for a valid PDF header, false for a spoofed one', () =
     expect(magicBytesMatch('video/mp4', undefined)).toBe(true);
   });
 
-  it('size limits are configurable via env override', () => {
+  it('allows lower environment overrides but never exceeds the approved per-file ceiling', () => {
     const previous = process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES;
-    process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES = '5368709120'; // 5 GiB override
-    expect(getAllMedicalSizeLimits().medical_image).toBe(5368709120);
-    if (previous === undefined) delete process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES;
-    else process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES = previous;
+    try {
+      process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES = '5368709120';
+      expect(getAllMedicalSizeLimits().medical_image).toBe(2 * 1024 * 1024 * 1024);
+
+      process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES = '1073741824';
+      expect(getAllMedicalSizeLimits().medical_image).toBe(1024 * 1024 * 1024);
+    } finally {
+      if (previous === undefined) delete process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES;
+      else process.env.MEDICAL_MAX_MEDICAL_IMAGE_BYTES = previous;
+    }
   });
 
   it('DICOM medical_image default ceiling is large (>= 1 GiB) for radiology studies', () => {
