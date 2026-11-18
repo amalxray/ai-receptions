@@ -9,7 +9,13 @@ import { toast } from '@/components/ui/Toast';
  * Phase 3b — client island on /{slug}/reviews + main public page.
  * "قيّمنا" button (pulsing gradient) + "انسخ رابط التقييم" + shared modal (source='public').
  */
-export default function ReviewsPageClient({ clinicSlug }: { clinicSlug: string }) {
+export default function ReviewsPageClient({
+  clinicSlug,
+  showReviewerCategory = false,
+}: {
+  clinicSlug: string;
+  showReviewerCategory?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   async function copyReviewsLink() {
@@ -41,7 +47,13 @@ export default function ReviewsPageClient({ clinicSlug }: { clinicSlug: string }
       >
         🔗 انسخ رابط التقييم
       </button>
-      <ReviewPromptModal open={open} clinicSlug={clinicSlug} source="public" onClose={() => setOpen(false)} />
+      <ReviewPromptModal
+        open={open}
+        clinicSlug={clinicSlug}
+        source="public"
+        showReviewerCategory={showReviewerCategory}
+        onClose={() => setOpen(false)}
+      />
     </div>
   );
 }

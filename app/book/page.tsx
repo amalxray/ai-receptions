@@ -32,7 +32,7 @@ function syncBookingUrl(patch: Record<string, string | null>) {
 
 type ClinicResolution =
   | { status: 'loading'; clinic: null }
-  | { status: 'ready'; clinic: { id: string; slug: string; name: string; latitude: number | null; longitude: number | null; address: string | null; phone: string | null } }
+  | { status: 'ready'; clinic: { id: string; slug: string; name: string; activity_type?: 'clinic' | 'imaging_center' | 'dental_lab'; latitude: number | null; longitude: number | null; address: string | null; phone: string | null } }
   | { status: 'not-found'; clinic: null };
 
 function BookingForm() {
@@ -685,6 +685,7 @@ function BookingForm() {
                   clinicSlug={clinic.clinic.slug}
                   source="form"
                   patientName={bookingResult?.patient_name ?? patientInfo.name}
+                  showReviewerCategory={clinic.clinic.activity_type === 'imaging_center'}
                   onClose={() => {
                     setShowReviewModal(false);
                   }}

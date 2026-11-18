@@ -4,6 +4,7 @@ import { ADMIN_ROLES } from '@/lib/services/clinicAuthorization';
 import { permissionDenied } from '@/lib/services/permissionGate';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
+import { normalizeActivityType } from '@/lib/services/activityTypes';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +13,7 @@ const querySchema = z.object({
   filter: z.enum(['all', 'pending', 'published', 'rejected', 'flagged']).default('all'),
   search: z.string().trim().max(200).optional(),
   rating: z.coerce.number().int().min(1).max(5).optional(),
+  reviewer_category: z.enum(['all', 'dentist', 'reviewer', 'other', 'unknown']).default('all'),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -31,20 +33,34 @@ export async function GET(req: Request) {
       filter: url.searchParams.get('filter') ?? undefined,
       search: url.searchParams.get('search') ?? undefined,
       rating: url.searchParams.get('rating') ?? undefined,
+      reviewer_category: url.searchParams.get('reviewer_category') ?? undefined,
       limit: url.searchParams.get('limit') ?? undefined,
       offset: url.searchParams.get('offset') ?? undefined,
     });
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid request parameters', details: parsed.error.errors }, { status: 400 });
     }
-    const { clinic_id: clinicId, filter, search, rating, limit, offset } = parsed.data;
+    const { clinic_id: clinicId, filter, search, rating, reviewer_category: reviewerCategory, limit, offset } = parsed.data;
 
     const gate = await permissionDenied(req, clinicId, 'view_reviews', { allowedRoles: ADMIN_ROLES });
     if (gate) return gate;
 
+    const { data: clinic, error: clinicError } = await supabaseAdmin
+      .from('clinics')
+      .select('activity_type')
+      .eq('id', clinicId)
+      .maybeSingle();
+    if (clinicError) {
+      logEvent('review_clinic_activity_type_unavailable', { clinic_id: clinicId, error: clinicError.message }, 'warn');
+    }
+    const showReviewerCategory = !clinicError && normalizeActivityType(clinic?.activity_type) === 'imaging_center';
+
+    const reviewColumns: string = showReviewerCategory
+      ? 'id, rating, reviewer_category, author_name, comment, source, is_published, is_verified, flagged_medical, flag_reason, published_at, rejected_at, created_at'
+      : 'id, rating, author_name, comment, source, is_published, is_verified, flagged_medical, flag_reason, published_at, rejected_at, created_at';
     let query = supabaseAdmin
       .from('clinic_reviews')
-      .select('id, rating, author_name, comment, source, is_published, is_verified, flagged_medical, flag_reason, published_at, rejected_at, created_at', { count: 'exact' })
+      .select(reviewColumns, { count: 'exact' })
       .eq('clinic_id', clinicId)
       .is('deleted_at', null);
 
@@ -58,6 +74,13 @@ export async function GET(req: Request) {
       query = query.eq('flagged_medical', true).eq('is_published', false);
     }
     if (rating) query = query.eq('rating', rating);
+    if (showReviewerCategory) {
+      if (reviewerCategory === 'unknown') {
+        query = query.is('reviewer_category', null);
+      } else if (reviewerCategory !== 'all') {
+        query = query.eq('reviewer_category', reviewerCategory);
+      }
+    }
     if (search) query = query.or(`author_name.ilike.%${search}%,comment.ilike.%${search}%`);
 
     const { data, error, count } = await query

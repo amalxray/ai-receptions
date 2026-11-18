@@ -90,11 +90,18 @@ export default async function ClinicReviewsPage({ params, searchParams }: PagePr
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-2xl font-bold text-slate-900">تقييمات المرضى — {space.name}</h1>
-          <ReviewsPageClient clinicSlug={params.slug} />
+          <ReviewsPageClient clinicSlug={params.slug} showReviewerCategory={space.activityType === 'imaging_center'} />
         </div>
 
         <div className="mt-6">
-          <ReviewsSection clinicName={space.name} stats={stats} items={items} hideViewAll maxItems={PAGE_SIZE} />
+          <ReviewsSection
+            clinicName={space.name}
+            showReviewerCategory={space.activityType === 'imaging_center'}
+            stats={stats}
+            items={items}
+            hideViewAll
+            maxItems={PAGE_SIZE}
+          />
         </div>
 
         {stats.total === 0 && (

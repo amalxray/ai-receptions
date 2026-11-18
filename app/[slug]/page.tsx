@@ -249,7 +249,14 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   // PHASE 2 — patient reviews block under the space (all activity types).
   // Phase 3b — viewAllHref links to /{slug}/reviews when total > 5.
   const reviewsSection = (
-    <ReviewsSection clinicName={space.name} clinicSlug={params.slug} stats={reviews.stats} items={reviews.items} viewAllHref={`/${params.slug}/reviews`} />
+    <ReviewsSection
+      clinicName={space.name}
+      clinicSlug={params.slug}
+      showReviewerCategory={space.activityType === 'imaging_center'}
+      stats={reviews.stats}
+      items={reviews.items}
+      viewAllHref={`/${params.slug}/reviews`}
+    />
   );
   const faqSection = (
     <section id="faq" dir="rtl" className="mx-auto my-8 w-full max-w-5xl px-4 sm:px-6">
