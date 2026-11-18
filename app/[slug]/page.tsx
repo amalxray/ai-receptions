@@ -23,7 +23,6 @@ import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
 import InstallPWA from '@/components/pwa/InstallPWA';
 import PublicServicesCard from '@/components/public/PublicServicesCard';
-import GoogleReviewButton from '@/components/public/GoogleReviewButton';
 import { shouldShowGoogleReviewButton } from '@/lib/services/googleReviewSettings';
 
 /**
@@ -255,6 +254,10 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
       clinicName={space.name}
       clinicSlug={params.slug}
       showReviewerCategory={space.activityType === 'imaging_center'}
+      googleReviewUrl={shouldShowGoogleReviewButton(space.activityType, space.googleReviewEnabled, space.googleReviewUrl)
+        ? space.googleReviewUrl
+        : null}
+      googleReviewLabel={space.googleReviewLabel}
       stats={reviews.stats}
       items={reviews.items}
       viewAllHref={`/${params.slug}/reviews`}
@@ -280,9 +283,6 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ImagingPublicSpace space={publicSpace} servicesCard={servicesCard} />
-          {shouldShowGoogleReviewButton(space.activityType, space.googleReviewEnabled, space.googleReviewUrl) && (
-            <GoogleReviewButton href={space.googleReviewUrl} label={space.googleReviewLabel} />
-          )}
           {reviewsSection}
           {faqSection}
           <InstallPWA variant="floating" appName={space.name} />
@@ -303,9 +303,6 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={publicSpace} servicesCard={servicesCard} />
-          {shouldShowGoogleReviewButton(space.activityType, space.googleReviewEnabled, space.googleReviewUrl) && (
-            <GoogleReviewButton href={space.googleReviewUrl} label={space.googleReviewLabel} />
-          )}
           {reviewsSection}
           {faqSection}
           <InstallPWA variant="floating" appName={space.name} />

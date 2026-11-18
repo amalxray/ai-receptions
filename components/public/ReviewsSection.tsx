@@ -51,6 +51,8 @@ export default function ReviewsSection({
   clinicName,
   clinicSlug,
   showReviewerCategory = false,
+  googleReviewUrl,
+  googleReviewLabel,
   stats,
   items,
   viewAllHref,
@@ -62,6 +64,8 @@ export default function ReviewsSection({
   clinicSlug?: string | null;
   /** Reviewer categories are available only on imaging-center public spaces. */
   showReviewerCategory?: boolean;
+  googleReviewUrl?: string | null;
+  googleReviewLabel?: string;
   stats: ReviewStats;
   items: PublicReviewItem[];
   /** Phase 3b — link to /{slug}/reviews. Shown only when total > 5. */
@@ -87,7 +91,14 @@ export default function ReviewsSection({
             </h2>
             <p className="mt-1 text-sm text-slate-300">آراء مراجعي {clinicName}</p>
           </div>
-          {clinicSlug ? <ReviewsPageClient clinicSlug={clinicSlug} showReviewerCategory={showReviewerCategory} /> : null}
+          {clinicSlug ? (
+            <ReviewsPageClient
+              clinicSlug={clinicSlug}
+              showReviewerCategory={showReviewerCategory}
+              googleReviewUrl={googleReviewUrl}
+              googleReviewLabel={googleReviewLabel}
+            />
+          ) : null}
         </div>
 
         {!hasReviews ? (
