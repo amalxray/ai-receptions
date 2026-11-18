@@ -39,8 +39,9 @@ const VISIBILITY_LABELS: Record<ProviderRow['public_visibility'], string> = {
 
 export default function PublicPresenceManager() {
   const { isConfigured, checkFailed } = useSupabaseConfig();
-  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError } = useClinicContext();
+  const { clinicId, authHeaders, loading: clinicLoading, error: clinicError, activityType } = useClinicContext();
   const [state, setState] = useState<VisibilityState | null>(null);
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -61,6 +62,12 @@ export default function PublicPresenceManager() {
       setDrafts(Object.fromEntries(
         data.providers.map((p) => [p.id, { specialty: p.specialty ?? '', bio: p.bio ?? '', photo_url: p.photo_url ?? '' }])
       ));
+      if (activityType === 'clinic') {
+        const pageRes = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        const pageBody = await pageRes.json().catch(() => ({}));
+        if (!pageRes.ok) throw new Error(pageBody?.error ?? 'تعذر تحميل رابط تقييم Google');
+        setGoogleReviewUrl(pageBody.data?.google_review_url ?? '');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر تحميل البيانات');
     } finally {
@@ -78,7 +85,7 @@ export default function PublicPresenceManager() {
     }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfigured, clinicLoading, clinicId]);
+  }, [isConfigured, clinicLoading, clinicId, activityType]);
 
   async function patch(body: Record<string, unknown>, providerId: string | null) {
     if (!clinicId) return;
@@ -98,6 +105,29 @@ export default function PublicPresenceManager() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر الحفظ');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function saveGoogleReviewUrl() {
+    if (!clinicId) return;
+    setSavingId('google-review');
+    setError(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(clinicId)}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ google_review_url: googleReviewUrl.trim() || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'تعذر حفظ رابط تقييم Google');
+      setSavedId('google-review');
+      setTimeout(() => setSavedId(null), 2000);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر حفظ رابط تقييم Google');
     } finally {
       setSavingId(null);
     }
@@ -138,6 +168,34 @@ export default function PublicPresenceManager() {
           disabled={savingId === 'clinic'}
         />
       </label>
+
+      {activityType === 'clinic' && (
+        <div className="mb-5 rounded-lg border border-stone-800 bg-stone-950 p-4">
+          <label className="block text-sm font-semibold text-stone-100" htmlFor="google-review-url">
+            رابط تقييم Google
+          </label>
+          <p className="mt-1 text-xs text-stone-500">أضف رابط ملف نشاطك التجاري لعرض دعوة التقييم في الصفحة العامة.</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <input
+              id="google-review-url"
+              type="url"
+              maxLength={600}
+              className="min-w-0 flex-1 rounded-md border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-stone-100"
+              placeholder="https://g.page/r/.../review"
+              value={googleReviewUrl}
+              onChange={(e) => setGoogleReviewUrl(e.target.value)}
+            />
+            <button
+              type="button"
+              className="rounded-md bg-teal-500 px-4 py-2 text-sm font-semibold text-stone-900 transition hover:bg-teal-400 disabled:opacity-50"
+              onClick={() => void saveGoogleReviewUrl()}
+              disabled={savingId === 'google-review'}
+            >
+              {savingId === 'google-review' ? 'جارٍ الحفظ…' : savedId === 'google-review' ? 'تم الحفظ ✓' : 'حفظ الرابط'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {state.providers.length === 0 ? (
         <EmptyState title="لا يوجد أطباء بعد" description="أضف طبيبًا من قسم مقدمي الخدمة لتبدأ حضوره المهني العام." />
