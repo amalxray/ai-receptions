@@ -17,6 +17,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 import { logEvent } from '@/lib/server/logging';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
+import { DEFAULT_GOOGLE_REVIEW_LABEL, resolveGoogleReviewSettings, supportsGoogleReviewSettings } from '@/lib/services/googleReviewSettings';
 import type { ClinicTenantProvisioning } from '@/lib/services/clinicProvisioning';
 import { isSubdomainIn, readVercelProjectDomainNames } from '@/lib/vercel/subdomainReadiness';
 import { tenantPublicUrl } from '@/lib/vercel/tenantLinks';
@@ -301,6 +302,8 @@ export type PublicProfileSettings = {
   show_phone?: boolean;
   show_prices?: boolean;
   google_review_url?: string;
+  google_review_enabled?: boolean;
+  google_review_label?: string;
   social_links?: SocialLinks;
   show_providers?: boolean;
   sections?: Partial<Record<PublicSectionKey, boolean>>;
@@ -398,6 +401,11 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
     faq: Array.isArray(p.faq) ? p.faq as PublicProfileSettings['faq'] : undefined,
     insurance: typeof p.insurance === 'string' ? p.insurance : undefined,
     google_review_url: isHttpsUrl(p.google_review_url) ? p.google_review_url : undefined,
+    google_review_enabled: p.google_review_enabled === true ||
+      (p.google_review_enabled !== false && isHttpsUrl(p.google_review_url)),
+    google_review_label: typeof p.google_review_label === 'string' && p.google_review_label.trim()
+      ? p.google_review_label.trim().slice(0, 80)
+      : DEFAULT_GOOGLE_REVIEW_LABEL,
     show_phone: p.show_phone === true,
     show_prices: p.show_prices === true,
     show_providers: p.show_providers !== false,
@@ -435,6 +443,7 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
   }
   const activityType = normalizeActivityType(data.activity_type ?? 'clinic');
   const config = readPublicProfile(data.settings, activityType);
+  const googleReviewSettings = resolveGoogleReviewSettings(data.settings, activityType, data.slug);
 
   // clinic_ads has no `deleted_at` column (20260833_clinic_ads_fix.sql) — asking
   // for it made the whole request fail, so `hasAds` was always false. The date
@@ -491,6 +500,7 @@ export async function getPublicPageConfig(clinicId: string): Promise<PublicPageC
 
   return {
     ...config,
+    ...googleReviewSettings,
     slug: data.slug,
     public_id: data.public_id ?? null,
     email: data.email ?? config.social_links?.email ?? null,
@@ -533,8 +543,12 @@ export async function updatePublicPageConfig(
   const settings = { ...(current.settings ?? {}) };
   const existing = (settings.public_profile ?? {}) as Record<string, unknown>;
   const activityType = normalizeActivityType(current.activity_type ?? 'clinic');
-  if (patch.google_review_url !== undefined && activityType !== 'clinic') {
-    return { ok: false, message: 'Google review links are only supported for dental clinics' };
+  const hasGoogleReviewPatch =
+    patch.google_review_url !== undefined ||
+    patch.google_review_enabled !== undefined ||
+    patch.google_review_label !== undefined;
+  if (hasGoogleReviewPatch && !supportsGoogleReviewSettings(activityType)) {
+    return { ok: false, message: 'Google review links are only supported for clinics and imaging centers' };
   }
 
   const updated: Record<string, unknown> = { ...existing };
@@ -542,13 +556,18 @@ export async function updatePublicPageConfig(
   // Scalar/profile fields (with empty-string → delete so users can clear them).
   const scalarFields: (keyof PublicProfileSettings)[] = [
     'description', 'tagline', 'about', 'cover_url', 'logo', 'insurance',
-    'show_phone', 'show_prices', 'google_review_url', 'show_providers', 'discovery_enabled',
+    'show_phone', 'show_prices', 'google_review_url', 'google_review_enabled', 'google_review_label',
+    'show_providers', 'discovery_enabled',
   ];
   for (const key of scalarFields) {
     const v = patch[key];
     if (v === undefined) continue;
     if (v === '' || v === null) delete updated[key];
     else updated[key] = v;
+  }
+
+  if (patch.google_review_enabled === true && !isHttpsUrl(updated.google_review_url)) {
+    return { ok: false, message: 'A valid Google review URL is required to enable the button' };
   }
 
   if (patch.faq !== undefined) updated.faq = patch.faq;
@@ -637,7 +656,12 @@ export async function updatePublicPageConfig(
     return { ok: false, message: 'Failed to save public page configuration' };
   }
 
-  if (patch.logo !== undefined && typeof data.slug === 'string') {
+  const revalidatePublicPage =
+    patch.logo !== undefined ||
+    patch.google_review_url !== undefined ||
+    patch.google_review_enabled !== undefined ||
+    patch.google_review_label !== undefined;
+  if (revalidatePublicPage && typeof data.slug === 'string') {
     const slugPath = `/${encodeURIComponent(data.slug)}`;
     revalidatePath(slugPath);
     revalidatePath(`${slugPath}/reviews`);

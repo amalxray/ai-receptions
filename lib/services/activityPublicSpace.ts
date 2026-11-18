@@ -8,6 +8,7 @@ import {
   readPublicProfile,
   type PublicThemeSettings,
 } from '@/lib/services/clinicPublicConfig';
+import { resolveGoogleReviewSettings } from '@/lib/services/googleReviewSettings';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
 import { clinicSpaceUrl } from '@/lib/vercel/domains';
 import { resolveTenantPublicUrl } from '@/lib/vercel/tenantLinks';
@@ -114,6 +115,8 @@ export type ActivityPublicSpace = {
   longitude: number | null;
   google_maps_url: string | null;
   googleReviewUrl: string | null;
+  googleReviewEnabled: boolean;
+  googleReviewLabel: string;
   phone: string | null;
   faq: { question: string; answer: string }[];
   insurance: string | null;
@@ -220,6 +223,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
 
   const activityType = normalizeActivityType(activityRow.data?.activity_type ?? 'clinic');
   const publicProfile = readPublicProfile(activityRow.data?.settings, activityType);
+  const googleReviewSettings = resolveGoogleReviewSettings(activityRow.data?.settings, activityType, slug);
   const settings = activityRow.data?.settings as { public_profile?: { sections_order?: unknown } | null } | null;
   const savedOrder = settings?.public_profile?.sections_order;
   const storedOrder = Array.isArray(savedOrder)
@@ -367,7 +371,9 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     latitude: profile.latitude ?? null,
     longitude: profile.longitude ?? null,
     google_maps_url: profile.google_maps_url ?? null,
-    googleReviewUrl: publicProfile.google_review_url ?? null,
+    googleReviewUrl: googleReviewSettings.google_review_url ?? null,
+    googleReviewEnabled: googleReviewSettings.google_review_enabled,
+    googleReviewLabel: googleReviewSettings.google_review_label,
     phone: profile.phone,
     faq: profile.faq,
     insurance: profile.insurance,

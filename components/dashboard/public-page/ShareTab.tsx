@@ -5,6 +5,7 @@ import React from 'react';
 import Link from 'next/link';
 import Section from './shared/Section';
 import type { PageConfig } from './shared/types';
+import GoogleReviewSettingsCard from './GoogleReviewSettingsCard';
 
 type Props = {
   config: PageConfig;
@@ -18,6 +19,7 @@ type Props = {
 export default function ShareTab({ config, provisioning, onEnsureSubdomain, onCopyLink, onDownloadQr }: Props) {
   return (
     <div className="space-y-4">
+      <GoogleReviewSettingsCard />
       <Section title="صفحتك العامة" subtitle="رابط دائم يمكن مشاركته مع المرضى.">
         <div className="flex flex-wrap items-center gap-3">
           <Link

@@ -48,6 +48,8 @@ const patchSchema = z.object({
       }
     }, 'URL must use HTTPS')
     .nullable().optional(),
+  google_review_enabled: z.boolean().optional(),
+  google_review_label: z.string().trim().min(1).max(80).nullable().optional(),
   show_phone: z.boolean().optional(),
   show_prices: z.boolean().optional(),
   show_providers: z.boolean().optional(),
