@@ -11,6 +11,7 @@ import {
 import ReviewsSection from '@/components/public/ReviewsSection';
 import ReviewsPageClient from './ReviewsPageClient';
 import { buildClinicSocialMetadata } from '@/lib/seo/clinicSocialMetadata';
+import { shouldShowGoogleReviewButton } from '@/lib/services/googleReviewSettings';
 
 /**
  * Phase 3b — full public reviews page: /{slug}/reviews.
@@ -62,6 +63,11 @@ export default async function ClinicReviewsPage({ params, searchParams }: PagePr
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const googleReviewUrl = shouldShowGoogleReviewButton(
+    space.activityType,
+    space.googleReviewEnabled,
+    space.googleReviewUrl,
+  ) ? space.googleReviewUrl : null;
 
   const reviewsLd = buildClinicReviewsJsonLd({
     clinic: { name: space.name, url: `${space.pageUrl}/reviews` },
@@ -90,7 +96,12 @@ export default async function ClinicReviewsPage({ params, searchParams }: PagePr
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-2xl font-bold text-slate-900">تقييمات المرضى — {space.name}</h1>
-          <ReviewsPageClient clinicSlug={params.slug} showReviewerCategory={space.activityType === 'imaging_center'} />
+          <ReviewsPageClient
+            clinicSlug={params.slug}
+            showReviewerCategory={space.activityType === 'imaging_center'}
+            googleReviewUrl={googleReviewUrl}
+            googleReviewLabel={space.googleReviewLabel}
+          />
         </div>
 
         <div className="mt-6">
