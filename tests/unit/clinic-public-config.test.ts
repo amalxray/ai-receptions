@@ -5,6 +5,7 @@ import {
   updatePublicPageConfig,
 } from '@/lib/services/clinicPublicConfig';
 import { revalidatePath } from 'next/cache';
+import { resolveGoogleReviewSettings } from '@/lib/services/googleReviewSettings';
 
 // CLINIC PUBLIC PAGE OWNER EXPERIENCE — service tests.
 // Covers: activity-aware default templates, profile reading with defaults,
@@ -119,6 +120,38 @@ describe('readPublicProfile — defaults + stored values', () => {
     );
     expect(p.cover_url).toBe('https://storage.example/clinic/cover.webp');
   });
+
+  it('preconfigures Amal imaging center with its exact Google review link', () => {
+    const config = resolveGoogleReviewSettings({}, 'imaging_center', 'amal-x-ray-center');
+    expect(config).toEqual({
+      google_review_enabled: true,
+      google_review_label: 'قيّمنا على Google',
+      google_review_url: 'https://g.page/r/CXCE9MGSfk0qEAE/review',
+    });
+  });
+
+  it('uses each other imaging center’s saved link and explicit enabled state', () => {
+    const config = resolveGoogleReviewSettings({
+      public_profile: {
+        google_review_url: 'https://g.page/r/other/review',
+        google_review_enabled: false,
+        google_review_label: 'رأيك يهمنا',
+      },
+    }, 'imaging_center', 'other-imaging-center');
+    expect(config).toEqual({
+      google_review_enabled: false,
+      google_review_label: 'رأيك يهمنا',
+      google_review_url: 'https://g.page/r/other/review',
+    });
+  });
+
+  it('does not expose Google review settings for dental labs', () => {
+    const config = resolveGoogleReviewSettings({
+      public_profile: { google_review_url: 'https://g.page/r/lab/review', google_review_enabled: true },
+    }, 'dental_lab', 'dental-lab');
+    expect(config.google_review_enabled).toBe(false);
+    expect(config.google_review_url).toBeUndefined();
+  });
 });
 
 describe('updatePublicPageConfig — tenant-scoped save', () => {
@@ -147,6 +180,41 @@ describe('updatePublicPageConfig — tenant-scoped save', () => {
     expect(mockState.updateCall.settings.public_profile.cover_url).toBe(coverUrl);
     expect(mockState.updateCall.settings.public_profile.tagline).toBe('المركز');
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('saves Google review settings for imaging centers in public_profile JSONB', async () => {
+    mockState.row = { id: CID, slug: 'amal-x-ray-center', activity_type: 'imaging_center', settings: {} };
+    const result = await updatePublicPageConfig(CID, {
+      google_review_url: 'https://g.page/r/CXCE9MGSfk0qEAE/review',
+      google_review_enabled: true,
+      google_review_label: 'قيّمنا على Google',
+    });
+    expect(result.ok).toBe(true);
+    expect(mockState.updateCall.settings.public_profile).toMatchObject({
+      google_review_url: 'https://g.page/r/CXCE9MGSfk0qEAE/review',
+      google_review_enabled: true,
+      google_review_label: 'قيّمنا على Google',
+    });
+    expect(revalidatePath).toHaveBeenNthCalledWith(1, '/amal-x-ray-center');
+    expect(revalidatePath).toHaveBeenNthCalledWith(2, '/amal-x-ray-center/reviews');
+    expect(revalidatePath).toHaveBeenNthCalledWith(3, '/c/amal-x-ray-center');
+  });
+
+  it('rejects Google review settings for dental labs', async () => {
+    mockState.row = { id: CID, activity_type: 'dental_lab', settings: {} };
+    const result = await updatePublicPageConfig(CID, {
+      google_review_url: 'https://g.page/r/lab/review',
+      google_review_enabled: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(mockState.updateCall).toBeNull();
+  });
+
+  it('does not allow enabling the button without a valid Google review URL', async () => {
+    mockState.row = { id: CID, activity_type: 'imaging_center', settings: {} };
+    const result = await updatePublicPageConfig(CID, { google_review_enabled: true });
+    expect(result.ok).toBe(false);
+    expect(mockState.updateCall).toBeNull();
   });
 
   it('persists the uploaded logo URL and invalidates only that clinic public-page routes', async () => {

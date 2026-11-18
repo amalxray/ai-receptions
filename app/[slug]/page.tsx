@@ -23,6 +23,8 @@ import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
 import InstallPWA from '@/components/pwa/InstallPWA';
 import PublicServicesCard from '@/components/public/PublicServicesCard';
+import GoogleReviewButton from '@/components/public/GoogleReviewButton';
+import { shouldShowGoogleReviewButton } from '@/lib/services/googleReviewSettings';
 
 /**
  * Digital Healthcare Space — CANONICAL public space route (Phase E).
@@ -278,6 +280,9 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ImagingPublicSpace space={publicSpace} servicesCard={servicesCard} />
+          {shouldShowGoogleReviewButton(space.activityType, space.googleReviewEnabled, space.googleReviewUrl) && (
+            <GoogleReviewButton href={space.googleReviewUrl} label={space.googleReviewLabel} />
+          )}
           {reviewsSection}
           {faqSection}
           <InstallPWA variant="floating" appName={space.name} />
@@ -298,17 +303,8 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={publicSpace} servicesCard={servicesCard} />
-          {space.activityType === 'clinic' && space.googleReviewUrl && (
-            <div className="mx-auto mb-8 w-full max-w-5xl px-4 text-center sm:px-6">
-              <a
-                href={space.googleReviewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center rounded-full bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
-              >
-                قيّمنا على Google
-              </a>
-            </div>
+          {shouldShowGoogleReviewButton(space.activityType, space.googleReviewEnabled, space.googleReviewUrl) && (
+            <GoogleReviewButton href={space.googleReviewUrl} label={space.googleReviewLabel} />
           )}
           {reviewsSection}
           {faqSection}
