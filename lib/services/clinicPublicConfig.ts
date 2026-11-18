@@ -300,6 +300,7 @@ export type PublicProfileSettings = {
   insurance?: string;
   show_phone?: boolean;
   show_prices?: boolean;
+  google_review_url?: string;
   social_links?: SocialLinks;
   show_providers?: boolean;
   sections?: Partial<Record<PublicSectionKey, boolean>>;
@@ -396,6 +397,7 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
     logo: typeof p.logo === 'string' ? p.logo : undefined,
     faq: Array.isArray(p.faq) ? p.faq as PublicProfileSettings['faq'] : undefined,
     insurance: typeof p.insurance === 'string' ? p.insurance : undefined,
+    google_review_url: isHttpsUrl(p.google_review_url) ? p.google_review_url : undefined,
     show_phone: p.show_phone === true,
     show_prices: p.show_prices === true,
     show_providers: p.show_providers !== false,
@@ -408,6 +410,15 @@ export function readPublicProfile(settings: unknown, activityType: ActivityType)
     display: readDisplaySettings(settings),
     theme: readTheme(settings),
   };
+}
+
+function isHttpsUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 /** Tenant-scoped read for the owner screen (includes what to toggle). */
@@ -522,13 +533,16 @@ export async function updatePublicPageConfig(
   const settings = { ...(current.settings ?? {}) };
   const existing = (settings.public_profile ?? {}) as Record<string, unknown>;
   const activityType = normalizeActivityType(current.activity_type ?? 'clinic');
+  if (patch.google_review_url !== undefined && activityType !== 'clinic') {
+    return { ok: false, message: 'Google review links are only supported for dental clinics' };
+  }
 
   const updated: Record<string, unknown> = { ...existing };
 
   // Scalar/profile fields (with empty-string → delete so users can clear them).
   const scalarFields: (keyof PublicProfileSettings)[] = [
     'description', 'tagline', 'about', 'cover_url', 'logo', 'insurance',
-    'show_phone', 'show_prices', 'show_providers', 'discovery_enabled',
+    'show_phone', 'show_prices', 'google_review_url', 'show_providers', 'discovery_enabled',
   ];
   for (const key of scalarFields) {
     const v = patch[key];

@@ -57,8 +57,38 @@ export default function OverviewPage() {
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError, activityType } = useClinicContext();
   const labels = getActivityLabels(activityType);
   const [data, setData] = useState<OverviewData | null>(null);
+  const [googleReviewUrl, setGoogleReviewUrl] = useState<string | null>(null);
+  const [googleReviewError, setGoogleReviewError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!clinicId || activityType !== 'clinic') {
+      setGoogleReviewUrl(null);
+      setGoogleReviewError(null);
+      return;
+    }
+    setGoogleReviewError(null);
+    async function loadGoogleReviewUrl() {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`/api/clinic/public-page?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل رابط تقييم Google');
+        if (mounted) setGoogleReviewUrl(body.data?.google_review_url ?? null);
+      } catch (e) {
+        if (mounted) {
+          setGoogleReviewUrl(null);
+          setGoogleReviewError(
+            e instanceof Error ? e.message : 'تعذر تحميل رابط تقييم Google. تحقق من إعدادات الصفحة العامة.'
+          );
+        }
+      }
+    }
+    void loadGoogleReviewUrl();
+    return () => { mounted = false; };
+  }, [activityType, authHeaders, clinicId]);
 
   useEffect(() => {
     let mounted = true;
@@ -174,12 +204,22 @@ export default function OverviewPage() {
                 { label: 'فتح قائمة المرضى', href: '/dashboard/patients' },
                 { label: 'محادثات الذكاء الاصطناعي', href: '/dashboard/conversations' },
                 { label: 'قاعدة المعرفة', href: '/dashboard/knowledge-base' },
+                ...(activityType === 'clinic'
+                  ? [{
+                      label: 'اطلب تقييمًا على Google',
+                      href: googleReviewUrl ?? (clinicSlug ? tenantDashboardUrl(clinicSlug, 'public-page') : '/dashboard/public-page'),
+                      external: !!googleReviewUrl,
+                    }]
+                  : []),
               ].map((action) => (
-                <a key={action.href} href={action.href} className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-500/60 hover:text-white">
+                <a key={action.href} href={action.href} {...('external' in action && action.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-500/60 hover:text-white">
                   {action.label}
                 </a>
               ))}
             </div>
+            {activityType === 'clinic' && googleReviewError && (
+              <p role="status" className="mt-3 text-sm text-amber-300">{googleReviewError}</p>
+            )}
           </section>
         </div>
       ) : null}

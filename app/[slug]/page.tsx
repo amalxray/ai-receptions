@@ -298,6 +298,18 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
         <>
           {schemaScript}
           <ClinicPublicSpace space={publicSpace} servicesCard={servicesCard} />
+          {space.activityType === 'clinic' && space.googleReviewUrl && (
+            <div className="mx-auto mb-8 w-full max-w-5xl px-4 text-center sm:px-6">
+              <a
+                href={space.googleReviewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center rounded-full bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
+              >
+                قيّمنا على Google
+              </a>
+            </div>
+          )}
           {reviewsSection}
           {faqSection}
           <InstallPWA variant="floating" appName={space.name} />

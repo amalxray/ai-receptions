@@ -5,6 +5,7 @@ import { getPublicClinicProfile, legacyClinicUrl } from '@/lib/services/clinicPu
 import {
   DEFAULT_PUBLIC_SECTION_ORDER,
   PUBLIC_SECTION_ORDER_KEYS,
+  readPublicProfile,
   type PublicThemeSettings,
 } from '@/lib/services/clinicPublicConfig';
 import { normalizeActivityType, type ActivityType } from '@/lib/services/activityTypes';
@@ -112,6 +113,7 @@ export type ActivityPublicSpace = {
   latitude: number | null;
   longitude: number | null;
   google_maps_url: string | null;
+  googleReviewUrl: string | null;
   phone: string | null;
   faq: { question: string; answer: string }[];
   insurance: string | null;
@@ -217,6 +219,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
   if (!profile) return null;
 
   const activityType = normalizeActivityType(activityRow.data?.activity_type ?? 'clinic');
+  const publicProfile = readPublicProfile(activityRow.data?.settings, activityType);
   const settings = activityRow.data?.settings as { public_profile?: { sections_order?: unknown } | null } | null;
   const savedOrder = settings?.public_profile?.sections_order;
   const storedOrder = Array.isArray(savedOrder)
@@ -364,6 +367,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     latitude: profile.latitude ?? null,
     longitude: profile.longitude ?? null,
     google_maps_url: profile.google_maps_url ?? null,
+    googleReviewUrl: publicProfile.google_review_url ?? null,
     phone: profile.phone,
     faq: profile.faq,
     insurance: profile.insurance,
