@@ -16,6 +16,7 @@ import {
   MorphingDialogContainer,
 } from '@/components/ui/morphing-dialog';
 import ClickToPlayVideo, { VideoPoster } from '@/components/public/ClickToPlayVideo';
+import { publicGalleryImageSrc, publicGalleryImageSrcSet } from '@/lib/media/publicGalleryImages';
 
 export type LightboxMedia = {
   id: string;
@@ -51,8 +52,15 @@ export default function PublicGalleryLightbox({
               <VideoPoster title={item.title ?? undefined} className="h-full w-full transition-transform duration-500 group-hover:scale-105" />
             ) : (
               <MorphingDialogImage
-                src={item.public_url}
+                src={publicGalleryImageSrc(item.public_url, 400)}
+                srcSet={publicGalleryImageSrcSet(item.public_url)}
+                sizes="(max-width: 768px) 85vw, 400px"
                 alt={item.alt_text || item.title || 'صورة من المعرض'}
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.removeAttribute('srcset');
+                  event.currentTarget.src = item.public_url;
+                }}
                 className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
               />
             )}
@@ -84,6 +92,7 @@ export default function PublicGalleryLightbox({
                   <MorphingDialogImage
                     src={item.public_url}
                     alt={item.alt_text || item.title || 'صورة من المعرض'}
+                    loading="lazy"
                     className="h-auto w-full rounded-lg"
                   />
                 )}
