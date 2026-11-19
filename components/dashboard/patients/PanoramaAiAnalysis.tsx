@@ -23,6 +23,7 @@ export default function PanoramaAiAnalysis({
   authHeaders,
 }: PanoramaAiAnalysisProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +54,21 @@ export default function PanoramaAiAnalysis({
       ) {
         throw new Error('تعذر تجهيز الصورة الأصلية للتحليل');
       }
+
+      const imageResponseBody = await fetch(imagePayload.data.signed_url, {
+        mode: 'cors',
+        cache: 'no-store',
+      });
+      if (!imageResponseBody.ok) {
+        throw new Error('تعذر تحميل صورة البانوراما.');
+      }
+      const imageBlob = await imageResponseBody.blob();
+      if (!imageBlob.size) {
+        throw new Error('ملف صورة البانوراما فارغ.');
+      }
+
       setImageUrl(imagePayload.data.signed_url);
+      setImageFile(new File([imageBlob], filename, { type: imageBlob.type }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'تعذر فتح أداة تحليل البانوراما');
     } finally {
@@ -67,7 +82,10 @@ export default function PanoramaAiAnalysis({
         <>
           <button
             type="button"
-            onClick={() => setImageUrl(null)}
+            onClick={() => {
+              setImageUrl(null);
+              setImageFile(null);
+            }}
             className="mb-3 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
           >
             إغلاق أداة التحليل
@@ -78,6 +96,7 @@ export default function PanoramaAiAnalysis({
             medicalFileId={medicalFileId}
             authHeaders={authHeaders}
             imageUrl={imageUrl}
+            imageFile={imageFile ?? undefined}
             imageAlt={filename}
           />
         </>

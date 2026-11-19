@@ -1,5 +1,12 @@
 # Project Status
 
+## 2026-11-19 — P2 Panorama image transfer
+
+- **Production CORS/read probe on the old UI path:** One Supabase Storage image GET succeeded (`200`, `image/png`, CORS-readable) and read `1,966,569` bytes. This is a read-only probe of the real panorama, not a complete analysis transaction.
+- **Baseline limitation:** The existing code obtains a signed URL for the preview and the analysis route separately downloads the same object through Supabase Storage. The second download is established by code inspection, not a Production request measurement: executing the analysis endpoint would persist an analysis row, which is not permitted under the read-only Production constraint.
+- **Implementation in this PR:** Fetch the signed image once in the browser, display it through a local object URL, and submit the same `File` with the analysis request. The API validates the uploaded image, category, and stored size and no longer downloads the object from Storage.
+- **Verification:** `tests/unit/panorama-analyze-blob.test.ts` asserts the API receives and forwards a `Blob` to inference without calling Storage download. Production after-measurement is pending; it requires deploying this change, which was explicitly not authorized. Do not claim a Production reduction from two requests to one or a measured Production byte reduction until that read-only verification is authorized after deployment.
+
 ## 2026-11-09 — Dashboard navigation performance ([PR #316](https://github.com/amalxray/ai-receptions/pull/316), [PR #317](https://github.com/amalxray/ai-receptions/pull/317), [PR #318](https://github.com/amalxray/ai-receptions/pull/318))
 
 - **Shared clinic context:** Dashboard components reuse verified tenant context and share membership data, avoiding repeated independent fetches while preserving server-side tenant authorization.

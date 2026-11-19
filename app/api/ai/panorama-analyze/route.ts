@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 
     const { data: medicalFile, error: fileError } = await supabaseAdmin
       .from('medical_files')
-      .select('id, clinic_id, patient_id, storage_path, mime_type, size_bytes, medical_category, deleted_at')
+      .select('id, clinic_id, patient_id, size_bytes, medical_category, deleted_at')
       .eq('id', medicalFileId)
       .eq('clinic_id', clinicId)
       .eq('patient_id', patientId)
@@ -109,18 +109,15 @@ export async function POST(request: Request) {
       return errorResponse('حجم الصورة يتجاوز الحد المسموح.', 413);
     }
 
-    const { data: imageBlob, error: downloadError } = await supabaseAdmin.storage
-      .from('medical-files')
-      .download(medicalFile.storage_path);
-    if (downloadError || !imageBlob) {
-      console.error(
-        '[panorama-analyze] private image download failed:',
-        downloadError?.message ?? 'Storage returned no image'
-      );
-      return errorResponse('تعذر قراءة صورة الأشعة.', 502);
+    const imageBlob = formData.get('image');
+    if (!(imageBlob instanceof Blob)) {
+      return errorResponse('يجب إرفاق صورة الأشعة للتحليل.', 400);
     }
     if (imageBlob.size > MAX_IMAGE_BYTES) {
       return errorResponse('حجم الصورة يتجاوز الحد المسموح.', 413);
+    }
+    if (imageBlob.size !== storedSize) {
+      return errorResponse('الصورة المرسلة لا تطابق حجم الملف الطبي.', 400);
     }
 
     const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
