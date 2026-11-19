@@ -17,4 +17,13 @@ describe('public gallery responsive image URLs', () => {
     expect(publicGalleryImageSrc(local, 400)).toBe(local);
     expect(publicGalleryImageSrcSet(local)).toBeUndefined();
   });
+
+  it('optimizes the approved public gallery sources and leaves other hosts unchanged', () => {
+    const unsplash = 'https://images.unsplash.com/photo-1?auto=format&w=1200';
+    const unrelated = 'https://example.com/public-image.png';
+
+    expect(publicGalleryImageSrc(unsplash, 800)).toContain('/_next/image?url=');
+    expect(publicGalleryImageSrc(unrelated, 800)).toBe(unrelated);
+    expect(publicGalleryImageSrcSet(unrelated)).toBeUndefined();
+  });
 });

@@ -9,6 +9,10 @@ const nextConfig = {
         hostname: '**.supabase.co',
         pathname: '/storage/v1/object/public/clinic-public-media/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+      },
     ],
   },
   async headers() {
