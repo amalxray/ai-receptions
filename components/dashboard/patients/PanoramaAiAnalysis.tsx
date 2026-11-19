@@ -25,6 +25,7 @@ export default function PanoramaAiAnalysis({
   const [enabled, setEnabled] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,7 +53,18 @@ export default function PanoramaAiAnalysis({
         ) {
           throw new Error('Image preview URL was not returned.');
         }
-        if (active) setImageUrl(imagePayload.data.signed_url);
+        const imageResponseBody = await fetch(imagePayload.data.signed_url, { mode: 'cors' });
+        if (!imageResponseBody.ok) {
+          throw new Error('Image preview could not be downloaded.');
+        }
+        const imageBlob = await imageResponseBody.blob();
+        if (!imageBlob.size) {
+          throw new Error('Image preview was empty.');
+        }
+        if (active) {
+          setImageUrl(imagePayload.data.signed_url);
+          setImageFile(new File([imageBlob], filename, { type: imageBlob.type }));
+        }
       } catch (caught) {
         console.error(
           '[panorama-analyze] image preview initialization failed:',
@@ -71,7 +83,7 @@ export default function PanoramaAiAnalysis({
     return () => {
       active = false;
     };
-  }, [authHeaders, clinicId, medicalFileId]);
+  }, [authHeaders, clinicId, filename, medicalFileId]);
 
   if (!enabled) return null;
 
@@ -84,6 +96,7 @@ export default function PanoramaAiAnalysis({
           medicalFileId={medicalFileId}
           authHeaders={authHeaders}
           imageUrl={imageUrl}
+          imageFile={imageFile ?? undefined}
           imageAlt={filename}
         />
       ) : (

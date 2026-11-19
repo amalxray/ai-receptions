@@ -282,7 +282,7 @@ export default function AiXrayAnalyzer({
   }, [displayedImageUrl, updateImageSize]);
 
   const analyzeImage = async (modelVersion: 'advanced') => {
-    if (isAnalyzing || !consent || (!imageFile && !imageUrl)) return;
+    if (isAnalyzing || !consent || !imageFile) return;
 
     setIsAnalyzing(true);
     setError(null);
@@ -304,6 +304,7 @@ export default function AiXrayAnalyzer({
       formData.set('consent', 'true');
       formData.set('confidence_threshold', String(confidenceThreshold));
       formData.set('model_version', modelVersion);
+      formData.set('image', imageFile);
 
       const response = await fetch('/api/ai/panorama-analyze', {
         method: 'POST',
@@ -578,7 +579,7 @@ export default function AiXrayAnalyzer({
           <button
             type="button"
             onClick={() => analyzeImage('advanced')}
-            disabled={isAnalyzing || !consent}
+            disabled={isAnalyzing || !consent || !imageFile}
             className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-600 px-5 py-2.5 font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-600/25 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isAnalyzing ? (
