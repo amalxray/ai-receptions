@@ -201,6 +201,7 @@ export default function ReverseTransferDialog({
             const tusUpload = startMedicalTusUpload({
               file: uploadedFile,
               endpoint: String(startBody.data?.resumable_endpoint ?? ''),
+              signatureToken: String(startBody.data?.token ?? ''),
               storagePath: String(startBody.data?.storage_path ?? ''),
               clientUploadId: String(startBody.data?.client_upload_id ?? clientUploadId),
               onProgress: setUploadProgress,

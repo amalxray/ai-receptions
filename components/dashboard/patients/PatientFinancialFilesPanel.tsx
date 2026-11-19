@@ -612,6 +612,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         const tusUpload = startMedicalTusUpload({
           file: fileToUpload,
           endpoint: String(startJson.data.resumable_endpoint ?? ''),
+          signatureToken: String(startJson.data.token ?? ''),
           storagePath: String(storage_path),
           clientUploadId: String(startJson.data.client_upload_id ?? clientUploadId),
           onProgress: () => {},

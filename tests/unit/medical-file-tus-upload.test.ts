@@ -68,6 +68,7 @@ describe('medical file TUS upload', () => {
     const upload = startMedicalTusUpload({
       file: new File(['scan'], 'scan.dcm', { type: 'application/dicom' }),
       endpoint: 'https://project.storage.supabase.co/storage/v1/upload/resumable',
+      signatureToken: 'signed-upload-token',
       storagePath: 'medical/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/scan.dcm',
       clientUploadId: '33333333-3333-4333-8333-333333333333',
       onProgress: () => {},
@@ -81,15 +82,19 @@ describe('medical file TUS upload', () => {
     expect(tusState.options?.removeFingerprintOnSuccess).toBe(true);
     expect(tusState.options?.headers).toEqual({
       apikey: 'public-test-key',
-      authorization: 'Bearer medical-user-jwt',
+      'x-signature': 'signed-upload-token',
     });
     const requestHeaders: Record<string, string> = {};
+    const requestHeaderCalls: Array<[string, string]> = [];
     const onBeforeRequest = tusState.options?.onBeforeRequest as (
       request: { setHeader: (name: string, value: string) => void },
     ) => Promise<void>;
     sessionState.accessToken = 'refreshed-medical-user-jwt';
-    await onBeforeRequest({ setHeader: (name, value) => { requestHeaders[name] = value; } });
+    await onBeforeRequest({ setHeader: (name, value) => { requestHeaders[name] = value; requestHeaderCalls.push([name, value]); } });
     expect(requestHeaders.Authorization).toBe('Bearer refreshed-medical-user-jwt');
+    expect(requestHeaderCalls.filter(([name]) => name.toLowerCase() === 'authorization')).toEqual([
+      ['Authorization', 'Bearer refreshed-medical-user-jwt'],
+    ]);
     expect(tusState.options?.metadata).toMatchObject({
       bucketName: 'medical-files',
       objectName: expect.stringContaining('medical/11111111-'),
@@ -102,12 +107,25 @@ describe('medical file TUS upload', () => {
     const upload = startMedicalTusUpload({
       file: new File(['scan'], 'scan.dcm', { type: 'application/dicom' }),
       endpoint: 'https://project.storage.supabase.co/storage/v1/upload/resumable',
+      signatureToken: 'signed-upload-token',
       storagePath: 'medical/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/scan.dcm',
       clientUploadId: '33333333-3333-4333-8333-333333333333',
       onProgress: () => {},
     });
 
     await expect(upload.promise).rejects.toThrow('يلزم تسجيل الدخول لرفع الملف');
+    expect(tusState.options).toBeNull();
+  });
+
+  it('does not start a signed TUS upload without the server-issued signature token', async () => {
+    expect(() => startMedicalTusUpload({
+      file: new File(['scan'], 'scan.dcm', { type: 'application/dicom' }),
+      endpoint: 'https://project.storage.supabase.co/storage/v1/upload/resumable',
+      signatureToken: '',
+      storagePath: 'medical/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/scan.dcm',
+      clientUploadId: '33333333-3333-4333-8333-333333333333',
+      onProgress: () => {},
+    })).toThrow('تعذر إنشاء رمز رفع موقّع للملف');
     expect(tusState.options).toBeNull();
   });
 

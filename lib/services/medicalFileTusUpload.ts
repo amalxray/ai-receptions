@@ -9,6 +9,7 @@ const CLIENT_UPLOAD_STORAGE_PREFIX = 'medical-upload-id:';
 type TusUploadOptions = {
   file: File;
   endpoint: string;
+  signatureToken: string;
   storagePath: string;
   clientUploadId: string;
   onProgress: (percentage: number) => void;
@@ -107,12 +108,14 @@ async function digestHex(data: ArrayBuffer | Uint8Array): Promise<string> {
 export function startMedicalTusUpload({
   file,
   endpoint,
+  signatureToken,
   storagePath,
   clientUploadId,
   onProgress,
 }: TusUploadOptions): { promise: Promise<void>; cancel: () => void } {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!anonKey) throw new Error('إعداد مفتاح Supabase العام غير متاح لرفع الملفات');
+  if (!signatureToken) throw new Error('تعذر إنشاء رمز رفع موقّع للملف');
 
   let upload: Upload | null = null;
   let cancelled = false;
@@ -143,7 +146,7 @@ export function startMedicalTusUpload({
         endpoint,
         headers: {
           apikey: anonKey,
-          authorization: `Bearer ${accessToken}`,
+          'x-signature': signatureToken,
         },
         onBeforeRequest: async (request) => {
           const { data, error } = await supabase.auth.getSession();
