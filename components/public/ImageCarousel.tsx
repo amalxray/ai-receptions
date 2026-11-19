@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import type { LightboxMedia } from './PublicGalleryLightbox';
 import ClickToPlayVideo, { VideoPoster } from './ClickToPlayVideo';
+import { publicGalleryImageSrc, publicGalleryImageSrcSet } from '@/lib/media/publicGalleryImages';
 
 const SWIPE_THRESHOLD = 60;
 
@@ -62,9 +63,23 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
       ) : (
         <VideoPoster title={item.title ?? undefined} className={`${rounded} h-full w-full`} />
       )
-    ) : (
+    ) : playable ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={item.public_url} alt={item.alt_text || item.title || 'صورة من المعرض'} loading="lazy" className={`${rounded} h-full w-full bg-slate-100 object-contain`} />
+    ) : (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={publicGalleryImageSrc(item.public_url, 800)}
+        srcSet={publicGalleryImageSrcSet(item.public_url)}
+        sizes="(max-width: 768px) 92vw, 768px"
+        alt={item.alt_text || item.title || 'صورة من المعرض'}
+        loading="lazy"
+        onError={(event) => {
+          event.currentTarget.removeAttribute('srcset');
+          event.currentTarget.src = item.public_url;
+        }}
+        className={`${rounded} h-full w-full bg-slate-100 object-contain`}
+      />
     );
 
   return (
@@ -169,7 +184,18 @@ export default function ImageCarousel({ media, className }: { media: LightboxMed
                       <span className="grid h-full w-full place-items-center bg-slate-800 text-2xl">▶</span>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.public_url} alt="" loading="lazy" className="h-full w-full bg-slate-100 object-contain" />
+                      <img
+                        src={publicGalleryImageSrc(item.public_url, 400)}
+                        srcSet={publicGalleryImageSrcSet(item.public_url)}
+                        sizes="96px"
+                        alt=""
+                        loading="lazy"
+                        onError={(event) => {
+                          event.currentTarget.removeAttribute('srcset');
+                          event.currentTarget.src = item.public_url;
+                        }}
+                        className="h-full w-full bg-slate-100 object-contain"
+                      />
                     )}
                   </button>
                 ))}
