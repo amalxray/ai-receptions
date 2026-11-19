@@ -10,6 +10,8 @@ import {
 } from '@/lib/services/reviewsService';
 import ReviewsSection from '@/components/public/ReviewsSection';
 import ReviewsPageClient from './ReviewsPageClient';
+import { buildClinicSocialMetadata } from '@/lib/seo/clinicSocialMetadata';
+import { shouldShowGoogleReviewButton } from '@/lib/services/googleReviewSettings';
 
 /**
  * Phase 3b — full public reviews page: /{slug}/reviews.
@@ -29,10 +31,21 @@ type PageProps = { params: { slug: string }; searchParams?: { page?: string } };
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const space = await loadSpace(params.slug);
   if (!space) return { title: 'غير موجودة', robots: { index: false, follow: false } };
+  const title = `تقييمات المرضى — ${space.name}`;
+  const description = `آراء وتقييمات المرضى في ${space.name}.`;
+  const socialMetadata = buildClinicSocialMetadata({
+    title,
+    description,
+    url: `${space.pageUrl}/reviews`,
+    clinicName: space.name,
+    logoUrl: space.logoSourceUrl,
+  });
+
   return {
-    title: `تقييمات المرضى — ${space.name}`,
-    description: `آراء وتقييمات المرضى في ${space.name}.`,
+    title,
+    description,
     alternates: { canonical: `${space.pageUrl}/reviews` },
+    ...socialMetadata,
   };
 }
 
@@ -50,6 +63,11 @@ export default async function ClinicReviewsPage({ params, searchParams }: PagePr
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const googleReviewUrl = shouldShowGoogleReviewButton(
+    space.activityType,
+    space.googleReviewEnabled,
+    space.googleReviewUrl,
+  ) ? space.googleReviewUrl : null;
 
   const reviewsLd = buildClinicReviewsJsonLd({
     clinic: { name: space.name, url: `${space.pageUrl}/reviews` },
@@ -78,11 +96,23 @@ export default async function ClinicReviewsPage({ params, searchParams }: PagePr
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-2xl font-bold text-slate-900">تقييمات المرضى — {space.name}</h1>
-          <ReviewsPageClient clinicSlug={params.slug} />
+          <ReviewsPageClient
+            clinicSlug={params.slug}
+            showReviewerCategory={space.activityType === 'imaging_center'}
+            googleReviewUrl={googleReviewUrl}
+            googleReviewLabel={space.googleReviewLabel}
+          />
         </div>
 
         <div className="mt-6">
-          <ReviewsSection clinicName={space.name} stats={stats} items={items} hideViewAll maxItems={PAGE_SIZE} />
+          <ReviewsSection
+            clinicName={space.name}
+            showReviewerCategory={space.activityType === 'imaging_center'}
+            stats={stats}
+            items={items}
+            hideViewAll
+            maxItems={PAGE_SIZE}
+          />
         </div>
 
         {stats.total === 0 && (

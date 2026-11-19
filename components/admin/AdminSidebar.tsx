@@ -17,6 +17,7 @@ import {
   HelpCircle,
   Palette,
   Settings,
+  HardDrive,
   PanelRightClose,
   PanelRightOpen,
   Menu,
@@ -62,7 +63,10 @@ const NAV: NavGroup[] = [
   },
   {
     title: 'النظام',
-    items: [{ href: '/admin/settings', label: 'الإعدادات', icon: Settings }],
+    items: [
+      { href: '/admin/settings', label: 'الإعدادات', icon: Settings },
+      { href: '/admin/storage', label: 'استخدام التخزين', icon: HardDrive },
+    ],
   },
 ];
 

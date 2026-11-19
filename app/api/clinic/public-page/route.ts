@@ -39,6 +39,17 @@ const patchSchema = z.object({
     answer: z.string().trim().min(1).max(2000),
   }).strict().required()).max(20).optional(),
   insurance: z.string().trim().max(1000).nullable().optional(),
+  google_review_url: z.string().trim().max(600).url()
+    .refine((value) => {
+      try {
+        return new URL(value).protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }, 'URL must use HTTPS')
+    .nullable().optional(),
+  google_review_enabled: z.boolean().optional(),
+  google_review_label: z.string().trim().min(1).max(80).nullable().optional(),
   show_phone: z.boolean().optional(),
   show_prices: z.boolean().optional(),
   show_providers: z.boolean().optional(),

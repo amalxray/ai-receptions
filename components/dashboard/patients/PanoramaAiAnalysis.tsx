@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import AiXrayAnalyzer from '@/components/features/AiXrayAnalyzer';
 
 type PanoramaAiAnalysisProps = {
@@ -22,94 +22,95 @@ export default function PanoramaAiAnalysis({
   filename,
   authHeaders,
 }: PanoramaAiAnalysisProps) {
-  const [enabled, setEnabled] = useState(false);
-  const [loadingPreview, setLoadingPreview] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadPreview() {
-      try {
-        const statusResponse = await fetch('/api/ai/panorama-analyze', { cache: 'no-store' });
-        if (!statusResponse.ok) return;
-        const statusPayload: unknown = await statusResponse.json();
-        if (!isRecord(statusPayload) || statusPayload.enabled !== true) return;
-        if (active) setEnabled(true);
-
-        const headers = await authHeaders();
-        const imageResponse = await fetch(
-          `/api/clinic/medical-files/${encodeURIComponent(medicalFileId)}?clinic_id=${encodeURIComponent(clinicId)}`,
-          { headers }
-        );
-        const imagePayload: unknown = await imageResponse.json();
-        if (
-          !imageResponse.ok ||
-          !isRecord(imagePayload) ||
-          !isRecord(imagePayload.data) ||
-          typeof imagePayload.data.signed_url !== 'string'
-        ) {
-          throw new Error('Image preview URL was not returned.');
-        }
-        const imageResponseBody = await fetch(imagePayload.data.signed_url, { mode: 'cors' });
-        if (!imageResponseBody.ok) {
-          throw new Error('Image preview could not be downloaded.');
-        }
-        const imageBlob = await imageResponseBody.blob();
-        if (!imageBlob.size) {
-          throw new Error('Image preview was empty.');
-        }
-        if (active) {
-          setImageUrl(imagePayload.data.signed_url);
-          setImageFile(new File([imageBlob], filename, { type: imageBlob.type }));
-        }
-      } catch (caught) {
-        console.error(
-          '[panorama-analyze] image preview initialization failed:',
-          caught instanceof Error ? caught.message : 'Unknown error'
-        );
-        if (active) {
-          setEnabled(true);
-          setError('تعذر تحميل صورة البانوراما للمعاينة.');
-        }
-      } finally {
-        if (active) setLoadingPreview(false);
+  async function openAnalysis() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const statusResponse = await fetch('/api/ai/panorama-analyze', { cache: 'no-store' });
+      if (!statusResponse.ok) throw new Error('تعذر التحقق من توفر أداة تحليل البانوراما');
+      const statusPayload: unknown = await statusResponse.json();
+      if (!isRecord(statusPayload) || statusPayload.enabled !== true) {
+        setError('أداة تحليل البانوراما غير مفعّلة لهذا النظام.');
+        return;
       }
+
+      const headers = await authHeaders();
+      const imageResponse = await fetch(
+        `/api/clinic/medical-files/${encodeURIComponent(medicalFileId)}?clinic_id=${encodeURIComponent(clinicId)}&variant=original`,
+        { headers, cache: 'no-store' },
+      );
+      const imagePayload: unknown = await imageResponse.json();
+      if (
+        !imageResponse.ok ||
+        !isRecord(imagePayload) ||
+        !isRecord(imagePayload.data) ||
+        typeof imagePayload.data.signed_url !== 'string'
+      ) {
+        throw new Error('تعذر تجهيز الصورة الأصلية للتحليل');
+      }
+
+      const imageResponseBody = await fetch(imagePayload.data.signed_url, {
+        mode: 'cors',
+        cache: 'no-store',
+      });
+      if (!imageResponseBody.ok) {
+        throw new Error('تعذر تحميل صورة البانوراما.');
+      }
+      const imageBlob = await imageResponseBody.blob();
+      if (!imageBlob.size) {
+        throw new Error('ملف صورة البانوراما فارغ.');
+      }
+
+      setImageUrl(imagePayload.data.signed_url);
+      setImageFile(new File([imageBlob], filename, { type: imageBlob.type }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'تعذر فتح أداة تحليل البانوراما');
+    } finally {
+      setLoading(false);
     }
-
-    void loadPreview();
-    return () => {
-      active = false;
-    };
-  }, [authHeaders, clinicId, filename, medicalFileId]);
-
-  if (!enabled) return null;
+  }
 
   return (
     <section className="mt-4 border-t border-slate-800/80 pt-4" aria-label="تحليل صورة البانوراما">
       {imageUrl ? (
-        <AiXrayAnalyzer
-          clinicId={clinicId}
-          patientId={patientId}
-          medicalFileId={medicalFileId}
-          authHeaders={authHeaders}
-          imageUrl={imageUrl}
-          imageFile={imageFile ?? undefined}
-          imageAlt={filename}
-        />
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setImageUrl(null);
+              setImageFile(null);
+            }}
+            className="mb-3 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+          >
+            إغلاق أداة التحليل
+          </button>
+          <AiXrayAnalyzer
+            clinicId={clinicId}
+            patientId={patientId}
+            medicalFileId={medicalFileId}
+            authHeaders={authHeaders}
+            imageUrl={imageUrl}
+            imageFile={imageFile ?? undefined}
+            imageAlt={filename}
+          />
+        </>
       ) : (
-        error ? (
-          <p className="text-sm text-rose-300" role="alert">
-            {error}
-          </p>
-        ) : loadingPreview ? (
-          <p className="text-sm text-slate-300" role="status">
-            جارٍ تحميل صورة البانوراما...
-          </p>
-        ) : null
+        <button
+          type="button"
+          onClick={() => void openAnalysis()}
+          disabled={loading}
+          className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+        >
+          {loading ? 'جارٍ تجهيز أداة التحليل...' : 'فتح أداة تحليل البانوراما'}
+        </button>
       )}
+      {error && <p className="mt-2 text-xs text-rose-300" role="alert">{error}</p>}
     </section>
   );
 }

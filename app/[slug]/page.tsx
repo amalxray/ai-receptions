@@ -5,6 +5,7 @@ import { brandMetadataIcons, PLATFORM_VIEWPORT } from '@/lib/services/pwaManifes
 import { requestCache } from '@/lib/server/requestCache';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getClinicSubscriptionAccess } from '@/lib/subscription/access';
+import { buildClinicSocialMetadata } from '@/lib/seo/clinicSocialMetadata';
 import {
   buildClinicFaqItems,
   buildClinicSchema,
@@ -22,6 +23,7 @@ import { ImagingPublicSpace } from '@/components/public/ImagingPublicSpace';
 import { DentalLabPublicSpace } from '@/components/public/DentalLabPublicSpace';
 import InstallPWA from '@/components/pwa/InstallPWA';
 import PublicServicesCard from '@/components/public/PublicServicesCard';
+import { shouldShowGoogleReviewButton } from '@/lib/services/googleReviewSettings';
 
 /**
  * Digital Healthcare Space — CANONICAL public space route (Phase E).
@@ -85,6 +87,13 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
   const description =
     space.description ??
     `${space.name} — ${space.city ?? ''} ${space.area ?? ''}`.trim();
+  const socialMetadata = buildClinicSocialMetadata({
+    title: space.name,
+    description,
+    url: canonical,
+    clinicName: space.name,
+    logoUrl: space.logoSourceUrl,
+  });
   return {
     title: space.name,
     description,
@@ -96,22 +105,7 @@ export async function generateMetadata({ params }: ActivitySpacePageProps): Prom
     icons: brandMetadataIcons(space.logo),
     alternates: { canonical },
     robots: { index: true, follow: true },
-    openGraph: {
-      title: space.name,
-      description,
-      type: 'website',
-      url: canonical,
-      siteName: space.name,
-      // Phase 5 — per-clinic OG image (logo) + locale for social previews.
-      ...(space.logo ? { images: [{ url: space.logo, alt: space.name }] } : {}),
-      locale: 'ar_PS',
-    },
-    twitter: {
-      card: 'summary',
-      title: space.name,
-      description,
-      ...(space.logo ? { images: [space.logo] } : {}),
-    },
+    ...socialMetadata,
   };
 }
 
@@ -256,7 +250,18 @@ export default async function ActivitySpacePage({ params }: ActivitySpacePagePro
   // PHASE 2 — patient reviews block under the space (all activity types).
   // Phase 3b — viewAllHref links to /{slug}/reviews when total > 5.
   const reviewsSection = (
-    <ReviewsSection clinicName={space.name} clinicSlug={params.slug} stats={reviews.stats} items={reviews.items} viewAllHref={`/${params.slug}/reviews`} />
+    <ReviewsSection
+      clinicName={space.name}
+      clinicSlug={params.slug}
+      showReviewerCategory={space.activityType === 'imaging_center'}
+      googleReviewUrl={shouldShowGoogleReviewButton(space.activityType, space.googleReviewEnabled, space.googleReviewUrl)
+        ? space.googleReviewUrl
+        : null}
+      googleReviewLabel={space.googleReviewLabel}
+      stats={reviews.stats}
+      items={reviews.items}
+      viewAllHref={`/${params.slug}/reviews`}
+    />
   );
   const faqSection = (
     <section id="faq" dir="rtl" className="mx-auto my-8 w-full max-w-5xl px-4 sm:px-6">

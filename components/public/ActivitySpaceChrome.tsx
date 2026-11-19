@@ -19,6 +19,7 @@ import { ownerLoginUrl } from '@/lib/services/dashboardPaths';
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
+import { publicGalleryImageSrc, publicGalleryImageSrcSet } from '@/lib/media/publicGalleryImages';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
 const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
@@ -450,8 +451,15 @@ export function ActivitySpaceChrome({
             {space.coverUrl && !/facebook\.com|fbcdn\.net|instagram\.com/i.test(space.coverUrl) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, '')}
+                src={publicGalleryImageSrc(space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, ''), 1200)}
+                srcSet={publicGalleryImageSrcSet(space.coverUrl.replace(/[^a-zA-Z0-9:/._~?-]/g, ''))}
+                sizes="100vw"
                 alt={`غلاف ${space.name}`}
+                loading="eager"
+                onError={(event) => {
+                  event.currentTarget.removeAttribute('srcset');
+                  event.currentTarget.src = space.coverUrl ?? '';
+                }}
                 className="h-full w-full"
                 style={{
                   objectFit: d?.cover_fit ?? 'cover',

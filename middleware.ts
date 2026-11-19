@@ -52,6 +52,11 @@ function hostHeader(request: NextRequest): string {
   return request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
 }
 
+function preserveResponseCookies(source: NextResponse, destination: NextResponse): NextResponse {
+  source.cookies.getAll().forEach((cookie) => destination.cookies.set(cookie));
+  return destination;
+}
+
 /**
  * Builds the rewrite target for a tenant host, or null when the request must
  * keep its own path (platform surfaces, public pages, crawler/static files, or
@@ -238,11 +243,21 @@ export async function middleware(request: NextRequest) {
   // Admin page guard: /admin/* requires a session (the admin LAYOUT then
   // re-verifies the platform_admins row server-side before rendering).
   if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login')) {
-    if (!authed) return NextResponse.redirect(new URL('/login?next=/admin', request.url));
+    if (!authed) {
+      return preserveResponseCookies(
+        response,
+        NextResponse.redirect(new URL('/login?next=/admin', request.url))
+      );
+    }
   }
   // Admin API guard: /api/admin/* without a session → 401 (Never redirect an API).
   if (pathname.startsWith('/api/admin')) {
-    if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!authed) {
+      return preserveResponseCookies(
+        response,
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      );
+    }
   }
 
   return response;

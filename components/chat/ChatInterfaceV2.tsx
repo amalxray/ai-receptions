@@ -721,6 +721,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
                           clinicName={message.bookingConfirmation.clinic_name}
                           clinicPhone={message.bookingConfirmation.clinic_phone}
                           clinicSlug={clinicSlug ?? resolvedClinicSlug ?? (!isUuid ? clinicId : null)}
+                          showReviewerCategory={activityType === 'imaging_center'}
                           onVisible={scrollMessagesToBottom}
                           patientName={message.bookingConfirmation.patient_name}
                           serviceName={message.bookingConfirmation.service}
@@ -929,6 +930,7 @@ const clinicQueryField = isUuid ? 'clinic_id' : 'clinic_slug';
         clinicSlug={clinicSlug ?? resolvedClinicSlug ?? (!isUuid ? clinicId : null)}
         source="booking"
         patientName={reviewPatientName}
+        showReviewerCategory={activityType === 'imaging_center'}
         onClose={() => setShowReviewModal(false)}
       />
     </div>

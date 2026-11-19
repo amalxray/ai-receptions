@@ -57,6 +57,38 @@ describe('GET /api/booking/clinic', () => {
     expect(mockClinics.resolvePublicClinic).toHaveBeenCalledWith({ id: undefined, slug: VALID_SLUG });
   });
 
+  it('exposes the activity type to the booking page for imaging centers only', async () => {
+    mockClinics.resolvePublicClinic.mockResolvedValue({
+      id: VALID_CLINIC,
+      slug: VALID_SLUG,
+      name: 'Imaging Center',
+      activity_type: 'imaging_center',
+    });
+
+    const res = await clinicGET(makeRequest(`http://localhost/api/booking/clinic?slug=${VALID_SLUG}`));
+    const body = await res.json();
+
+    expect(body.data.activity_type).toBe('imaging_center');
+  });
+
+  it('preserves the existing booking clinic response shape for dental clinics', async () => {
+    mockClinics.resolvePublicClinic.mockResolvedValue({
+      id: VALID_CLINIC,
+      slug: VALID_SLUG,
+      name: 'My Dental Clinic',
+      activity_type: 'clinic',
+    });
+
+    const res = await clinicGET(makeRequest(`http://localhost/api/booking/clinic?slug=${VALID_SLUG}`));
+    const body = await res.json();
+
+    expect(body.data).toEqual({
+      id: VALID_CLINIC,
+      slug: VALID_SLUG,
+      name: 'My Dental Clinic',
+    });
+  });
+
   it('resolves hala-clinic through the same slug-to-clinic_id path as every tenant', async () => {
     const halaId = 'ab05e3b9-8242-40e5-9392-aa412c8d9af4';
     mockClinics.resolvePublicClinic.mockResolvedValue({

@@ -80,6 +80,7 @@ export type PublicClinicProfile = {
   slug: string;
   name: string;
   logo: string | null;
+  logoSourceUrl: string | null;
   description: string | null;
   tagline: string | null;
   about: string | null;
@@ -259,6 +260,11 @@ export async function getPublicClinicProfile(
   // the loader previously read top-level flags only, silently dropping
   // every nested value the dashboard saved.
   const pp = (settings.public_profile ?? {}) as PublicProfileShape;
+  const logoSourceUrl =
+    readPublicProfileLogo(settings) ??
+    (typeof clinicRow.logo === 'string' && /^https?:\/\//i.test(clinicRow.logo)
+      ? clinicRow.logo
+      : null);
   const metadata = (settings as { metadata?: { faq?: unknown; insurance?: unknown } | null }).metadata;
   const showPhone = readFlag(pp.show_phone) || readFlag(settings.show_phone);
   const showPrices = readFlag(pp.show_prices) || readFlag(settings.show_prices);
@@ -399,7 +405,8 @@ export async function getPublicClinicProfile(
     public_id: clinicRow.public_id ?? null,
     slug: clinicRow.slug,
     name: clinicRow.name,
-    logo: localStorageImageUrl(clinicRow.logo ?? readPublicProfileLogo(settings)),
+    logo: localStorageImageUrl(logoSourceUrl),
+    logoSourceUrl,
     description,
     tagline,
     about,

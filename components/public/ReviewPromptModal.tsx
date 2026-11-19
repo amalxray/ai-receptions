@@ -11,9 +11,13 @@ type ReviewPromptModalProps = {
   source: 'form' | 'chat' | 'public' | 'booking';
   /** Pre-fill the author name (e.g. from the booking form). */
   patientName?: string;
+  /** Show reviewer classification only for imaging centers. */
+  showReviewerCategory?: boolean;
   /** Close the modal (parent also flips its visibility state). */
   onClose: () => void;
 };
+
+type ReviewerCategory = 'dentist' | 'reviewer' | 'other';
 
 /**
  * Phase 3a — shared post-booking review prompt (RTL).
@@ -21,9 +25,17 @@ type ReviewPromptModalProps = {
  * Posts to the existing POST /api/public/reviews endpoint — no new API.
  * Parent controls `open`; this component owns form state + submission only.
  */
-export default function ReviewPromptModal({ open, clinicSlug, source, patientName = '', onClose }: ReviewPromptModalProps) {
+export default function ReviewPromptModal({
+  open,
+  clinicSlug,
+  source,
+  patientName = '',
+  showReviewerCategory = false,
+  onClose,
+}: ReviewPromptModalProps) {
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
+  const [reviewerCategory, setReviewerCategory] = useState<ReviewerCategory | ''>('');
   const [authorName, setAuthorName] = useState(patientName);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +46,7 @@ export default function ReviewPromptModal({ open, clinicSlug, source, patientNam
     if (!open) return;
     setRating(0);
     setHovered(0);
+    setReviewerCategory('');
     setAuthorName(patientName);
     setComment('');
     setSubmitting(false);
@@ -57,6 +70,7 @@ export default function ReviewPromptModal({ open, clinicSlug, source, patientNam
         body: JSON.stringify({
           clinic_slug: clinicSlug,
           rating,
+          ...(showReviewerCategory && reviewerCategory ? { reviewer_category: reviewerCategory } : {}),
           author_name: authorName.trim(),
           comment: comment.trim() || null,
           source,
@@ -125,6 +139,24 @@ export default function ReviewPromptModal({ open, clinicSlug, source, patientNam
                 </button>
               ))}
             </div>
+            {showReviewerCategory && (
+              <>
+                <label htmlFor="review-prompt-category" className="mt-4 block text-sm font-semibold text-slate-700">
+                  صفتك <span className="font-normal text-slate-400">(اختياري)</span>
+                </label>
+                <select
+                  id="review-prompt-category"
+                  value={reviewerCategory}
+                  onChange={(e) => setReviewerCategory(e.target.value as ReviewerCategory | '')}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-400 focus:bg-white"
+                >
+                  <option value="">بدون تصنيف</option>
+                  <option value="dentist">طبيب أسنان</option>
+                  <option value="reviewer">مراجع</option>
+                  <option value="other">أخرى</option>
+                </select>
+              </>
+            )}
             {!(source === 'booking' && patientName.trim()) && (
               <>
                 <label htmlFor="review-prompt-name" className="mt-4 block text-sm font-semibold text-slate-700">الاسم</label>

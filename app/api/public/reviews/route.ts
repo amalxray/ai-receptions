@@ -4,24 +4,26 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { filterMedicalReview, sanitizePII } from '@/lib/services/medicalReviewFilter';
 import { checkReviewRateLimit, sha256 } from '@/lib/services/reviewRateLimit';
 import { logEvent } from '@/lib/server/logging';
+import { normalizeActivityType } from '@/lib/services/activityTypes';
 
 const createReviewSchema = z.object({
   clinic_slug: z.string().trim().min(1).max(120),
   rating: z.coerce.number().int().min(1).max(5),
+  reviewer_category: z.unknown().optional(),
   author_name: z.string().trim().min(1).max(100),
   comment: z.string().trim().max(1000).optional().nullable(),
   patient_phone: z.string().trim().min(5).max(30).optional().nullable(),
   source: z.enum(['form', 'chat', 'booking', 'cron', 'public']).default('form'),
 });
 
-async function resolveClinicId(slug: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
+async function resolveClinic(slug: string): Promise<{ id: string; activityType: string } | null> {
+  const { data, error } = await supabaseAdmin
     .from('clinics')
-    .select('id')
+    .select('id, activity_type')
     .eq('slug', slug)
     .is('deleted_at', null)
     .maybeSingle();
-  return data?.id ?? null;
+  return !error && data ? { id: data.id, activityType: normalizeActivityType(data.activity_type) } : null;
 }
 
 async function resolveClinicName(clinicId: string, fallbackSlug: string): Promise<string> {
@@ -52,8 +54,17 @@ export async function POST(req: Request) {
     }
     const input = parsed.data;
 
-    const clinicId = await resolveClinicId(input.clinic_slug);
-    if (!clinicId) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const clinic = await resolveClinic(input.clinic_slug);
+    if (!clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const clinicId = clinic.id;
+    let reviewerCategory: 'dentist' | 'reviewer' | 'other' | null = null;
+    if (clinic.activityType === 'imaging_center' && input.reviewer_category != null) {
+      const parsedCategory = z.enum(['dentist', 'reviewer', 'other']).safeParse(input.reviewer_category);
+      if (!parsedCategory.success) {
+        return NextResponse.json({ error: 'Invalid review category' }, { status: 400 });
+      }
+      reviewerCategory = parsedCategory.data;
+    }
 
     const ipHash = sha256(clientIp(req));
     const phoneHash = input.patient_phone ? sha256(input.patient_phone) : null;
@@ -81,6 +92,9 @@ export async function POST(req: Request) {
       .insert({
         clinic_id: clinicId,
         rating: input.rating,
+        ...(reviewerCategory
+          ? { reviewer_category: reviewerCategory }
+          : {}),
         author_name: input.author_name,
         comment: comment || null,
         source,
@@ -182,8 +196,9 @@ export async function GET(req: Request) {
     }
     const { clinic, limit, offset } = parsed.data;
 
-    const clinicId = await resolveClinicId(clinic);
-    if (!clinicId) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const resolvedClinic = await resolveClinic(clinic);
+    if (!resolvedClinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 });
+    const clinicId = resolvedClinic.id;
 
     const { data, error, count } = await supabaseAdmin
       .from('clinic_reviews')

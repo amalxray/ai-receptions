@@ -40,7 +40,7 @@ export default function TestimonialsCarousel({ items }: { items: PublicTestimoni
         <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-amber-700">
           Voices
         </span>
-        <h2 className="mt-3 text-2xl font-black text-slate-800 sm:text-3xl">ماذا يقول مرضانا</h2>
+        <h2 className="mt-3 text-2xl font-black text-slate-800 sm:text-3xl">آراء مراجعي مركز أمل</h2>
       </div>
 
       <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-cyan-50 p-3 shadow-[0_20px_70px_rgba(15,23,42,0.06)]">

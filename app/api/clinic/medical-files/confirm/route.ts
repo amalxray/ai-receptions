@@ -44,11 +44,6 @@ export async function POST(req: Request) {
     const gate = await permissionDenied(req, clinic_id, 'manage_medical_files');
     if (gate) return gate;
 
-    const access = await resolveMedicalFileOrgAccess(clinic_id, patient_id, imaging_request_id ?? null);
-    if (!access.ok || !('patient' in access)) {
-      return NextResponse.json({ error: 'message' in access ? access.message : 'غير مصرح' }, { status: 403 });
-    }
-
     // The recorded upload session must exist for this clinic/path — proves THIS
     // org started the upload (IDOR guard against confirming an arbitrary path).
     const session = await getUploadSession(clinic_id, storage_path);
@@ -65,11 +60,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'لم يُعثر على جلسة رفع لهذه العيادة — ابدأ الرفع عبر upload-start' }, { status: 403 });
     }
 
+    const uploadSession = session.data;
+    const sessionRequestId = uploadSession.imaging_request_id ?? null;
+    const requestedRequestId = imaging_request_id ?? sessionRequestId;
+    if (
+      uploadSession.patient_id !== patient_id ||
+      (imaging_request_id !== undefined && sessionRequestId !== imaging_request_id) ||
+      (uploadSession.created_by && uploadSession.created_by !== auth.user?.id) ||
+      (uploadSession.mime_type && uploadSession.mime_type !== mime_type) ||
+      (uploadSession.size_bytes != null && Number(uploadSession.size_bytes) !== size_bytes) ||
+      (uploadSession.original_filename && uploadSession.original_filename !== filename) ||
+      (uploadSession.expires_at && new Date(uploadSession.expires_at).getTime() <= Date.now())
+    ) {
+      return NextResponse.json({ error: 'بيانات تأكيد الرفع لا تطابق الجلسة التي أنشأتها هذه الجهة' }, { status: 403 });
+    }
+
+    const access = await resolveMedicalFileOrgAccess(clinic_id, patient_id, requestedRequestId);
+    if (!access.ok || !('patient' in access)) {
+      return NextResponse.json({ error: 'message' in access ? access.message : 'غير مصرح' }, { status: 403 });
+    }
+    if (!storage_path.startsWith(`medical/${access.patient.clinic_id}/${access.patient.id}/`)) {
+      return NextResponse.json({ error: 'مسار الملف لا يطابق ملف المريض' }, { status: 403 });
+    }
+
     const result = await confirmMedicalUpload({
       clinicId: clinic_id,
       patientClinicId: access.patient.clinic_id,
       patientId: patient_id,
-      imagingRequestId: imaging_request_id ?? null,
+      imagingRequestId: requestedRequestId,
       appointmentId: null,
       storagePath: storage_path,
       token: null,
@@ -95,7 +113,7 @@ async function getUploadSession(clinicId: string, storagePath: string) {
   const { supabaseAdmin } = await import('@/lib/supabase/admin');
   return supabaseAdmin
     .from('medical_upload_sessions')
-    .select('id, status, file_type, medical_category')
+    .select('id, status, patient_id, imaging_request_id, mime_type, size_bytes, original_filename, created_by, expires_at, file_type, medical_category')
     .eq('clinic_id', clinicId)
     .eq('storage_path', storagePath)
     // B22 — `.eq`, NOT `.is`: PostgREST's `is` operator only accepts

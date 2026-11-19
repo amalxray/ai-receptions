@@ -155,14 +155,22 @@ export function MorphingDialogContent({
 
 export function MorphingDialogImage({
   src,
+  srcSet,
+  sizes,
   alt,
   className,
   style,
+  loading,
+  onError,
 }: {
   src: string;
+  srcSet?: string;
+  sizes?: string;
   alt: string;
   className?: string;
   style?: CSSProperties;
+  loading?: 'eager' | 'lazy';
+  onError?: React.ReactEventHandler<HTMLImageElement>;
 }) {
   const { uniqueId, transition } = useMorphingDialog();
   return (
@@ -170,7 +178,11 @@ export function MorphingDialogImage({
       layoutId={`morphing-dialog-image-${uniqueId}`}
       transition={transition}
       src={src}
+      srcSet={srcSet}
+      sizes={sizes}
       alt={alt}
+      loading={loading}
+      onError={onError}
       className={className}
       style={style}
     />

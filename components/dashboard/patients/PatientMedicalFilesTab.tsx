@@ -22,7 +22,10 @@ import {
 import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImagePreviewButton';
 import PatientPdfPreviewButton, { isPdfMedicalFile } from '@/components/dashboard/patients/PatientPdfPreviewButton';
 import PanoramaAiAnalysis from '@/components/dashboard/patients/PanoramaAiAnalysis';
-import { optimizeImageForUpload } from '@/lib/media/optimizeImageForUpload';
+import {
+  getMedicalClientUploadId,
+  startMedicalTusUpload,
+} from '@/lib/services/medicalFileTusUpload';
 
 export type MedicalFileRow = {
   id: string;
@@ -207,6 +210,8 @@ export default function PatientMedicalFilesTab({
   const imagingVariant = variant === 'imaging';
   const [files, setFiles] = useState<MedicalFileRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreFiles, setHasMoreFiles] = useState(false);
   const [filter, setFilter] = useState<MedicalCategory>('all');
   const [err, setErr] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
@@ -216,7 +221,7 @@ export default function PatientMedicalFilesTab({
   const [uploadStatusText, setUploadStatusText] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [uploadFileSize, setUploadFileSize] = useState<number | null>(null);
-  const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
+  const cancelTusUploadRef = useRef<(() => void) | null>(null);
   /** Monotonic guard so a stale 1.5s reset timer can never blank a newer upload. */
   const uploadSeqRef = useRef(0);
 
@@ -227,6 +232,8 @@ export default function PatientMedicalFilesTab({
   const [showUploadTypeModal, setShowUploadTypeModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const filesRef = useRef<MedicalFileRow[]>([]);
+  const nextCursorRef = useRef<{ created_at: string; id: string } | null>(null);
 
   /**
    * Kept inside a ref so a caller passing an inline arrow function does not
@@ -238,25 +245,45 @@ export default function PatientMedicalFilesTab({
     onCountChangeRef.current = onCountChange;
   }, [onCountChange]);
 
-  const loadFiles = useCallback(async () => {
+  const loadFiles = useCallback(async (append = false) => {
     if (!clinicId || !patientId) return;
-    setLoading(true);
+    if (append && !nextCursorRef.current) return;
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      nextCursorRef.current = null;
+      setHasMoreFiles(false);
+    }
     setErr(null);
     try {
       const headers = await authHeaders();
+      const params = new URLSearchParams({
+        clinic_id: clinicId,
+        patient_id: patientId,
+        limit: '50',
+      });
+      if (append && nextCursorRef.current) {
+        params.set('cursor_created_at', nextCursorRef.current.created_at);
+        params.set('cursor_id', nextCursorRef.current.id);
+      }
       const res = await fetch(
-        `/api/clinic/medical-files/list?clinic_id=${encodeURIComponent(clinicId)}&patient_id=${encodeURIComponent(patientId)}`,
+        `/api/clinic/medical-files/list?${params.toString()}`,
         { headers }
       );
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || 'تعذر تحميل ملفات المريض');
       const data: MedicalFileRow[] = Array.isArray(json?.data) ? json.data : [];
-      setFiles(data);
-      onCountChangeRef.current?.(data.length);
+      const nextFiles = append ? [...filesRef.current, ...data] : data;
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      nextCursorRef.current = json?.next_cursor ?? null;
+      setHasMoreFiles(json?.has_more === true);
+      onCountChangeRef.current?.(nextFiles.length);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'فشل في تحميل الملفات');
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   }, [clinicId, patientId, authHeaders]);
 
@@ -264,24 +291,20 @@ export default function PatientMedicalFilesTab({
     void loadFiles();
   }, [loadFiles]);
 
-  // Abort an in-flight direct upload when the tab unmounts: switching tabs must
-  // never keep streaming gigabytes to storage in the background.
+  // Stop streaming when the tab unmounts; TUS keeps its upload URL so the same
+  // file can resume later in the browser.
   useEffect(
     () => () => {
-      if (uploadXhrRef.current) {
-        uploadXhrRef.current.abort();
-        uploadXhrRef.current = null;
-      }
+      cancelTusUploadRef.current?.();
+      cancelTusUploadRef.current = null;
     },
     []
   );
 
   const cancelUpload = () => {
     uploadSeqRef.current += 1;
-    if (uploadXhrRef.current) {
-      uploadXhrRef.current.abort();
-      uploadXhrRef.current = null;
-    }
+    cancelTusUploadRef.current?.();
+    cancelTusUploadRef.current = null;
     setUploadProgress(null);
     setUploadStatusText(null);
     setUploadFileName(null);
@@ -295,9 +318,9 @@ export default function PatientMedicalFilesTab({
     const originalMimeType = file.type || inferMimeFromFilename(file.name);
     const detectedCategory = detectFileCategory(file.type, file.name, originalMimeType);
     const selectedCategory = overrideCategory ?? detectedCategory;
-    const preservesRadiologySource = ['panorama', 'cbct', 'dicom'].includes(detectedCategory)
-      || ['panorama', 'cbct', 'dicom'].includes(selectedCategory);
-    const fileToUpload = preservesRadiologySource ? file : await optimizeImageForUpload(file);
+    // Medical originals are diagnostic records. Never transcode or resize the
+    // selected file; thumbnails are generated only for authorized previews.
+    const fileToUpload = file;
     const mimeType = fileToUpload.type || inferMimeFromFilename(fileToUpload.name);
     const selectedFileType = resolveUploadFileType(selectedCategory, fileToUpload.name, mimeType);
     const seq = (uploadSeqRef.current += 1);
@@ -311,6 +334,7 @@ export default function PatientMedicalFilesTab({
 
     try {
       const headers = await authHeaders();
+      const clientUploadId = await getMedicalClientUploadId(clinicId, patientId, fileToUpload, `medical:${selectedCategory}`);
 
       const startRes = await fetch('/api/clinic/medical-files/upload-start', {
         method: 'POST',
@@ -321,6 +345,7 @@ export default function PatientMedicalFilesTab({
         body: JSON.stringify({
           clinic_id: clinicId,
           patient_id: patientId,
+          client_upload_id: clientUploadId,
           filename: fileToUpload.name,
           mime_type: mimeType,
           size_bytes: fileToUpload.size,
@@ -330,49 +355,32 @@ export default function PatientMedicalFilesTab({
       });
 
       const startJson = await startRes.json().catch(() => null);
-      if (!startRes.ok || !startJson?.data?.upload_url) {
+      if (!startRes.ok || !startJson?.data?.storage_path) {
         throw new Error(startJson?.error || 'تعذر تجهيز جلسة الرفع');
       }
 
-      const { upload_url, storage_path, file_type } = startJson.data;
+      const { storage_path, file_type } = startJson.data;
+      if (startJson.data.already_confirmed) {
+        setUploadProgress(100);
+        setInfoMsg('تم حفظ الملف مسبقًا؛ تم تحديث قائمة الملفات.');
+        await loadFiles();
+        return;
+      }
 
-      setUploadStatusText('جارٍ إرسال الملف إلى التخزين الآمن...');
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        uploadXhrRef.current = xhr;
-        const uploadBody = new FormData();
-        uploadBody.append('cacheControl', '3600');
-        uploadBody.append('', fileToUpload);
-
-        xhr.upload.onprogress = (evt) => {
-          if (evt.lengthComputable) {
-            const percent = Math.round((evt.loaded / evt.total) * 95);
-            setUploadProgress(Math.max(1, percent));
-          }
-        };
-
-        xhr.onload = () => {
-          uploadXhrRef.current = null;
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`فشل رفع الملف إلى التخزين السحابي (كود ${xhr.status})`));
-          }
-        };
-
-        xhr.onerror = () => {
-          uploadXhrRef.current = null;
-          reject(new Error('انقطع الاتصال أثناء الرفع'));
-        };
-
-        xhr.onabort = () => {
-          uploadXhrRef.current = null;
-          reject(new Error('CANCELLED'));
-        };
-
-        xhr.open('PUT', upload_url, true);
-        xhr.send(uploadBody);
-      });
+      if (startJson.data.upload_required !== false) {
+        setUploadStatusText('جارٍ رفع الملف بأجزاء قابلة للاستئناف...');
+        const tusUpload = startMedicalTusUpload({
+          file: fileToUpload,
+          endpoint: String(startJson.data.resumable_endpoint ?? ''),
+          signatureToken: String(startJson.data.token ?? ''),
+          storagePath: String(storage_path),
+          clientUploadId: String(startJson.data.client_upload_id ?? clientUploadId),
+          onProgress: setUploadProgress,
+        });
+        cancelTusUploadRef.current = tusUpload.cancel;
+        await tusUpload.promise;
+        cancelTusUploadRef.current = null;
+      }
 
       setUploadProgress(98);
       setUploadStatusText('جارٍ توثيق الملف والتحقق من سلامته...');
@@ -410,6 +418,7 @@ export default function PatientMedicalFilesTab({
       }
       setErr(e instanceof Error ? e.message : 'حدث خطأ أثناء الرفع');
     } finally {
+      cancelTusUploadRef.current = null;
       setTimeout(() => {
         // A newer upload (or an explicit cancel) owns the UI now — leave it be.
         if (uploadSeqRef.current !== seq) return;
@@ -930,6 +939,19 @@ export default function PatientMedicalFilesTab({
             })}
           </AnimatePresence>
         </motion.div>
+      )}
+
+      {hasMoreFiles && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => void loadFiles(true)}
+            disabled={loadingMore}
+            className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loadingMore ? 'جارٍ تحميل المزيد...' : 'تحميل المزيد من الملفات'}
+          </button>
+        </div>
       )}
 
       {fileToDelete && (

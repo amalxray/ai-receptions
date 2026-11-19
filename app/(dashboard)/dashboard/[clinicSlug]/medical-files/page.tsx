@@ -59,6 +59,8 @@ export default function MedicalFilesPage() {
   const [rows, setRows] = useState<MedicalFileRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<{ created_at: string; id: string } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Activity-aware description: the same page means different things per
   // business type (produce vs receive imaging files).
@@ -69,19 +71,32 @@ export default function MedicalFilesPage() {
         ? 'ملفات المرضى التصويرية المستلمة من العيادات المحوِّلة — وصول عبر روابط موقعة قصيرة الأمد فقط.'
         : 'ملفات التصوير المستلمة من مراكز الأشعة الشريكة (بانوراما / CBCT / DICOM / تقارير) — وصول عبر روابط موقعة قصيرة الأمد فقط.';
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor?: { created_at: string; id: string }) => {
     if (!clinicId) return;
-    const headers = await authHeaders();
-    // Clinic-scoped listing: every medical file recorded by THIS org.
-    const res = await fetch(`/api/clinic/medical-files/list?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setErr(body?.error ?? 'تعذر تحميل ملفات التصوير');
-      setRows([]);
-      return;
+    if (cursor) setLoadingMore(true);
+    else {
+      setNextCursor(null);
+      setErr(null);
     }
-    const body = await res.json();
-    setRows((body?.data ?? []) as MedicalFileRow[]);
+    try {
+      const headers = await authHeaders();
+      const params = new URLSearchParams({ clinic_id: clinicId, limit: '100' });
+      if (cursor) {
+        params.set('cursor_created_at', cursor.created_at);
+        params.set('cursor_id', cursor.id);
+      }
+      const res = await fetch(`/api/clinic/medical-files/list?${params.toString()}`, { headers });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل ملفات التصوير');
+      const data = (body?.data ?? []) as MedicalFileRow[];
+      setRows((current) => cursor ? [...(current ?? []), ...data] : data);
+      setNextCursor(body?.next_cursor ?? null);
+    } catch (loadError) {
+      setErr(loadError instanceof Error ? loadError.message : 'تعذر تحميل ملفات التصوير');
+      if (!cursor) setRows([]);
+    } finally {
+      setLoadingMore(false);
+    }
   }, [clinicId, authHeaders]);
 
   useEffect(() => {
@@ -130,7 +145,7 @@ export default function MedicalFilesPage() {
               </div>
               <div className="flex items-center gap-2">
                 <StatusPill tone={TONE[f.file_type] ?? 'neutral'}>{TYPE_AR[f.file_type] ?? f.file_type}</StatusPill>
-                {(f.file_type === 'image' || f.file_type === 'medical_image') && (
+                {f.mime_type.startsWith('image/') && f.file_type === 'image' && (
                   <SignedImagePreviewButton
                     fileId={f.id}
                     clinicId={clinicId}
@@ -149,6 +164,18 @@ export default function MedicalFilesPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {nextCursor && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => void load(nextCursor)}
+            disabled={loadingMore}
+            className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loadingMore ? 'جارٍ تحميل المزيد...' : 'تحميل المزيد'}
+          </button>
         </div>
       )}
     </DashboardSection>
