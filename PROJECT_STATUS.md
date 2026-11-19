@@ -786,3 +786,14 @@ or remediation is planned for this issue at this time.
 - الأسباب الظاهرة: كود AI (`orchestrator`, `promptManager`, `messages`)، كود UI (`nav-bento`, `appointment-reschedule`)، mock DB ناقص (`booking-communications`)، ونص مصدر قديم (`invoice-service-id`).
 - لم يُجرَ إصلاح ضمن هذا النطاق؛ تُسجّل الإخفاقات كدين تقني لاحق.
 - لم تكتمل **هذه المحاولة** لتشغيل مجموعة الاختبارات؛ أُوقفت بعد ظهور الإخفاقات، لذا أرقامها جزئية، وهي منفصلة عن سجل التشغيل الكامل الموثق أعلاه.
+
+---
+
+## إصلاح عاجل لمخطط جلسات رفع الملفات الطبية — 2026-11-19
+
+- **العَرَض:** صفحة الدراسات الشعاعية تفشل برسالة "column medical_upload_sessions.client_upload_id does not exist" قبل بدء الرفع.
+- **السبب الجذري المؤكد:** استعلام قراءة فقط على Production project "shadi-ai-solutions22" (ref "ixlsrurenboseoelwixs") أظهر أن العمود غير موجود ضمن أعمدة public.medical_upload_sessions. صفحة Production الحية تستخدم ref المشروع نفسه. سجل Supabase remote لا يتضمن Migration 20261118، رغم وجودها في main ضمن PR #364؛ لذا الكود والمخطط غير متزامنين.
+- **توافق الكود:** واجهة API تقبل UUID اختياريًا، وخدمة الرفع تولّد UUID عند غيابه، وتسجل قيمة nullable في الجلسة. القيد الفريد المقترح هو UNIQUE (clinic_id, client_upload_id)، مطابق لتصميم Migration #364 ويُنشئ فهرسًا للقيد.
+- **Migration المتابعة:** 20261119_add_client_upload_id_to_medical_upload_sessions.sql تضيف العمود والقيد إلى الجدول نفسه فقط. تتضمن تعليق rollback للطوارئ، مشروطًا بتوقف الكود عن استخدام العمود والتحقق من عدم وجود قيم يجب الاحتفاظ بها.
+- **التطبيق:** مطلوب يدويًا من المالك عبر Supabase SQL Editor. لم تُطبّق هذه Migration على Production، ولم يُنفذ أي تغيير على قاعدة البيانات في هذا العمل.
+- **الحالة:** بعد التطبيق اليدوي، يبقى التحقق من information_schema.columns ونوع/nullability، والتحقق من pg_constraint، ثم رفع بانوراما فعلية والتأكد من ظهورها في قائمة الدراسات. لا يُعتبر الإصلاح مكتملًا ولا يُدمج PR المتابعة قبل نجاح هذه الخطوات.
