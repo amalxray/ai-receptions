@@ -11,7 +11,6 @@ import { useClinicContext } from '@/lib/useClinicContext';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import { allowedTransitionsFor } from '@/lib/services/workflowStates';
 import {
-  clearMedicalClientUploadId,
   getMedicalClientUploadId,
   startMedicalTusUpload,
 } from '@/lib/services/medicalFileTusUpload';
@@ -291,7 +290,7 @@ export default function ReferralDetailPage() {
 
       for (const file of resultFiles) {
         const magic = await readMagic(file);
-        const clientUploadId = await getMedicalClientUploadId(clinicId, request.patient_id, file);
+        const clientUploadId = await getMedicalClientUploadId(clinicId, request.patient_id, file, `imaging-request:${request.id}`);
 
         // 1) signed channel — the server enforces MIME / extension / size /
         //    magic signature BEFORE any URL is issued.
@@ -317,7 +316,6 @@ export default function ReferralDetailPage() {
         }
         if (start.already_confirmed && typeof start.confirmed_file_id === 'string') {
           imageIds.push(start.confirmed_file_id);
-          await clearMedicalClientUploadId(clinicId, request.patient_id, file);
           continue;
         }
 
@@ -354,7 +352,6 @@ export default function ReferralDetailPage() {
         if (!confirmRes.ok) throw new Error(await readError(confirmRes, `تعذر توثيق ${file.name}`));
         const confirmed = (await confirmRes.json())?.data;
         if (confirmed?.id) imageIds.push(confirmed.id as string);
-        await clearMedicalClientUploadId(clinicId, request.patient_id, file);
       }
 
       const res = await fetch(

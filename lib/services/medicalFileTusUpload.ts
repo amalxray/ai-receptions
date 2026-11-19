@@ -18,23 +18,16 @@ export async function getMedicalClientUploadId(
   clinicId: string,
   patientId: string,
   file: File,
+  scope = '',
 ): Promise<string> {
-  const identity = [
-    clinicId,
-    patientId,
-    file.name,
-    file.size,
-    file.lastModified,
-    file.type,
-  ].join('\u0000');
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
-  const key = `${CLIENT_UPLOAD_STORAGE_PREFIX}${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  const key = await getClientUploadStorageKey(clinicId, patientId, file, scope);
   const storedId = window.localStorage.getItem(key);
   if (storedId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(storedId)) {
     return storedId;
   }
 
   const clientUploadId = crypto.randomUUID();
+  trimClientUploadIds(key);
   window.localStorage.setItem(key, clientUploadId);
   return clientUploadId;
 }
@@ -43,18 +36,72 @@ export async function clearMedicalClientUploadId(
   clinicId: string,
   patientId: string,
   file: File,
+  scope = '',
 ): Promise<void> {
-  const identity = [
-    clinicId,
-    patientId,
-    file.name,
-    file.size,
-    file.lastModified,
-    file.type,
-  ].join('\u0000');
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
-  const key = `${CLIENT_UPLOAD_STORAGE_PREFIX}${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  const key = await getClientUploadStorageKey(clinicId, patientId, file, scope);
   window.localStorage.removeItem(key);
+}
+
+async function getClientUploadStorageKey(clinicId: string, patientId: string, file: File, scope: string): Promise<string> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user?.id;
+  if (sessionError || !userId) throw new Error('يجب تسجيل الدخول لاستئناف رفع الملفات الطبية');
+
+  const contentFingerprint = await fingerprintFileForResume(file);
+  const identity = [clinicId, patientId, userId, scope, file.name, file.size, file.lastModified, file.type, contentFingerprint].join('\u0000');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+  return `${CLIENT_UPLOAD_STORAGE_PREFIX}${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function trimClientUploadIds(keepKey: string): void {
+  const keys: string[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(CLIENT_UPLOAD_STORAGE_PREFIX)) keys.push(key);
+  }
+  while (keys.length >= 500) {
+    const oldestKey = keys.shift();
+    if (oldestKey && oldestKey !== keepKey) window.localStorage.removeItem(oldestKey);
+  }
+}
+
+/**
+ * Uses a full SHA-256 for files up to 64 MiB and bounded samples for larger
+ * CBCT/DICOM files. This is a browser-local resume identity, not a
+ * server-verified cross-user content hash.
+ */
+async function fingerprintFileForResume(file: File): Promise<string> {
+  const fullHashLimit = 64 * 1024 * 1024;
+  if (file.size <= fullHashLimit) {
+    return digestHex(await file.arrayBuffer());
+  }
+
+  const sampleBytes = 64 * 1024;
+  const starts = [
+    0,
+    Math.max(0, Math.floor((file.size - sampleBytes) / 2)),
+    Math.max(0, file.size - sampleBytes),
+  ];
+  const ranges = starts
+    .map((start) => [start, Math.min(file.size, start + sampleBytes)] as [number, number])
+    .filter((range, index, all) =>
+      all.findIndex(([start, end]) => start === range[0] && end === range[1]) === index,
+    );
+  const samples = await Promise.all(ranges.map(([start, end]) => file.slice(start, end).arrayBuffer()));
+  const totalBytes = samples.reduce((total, sample) => total + sample.byteLength, 0);
+  const combined = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const sample of samples) {
+    combined.set(new Uint8Array(sample), offset);
+    offset += sample.byteLength;
+  }
+  return digestHex(combined);
+}
+
+async function digestHex(data: ArrayBuffer | Uint8Array): Promise<string> {
+  const buffer = data instanceof ArrayBuffer ? data : new Uint8Array(data).buffer as ArrayBuffer;
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export function startMedicalTusUpload({

@@ -23,7 +23,6 @@ import SignedImagePreviewButton from '@/components/dashboard/clinic/SignedImageP
 import PatientPdfPreviewButton, { isPdfMedicalFile } from '@/components/dashboard/patients/PatientPdfPreviewButton';
 import PanoramaAiAnalysis from '@/components/dashboard/patients/PanoramaAiAnalysis';
 import {
-  clearMedicalClientUploadId,
   getMedicalClientUploadId,
   startMedicalTusUpload,
 } from '@/lib/services/medicalFileTusUpload';
@@ -335,7 +334,7 @@ export default function PatientMedicalFilesTab({
 
     try {
       const headers = await authHeaders();
-      const clientUploadId = await getMedicalClientUploadId(clinicId, patientId, fileToUpload);
+      const clientUploadId = await getMedicalClientUploadId(clinicId, patientId, fileToUpload, `medical:${selectedCategory}`);
 
       const startRes = await fetch('/api/clinic/medical-files/upload-start', {
         method: 'POST',
@@ -362,7 +361,6 @@ export default function PatientMedicalFilesTab({
 
       const { storage_path, file_type } = startJson.data;
       if (startJson.data.already_confirmed) {
-        await clearMedicalClientUploadId(clinicId, patientId, fileToUpload);
         setUploadProgress(100);
         setInfoMsg('تم حفظ الملف مسبقًا؛ تم تحديث قائمة الملفات.');
         await loadFiles();
@@ -408,7 +406,6 @@ export default function PatientMedicalFilesTab({
         throw new Error(confirmJson?.error || 'فشل توثيق وحفظ الملف');
       }
 
-      await clearMedicalClientUploadId(clinicId, patientId, fileToUpload);
       setUploadProgress(100);
       setUploadStatusText('اكتمل الرفع بنجاح!');
       setInfoMsg(`تم إرفاق "${fileToUpload.name}" بنجاح في ملف المريض.`);
