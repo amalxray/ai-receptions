@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  clearMedicalClientUploadId,
   getMedicalClientUploadId,
   startMedicalTusUpload,
 } from '@/lib/services/medicalFileTusUpload';
@@ -169,7 +168,12 @@ export default function ReverseTransferDialog({
       let fileId = sourceFileId;
       if (sourceKind === 'device' && uploadedFile) {
         const mimeType = getUploadMimeType(uploadedFile);
-        const clientUploadId = await getMedicalClientUploadId(clinicId, sourcePatientId, uploadedFile);
+        const clientUploadId = await getMedicalClientUploadId(
+          clinicId,
+          sourcePatientId,
+          uploadedFile,
+          `reverse-referral:${targetClinicId}`,
+        );
         const magic = await readMagicBytes(uploadedFile);
         const startResponse = await fetch(
           `/api/clinic/reverse-referrals/upload-start?clinic_id=${encodeURIComponent(clinicId)}`,
@@ -190,7 +194,6 @@ export default function ReverseTransferDialog({
         const startBody = await responseJson(startResponse);
         if (startBody.data?.already_confirmed && typeof startBody.data.confirmed_file_id === 'string') {
           fileId = startBody.data.confirmed_file_id;
-          await clearMedicalClientUploadId(clinicId, sourcePatientId, uploadedFile);
         } else {
           if (typeof startBody.data?.storage_path !== 'string') throw new Error('تعذر تجهيز مسار رفع الملف');
           if (startBody.data?.upload_required !== false) {
@@ -225,7 +228,6 @@ export default function ReverseTransferDialog({
           const confirmBody = await responseJson(confirmResponse);
           if (typeof confirmBody.data?.id !== 'string') throw new Error('تعذر تأكيد حفظ الملف');
           fileId = confirmBody.data.id;
-          await clearMedicalClientUploadId(clinicId, sourcePatientId, uploadedFile);
           setUploadProgress(100);
         }
       }

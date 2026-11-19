@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useClinicContext } from '@/lib/useClinicContext';
 import {
-  clearMedicalClientUploadId,
   getMedicalClientUploadId,
   startMedicalTusUpload,
 } from '@/lib/services/medicalFileTusUpload';
@@ -581,7 +580,7 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
       const mimeType = fileToUpload.type || inferMimeFromFilename(fileToUpload.name);
       const fileType = resolveUploadFileType(category, fileToUpload.name, mimeType);
       const headers = await authHeaders();
-      const clientUploadId = await getMedicalClientUploadId(clinicId, patientId, fileToUpload);
+      const clientUploadId = await getMedicalClientUploadId(clinicId, patientId, fileToUpload, 'patient-financial');
 
       const startRes = await fetch('/api/clinic/medical-files/upload-start', {
         method: 'POST',
@@ -604,7 +603,6 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
 
       const { storage_path, file_type: confirmedFileType } = startJson.data;
       if (startJson.data.already_confirmed) {
-        await clearMedicalClientUploadId(clinicId, patientId, fileToUpload);
         setActionSuccess('تم حفظ الملف مسبقًا؛ تم تحديث قائمة الملفات.');
         await loadAll();
         return;
@@ -641,7 +639,6 @@ export default function PatientFinancialFilesPanel({ patientId, patientName }: P
         throw new Error(confirmJson?.error || 'فشل توثيق وحفظ الملف');
       }
 
-      await clearMedicalClientUploadId(clinicId, patientId, fileToUpload);
       setActionSuccess('تم رفع الملف الطبي ✓');
       await loadAll();
     } catch (err) {
