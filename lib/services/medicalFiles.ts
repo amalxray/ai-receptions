@@ -401,26 +401,41 @@ export async function createMedicalUploadIntent(input: MedicalUploadIntentInput)
     return { ok: false, message: `تعذر فتح قناة رفع مباشرة: ${error?.message ?? 'unknown'}` };
   }
 
-  const { error: sessionWriteError } = await supabaseAdmin.from('medical_upload_sessions').insert(
-    {
-      clinic_id: input.clinicId,
-      patient_id: input.patientId,
-      client_upload_id: clientUploadId,
-      imaging_request_id: input.imagingRequestId,
-      storage_path: path,
-      token: data.token,
-      mime_type: input.mimeType,
-      size_bytes: input.sizeBytes,
-      file_type: resolvedType,
-      medical_category: input.medicalCategory ?? 'other',
-      original_filename: input.filename,
-      status: 'started',
-      created_by: input.uploadedBy,
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    },
-  );
+  const session = {
+    clinic_id: input.clinicId,
+    patient_id: input.patientId,
+    client_upload_id: clientUploadId,
+    imaging_request_id: input.imagingRequestId,
+    storage_path: path,
+    token: data.token,
+    mime_type: input.mimeType,
+    size_bytes: input.sizeBytes,
+    file_type: resolvedType,
+    medical_category: input.medicalCategory ?? 'other',
+    original_filename: input.filename,
+    status: 'started' as const,
+    created_by: input.uploadedBy,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+  const { error: sessionWriteError } = await supabaseAdmin
+    .from('medical_upload_sessions')
+    .upsert(session, { onConflict: 'clinic_id,storage_path' });
   if (sessionWriteError) {
-    return { ok: false, message: `تعذر حفظ جلسة الرفع: ${sessionWriteError.message}` };
+    const isDuplicate =
+      sessionWriteError.code === '23505' ||
+      sessionWriteError.message?.includes('uq_medical_upload_session_path');
+    if (!isDuplicate) {
+      return { ok: false, message: `تعذر حفظ جلسة الرفع: ${sessionWriteError.message}` };
+    }
+
+    const { error: reuseError } = await supabaseAdmin
+      .from('medical_upload_sessions')
+      .update(session)
+      .eq('clinic_id', input.clinicId)
+      .eq('storage_path', path);
+    if (reuseError) {
+      return { ok: false, message: `تعذر إعادة استخدام جلسة الرفع: ${reuseError.message}` };
+    }
   }
 
   return {
