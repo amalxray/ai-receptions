@@ -324,6 +324,7 @@ export default function ReferralDetailPage() {
           const tusUpload = startMedicalTusUpload({
             file,
             endpoint: String(start.resumable_endpoint ?? ''),
+            signatureToken: String(start.token ?? ''),
             storagePath: start.storage_path,
             clientUploadId: String(start.client_upload_id ?? clientUploadId),
             onProgress: () => {},
