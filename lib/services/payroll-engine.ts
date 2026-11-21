@@ -97,6 +97,38 @@ export function monthStart(periodMonth: string): string {
   return `${periodMonth}-01`;
 }
 
+type EffectiveCompensation = {
+  provider_id: string;
+  effective_from: string;
+  effective_to: string | null;
+  status: string;
+  updated_at?: string | null;
+};
+
+/** Select the single compensation configuration covering a payroll month. */
+export function selectCompensationsForPeriod<T extends EffectiveCompensation>(
+  compensations: T[],
+  periodMonth: string,
+): T[] {
+  const selected = new Map<string, T>();
+
+  for (const compensation of compensations) {
+    const effectiveEnd = compensation.effective_to
+      ?? (compensation.status === 'ended' ? compensation.updated_at?.slice(0, 10) ?? null : null);
+    const hasEffectiveEnd = effectiveEnd !== null;
+    if (compensation.status !== 'active' && !(compensation.status === 'ended' && hasEffectiveEnd)) continue;
+    if (compensation.effective_from.slice(0, 7) > periodMonth) continue;
+    if (effectiveEnd && effectiveEnd.slice(0, 7) < periodMonth) continue;
+
+    if (selected.has(compensation.provider_id)) {
+      throw new Error('PAYROLL_COMPENSATION_PERIOD_CONFLICT');
+    }
+    selected.set(compensation.provider_id, compensation);
+  }
+
+  return Array.from(selected.values());
+}
+
 // ---------------------------------------------------------------------------
 // Payroll audit trail (20261016). Separate from the generic audit log: this one
 // is period-scoped and is what the payroll UI reads back, so a pay dispute can
@@ -206,15 +238,15 @@ export async function generatePayrollPeriod(input: {
     if (clearError) throw new Error(clearError.message);
   }
 
-  // 1) Active pay models for this clinic.
+  // 1) Effective-dated pay models for this clinic. Ended rows remain necessary
+  //    to regenerate historical draft periods with the configuration in force.
   const { data: compensations, error: compError } = await supabaseAdmin
     .from('clinic_provider_compensations')
-    .select('provider_id, model, commission_percent, fixed_monthly_amount')
-    .eq('clinic_id', clinicId)
-    .eq('status', 'active');
+    .select('provider_id, model, commission_percent, fixed_monthly_amount, effective_from, effective_to, status, updated_at')
+    .eq('clinic_id', clinicId);
   if (compError) throw new Error(compError.message);
 
-  const rows = compensations ?? [];
+  const rows = selectCompensationsForPeriod(compensations ?? [], periodMonth);
   const providerIds = rows.map((r) => r.provider_id as string);
   const periodStart = monthStart(periodMonth);
 

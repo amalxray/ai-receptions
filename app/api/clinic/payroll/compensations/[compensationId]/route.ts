@@ -19,14 +19,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ compen
       compensationId,
       status: body.status,
       effectiveTo: body.effective_to,
-      commissionPercent: body.commission_percent,
-      fixedMonthlyAmount: body.fixed_monthly_amount,
       notes: body.notes,
       actorUserId: authorization.user?.id ?? null,
     });
     return NextResponse.json({ data });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: /COMPENSATION_NOT_ACTIVE/.test(message) ? 409 : 500 });
   }
 }

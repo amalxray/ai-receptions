@@ -321,6 +321,30 @@ export function isFutureDate(value: string, today: string = todayIso()): boolean
   return value > today;
 }
 
+/** First day of the month after `now`, using the browser's local calendar date. */
+export function nextMonthStart(now: Date = new Date()): string {
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** True only for a valid ISO date on the first day of a month. */
+export function isFirstOfMonth(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-01$/.exec(value);
+  return Boolean(match && Number(match[2]) >= 1 && Number(match[2]) <= 12);
+}
+
+/** A revision cannot start before the next month or before an existing schedule. */
+export function minimumRevisionDate(effectiveFrom: string, now: Date = new Date()): string {
+  const nextMonth = nextMonthStart(now);
+  if (!/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(effectiveFrom) || effectiveFrom.slice(0, 7) < nextMonth.slice(0, 7)) {
+    return nextMonth;
+  }
+  const [year, month] = effectiveFrom.slice(0, 7).split('-').map(Number);
+  const afterScheduledMonth = new Date(year, month, 1);
+  const afterDate = `${afterScheduledMonth.getFullYear()}-${String(afterScheduledMonth.getMonth() + 1).padStart(2, '0')}-01`;
+  return afterDate > nextMonth ? afterDate : nextMonth;
+}
+
 // ---------------------------------------------------------------------------
 // Error translation — the API surfaces raw provider/Postgres text; users must
 // never read it (the raw string is kept for a support tooltip only).
@@ -334,6 +358,18 @@ export function translateCompensationError(status: number, rawMessage?: string |
   }
   if (status === 403 || /Forbidden/i.test(raw)) {
     return 'هذا الإجراء متاح للمالك والمحاسب فقط.';
+  }
+  if (/COMPENSATION_EFFECTIVE_DATE_INVALID/i.test(raw)) {
+    return 'تاريخ السريان يجب أن يكون أول يوم في الشهر.';
+  }
+  if (/COMPENSATION_EFFECTIVE_DATE_MUST_BE_FUTURE|COMPENSATION_REVISION_DATE_NOT_AFTER_CURRENT/i.test(raw)) {
+    return 'اختر أول يوم من شهر لاحق لتاريخ السريان الحالي.';
+  }
+  if (/COMPENSATION_NOT_ACTIVE/i.test(raw)) {
+    return 'تغير العقد بالتزامن مع هذا الطلب — أعد تحميل الصفحة وحاول مجدداً.';
+  }
+  if (/COMPENSATION_VALUE_INVALID/i.test(raw)) {
+    return 'تحقق من أن المبلغ غير سالب وأن النسبة بين 0 و100.';
   }
   if (status === 409 || /duplicate key|unique constraint|one_active/i.test(raw)) {
     return 'هذا المنتسب له راتب نشط بالفعل — أنهِ العقد الحالي أولاً ثم أضف العقد الجديد.';

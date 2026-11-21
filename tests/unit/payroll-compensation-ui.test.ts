@@ -41,6 +41,9 @@ import {
   salaryCounterLine,
   selectableProviders,
   todayIso,
+  isFirstOfMonth,
+  minimumRevisionDate,
+  nextMonthStart,
   translateCompensationError,
   validateCompensationForm,
   withoutContractLine,
@@ -302,6 +305,16 @@ describe('isFutureDate — سطر «سيُحفظ تاريخ السريان لل�
 
   it('todayIso returns a yyyy-mm-dd string', () => {
     expect(todayIso(new Date(2026, 0, 5))).toBe('2026-01-05');
+  });
+
+  it('defaults compensation revisions to the next month and rejects mid-month dates', () => {
+    const now = new Date(2026, 10, 21);
+    expect(nextMonthStart(now)).toBe('2026-12-01');
+    expect(minimumRevisionDate('2026-01-01', now)).toBe('2026-12-01');
+    expect(minimumRevisionDate('2026-12-01', now)).toBe('2027-01-01');
+    expect(minimumRevisionDate('2026-12-15', now)).toBe('2027-01-01');
+    expect(isFirstOfMonth('2026-12-01')).toBe(true);
+    expect(isFirstOfMonth('2026-12-15')).toBe(false);
   });
 
   it('isActiveProvider treats an explicitly inactive provider as inactive', () => {
