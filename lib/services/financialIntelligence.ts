@@ -14,10 +14,11 @@
  *   cash_flow_summary       (D-R2 cash flow + collected by method)
  *   receivable_aging        (aging AS-IS — never redefined)
  *   daily_cash_positions    (cash-register, cash method only)
- *   + the existing service readers (reporting.ts / accounting.ts).
- * NO writes. NO new financial source. NO ledger kinds. Period boundaries come
- * pre-computed from the views (D3) — this module never re-derives timezone,
- * business date, or clinic-local month.
+ *   + the existing service readers and imaging payments linked to imaging-only
+ *     invoices through their service catalog.
+ * NO writes. NO new payment source or ledger kinds. P&L/cash-flow boundaries
+ * come pre-computed from the views (D3); imaging collections use the clinic
+ * timezone and recorded payment timestamp to select their month.
  *
  * Anomaly rules are RULE-BASED with the documented thresholds in FI_THRESHOLDS.
  * "Anomaly" is only emitted when the baseline/threshold is provable from data.
@@ -26,6 +27,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logEvent } from '@/lib/server/logging';
 import { getProfitAndLoss, getCashFlow, type PeriodRange } from './reporting';
 import { getAgingSummary, type AgingSummary } from './accounting';
+import { getImagingCollected } from './imagingCollections';
 
 export type PnlPoint = {
   period_month: string;
@@ -646,6 +648,7 @@ export type CashRegisterPoint = {
 export type FinancialIntelligenceReport = {
   clinicId: string;
   range: { fromMonth: string | null; toMonth: string | null };
+  imagingCollected: number;
   kpis: FinancialKpis;
   pnlTrends: PnlTrendPoint[];
   cashTrends: CashTrendPoint[];
@@ -657,7 +660,7 @@ export type FinancialIntelligenceReport = {
   meta: {
     generatedAt: string;
     deterministic: true;
-    source: 'existing derived views only (payroll included)';
+    source: 'existing financial views and payment/service catalogs (payroll included)';
     /** Explicit disclosure: the P&L `expenses` line already contains payroll. */
     includesPayroll: true;
     /** Paid-payroll total inside the requested range (0 when none is paid). */
@@ -692,11 +695,12 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
   assertMonth(range.fromMonth, 'from_month');
   assertMonth(range.toMonth, 'to_month');
 
-  const [pnl, cash, aging, cashRegister] = await Promise.all([
+  const [pnl, cash, aging, cashRegister, imagingCollected] = await Promise.all([
     getProfitAndLoss(clinicId, range),
     getCashFlow(clinicId, range),
     getAgingSummary(clinicId),
     getCashRegisterTrend(clinicId, FI_CASH_REGISTER_DAYS),
+    getImagingCollected(clinicId, range),
   ]);
 
   const pnlPoints: PnlPoint[] = (pnl ?? [])
@@ -743,6 +747,7 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
   return {
     clinicId,
     range: { fromMonth: range.fromMonth ?? null, toMonth: range.toMonth ?? null },
+    imagingCollected,
     kpis,
     pnlTrends,
     cashTrends,
@@ -754,7 +759,7 @@ export async function getFinancialIntelligence(clinicId: string, range: PeriodRa
     meta: {
       generatedAt: new Date().toISOString(),
       deterministic: true,
-      source: 'existing derived views only (payroll included)',
+      source: 'existing financial views and payment/service catalogs (payroll included)',
       includesPayroll: true,
       payrollTotal,
     },
