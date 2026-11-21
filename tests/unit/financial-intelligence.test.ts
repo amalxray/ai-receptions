@@ -41,6 +41,11 @@ const mockAccounting = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/services/accounting', () => mockAccounting);
 
+const mockImagingCollections = vi.hoisted(() => ({
+  getImagingCollected: vi.fn(async () => 0),
+}));
+vi.mock('@/lib/services/imagingCollections', () => mockImagingCollections);
+
 import {
   FI_THRESHOLDS,
   computeKpis,
@@ -92,6 +97,7 @@ const cash = (month: string, inflows: number, outflows = 0, method = 'cash'): Ca
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockImagingCollections.getImagingCollected.mockResolvedValue(0);
 });
 describe('PP-5 KPIs (computeKpis)', () => {
   it('derives KPIs from P&L + cash flow + aging only', () => {
@@ -389,10 +395,12 @@ describe('PP-5 aggregate report — read-only / no-write behavior', () => {
       cash('2026-02-01', 900, 100, 'card'),
     ]);
     mockAccounting.getAgingSummary.mockResolvedValue(aging(100, 200));
+    mockImagingCollections.getImagingCollected.mockResolvedValue(600);
 
     const report = await getFinancialIntelligence('clinic-1', { fromMonth: '2026-01-01', toMonth: '2026-03-01' });
 
     expect(report.clinicId).toBe('clinic-1');
+    expect(report.imagingCollected).toBe(600);
     expect(report.kpis.revenue).toBe(3000);
     expect(report.kpis.collected).toBe(1800);
     expect(report.pnlTrends).toHaveLength(3);
@@ -401,7 +409,7 @@ describe('PP-5 aggregate report — read-only / no-write behavior', () => {
     expect(report.kpis.expenses).toBe(7500); // payroll stays INSIDE expenses (never added twice)
     expect(report.profitability.netMargin).toBe(-150); // net −1500×3 / revenue 1000×3
     expect(report.meta.deterministic).toBe(true);
-    expect(report.meta.source).toBe('existing derived views only (payroll included)');
+    expect(report.meta.source).toBe('existing financial views and payment/service catalogs (payroll included)');
     expect(report.meta.includesPayroll).toBe(true);
     expect(report.meta.payrollTotal).toBe(7500);
 

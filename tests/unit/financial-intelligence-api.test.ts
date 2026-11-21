@@ -53,7 +53,7 @@ describe('PP-5 API route — RBAC and shape', () => {
   });
 
   it('200 with derived data for an authorized finance role; clinic_id passed through untouched', async () => {
-    mockFI.getFinancialIntelligence.mockResolvedValue({ kpis: { revenue: 1 } });
+    mockFI.getFinancialIntelligence.mockResolvedValue({ imagingCollected: 600, kpis: { revenue: 1 } });
     const res = await GET(req('c1'));
     expect(res.status).toBe(200);
     expect(mockPermission.permissionDenied).toHaveBeenCalledWith(
@@ -63,6 +63,7 @@ describe('PP-5 API route — RBAC and shape', () => {
     );
     const body = await res.json();
     expect(body.data.kpis.revenue).toBe(1);
+    expect(body.data.imagingCollected).toBe(600);
     expect(mockFI.getFinancialIntelligence).toHaveBeenCalledWith('c1', { fromMonth: undefined, toMonth: undefined });
   });
 

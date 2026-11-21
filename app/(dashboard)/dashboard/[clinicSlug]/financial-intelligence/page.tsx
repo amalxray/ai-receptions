@@ -75,6 +75,7 @@ type TrendPoint = {
 type CashRegisterPoint = { businessDate: string; cashIn: number; cashOut: number; netCash: number };
 
 type Report = {
+  imagingCollected: number;
   kpis: Kpis;
   pnlTrends: TrendPoint[];
   receivables: { buckets: Bucket[]; paymentMethods: MethodSplit[] };
@@ -289,11 +290,12 @@ export default function FinancialIntelligencePage() {
     const priorOperating = previous ? Math.max(0, previous.kpis.expenses - previous.meta.payrollTotal) : null;
     return {
       revenue: computeDelta(kpis?.revenue ?? 0, priorKpis?.revenue),
+      imagingCollected: computeDelta(data?.imagingCollected ?? 0, previous?.imagingCollected),
       payroll: computeDelta(payrollTotal, priorPayroll),
       operating: computeDelta(operatingExpenses, priorOperating),
       net: computeDelta(netProfit, priorKpis?.netPosition),
     };
-  }, [kpis, previous, payrollTotal, operatingExpenses, netProfit]);
+  }, [data?.imagingCollected, kpis, previous, payrollTotal, operatingExpenses, netProfit]);
 
   // Secondary strip — every figure the previous layout showed is still visible here.
   const ratioPills = useMemo(() => {
@@ -328,6 +330,7 @@ export default function FinancialIntelligencePage() {
   const isEmptyFinancial = useMemo(() => {
     if (!data || !kpis) return false;
     const allZero =
+      data.imagingCollected === 0 &&
       kpis.revenue === 0 &&
       kpis.collected === 0 &&
       kpis.outstanding === 0 &&
@@ -435,7 +438,7 @@ export default function FinancialIntelligencePage() {
             <PnlHero net={netProfit} delta={deltas.net} months={months} spark={data.pnlTrends.map((t) => t.net)} />
 
             {/* الإيرادات → الرواتب → المصروفات التشغيلية → صافي الربح */}
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <FlowCard
                 index={0}
                 label="الإيرادات"
@@ -447,6 +450,14 @@ export default function FinancialIntelligencePage() {
               />
               <FlowCard
                 index={1}
+                label="المدفوعات المحصلة (التصوير)"
+                value={data.imagingCollected}
+                hint="صافي المدفوعات خلال الفترة"
+                delta={deltas.imagingCollected}
+                tone="#a78bfa"
+              />
+              <FlowCard
+                index={2}
                 label="رواتب مدفوعة"
                 value={payrollTotal}
                 hint="فترات معتمدة كمدفوعة فقط"
@@ -456,7 +467,7 @@ export default function FinancialIntelligencePage() {
                 href={clinicSlug ? `${tenantDashboardUrl(clinicSlug, 'payroll')}?status=paid` : undefined}
               />
               <FlowCard
-                index={2}
+                index={3}
                 label="مصروفات تشغيلية"
                 value={operatingExpenses}
                 hint="المصروفات − الرواتب"
@@ -466,7 +477,7 @@ export default function FinancialIntelligencePage() {
                 href={clinicSlug ? tenantDashboardUrl(clinicSlug, 'expenses') : undefined}
               />
               <FlowCard
-                index={3}
+                index={4}
                 label="صافي الربح"
                 value={netProfit}
                 hint="الإيرادات − كل المصروفات"
