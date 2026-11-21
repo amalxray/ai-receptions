@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSupabaseConfig } from '@/lib/useSupabaseConfig';
 import { useClinicContext } from '@/lib/useClinicContext';
 import CompensationDialog, { type CompensationPayload } from '@/components/dashboard/payroll/CompensationDialog';
+import EditCompensationDialog, { type EditCompensationPayload } from '@/components/dashboard/payroll/EditCompensationDialog';
 import PayrollTabs from '@/components/dashboard/payroll/PayrollTabs';
 import {
   COMPENSATION_MODEL_AR,
@@ -13,6 +14,7 @@ import {
   mergeCompensationState,
   salaryCounterLine,
   selectableProviders,
+  todayIso,
   translateCompensationError,
   withoutContractLine,
   type CompensationLite,
@@ -43,6 +45,7 @@ export default function PayrollCompensationsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogProviderId, setDialogProviderId] = useState<string | null>(null);
+  const [editRow, setEditRow] = useState<CompensationRow | null>(null);
   const [busy, setBusy] = useState(false);
 
   const canManage = canManageCompensations(role);
@@ -135,7 +138,11 @@ export default function PayrollCompensationsPage() {
       const res = await fetch(`/api/clinic/payroll/compensations/${row.compensation.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ clinic_id: clinicId, status: 'ended' }),
+        body: JSON.stringify({
+          clinic_id: clinicId,
+          status: 'ended',
+          effective_to: row.compensation.effective_from <= todayIso() ? todayIso() : null,
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -147,6 +154,34 @@ export default function PayrollCompensationsPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر إنهاء الراتب');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revise = async (payload: EditCompensationPayload) => {
+    if (!clinicId || !editRow?.compensation) return;
+    setBusy(true);
+    setError(null);
+    setErrorRaw(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/clinic/payroll/compensations/${editRow.compensation.id}/revision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ clinic_id: clinicId, ...payload }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(translateCompensationError(res.status, json.error));
+        setErrorRaw(typeof json.error === 'string' ? json.error : null);
+        return;
+      }
+      setEditRow(null);
+      setMessage(`تم حفظ التعديل، ويسري الراتب الجديد من ${payload.effective_from}.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذر تعديل الراتب');
     } finally {
       setBusy(false);
     }
@@ -176,8 +211,7 @@ export default function PayrollCompensationsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-white">رواتب المنتسبين</h1>
           <p className="mt-1 text-sm text-slate-400">
-            العقد يحدّد كيفية احتساب الراتب في القسائم المُولَّدة لاحقاً. لا يُعدّل قسائم فترة معتمدة أو مدفوعة —
-            استخدم «إعادة التوليد» على المسودة، أو «إعادة فتح» الفترة من صفحة الرواتب.
+            التعديل يسري من أول الشهر المحدد. لا تتغير القسائم المعتمدة أو المدفوعة؛ أعد توليد المسودة المتأثرة لتحديثها.
           </p>
           {!loading && rows.length > 0 && (
             <p className="mt-1 text-xs text-slate-500">{counterLine}</p>
@@ -198,7 +232,7 @@ export default function PayrollCompensationsPage() {
 
       {!canManage && (
         <p className="text-xs text-slate-400">
-          إضافة/إنهاء الراتب متاح للمالك والمحاسب فقط. يمكنك العرض والطباعة.
+          إضافة/تعديل/إنهاء الراتب متاح للمالك والمحاسب فقط. يمكنك العرض والطباعة.
         </p>
       )}
       {clinicError && <p className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-300">{clinicError}</p>}
@@ -290,15 +324,30 @@ export default function PayrollCompensationsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {row.compensation ? (
-                      <button
-                        type="button"
-                        disabled={busy || !canManage}
-                        title={canManage ? undefined : 'إنهاء الراتب متاح للمالك والمحاسب فقط'}
-                        onClick={() => end(row)}
-                        className="rounded-full border border-slate-700 px-4 py-1.5 text-xs text-slate-200 hover:border-rose-500/50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        إنهاء العقد
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={busy || !canManage}
+                          title={canManage ? undefined : 'تعديل الراتب متاح للمالك والمحاسب فقط'}
+                          onClick={() => {
+                            setError(null);
+                            setErrorRaw(null);
+                            setEditRow(row);
+                          }}
+                          className="rounded-full border border-cyan-500/40 px-4 py-1.5 text-xs text-cyan-300 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || !canManage}
+                          title={canManage ? undefined : 'إنهاء الراتب متاح للمالك والمحاسب فقط'}
+                          onClick={() => end(row)}
+                          className="rounded-full border border-slate-700 px-4 py-1.5 text-xs text-slate-200 hover:border-rose-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          إنهاء العقد
+                        </button>
+                      </div>
                     ) : (
                       <button
                         type="button"
@@ -334,6 +383,16 @@ export default function PayrollCompensationsPage() {
           error={error}
           onClose={closeDialog}
           onSubmit={create}
+        />
+      )}
+      {editRow?.compensation && (
+        <EditCompensationDialog
+          compensation={editRow.compensation}
+          providerName={editRow.provider.name ?? 'المنتسب'}
+          busy={busy}
+          error={error}
+          onClose={() => setEditRow(null)}
+          onSubmit={revise}
         />
       )}
     </div>

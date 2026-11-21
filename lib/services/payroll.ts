@@ -93,22 +93,19 @@ export async function updateCompensation(input: {
   compensationId: string;
   status?: 'active' | 'ended';
   effectiveTo?: string | null;
-  commissionPercent?: number | null;
-  fixedMonthlyAmount?: number | null;
   notes?: string | null;
   actorUserId: string | null;
 }) {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.status !== undefined) patch.status = input.status;
   if (input.effectiveTo !== undefined) patch.effective_to = input.effectiveTo;
-  if (input.commissionPercent !== undefined) patch.commission_percent = input.commissionPercent;
-  if (input.fixedMonthlyAmount !== undefined) patch.fixed_monthly_amount = input.fixedMonthlyAmount;
   if (input.notes !== undefined) patch.notes = input.notes;
   const { data, error } = await supabaseAdmin
     .from('clinic_provider_compensations')
     .update(patch)
     .eq('clinic_id', input.clinicId)
     .eq('id', input.compensationId)
+    .eq('status', 'active')
     .select('id, provider_id, model, status, effective_to')
     .single();
   if (error) {
@@ -124,6 +121,97 @@ export async function updateCompensation(input: {
     metadata: patch,
   });
   return data;
+}
+
+export async function reviseCompensation(input: {
+  clinicId: string;
+  compensationId: string;
+  effectiveFrom: string;
+  commissionPercent: number | null;
+  fixedMonthlyAmount: number | null;
+  actorUserId: string | null;
+}) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(input.effectiveFrom)) {
+    throw new Error('COMPENSATION_EFFECTIVE_DATE_INVALID');
+  }
+
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from('clinic_provider_compensations')
+    .select('id, provider_id, model, commission_percent, fixed_monthly_amount, effective_from, effective_to, notes, status')
+    .eq('clinic_id', input.clinicId)
+    .eq('id', input.compensationId)
+    .maybeSingle();
+  if (currentError) {
+    logEvent('payroll_compensation_revision_read_error', {
+      clinic_id: input.clinicId,
+      compensation_id: input.compensationId,
+      error: currentError.message,
+    }, 'error');
+    throw new Error(currentError.message);
+  }
+  if (!current) throw new Error('COMPENSATION_NOT_FOUND');
+  if (current.status !== 'active') throw new Error('COMPENSATION_NOT_ACTIVE');
+
+  const hasCommission = input.commissionPercent !== null;
+  const hasFixed = input.fixedMonthlyAmount !== null;
+  if (
+    (input.commissionPercent !== null && (
+      !Number.isFinite(input.commissionPercent) ||
+      input.commissionPercent < 0 ||
+      input.commissionPercent > 100
+    )) ||
+    (input.fixedMonthlyAmount !== null && (
+      !Number.isFinite(input.fixedMonthlyAmount) ||
+      input.fixedMonthlyAmount < 0
+    ))
+  ) {
+    throw new Error('COMPENSATION_VALUE_INVALID');
+  }
+  const consistent =
+    (current.model === 'commission_percentage' && hasCommission && !hasFixed) ||
+    (current.model === 'fixed_monthly' && hasFixed && !hasCommission) ||
+    (current.model === 'hybrid' && hasCommission && hasFixed);
+  if (!consistent) throw new Error('COMPENSATION_MODEL_FIELDS_MISMATCH');
+
+  const { data, error } = await supabaseAdmin.rpc('revise_clinic_provider_compensation', {
+    p_clinic_id: input.clinicId,
+    p_compensation_id: input.compensationId,
+    p_effective_from: input.effectiveFrom,
+    p_commission_percent: input.commissionPercent,
+    p_fixed_monthly_amount: input.fixedMonthlyAmount,
+    p_notes: current.notes ?? null,
+  });
+  if (error) {
+    logEvent('payroll_compensation_revision_error', {
+      clinic_id: input.clinicId,
+      compensation_id: input.compensationId,
+      error: error.message,
+    }, 'error');
+    throw new Error(error.message);
+  }
+
+  const revised = Array.isArray(data) ? data[0] : data;
+  if (!revised) throw new Error('COMPENSATION_REVISION_FAILED');
+
+  await writeAuditLog({
+    clinicId: input.clinicId,
+    actorUserId: input.actorUserId,
+    action: 'payroll.compensation.revised',
+    resourceType: 'clinic_provider_compensations',
+    resourceId: input.compensationId,
+    metadata: {
+      provider_id: current.provider_id,
+      previous_compensation_id: input.compensationId,
+      new_compensation_id: revised.id,
+      previous_effective_from: current.effective_from,
+      effective_from: input.effectiveFrom,
+      previous_fixed_monthly_amount: current.fixed_monthly_amount,
+      fixed_monthly_amount: input.fixedMonthlyAmount,
+      previous_commission_percent: current.commission_percent,
+      commission_percent: input.commissionPercent,
+    },
+  });
+  return revised;
 }
 
 // ---------------------------------------------------------------------------

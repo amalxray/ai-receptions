@@ -52,6 +52,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 import {
   round2,
   monthStart,
+  selectCompensationsForPeriod,
   generatePayrollPeriod,
   approvePayrollPeriod,
   markPayrollPaid,
@@ -92,6 +93,18 @@ describe('helpers', () => {
   it('monthStart builds the clinic-local month key used by provider_revenue', () => {
     expect(monthStart('2026-09')).toBe('2026-09-01');
   });
+
+  it('uses the recorded end date for legacy ended contracts without effective_to', () => {
+    const legacyEnded = [{
+      provider_id: PROVIDER,
+      effective_from: '2026-01-01',
+      effective_to: null,
+      status: 'ended',
+      updated_at: '2026-11-21T12:00:00.000Z',
+    }];
+    expect(selectCompensationsForPeriod(legacyEnded, '2026-11')).toHaveLength(1);
+    expect(selectCompensationsForPeriod(legacyEnded, '2026-12')).toHaveLength(0);
+  });
 });
 
 
@@ -118,6 +131,9 @@ function primeGeneration(opts?: {
       model,
       commission_percent: opts?.percent === undefined ? 10 : opts.percent,
       fixed_monthly_amount: opts?.fixed === undefined ? 3000 : opts.fixed,
+      effective_from: '2026-01-01',
+      effective_to: null,
+      status: 'active',
     }],
     error: null,
   };
@@ -167,6 +183,85 @@ describe('generatePayrollPeriod', () => {
     expect(result.breakdown[0].net_amount).toBe(4200);
   });
 
+  it('uses the historical salary before the revision month and preserves advances and adjustments on draft regeneration', async () => {
+    const oldCompensation = {
+      provider_id: PROVIDER,
+      model: 'fixed_monthly',
+      commission_percent: null,
+      fixed_monthly_amount: 3000,
+      effective_from: '2026-01-01',
+      effective_to: null,
+      status: 'active',
+    };
+    primeGeneration({ model: 'fixed_monthly' });
+    respond['clinic_provider_compensations.select'] = { data: [oldCompensation], error: null };
+    respond['staff_advances.select'] = {
+      data: [{
+        id: 'advance-1',
+        provider_id: PROVIDER,
+        amount: 600,
+        installment_count: 3,
+        installment_amount: 200,
+        months_paid: 0,
+      }],
+      error: null,
+    };
+    respond['payslip_adjustments.select'] = {
+      data: [
+        { provider_id: PROVIDER, type: 'bonus', amount: 120 },
+        { provider_id: PROVIDER, type: 'deduction', amount: 50 },
+      ],
+      error: null,
+    };
+
+    const beforeRevision = await generatePayrollPeriod({
+      clinicId: CLINIC,
+      periodMonth: '2026-11',
+      actorUserId: 'u1',
+    });
+    expect(beforeRevision.breakdown[0].base_amount).toBe(3000);
+
+    respond['clinic_provider_compensations.select'] = {
+      data: [
+        { ...oldCompensation, effective_to: '2026-11-30', status: 'ended' },
+        {
+          ...oldCompensation,
+          fixed_monthly_amount: 3500,
+          effective_from: '2026-12-01',
+        },
+      ],
+      error: null,
+    };
+    const historicalDraft = await generatePayrollPeriod({
+      clinicId: CLINIC,
+      periodMonth: '2026-11',
+      actorUserId: 'u1',
+    });
+    expect(historicalDraft.breakdown[0].base_amount).toBe(3000);
+
+    const revisedDraft = await generatePayrollPeriod({
+      clinicId: CLINIC,
+      periodMonth: '2026-12',
+      actorUserId: 'u1',
+    });
+    const slip = revisedDraft.breakdown[0];
+    expect(slip.base_amount).toBe(3500);
+    expect(slip.advances_amount).toBe(200);
+    expect(slip.bonuses_amount).toBe(120);
+    expect(slip.deductions_amount).toBe(50);
+    expect(slip.net_amount).toBe(3370);
+
+    const slipWrites = writes.filter((write) => write.table === 'payslips');
+    const lastSlipWrite = slipWrites[slipWrites.length - 1];
+    expect(lastSlipWrite).toBeTruthy();
+    expect((lastSlipWrite!.payload as any).breakdown.advance_details).toEqual([
+      { advance_id: 'advance-1', amount: 200, installment_number: 1, installments: 3 },
+    ]);
+    expect((lastSlipWrite!.payload as any).breakdown.bonus_lines).toHaveLength(1);
+    expect((lastSlipWrite!.payload as any).breakdown.deduction_lines).toHaveLength(1);
+    expect(writes.some((write) => ['staff_advances', 'staff_advance_deductions', 'payslip_adjustments'].includes(write.table))).toBe(false);
+  });
+
   it('folds bonuses and deductions from payslip_adjustments into the slip', async () => {
     primeGeneration({
       model: 'fixed_monthly',
@@ -207,6 +302,14 @@ describe('generatePayrollPeriod', () => {
     await expect(
       generatePayrollPeriod({ clinicId: CLINIC, periodMonth: '2026-09', actorUserId: 'u1' })
     ).rejects.toThrow('PERIOD_ALREADY_FINALIZED');
+  });
+
+  it('does not regenerate or rewrite a paid period after a salary revision', async () => {
+    primeGeneration({ periodStatus: 'paid' });
+    await expect(
+      generatePayrollPeriod({ clinicId: CLINIC, periodMonth: '2026-09', actorUserId: 'u1' })
+    ).rejects.toThrow('PERIOD_ALREADY_FINALIZED');
+    expect(writes.filter((write) => write.table === 'payslips')).toHaveLength(0);
   });
 
   it('skips soft-deleted providers (never pays them)', async () => {

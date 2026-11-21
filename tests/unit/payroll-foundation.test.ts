@@ -33,10 +33,12 @@ vi.mock('@/lib/supabase/admin', () => mockSupabaseAdmin);
 
 import {
   createCompensation,
+  reviseCompensation,
   updateCompensation,
   listProviderRevenue,
 } from '@/lib/services/payroll';
 import { POST as postCompensation, GET as listCompensationsRoute } from '@/app/api/clinic/payroll/compensations/route';
+import { POST as postCompensationRevision } from '@/app/api/clinic/payroll/compensations/[compensationId]/revision/route';
 import { GET as getRevenue } from '@/app/api/clinic/payroll/revenue/route';
 
 const CLINIC = '11111111-1111-1111-1111-111111111111';
@@ -87,6 +89,102 @@ describe('compensation configuration (D-P1 — config only, no calculation)', ()
     expect(builder.eq).toHaveBeenCalledWith('clinic_id', CLINIC);
     expect(builder.eq).toHaveBeenCalledWith('id', 'c1');
     expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'ended' }));
+  });
+
+  it('revises compensation through one atomic RPC and preserves the existing record', async () => {
+    const current = {
+      id: 'old-comp',
+      provider_id: 'prov1',
+      model: 'fixed_monthly',
+      commission_percent: null,
+      fixed_monthly_amount: 3000,
+      effective_from: '2026-01-01',
+      effective_to: null,
+      notes: 'original terms',
+      status: 'active',
+    };
+    const builder = mockSupabaseAdmin.makeBuilder({ data: current, error: null });
+    (mockSupabaseAdmin.supabaseAdmin.from as any).mockReturnValueOnce(builder);
+    mockSupabaseAdmin.supabaseAdmin.rpc.mockResolvedValueOnce({
+      data: [{ id: 'new-comp', provider_id: 'prov1', fixed_monthly_amount: 3500 }],
+      error: null,
+    } as any);
+
+    const revised = await reviseCompensation({
+      clinicId: CLINIC,
+      compensationId: 'old-comp',
+      effectiveFrom: '2026-12-01',
+      commissionPercent: null,
+      fixedMonthlyAmount: 3500,
+      actorUserId: 'u1',
+    });
+
+    expect(revised.id).toBe('new-comp');
+    expect(mockSupabaseAdmin.supabaseAdmin.rpc).toHaveBeenCalledWith(
+      'revise_clinic_provider_compensation',
+      expect.objectContaining({
+        p_clinic_id: CLINIC,
+        p_compensation_id: 'old-comp',
+        p_effective_from: '2026-12-01',
+        p_fixed_monthly_amount: 3500,
+      }),
+    );
+    expect(builder.update).not.toHaveBeenCalled();
+    expect(mockAudit.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'payroll.compensation.revised',
+      metadata: expect.objectContaining({ previous_compensation_id: 'old-comp', new_compensation_id: 'new-comp' }),
+    }));
+  });
+
+  it('rejects a mid-month revision before reading or writing compensation', async () => {
+    await expect(reviseCompensation({
+      clinicId: CLINIC,
+      compensationId: 'old-comp',
+      effectiveFrom: '2026-12-15',
+      commissionPercent: null,
+      fixedMonthlyAmount: 3500,
+      actorUserId: 'u1',
+    })).rejects.toThrow('COMPENSATION_EFFECTIVE_DATE_INVALID');
+    expect(mockSupabaseAdmin.supabaseAdmin.from).not.toHaveBeenCalled();
+    expect(mockSupabaseAdmin.supabaseAdmin.rpc).not.toHaveBeenCalled();
+  });
+
+  it('exposes dated revisions only through the payroll management API', async () => {
+    const currentBuilder = mockSupabaseAdmin.makeBuilder({
+      data: {
+        id: 'old-comp',
+        provider_id: 'prov1',
+        model: 'fixed_monthly',
+        commission_percent: null,
+        fixed_monthly_amount: 3000,
+        effective_from: '2026-01-01',
+        effective_to: null,
+        notes: null,
+        status: 'active',
+      },
+      error: null,
+    });
+    (mockSupabaseAdmin.supabaseAdmin.from as any).mockReturnValueOnce(currentBuilder);
+    mockSupabaseAdmin.supabaseAdmin.rpc.mockResolvedValueOnce({
+      data: [{ id: 'new-comp' }],
+      error: null,
+    } as any);
+
+    const response = await postCompensationRevision(
+      makeRequest('/api/clinic/payroll/compensations/old-comp/revision', jsonBody({
+        clinic_id: CLINIC,
+        fixed_monthly_amount: 3500,
+        commission_percent: null,
+        effective_from: '2026-12-01',
+      })),
+      { params: Promise.resolve({ compensationId: 'old-comp' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockSupabaseAdmin.supabaseAdmin.rpc).toHaveBeenCalledWith(
+      'revise_clinic_provider_compensation',
+      expect.objectContaining({ p_compensation_id: 'old-comp', p_effective_from: '2026-12-01' }),
+    );
   });
 });
 
