@@ -1,5 +1,13 @@
 # Project Status
 
+## 2026-11-22 — Dashboard and landing-page performance
+
+- `getEntitlementState` now reads the selected billing-plan row and (for paid-tier fallbacks) its fallback row in one catalog query, then extracts all seven resource limits from that result. Usage and limit reads run in parallel.
+- Dashboard overview reads are shared in-flight between the overview page and navigation; subscription reads are shared between navigation and the subscription banner. The overview is no longer re-requested when the navigation plan ID resolves; the invoices chip remains an independent request.
+- The appointments calendar now renders when its appointment request completes; patient and service lists load only when the create-appointment form is opened. API authorization, subscription checks, and appointment enrichment are unchanged.
+- Landing-page logo and consultant images use `next/image`, with AVIF/WebP optimization enabled. The sales chat experience is code-split and loaded on interaction; the visible launcher remains lightweight. Removed redundant global IBM Plex font families and use the existing Tajawal family plus system monospace.
+- Added unit coverage for the single catalog query/fallback behavior and shared concurrent dashboard reads. Production latency and transfer-size acceptance targets (<1 second subscription, one overview request, <1.5 MB homepage) still require post-deploy measurement; they are not claimed as verified by unit tests.
+
 ## 2026-11-21 — تعديل الرواتب مع حفظ التاريخ المالي
 
 - أضيفت مراجعة راتب مؤرخة من أول الشهر، تحفظ السجل السابق وتنشئ سجلاً جديداً عبر دالة قاعدة بيانات ذرية؛ لا تُحذف بيانات التعويض السابقة.

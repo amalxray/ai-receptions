@@ -56,6 +56,8 @@ export default function AppointmentsPage() {
   const subscriptionExpired = useSubscriptionExpired() === true;
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<{ id: string; name: string }[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(false);
+  const [patientsError, setPatientsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('week');
@@ -102,23 +104,33 @@ export default function AppointmentsPage() {
     setError(null);
     try {
       const headers = await authHeaders();
-      const [appointmentsResponse, patientsResponse] = await Promise.all([
-        fetch(`/api/appointments?clinic_id=${encodeURIComponent(id)}`, { headers }),
-        fetch(`/api/patients?clinic_id=${encodeURIComponent(id)}`, { headers }),
-      ]);
-      if (!appointmentsResponse.ok || !patientsResponse.ok) {
-        throw new Error('Appointments API unavailable');
-      }
+      const appointmentsResponse = await fetch(`/api/appointments?clinic_id=${encodeURIComponent(id)}`, { headers });
+      if (!appointmentsResponse.ok) throw new Error('Appointments API unavailable');
       const appointmentPayload = await appointmentsResponse.json();
-      const patientPayload = await patientsResponse.json();
       const appointmentData = Array.isArray(appointmentPayload?.data) ? appointmentPayload.data : Array.isArray(appointmentPayload) ? appointmentPayload : [];
-      const patientData = Array.isArray(patientPayload) ? patientPayload : [];
       setAppointments(appointmentData as Appointment[]);
-      setPatients(patientData.map((patient: any) => ({ id: patient.id, name: patient.name })));
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'حدث خطأ غير معروف');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadPatients(id: string) {
+    setPatientsLoading(true);
+    setPatientsError(null);
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(`/api/patients?clinic_id=${encodeURIComponent(id)}`, { headers });
+      if (!response.ok) throw new Error('Patients API unavailable');
+      const payload = await response.json();
+      const rows = Array.isArray(payload) ? payload : [];
+      setPatients(rows.map((patient: any) => ({ id: patient.id, name: patient.name })));
+    } catch (caughtError) {
+      setPatients([]);
+      setPatientsError(caughtError instanceof Error ? caughtError.message : 'تعذر تحميل المرضى');
+    } finally {
+      setPatientsLoading(false);
     }
   }
 
@@ -133,9 +145,15 @@ export default function AppointmentsPage() {
       return;
     }
     void loadAppointments(clinicId);
-    void loadServices(clinicId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicLoading, clinicId]);
+
+  useEffect(() => {
+    if (!isFormOpen || clinicLoading || !clinicId) return;
+    void loadPatients(clinicId);
+    void loadServices(clinicId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFormOpen, clinicLoading, clinicId]);
 
   // Touch detection (STEP 14E): react to pointer-type changes (e.g. hybrid
   // laptops with touch screens) instead of assuming desktop at mount time.
@@ -657,8 +675,8 @@ export default function AppointmentsPage() {
         {isFormOpen ? (
           <form onSubmit={handleCreateAppointment} className="mb-5 rounded-[1.5rem] border border-slate-800 bg-slate-950/70 p-5">
             <div className="grid gap-4 md:grid-cols-2">
-              <select value={formState.patient_id} onChange={(event) => setFormState((current) => ({ ...current, patient_id: event.target.value }))} className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" required>
-                <option value="">اختر مريضاً</option>
+              <select value={formState.patient_id} onChange={(event) => setFormState((current) => ({ ...current, patient_id: event.target.value }))} className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" required disabled={patientsLoading}>
+                <option value="">{patientsLoading ? 'جارٍ تحميل المرضى...' : 'اختر مريضاً'}</option>
                 {patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
               </select>
               <select value={formState.service} onChange={(event) => setFormState((current) => ({ ...current, service: event.target.value }))} className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" required disabled={servicesLoading}>
@@ -669,9 +687,10 @@ export default function AppointmentsPage() {
               <input type="time" value={formState.appointment_time} onChange={(event) => setFormState((current) => ({ ...current, appointment_time: event.target.value }))} className="rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-100" required />
             </div>
             <div className="mt-4 flex gap-3">
-              <button type="submit" disabled={subscriptionExpired || submitting || services.length === 0} title={subscriptionExpired ? 'اشترك للاستمرار' : undefined} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? 'جارٍ الحفظ...' : 'حفظ الموعد'}</button>
+              <button type="submit" disabled={subscriptionExpired || submitting || patientsLoading || servicesLoading || services.length === 0} title={subscriptionExpired ? 'اشترك للاستمرار' : undefined} className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">{submitting ? 'جارٍ الحفظ...' : 'حفظ الموعد'}</button>
               <button type="button" onClick={() => setIsFormOpen(false)} className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300">إلغاء</button>
             </div>
+            {patientsError && <p role="alert" className="mt-3 text-sm text-red-300">{patientsError}</p>}
             {error && <div role="alert" className="mt-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
             {!servicesLoading && services.length === 0 && (
               <p className="mt-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">

@@ -2,14 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useClinicContext } from '@/lib/useClinicContext';
-
-type SubscriptionBannerData = {
-  subscription: {
-    status: string | null;
-    trial_end: string | null;
-  } | null;
-  plan?: { name?: string; id?: string };
-};
+import { fetchClinicDashboardResource, type DashboardSubscriptionData } from '@/lib/dashboard/dashboardData';
 
 const PLAN_NAMES_AR: Record<string, string> = {
   solo_39: 'طبيب',
@@ -26,7 +19,7 @@ export function useSubscriptionExpired(): boolean | null {
 
 export default function SubscriptionBanner({ children }: { children: React.ReactNode }) {
   const { clinicId, authHeaders, loading } = useClinicContext();
-  const [data, setData] = useState<SubscriptionBannerData | null>(null);
+  const [data, setData] = useState<DashboardSubscriptionData | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -35,14 +28,12 @@ export default function SubscriptionBanner({ children }: { children: React.React
 
     void (async () => {
       try {
-        const headers = await authHeaders();
-        const response = await fetch(`/api/clinic/subscription?clinic_id=${encodeURIComponent(clinicId)}`, {
-          headers,
-          cache: 'no-store',
-        });
-        if (!response.ok) return;
-        const body = await response.json();
-        if (!cancelled) setData(body?.data ?? null);
+        const result = await fetchClinicDashboardResource<DashboardSubscriptionData>(
+          clinicId,
+          'subscription',
+          authHeaders
+        );
+        if (!cancelled) setData(result);
       } catch {
         // The banner is informative; a transient read failure must not affect
         // dashboard navigation or clinic operations.

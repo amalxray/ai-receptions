@@ -17,6 +17,7 @@ const mockDb = vi.hoisted(() => {
   chain.limit = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
   chain.maybeSingle = vi.fn(() => ({ data: null, error: null }));
+  chain.in = vi.fn(() => ({ data: null, error: null }));
   return { from: vi.fn(() => chain), __chain: chain };
 });
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: mockDb }));
@@ -86,6 +87,10 @@ describe('15G-FIX — approved limits matrix resolves correctly (catalog-first)'
 });
 
 describe('15G-FIX — getEntitlementState reflects the approved matrix (catalog-first)', () => {
+  beforeEach(() => {
+    mockDb.__chain.in.mockClear();
+  });
+
   it.each(Object.keys(FINAL_LIMITS))(
     '%s state resolves every resource to the approved value',
     async (planId) => {
@@ -93,6 +98,10 @@ describe('15G-FIX — getEntitlementState reflects the approved matrix (catalog-
         .mockReset()
         .mockResolvedValueOnce({ data: { plan_id: planId, status: 'active', trial_end: null }, error: null })
         .mockResolvedValue({ data: { limits: FINAL_LIMITS[planId] }, error: null });
+      mockDb.__chain.in.mockResolvedValue({
+        data: [{ plan_id: planId, limits: FINAL_LIMITS[planId] }],
+        error: null,
+      });
 
       const state = await getEntitlementState(CID);
       expect(state.planId).toBe(planId);
@@ -101,6 +110,7 @@ describe('15G-FIX — getEntitlementState reflects the approved matrix (catalog-
       for (const resource of RESOURCES) {
         expect(state.resources[resource].limit).toBe(FINAL_LIMITS[planId][resource]);
       }
+      expect(mockDb.__chain.in).toHaveBeenCalledTimes(1);
     }
   );
 
@@ -111,6 +121,10 @@ describe('15G-FIX — getEntitlementState reflects the approved matrix (catalog-
       .mockReset()
       .mockResolvedValueOnce({ data: { plan_id: 'free_trial', status: 'trialing', trial_end: null }, error: null })
       .mockResolvedValue({ data: { limits: FINAL_LIMITS.free_trial }, error: null });
+    mockDb.__chain.in.mockResolvedValue({
+      data: [{ plan_id: 'free_trial', limits: FINAL_LIMITS.free_trial }],
+      error: null,
+    });
     const state = await getEntitlementState(CID);
     expect(state.resources.ai_messages.limit).toBe(100);
   });
@@ -122,8 +136,32 @@ describe('15G-FIX — getEntitlementState reflects the approved matrix (catalog-
       .mockReset()
       .mockResolvedValueOnce({ data: { plan_id: 'free_trial', status: 'trialing', trial_end: null }, error: null })
       .mockResolvedValue({ data: { limits: FINAL_LIMITS.free_trial }, error: null });
+    mockDb.__chain.in.mockResolvedValue({
+      data: [{ plan_id: 'free_trial', limits: FINAL_LIMITS.free_trial }],
+      error: null,
+    });
     const state = await getEntitlementState(CID);
     expect(state.resources.patients.limit).toBe(50);
+  });
+
+  it('uses the paid fallback row in the same catalog query when a key is missing', async () => {
+    mockDb.__chain.maybeSingle
+      .mockReset()
+      .mockResolvedValueOnce({ data: { plan_id: 'basic', status: 'active', trial_end: null }, error: null });
+    mockDb.__chain.in.mockResolvedValue({
+      data: [
+        { plan_id: 'basic', limits: { patients: 500 } },
+        { plan_id: 'advanced', limits: FINAL_LIMITS.advanced },
+      ],
+      error: null,
+    });
+
+    const state = await getEntitlementState(CID);
+
+    expect(state.resources.patients.limit).toBe(500);
+    expect(state.resources.providers.limit).toBe(FINAL_LIMITS.advanced.providers);
+    expect(state.resources.ai_messages.fromCatalog).toBe(true);
+    expect(mockDb.__chain.in).toHaveBeenCalledTimes(1);
   });
 });
 

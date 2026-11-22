@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import { useClinicContext } from '@/lib/useClinicContext';
+import {
+  fetchClinicDashboardResource,
+  type DashboardOverviewData,
+  type DashboardSubscriptionData,
+} from '@/lib/dashboard/dashboardData';
 import { groupNavLinks, hasNavModulePermission, type NavGroupId, type NavModule } from '@/lib/services/dashboardNavModel';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
 import {
@@ -159,7 +164,10 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
   // Subscription-driven locks. `planId === undefined` means "still resolving" —
   // the sidebar fails OPEN while loading (no lock flash); the API routes keep
   // enforcing 402 regardless of what the UI shows.
-  const [planId, setPlanId] = useState<string | null | undefined>(undefined);
+  const [subscription, setSubscription] = useState<DashboardSubscriptionData | null>(null);
+  const planId = typeof subscription?.entitlements?.planId === 'string'
+    ? subscription.entitlements.planId
+    : undefined;
 
   // #43 — the caller's effective permission keys. `undefined` = still loading
   // (fail OPEN, exactly like plan locks); owners skip the fetch entirely.
@@ -189,16 +197,20 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
   }, [clinicId, isAdmin, authHeaders]);
 
   useEffect(() => {
-    if (!clinicId) return;
+    if (!clinicId) {
+      setSubscription(null);
+      return;
+    }
     let alive = true;
+    setSubscription(null);
     (async () => {
       try {
-        const headers = await authHeaders();
-        const res = await fetch(`/api/clinic/subscription?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-        if (!res.ok) return; // fail open — 402 enforcement lives server-side
-        const json = await res.json().catch(() => null);
-        const pid = json?.data?.entitlements?.planId;
-        if (alive && typeof pid === 'string') setPlanId(pid);
+        const result = await fetchClinicDashboardResource<DashboardSubscriptionData>(
+          clinicId,
+          'subscription',
+          authHeaders
+        );
+        if (alive) setSubscription(result);
       } catch {
         /* network unavailable — stay unlocked in the UI, server still gates */
       }
@@ -221,7 +233,8 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
   const [tab, setTab] = useState<NavGroupId | null>(null);
   const [stored, setStored] = useState<NavGroupId | null>(null);
   const [open, setOpen] = useState(false);
-  const [stats, setStats] = useState<NavStats>({});
+  const [overview, setOverview] = useState<DashboardOverviewData | null>(null);
+  const [outstanding, setOutstanding] = useState<number | null>(null);
 
   useEffect(() => {
     setStored(readStoredTab());
@@ -264,40 +277,22 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
     [groups, isAdmin, perms, lockedFeatures, hrefFor, activeModule]
   );
 
-  /** Live chips: today's counts, conversations needing a human, outstanding money. */
+  /** Shared overview snapshot drives the nav chips and the overview page. */
   useEffect(() => {
-    if (!clinicId) return;
+    if (!clinicId) {
+      setOverview(null);
+      return;
+    }
     let alive = true;
+    setOverview(null);
     (async () => {
       try {
-        const headers = await authHeaders();
-        const getJson = (url: string) =>
-          fetch(url, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(url))));
-        const [overview, invoices] = await Promise.allSettled([
-          getJson(`/api/clinic/overview?clinic_id=${encodeURIComponent(clinicId)}`),
-          getJson(`/api/clinic/accounting/invoices?clinic_id=${encodeURIComponent(clinicId)}`),
-        ]);
-        if (!alive) return;
-        const next: NavStats = {};
-        if (overview.status === 'fulfilled') {
-          next.patientsCount = overview.value?.data?.patients_count ?? null;
-          next.todayAppointments = Array.isArray(overview.value?.data?.today_appointments)
-            ? overview.value.data.today_appointments.length
-            : null;
-          next.conversations = overview.value?.data?.new_conversations_count ?? null;
-          next.needsAttention = overview.value?.data?.needs_attention_count ?? null;
-        }
-        if (invoices.status === 'fulfilled') {
-          const rows = Array.isArray(invoices.value?.data) ? invoices.value.data : [];
-          next.outstanding = rows.reduce(
-            (sum: number, row: { balance_amount?: number }) =>
-              sum + Math.max(Number(row?.balance_amount ?? 0) || 0, 0),
-            0
-          );
-        }
-        // The plan name was already fetched above for the lock state.
-        if (typeof planId === 'string') next.planName = getPlanDisplayNameAr(planId);
-        setStats(next);
+        const result = await fetchClinicDashboardResource<DashboardOverviewData>(
+          clinicId,
+          'overview',
+          authHeaders
+        );
+        if (alive) setOverview(result);
       } catch {
         /* never block navigation on a stats failure */
       }
@@ -305,7 +300,56 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
     return () => {
       alive = false;
     };
-  }, [clinicId, authHeaders, planId]);
+  }, [clinicId, authHeaders]);
+
+  useEffect(() => {
+    if (!clinicId) {
+      setOutstanding(null);
+      return;
+    }
+    let alive = true;
+    setOutstanding(null);
+    (async () => {
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(
+          `/api/clinic/accounting/invoices?clinic_id=${encodeURIComponent(clinicId)}`,
+          { headers }
+        );
+        if (!response.ok) throw new Error('Invoice stats request failed');
+        const payload = await response.json();
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
+        if (alive) {
+          setOutstanding(
+            rows.reduce(
+              (sum: number, row: { balance_amount?: number }) =>
+                sum + Math.max(Number(row?.balance_amount ?? 0) || 0, 0),
+              0
+            )
+          );
+        }
+      } catch {
+        /* never block navigation on a stats failure */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [clinicId, authHeaders]);
+
+  const stats = useMemo<NavStats>(
+    () => ({
+      patientsCount: overview?.patients_count ?? null,
+      todayAppointments: Array.isArray(overview?.today_appointments)
+        ? overview.today_appointments.length
+        : null,
+      conversations: overview?.new_conversations_count ?? null,
+      needsAttention: overview?.needs_attention_count ?? null,
+      outstanding,
+      ...(typeof planId === 'string' ? { planName: getPlanDisplayNameAr(planId) } : {}),
+    }),
+    [overview, outstanding, planId]
+  );
 
   // Navigate → close; Escape → close (the backdrop closes it too).
   useEffect(() => {

@@ -72,9 +72,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        heading: ['Tajawal', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        body: ['"IBM Plex Sans Arabic"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        heading: ['var(--font-tajawal)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        body: ['var(--font-tajawal)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: {
         '2xs': '0.625rem',

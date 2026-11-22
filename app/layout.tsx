@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Tajawal, IBM_Plex_Sans_Arabic, IBM_Plex_Mono } from 'next/font/google';
+import { Tajawal } from 'next/font/google';
 import Script from 'next/script';
 import { getAppBaseUrl } from '@/lib/communications/links';
 import { PLATFORM_VIEWPORT } from '@/lib/services/pwaManifest';
@@ -12,20 +12,6 @@ const tajawal = Tajawal({
   subsets: ['arabic'],
   weight: ['400', '500', '700', '800', '900'],
   variable: '--font-tajawal',
-  display: 'swap',
-});
-
-const ibmPlexArabic = IBM_Plex_Sans_Arabic({
-  subsets: ['arabic'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-plex-arabic',
-  display: 'swap',
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-plex-mono',
   display: 'swap',
 });
 
@@ -98,7 +84,7 @@ function OrganizationJsonLd() {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl" className={`${tajawal.variable} ${ibmPlexArabic.variable} ${ibmPlexMono.variable}`}>
+    <html lang="ar" dir="rtl" className={tajawal.variable}>
       <head>
         <link id="dynamic-favicon" rel="icon" href="/icons/icon-32.png" />
       </head>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 import { supabase } from '@/lib/supabase';
 
@@ -67,7 +68,14 @@ export default function Navbar() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <img src="/brand/ai-receptionist.png" alt="AI-Receptions" className="h-10 w-10 rounded-full object-cover" />
+          <Image
+            src="/brand/ai-receptionist.png"
+            alt="AI-Receptions"
+            width={40}
+            height={40}
+            sizes="40px"
+            className="h-10 w-10 rounded-full object-cover"
+          />
         </Link>
 
         {/* Desktop links */}
