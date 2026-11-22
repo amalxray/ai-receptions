@@ -227,6 +227,42 @@ export async function getPlanResourceLimit(
   return { limit: FALLBACK_LIMITS[resource], fromCatalog: false };
 }
 
+async function getPlanResourceLimits(
+  planId: string
+): Promise<Record<EntitlementResource, { limit: number | null; fromCatalog: boolean }>> {
+  const resolvedPlanId = canonicalCatalogPlanId(planId);
+  const planIds = isPaidPlanId(resolvedPlanId) && resolvedPlanId !== UNRESOLVED_PAID_PLAN_ID
+    ? [resolvedPlanId, UNRESOLVED_PAID_PLAN_ID]
+    : [resolvedPlanId];
+  let planRows: { plan_id: string; limits: unknown }[] = [];
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('billing_plans')
+      .select('plan_id, limits')
+      .in('plan_id', planIds);
+    if (!error && data) planRows = data as { plan_id: string; limits: unknown }[];
+  } catch {
+    // fall through to the hard-coded limits
+  }
+
+  const primaryLimits = planRows.find((row) => row.plan_id === resolvedPlanId)?.limits;
+  const fallbackLimits = isPaidPlanId(resolvedPlanId)
+    ? planRows.find((row) => row.plan_id === UNRESOLVED_PAID_PLAN_ID)?.limits
+    : undefined;
+
+  return Object.fromEntries(
+    ENTITLEMENT_RESOURCES.map((resource) => {
+      let limit = extractLimit(primaryLimits, resource);
+      if (limit !== undefined) return [resource, { limit, fromCatalog: true }];
+
+      limit = extractLimit(fallbackLimits, resource);
+      if (limit !== undefined) return [resource, { limit, fromCatalog: true }];
+      return [resource, { limit: FALLBACK_LIMITS[resource], fromCatalog: false }];
+    })
+  ) as Record<EntitlementResource, { limit: number | null; fromCatalog: boolean }>;
+}
+
 type SubscriptionState = { limit: number | null; planId: string; status: string | null; degraded: boolean };
 
 /** Exported for PHASE 1A activity entitlements (same subscription policy). */
@@ -348,32 +384,38 @@ export async function getEntitlementState(clinicId: string): Promise<{
   const { planId, degraded } = effectivePlanIdFor(row);
   const periodStart = new Date().toISOString().slice(0, 7) + '-01';
 
-  let usedByResource: Partial<Record<EntitlementResource, number>> = {};
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('entitlement_usage')
-      .select('resource, used_count')
-      .eq('clinic_id', clinicId)
-      .eq('period_start', periodStart);
-    if (!error && data) {
-      usedByResource = (data as { resource: string; used_count: number }[]).reduce(
-        (acc, r) => {
-          if (isEntitlementResource(r.resource)) acc[r.resource] = r.used_count;
-          return acc;
-        },
-        {} as Partial<Record<EntitlementResource, number>>
-      );
-    }
-  } catch {
-    usedByResource = {};
-  }
+  const [planLimits, usedByResource] = await Promise.all([
+    getPlanResourceLimits(planId),
+    (async () => {
+      let usage: Partial<Record<EntitlementResource, number>> = {};
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('entitlement_usage')
+          .select('resource, used_count')
+          .eq('clinic_id', clinicId)
+          .eq('period_start', periodStart);
+        if (!error && data) {
+          usage = (data as { resource: string; used_count: number }[]).reduce(
+            (acc, row) => {
+              if (isEntitlementResource(row.resource)) acc[row.resource] = row.used_count;
+              return acc;
+            },
+            {} as Partial<Record<EntitlementResource, number>>
+          );
+        }
+      } catch {
+        usage = {};
+      }
+      return usage;
+    })(),
+  ]);
 
   const resources = {} as Record<
     EntitlementResource,
     { limit: number | null; used: number | null; fromCatalog: boolean }
   >;
   for (const resource of ENTITLEMENT_RESOURCES) {
-    const { limit, fromCatalog } = await getPlanResourceLimit(planId, resource);
+    const { limit, fromCatalog } = planLimits[resource];
     resources[resource] = { limit, used: usedByResource[resource] ?? null, fromCatalog };
   }
 

@@ -46,7 +46,7 @@ html {
     /* base gradient */ linear-gradient(180deg, #020617 0%, #0f172a 100%);
 
   /* Typography */
-  --font-body: var(--font-tajawal), var(--font-plex-arabic), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-tajawal), ui-sans-serif, system-ui, sans-serif;
   --font-size-base: 1rem;
 }
 

@@ -13,26 +13,9 @@ import { useClinicContext } from '@/lib/useClinicContext';
 import { appointmentStatusAr, formatTimeAr, WEEKDAY_AR } from '@/lib/dashboard/labels-ar';
 import { getActivityLabels } from '@/lib/clinic/activityLabels';
 import { tenantDashboardUrl } from '@/lib/services/dashboardPaths';
+import { fetchClinicDashboardResource, type DashboardOverviewData } from '@/lib/dashboard/dashboardData';
 
-type OverviewAppointment = {
-  id: string;
-  date: string | null;
-  time: string | null;
-  status: string | null;
-  patient_name: string | null;
-};
-
-type OverviewData = {
-  patients_count: number;
-  today_appointments: OverviewAppointment[];
-  upcoming_appointments: OverviewAppointment[];
-  appointments_count: number;
-  new_conversations_count: number;
-  needs_attention_count: number;
-  generated_for_day: string;
-};
-
-function AppointmentCard({ item }: { item: OverviewAppointment }) {
+function AppointmentCard({ item }: { item: DashboardOverviewData['today_appointments'][number] }) {
   const dateLabel = item.date
     ? new Date(`${item.date}T00:00:00`).toLocaleDateString('ar', { weekday: 'long', day: 'numeric', month: 'long' })
     : 'بدون تاريخ';
@@ -56,7 +39,7 @@ export default function OverviewPage() {
   const { isConfigured: isSupabaseConfigured, checkFailed } = useSupabaseConfig();
   const { clinicId, clinicSlug, authHeaders, loading: clinicLoading, error: clinicError, activityType } = useClinicContext();
   const labels = getActivityLabels(activityType);
-  const [data, setData] = useState<OverviewData | null>(null);
+  const [data, setData] = useState<DashboardOverviewData | null>(null);
   const [googleReviewUrl, setGoogleReviewUrl] = useState<string | null>(null);
   const [googleReviewError, setGoogleReviewError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,11 +80,12 @@ export default function OverviewPage() {
       setLoading(true);
       setError(null);
       try {
-        const headers = await authHeaders();
-        const res = await fetch(`/api/clinic/overview?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body?.error ?? 'تعذر تحميل بيانات لوحة التحكم');
-        if (mounted) setData(body.data as OverviewData);
+        const result = await fetchClinicDashboardResource<DashboardOverviewData>(
+          clinicId,
+          'overview',
+          authHeaders
+        );
+        if (mounted) setData(result);
       } catch (e) {
         if (mounted) setError(e instanceof Error ? e.message : 'تعذر تحميل بيانات لوحة التحكم');
       } finally {
