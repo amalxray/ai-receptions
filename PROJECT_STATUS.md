@@ -2,6 +2,7 @@
 
 ## 2026-11-22 — Dashboard and landing-page performance
 
+- تم ضبط `CRON_SECRET` في إعدادات Production؛ يجري التحقق من تفعيله في نشر جديد.
 - `getEntitlementState` now reads the selected billing-plan row and (for paid-tier fallbacks) its fallback row in one catalog query, then extracts all seven resource limits from that result. Usage and limit reads run in parallel.
 - Dashboard overview reads are shared in-flight between the overview page and navigation; subscription reads are shared between navigation and the subscription banner. The overview is no longer re-requested when the navigation plan ID resolves; the invoices chip remains an independent request.
 - The appointments calendar now renders when its appointment request completes; patient and service lists load only when the create-appointment form is opened. API authorization, subscription checks, and appointment enrichment are unchanged.
