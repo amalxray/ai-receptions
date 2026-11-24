@@ -1,19 +1,22 @@
 import type { ProspectClinic } from './types';
 
-const FOURSQUARE_URL = 'https://api.foursquare.com/v3/places/search';
+const FOURSQUARE_URL = 'https://places-api.foursquare.com/places/search';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 type FoursquareLocation = {
-  formatted?: string;
+  formatted_address?: string;
   address?: string;
   locality?: string;
   region?: string;
 };
 
 type FoursquarePlace = {
-  fsq_id?: string;
+  fsq_place_id?: string;
   name?: string;
   location?: FoursquareLocation;
+  latitude?: number;
+  longitude?: number;
+  categories?: Array<{ fsq_category_id?: string; name?: string }>;
   tel?: string;
   website?: string;
   email?: string;
@@ -33,9 +36,9 @@ export async function searchFoursquareClinics(
   const url = new URL(FOURSQUARE_URL);
   url.search = new URLSearchParams({
     near: `${city.trim()}, ${country.trim()}`,
-    categories: '15014',
+    categories: '15014,15015',
     limit: '50',
-    fields: 'fsq_id,name,location,tel,website,email',
+    fields: 'fsq_place_id,name,location,tel,website,email,latitude,longitude,categories',
   }).toString();
 
   const controller = new AbortController();
@@ -44,8 +47,9 @@ export async function searchFoursquareClinics(
   try {
     response = await fetch(url, {
       headers: {
-        Authorization: apiKey,
+        Authorization: `Bearer ${apiKey}`,
         Accept: 'application/json',
+        'X-Places-Api-Version': '2025-06-17',
       },
       signal: controller.signal,
     });
@@ -67,11 +71,11 @@ export async function searchFoursquareClinics(
   }
 
   return ((payload as { results: FoursquarePlace[] }).results).flatMap((place) => {
-    const id = stringValue(place.fsq_id);
+    const id = stringValue(place.fsq_place_id);
     const name = stringValue(place.name);
     if (!id || !name) return [];
     const location = place.location ?? {};
-    const address = stringValue(location.formatted)
+    const address = stringValue(location.formatted_address)
       ?? ([location.address, location.locality, location.region].map(stringValue).filter(Boolean).join(', ') || undefined);
     const phone = stringValue(place.tel);
     const website = stringValue(place.website);
@@ -91,7 +95,17 @@ export async function searchFoursquareClinics(
         tags: {
           'foursquare:fsq_id': id,
           'foursquare:source': 'foursquare',
+          'foursquare:categories': (place.categories ?? [])
+            .map((category) => category.fsq_category_id)
+            .filter((category): category is string => Boolean(category))
+            .join(','),
+          'foursquare:category_names': (place.categories ?? [])
+            .map((category) => category.name)
+            .filter((category): category is string => Boolean(category))
+            .join(','),
         },
+        ...(typeof place.latitude === 'number' ? { latitude: place.latitude } : {}),
+        ...(typeof place.longitude === 'number' ? { longitude: place.longitude } : {}),
       },
     }];
   });

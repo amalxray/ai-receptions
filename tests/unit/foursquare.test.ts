@@ -17,9 +17,9 @@ describe('searchFoursquareClinics', () => {
       status: 200,
       json: async () => ({
         results: [{
-          fsq_id: 'fsq-1',
+          fsq_place_id: 'fsq-1',
           name: 'عيادة النور',
-          location: { formatted: 'شارع الجامعة، نابلس' },
+          location: { formatted_address: 'شارع الجامعة، نابلس' },
           tel: '+970 599 000 000',
           website: 'https://alnoor.example',
           email: 'info@alnoor.example',
@@ -40,8 +40,9 @@ describe('searchFoursquareClinics', () => {
       source_id: 'foursquare:fsq-1',
     });
     const requestUrl = new URL(fetchMock.mock.calls[0][0]);
-    expect(requestUrl.searchParams.get('categories')).toBe('15014');
+    expect(requestUrl.searchParams.get('categories')).toBe('15014,15015');
     expect(requestUrl.searchParams.get('limit')).toBe('50');
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('test-foursquare-key');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer test-foursquare-key');
+    expect(fetchMock.mock.calls[0][1].headers['X-Places-Api-Version']).toBe('2025-06-17');
   });
 });
