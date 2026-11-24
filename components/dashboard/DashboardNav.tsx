@@ -60,6 +60,7 @@ const BASE_NAV: NavModule[] = [
   { module: 'my-payslips', label: 'قسائمي', icon: '📄' },
   { module: 'analytics', label: 'التحليلات' },
   { module: 'growth', label: 'النمو' },
+  { module: 'marketing', label: '📣 التسويق', icon: '📣' },
   { module: 'subscription', label: 'الاشتراك' },
   { module: 'knowledge-base', label: 'قاعدة المعرفة' },
   { module: 'public-page', label: 'الصفحة العامة' },
@@ -97,7 +98,11 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
     // "مراكز الأشعة" makes no sense inside an imaging center's own nav — it
     // RECEIVES referrals, it does not send patients to other imaging centers.
     modules = modules.filter(
-      (m) => m.module !== 'leads' && m.module !== 'growth' && m.module !== 'imaging-centers'
+      (m) =>
+        m.module !== 'leads' &&
+        m.module !== 'growth' &&
+        m.module !== 'marketing' &&
+        m.module !== 'imaging-centers'
     );
     const overviewIdx = modules.findIndex((m) => m.module === 'overview');
     modules.splice(overviewIdx + 1, 0, ...IMAGING_WORKFLOW);
@@ -109,6 +114,7 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
       (m) =>
         m.module !== 'appointments' &&
         m.module !== 'leads' &&
+        m.module !== 'marketing' &&
         m.module !== 'imaging-centers' &&
         m.module !== 'referrals'
     );
@@ -258,6 +264,7 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
           .filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module))
           .filter((item) => {
             if (perms === null || perms === undefined) return true; // loading/owner → fail open
+            if (item.module === 'marketing') return perms.has('view_growth');
             return hasNavModulePermission(item.module, perms);
           })
           .map((item) => {
