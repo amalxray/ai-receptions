@@ -52,6 +52,10 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    title: 'نمو المنصة',
+    items: [{ href: '/admin/marketing', label: '📣 تسويق المنصة', icon: Megaphone }],
+  },
+  {
     title: 'محتوى /ask',
     items: [
       { href: '/admin/articles', label: 'المقالات', icon: FileText },
