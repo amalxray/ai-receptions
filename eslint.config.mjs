@@ -10,7 +10,17 @@
 
 export default [
   {
-    ignores: ['node_modules/**', '.next/**', 'out/**', 'build/**', 'next-env.d.ts'],
+    ignores: [
+      'B146/**',
+      'Kimi_Agent_amal-xray/**',
+      'node_modules/**',
+      '.next/**',
+      'public/**',
+      'dist/**',
+      'out/**',
+      'build/**',
+      'next-env.d.ts',
+    ],
   },
   {
     files: ['**/*.{js,mjs,cjs}'],
