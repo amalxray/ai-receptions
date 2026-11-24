@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
-import { saveClinicsToProspects, searchClinics } from '@/lib/services/prospecting/openstreetmap';
+import { saveClinicsToProspects } from '@/lib/services/prospecting/openstreetmap';
+import { fetchAllClinics } from '@/lib/services/prospecting/aggregate';
 
 const OSM_ERROR = 'خدمة OpenStreetMap غير متاحة حالياً. جرّب لاحقاً أو استخدم الإدخال اليدوي/CSV.';
 const requestSchema = z.object({
@@ -39,19 +40,20 @@ export async function POST(req: Request) {
   const { city, country } = parsed.data;
   let clinics;
   try {
-    clinics = await withTimeout(searchClinics(city, country), 45_000);
+    clinics = await withTimeout(fetchAllClinics(city, country), 45_000);
   } catch {
     return NextResponse.json({ error: OSM_ERROR }, { status: 503 });
   }
 
   try {
-    const saved = await saveClinicsToProspects(clinics);
+    const saved = await saveClinicsToProspects(clinics.clinics as Parameters<typeof saveClinicsToProspects>[0]);
     return NextResponse.json({
-      found: clinics.length,
+      found: clinics.clinics.length,
       inserted: saved.inserted,
       skipped: saved.skipped,
       city,
       country,
+      sources: clinics.sources,
     });
   } catch (error) {
     return NextResponse.json(
