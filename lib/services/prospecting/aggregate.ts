@@ -5,6 +5,58 @@ import type { ProspectClinic } from './types';
 
 export type SourceReport = { name: string; count: number; error?: string };
 
+const EXCLUDED_NAME_PATTERNS = [
+  /منزل/i,
+  /مستشفى/i,
+  /إسعاف/i,
+  /مختبر/i,
+  /صيدلية/i,
+  /بنك دم/i,
+  /هلال أحمر/i,
+  /hospital/i,
+  /emergency/i,
+  /\blab\b/i,
+  /pharmacy/i,
+  /blood/i,
+  /ambulance/i,
+  /red crescent/i,
+  /medical lab/i,
+  /testing/i,
+];
+
+const GENERIC_NAMES = new Set([
+  'clinic',
+  'dentist',
+  'medical center',
+  'health clinic',
+  'medical clinic',
+  'doctor',
+  'عيادة',
+  'مركز',
+]);
+
+const DENTAL_NAME_PATTERN = /أسنان|بانوراما|أشعة أسنان|تصوير أسنان|\bdent\b|tooth|panorama|dental x[- ]ray|dental imaging/i;
+
+export function isDentalRelevant(clinic: ProspectClinic): boolean {
+  const name = clinic.clinic_name.trim();
+  if (!name || /[\u0590-\u05FF]/.test(name)) return false;
+  if (EXCLUDED_NAME_PATTERNS.some((pattern) => pattern.test(`${name} ${clinic.address ?? ''}`))) return false;
+  if (!clinic.phone && !clinic.email && !clinic.website) return false;
+  if (GENERIC_NAMES.has(name.toLocaleLowerCase('ar')) && !clinic.phone && !clinic.email && !clinic.website) return false;
+
+  const tags = clinic.metadata.tags ?? {};
+  const categories = Object.values(tags).join(' ').toLocaleLowerCase('en');
+  const sourceCategory = clinic.source === 'openstreetmap'
+    && ['dentist', 'healthcare:dentist'].some((value) => Object.values(tags).some((tag) => tag.toLowerCase() === value));
+  const foursquareDentist = clinic.source === 'foursquare'
+    && (/(^|,)(15014|15015)(,|$)/.test(tags['foursquare:categories'] ?? '')
+      || /dentist|dental hygienist/i.test(tags['foursquare:category_names'] ?? ''));
+  const geoapifyDentist = clinic.source === 'geoapify' && categories.includes('healthcare.dentist');
+
+  return sourceCategory || foursquareDentist || geoapifyDentist || DENTAL_NAME_PATTERN.test(name)
+    || clinic.source === 'geoapify';
+}
+
 function normalizePhone(value: string | undefined) {
   const digits = value?.replace(/\D/g, '') ?? '';
   return digits || undefined;
@@ -69,5 +121,5 @@ export async function fetchAllClinics(city: string, country: string): Promise<{
     }
   });
 
-  return { clinics: Array.from(byKey.values()), sources };
+  return { clinics: Array.from(byKey.values()).filter(isDentalRelevant), sources };
 }
