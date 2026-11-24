@@ -5,6 +5,7 @@ import { Loader2, MapPinned, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 const OSM_ERROR = 'خدمة OpenStreetMap غير متاحة حالياً. جرّب لاحقاً أو استخدم الإدخال اليدوي/CSV.';
+type SourceReport = { name: string; count: number; error?: string };
 
 export default function ProspectOsmFetch() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function ProspectOsmFetch() {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sources, setSources] = useState<SourceReport[]>([]);
 
   function close() {
     if (loading) return;
@@ -22,6 +24,7 @@ export default function ProspectOsmFetch() {
     setMessage(null);
     setError(null);
     setProgress(0);
+    setSources([]);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -32,6 +35,7 @@ export default function ProspectOsmFetch() {
     setProgress(8);
     setMessage(null);
     setError(null);
+    setSources([]);
     const progressTimer = window.setInterval(() => {
       setProgress((current) => Math.min(current + 4, 90));
     }, 1_000);
@@ -46,7 +50,8 @@ export default function ProspectOsmFetch() {
       if (!response.ok) throw new Error(payload.error || OSM_ERROR);
 
       setProgress(100);
-      setMessage(`أُضيف ${payload.inserted ?? 0} عيادة (تم العثور على ${payload.found ?? 0}، وتخطّي ${payload.skipped ?? 0}).`);
+      setMessage(`أُضيفت ${payload.inserted ?? 0} عيادة (تم العثور على ${payload.found ?? 0}، وتخطّي ${payload.skipped ?? 0}).`);
+      setSources(Array.isArray(payload.sources) ? payload.sources : []);
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : OSM_ERROR);
@@ -96,6 +101,15 @@ export default function ProspectOsmFetch() {
                 </div>
               )}
               {message && <p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{message}</p>}
+              {sources.length > 0 && (
+                <ul className="space-y-1 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
+                  {sources.map((source) => (
+                    <li key={source.name} className={source.error ? 'text-slate-500' : 'text-slate-200'}>
+                      {source.name}: {source.error ? 'فشل' : source.count}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
 
               <div className="flex justify-end gap-3">
