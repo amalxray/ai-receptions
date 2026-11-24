@@ -1,4 +1,9 @@
-import { generateSalesEmail } from '@/lib/services/marketing/marketing-agent';
+import {
+  generateSalesEmail,
+  PLATFORM_EMAIL,
+  PLATFORM_SENDER_NAME,
+  PLATFORM_WHATSAPP,
+} from '@/lib/services/marketing/marketing-agent';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getEmailProvider } from '@/lib/communications/email/provider';
 
@@ -66,7 +71,10 @@ function defaultBody(prospect: ProspectRecord) {
 
 إذا كان ذلك مناسباً، يسعدنا ترتيب عرض مختصر للتعرّف على احتياجاتكم.
 
-مع التحية`;
+مع التحية،
+${PLATFORM_SENDER_NAME}
+${PLATFORM_EMAIL}
+واتساب: ${PLATFORM_WHATSAPP}`;
 }
 
 async function loadProspect(id: string): Promise<ProspectRecord> {

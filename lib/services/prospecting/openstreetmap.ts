@@ -1,9 +1,9 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const OVERPASS_URLS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass-turbo.eu/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass.osm.rambler.ru/cgi/interpreter',
 ];
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -39,6 +39,18 @@ type OverpassElement = {
 
 type OverpassResponse = {
   elements?: OverpassElement[];
+};
+
+type NominatimSearchResult = {
+  place_id?: number;
+  osm_type?: string;
+  osm_id?: number;
+  lat?: string | number;
+  lon?: string | number;
+  display_name?: string;
+  type?: string;
+  extratags?: Record<string, unknown> | null;
+  address?: Record<string, unknown> | null;
 };
 
 export type GeocodedCity = {
@@ -237,6 +249,82 @@ function isOverpassResponse(value: unknown): value is OverpassResponse {
     && Array.isArray((value as { elements?: unknown }).elements);
 }
 
+function isNominatimSearchResult(value: unknown): value is NominatimSearchResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const result = value as NominatimSearchResult;
+  const lat = typeof result.lat === 'string' ? Number(result.lat) : result.lat;
+  const lon = typeof result.lon === 'string' ? Number(result.lon) : result.lon;
+  return typeof result.display_name === 'string'
+    && typeof lat === 'number' && Number.isFinite(lat)
+    && typeof lon === 'number' && Number.isFinite(lon);
+}
+
+async function searchNominatimClinics(city: string, country: string): Promise<OSMClinic[]> {
+  const url = new URL(NOMINATIM_URL);
+  url.search = new URLSearchParams({
+    q: `dentist in ${city.trim()}, ${country.trim()}`,
+    format: 'json',
+    extratags: '1',
+    limit: '50',
+  }).toString();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Dentairec-Prospect-Bot/1.0',
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) throw new Error(`Nominatim fallback failed with HTTP ${response.status}.`);
+
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) throw new Error('Nominatim fallback returned invalid JSON.');
+
+  return payload.filter(isNominatimSearchResult).map((result, index) => {
+    const tags = Object.fromEntries(
+      Object.entries(result.extratags ?? {}).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+    const address = result.address ?? {};
+    const addressText = [
+      getStringTag(address, 'road'),
+      getStringTag(address, 'house_number'),
+      getStringTag(address, 'neighbourhood'),
+    ].filter(Boolean).join(' ');
+    const firstName = result.display_name.split(',')[0]?.trim() || `Dentist ${index + 1}`;
+    const lat = typeof result.lat === 'string' ? Number(result.lat) : result.lat;
+    const lon = typeof result.lon === 'string' ? Number(result.lon) : result.lon;
+    const sourceId = result.osm_type && result.osm_id
+      ? `nominatim:${result.osm_type}:${result.osm_id}`
+      : `nominatim:place:${result.place_id ?? `${city}:${index}`}`;
+
+    return {
+      clinic_name: firstName,
+      ...(getStringTag(tags, 'phone') ? { phone: getStringTag(tags, 'phone') } : {}),
+      ...(getStringTag(tags, 'email') ? { email: getStringTag(tags, 'email') } : {}),
+      ...(getStringTag(tags, 'website') ? { website: getStringTag(tags, 'website') } : {}),
+      ...(addressText ? { address: addressText } : {}),
+      city: city.trim(),
+      country: country.trim(),
+      source: 'openstreetmap' as const,
+      source_id: sourceId,
+      metadata: {
+        latitude: lat,
+        longitude: lon,
+        tags: { ...tags, 'nominatim:type': result.type ?? 'dentist' },
+      },
+    };
+  });
+}
+
 /** Search OpenStreetMap for dental clinics and imaging providers in a city. */
 export async function searchClinics(city: string, country: string): Promise<OSMClinic[]> {
   if (!city.trim()) throw new Error('City must not be empty');
@@ -276,7 +364,14 @@ export async function searchClinics(city: string, country: string): Promise<OSMC
   }
 
   if (!isOverpassResponse(payload)) {
-    throw new Error(`All Overpass endpoints failed: ${endpointErrors.join(' ')}`);
+    try {
+      const fallbackClinics = await searchNominatimClinics(city, country);
+      if (fallbackClinics.length > 0) return fallbackClinics;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      endpointErrors.push(`Nominatim fallback: ${detail}`);
+    }
+    throw new Error(`All Overpass endpoints and Nominatim fallback failed: ${endpointErrors.join(' ')}`);
   }
 
   return payload.elements
