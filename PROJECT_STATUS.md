@@ -1,5 +1,15 @@
 # Project Status
 
+## 2026-11-24 — Marketing Agent (First Digital Employee) — Completed
+
+- Built `lib/services/marketing/marketing-agent.ts` to generate LinkedIn posts, sales emails, and blog articles through the existing AI provider registry.
+- Added `app/api/agents/marketing/route.ts` to expose the marketing generation actions through the server API.
+- Added `app/(dashboard)/dashboard/[clinicSlug]/marketing/page.tsx` with a dashboard interface for generating LinkedIn posts, sales emails, and blog articles.
+- Added the «التسويق» navigation link in `components/dashboard/DashboardNav.tsx` for all account types.
+- Ran a successful live generation test using Gemini; it produced a LinkedIn post and a professional sales email.
+- Merged [PR #376](https://github.com/amalxray/ai-receptions/pull/376) and [PR #377](https://github.com/amalxray/ai-receptions/pull/377) into `main`.
+- Decision for the next phase: try Make.com on its free trial first; consider implementing direct LinkedIn OAuth later.
+
 ## 2026-11-22 — Dashboard and landing-page performance
 
 - تم ضبط `CRON_SECRET` في إعدادات Production؛ يجري التحقق من تفعيله في نشر جديد.
