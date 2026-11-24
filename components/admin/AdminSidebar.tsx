@@ -18,6 +18,7 @@ import {
   Palette,
   Settings,
   HardDrive,
+  Target,
   PanelRightClose,
   PanelRightOpen,
   Menu,
@@ -53,7 +54,10 @@ const NAV: NavGroup[] = [
   },
   {
     title: 'نمو المنصة',
-    items: [{ href: '/admin/marketing', label: '📣 تسويق المنصة', icon: Megaphone }],
+    items: [
+      { href: '/admin/marketing', label: '📣 تسويق المنصة', icon: Megaphone },
+      { href: '/admin/prospects', label: 'العيادات المحتملة', icon: Target },
+    ],
   },
   {
     title: 'محتوى /ask',
