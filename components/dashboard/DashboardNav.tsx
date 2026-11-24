@@ -101,7 +101,6 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
       (m) =>
         m.module !== 'leads' &&
         m.module !== 'growth' &&
-        m.module !== 'marketing' &&
         m.module !== 'imaging-centers'
     );
     const overviewIdx = modules.findIndex((m) => m.module === 'overview');
@@ -114,7 +113,6 @@ export function getActivityNavigation(activity?: string | null): NavModule[] {
       (m) =>
         m.module !== 'appointments' &&
         m.module !== 'leads' &&
-        m.module !== 'marketing' &&
         m.module !== 'imaging-centers' &&
         m.module !== 'referrals'
     );
@@ -155,7 +153,19 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
   const pathname = usePathname();
   const { role, clinicId, clinicSlug, activityType, authHeaders } = useClinicContext();
   const isAdmin = role === 'owner' || role === 'manager';
-  const groups = groupNavLinks(getActivityNavigation(activityType));
+  const groups = useMemo(() => {
+    const modules = getActivityNavigation(activityType);
+    const grouped = groupNavLinks(modules);
+    const marketing = modules.find((item) => item.module === 'marketing');
+    if (!marketing) return grouped;
+
+    return grouped.map((group) => ({
+      ...group,
+      items: group.id === 'finance'
+        ? [...group.items.filter((item) => item.module !== 'marketing'), marketing]
+        : group.items.filter((item) => item.module !== 'marketing'),
+    }));
+  }, [activityType]);
   const firstGroupId = groups.length > 0 ? groups[0].id : undefined;
   /** The module the user is looking at right now — drives tab + card highlight. */
   const activeModule = moduleFromPathname(pathname);
@@ -264,7 +274,6 @@ export default function DashboardNav({ surface = 'drawer' }: { surface?: 'bar' |
           .filter((item) => isAdmin || !ADMIN_ONLY_MODULES.has(item.module))
           .filter((item) => {
             if (perms === null || perms === undefined) return true; // loading/owner → fail open
-            if (item.module === 'marketing') return perms.has('view_growth');
             return hasNavModulePermission(item.module, perms);
           })
           .map((item) => {
