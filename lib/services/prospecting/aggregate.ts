@@ -166,5 +166,12 @@ export async function fetchAllClinics(city: string, country: string): Promise<{
     filtered: deduplicatedClinics.length - phoneFilteredClinics.length,
   });
 
-  return { clinics: phoneFilteredClinics.filter(isDentalRelevant), sources };
+  const relevantClinics = phoneFilteredClinics.filter(isDentalRelevant);
+  sources.push({
+    name: 'QualityFilter',
+    count: 0,
+    filtered: phoneFilteredClinics.length - relevantClinics.length,
+  });
+
+  return { clinics: relevantClinics, sources };
 }

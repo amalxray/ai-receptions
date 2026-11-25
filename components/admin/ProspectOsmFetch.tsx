@@ -4,24 +4,28 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Loader2, MapPinned, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { COUNTRY_CITIES, type ProspectingCountry } from '@/lib/services/prospecting/cities';
+import { createProspectImportMessage } from '@/lib/services/prospecting/import-message';
 
 const OSM_ERROR = 'خدمة OpenStreetMap غير متاحة حالياً. جرّب لاحقاً أو استخدم الإدخال اليدوي/CSV.';
 const BATCH_STORAGE_KEY = 'prospect-osm-batch-v1';
 const BATCH_DELAY_MS = 1_200;
 
-type SourceReport = { name: string; count: number; error?: string };
+type SourceReport = { name: string; count: number; error?: string; filtered?: number };
 type CityReport = {
   city: string;
   found: number;
   inserted: number;
-  skipped: number;
+  skipped_duplicates: number;
+  skipped_invalid: number;
+  message: string;
   sources: SourceReport[];
   error?: string;
 };
 type BatchTotals = {
   found: number;
   inserted: number;
-  skipped: number;
+  skipped_duplicates: number;
+  skipped_invalid: number;
   processedCities: number;
   cityReports: CityReport[];
 };
@@ -33,7 +37,9 @@ type SavedBatch = {
 type FetchPayload = {
   found?: number;
   inserted?: number;
-  skipped?: number;
+  skipped_duplicates?: number;
+  skipped_invalid?: number;
+  message?: string;
   error?: string;
   sources?: SourceReport[];
 };
@@ -41,7 +47,8 @@ type FetchPayload = {
 const EMPTY_TOTALS: BatchTotals = {
   found: 0,
   inserted: 0,
-  skipped: 0,
+  skipped_duplicates: 0,
+  skipped_invalid: 0,
   processedCities: 0,
   cityReports: [],
 };
@@ -50,26 +57,93 @@ function isProspectingCountry(value: unknown): value is ProspectingCountry {
   return typeof value === 'string' && Object.hasOwn(COUNTRY_CITIES, value);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function normalizeSourceReport(value: unknown): SourceReport | null {
+  if (!isRecord(value) || typeof value.name !== 'string' || !isFiniteNumber(value.count)) return null;
+  return {
+    name: value.name,
+    count: value.count,
+    ...(typeof value.error === 'string' ? { error: value.error } : {}),
+    ...(isFiniteNumber(value.filtered) ? { filtered: value.filtered } : {}),
+  };
+}
+
+function normalizeCityReport(value: unknown): CityReport | null {
+  if (!isRecord(value) || typeof value.city !== 'string' || !Array.isArray(value.sources)) return null;
+  const sources = value.sources.map(normalizeSourceReport);
+  if (sources.some((source) => source === null)) return null;
+  const validSources = sources.filter((source): source is SourceReport => source !== null);
+
+  const skippedDuplicates = isFiniteNumber(value.skipped_duplicates)
+    ? value.skipped_duplicates
+    : isFiniteNumber(value.skipped)
+      ? value.skipped
+      : 0;
+  return {
+    city: value.city,
+    found: isFiniteNumber(value.found) ? value.found : 0,
+    inserted: isFiniteNumber(value.inserted) ? value.inserted : 0,
+    skipped_duplicates: skippedDuplicates,
+    skipped_invalid: isFiniteNumber(value.skipped_invalid) ? value.skipped_invalid : 0,
+    message: typeof value.message === 'string' ? value.message : '',
+    sources: validSources,
+    ...(typeof value.error === 'string' ? { error: value.error } : {}),
+  };
+}
+
+function normalizeBatchTotals(value: unknown): BatchTotals | null {
+  if (!isRecord(value) || !isFiniteNumber(value.found) || !isFiniteNumber(value.inserted)
+    || !isFiniteNumber(value.processedCities) || !Number.isInteger(value.processedCities)
+    || !Array.isArray(value.cityReports)) {
+    return null;
+  }
+  const cityReports = value.cityReports.map(normalizeCityReport);
+  if (cityReports.some((report) => report === null)) return null;
+  const validCityReports = cityReports.filter((report): report is CityReport => report !== null);
+
+  const skippedDuplicates = isFiniteNumber(value.skipped_duplicates)
+    ? value.skipped_duplicates
+    : isFiniteNumber(value.skipped)
+      ? value.skipped
+      : null;
+  if (skippedDuplicates === null) return null;
+
+  return {
+    found: value.found,
+    inserted: value.inserted,
+    skipped_duplicates: skippedDuplicates,
+    skipped_invalid: isFiniteNumber(value.skipped_invalid) ? value.skipped_invalid : 0,
+    processedCities: value.processedCities,
+    cityReports: validCityReports,
+  };
+}
+
 function readSavedBatch(): SavedBatch | null {
   try {
     const raw = window.localStorage.getItem(BATCH_STORAGE_KEY);
     if (!raw) return null;
     const saved: unknown = JSON.parse(raw);
-    if (typeof saved !== 'object' || saved === null) return null;
-    const record = saved as Partial<SavedBatch>;
-    const totals = record.totals;
-    if (!isProspectingCountry(record.country)
-      || !Number.isInteger(record.current_index)
-      || (record.current_index ?? -1) < 0
-      || !totals
-      || !Number.isFinite(totals.found)
-      || !Number.isFinite(totals.inserted)
-      || !Number.isFinite(totals.skipped)
-      || !Number.isInteger(totals.processedCities)
-      || !Array.isArray(totals.cityReports)) {
+    if (!isRecord(saved)) return null;
+    const totals = normalizeBatchTotals(saved.totals);
+    if (!isProspectingCountry(saved.country)
+      || !isFiniteNumber(saved.current_index)
+      || !Number.isInteger(saved.current_index)
+      || saved.current_index < 0
+      || !totals) {
       return null;
     }
-    return record as SavedBatch;
+    return {
+      country: saved.country,
+      current_index: saved.current_index,
+      totals,
+    };
   } catch {
     return null;
   }
@@ -81,18 +155,20 @@ function csvCell(value: string | number): string {
 
 function downloadBatchCsv(country: ProspectingCountry, reports: CityReport[]) {
   const rows = [
-    ['المدينة', 'تم العثور', 'أُضيف', 'تم تخطيه', 'المصدر', 'نتائج المصدر', 'خطأ المصدر/المدينة'],
+    ['المدينة', 'تم العثور', 'أُضيف', 'موجود مسبقاً', 'مستبعد لمعايير الجودة', 'المصدر', 'نتائج المصدر', 'استبعده المصدر', 'خطأ المصدر/المدينة'],
     ...reports.flatMap((report) => {
       if (report.sources.length === 0) {
-        return [[report.city, report.found, report.inserted, report.skipped, '', '', report.error ?? '']];
+        return [[report.city, report.found, report.inserted, report.skipped_duplicates, report.skipped_invalid, '', '', '', report.error ?? '']];
       }
       return report.sources.map((source) => [
         report.city,
         report.found,
         report.inserted,
-        report.skipped,
+        report.skipped_duplicates,
+        report.skipped_invalid,
         source.name,
         source.count,
+        source.filtered ?? 0,
         source.error ?? report.error ?? '',
       ]);
     }),
@@ -175,7 +251,11 @@ export default function ProspectOsmFetch() {
       if (!response.ok) throw new Error(payload.error || OSM_ERROR);
 
       setProgress(100);
-      setMessage(`أُضيفت ${payload.inserted ?? 0} عيادة (تم العثور على ${payload.found ?? 0}، وتخطّي ${payload.skipped ?? 0}).`);
+      setMessage(payload.message ?? createProspectImportMessage({
+        inserted: payload.inserted ?? 0,
+        skippedDuplicates: payload.skipped_duplicates ?? 0,
+        skippedInvalid: payload.skipped_invalid ?? 0,
+      }));
       setSources(Array.isArray(payload.sources) ? payload.sources : []);
       router.refresh();
     } catch (caughtError) {
@@ -245,7 +325,13 @@ export default function ProspectOsmFetch() {
             city: selectedCity,
             found: payload.found ?? 0,
             inserted: payload.inserted ?? 0,
-            skipped: payload.skipped ?? 0,
+            skipped_duplicates: payload.skipped_duplicates ?? 0,
+            skipped_invalid: payload.skipped_invalid ?? 0,
+            message: payload.message ?? createProspectImportMessage({
+              inserted: payload.inserted ?? 0,
+              skippedDuplicates: payload.skipped_duplicates ?? 0,
+              skippedInvalid: payload.skipped_invalid ?? 0,
+            }),
             sources: Array.isArray(payload.sources) ? payload.sources : [],
           };
         } catch (caughtError) {
@@ -253,7 +339,9 @@ export default function ProspectOsmFetch() {
             city: selectedCity,
             found: 0,
             inserted: 0,
-            skipped: 0,
+            skipped_duplicates: 0,
+            skipped_invalid: 0,
+            message: '',
             sources: [],
             error: caughtError instanceof Error ? caughtError.message : OSM_ERROR,
           };
@@ -262,7 +350,8 @@ export default function ProspectOsmFetch() {
         totals = {
           found: totals.found + cityReport.found,
           inserted: totals.inserted + cityReport.inserted,
-          skipped: totals.skipped + cityReport.skipped,
+          skipped_duplicates: totals.skipped_duplicates + cityReport.skipped_duplicates,
+          skipped_invalid: totals.skipped_invalid + cityReport.skipped_invalid,
           processedCities: totals.processedCities + 1,
           cityReports: [...totals.cityReports, cityReport],
         };
@@ -296,7 +385,12 @@ export default function ProspectOsmFetch() {
         }
         setSavedBatch(null);
         setBatchResult({ country: selectedCountry, totals });
-        setMessage(`اكتمل البحث: أُضيفت ${totals.inserted} عيادة من ${totals.processedCities} مدينة (عُثر على ${totals.found}، وتخطّي ${totals.skipped}).`);
+        const importMessage = createProspectImportMessage({
+          inserted: totals.inserted,
+          skippedDuplicates: totals.skipped_duplicates,
+          skippedInvalid: totals.skipped_invalid,
+        });
+        setMessage(`${importMessage} من ${totals.processedCities} مدينة.`);
         router.refresh();
       }
     } finally {
@@ -412,7 +506,13 @@ export default function ProspectOsmFetch() {
 
                 {batchResult && (
                   <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-200">
-                    <p>الملخص: أُضيفت {batchResult.totals.inserted} عيادة من {batchResult.totals.processedCities} مدينة.</p>
+                    <p>
+                      الملخص: {createProspectImportMessage({
+                        inserted: batchResult.totals.inserted,
+                        skippedDuplicates: batchResult.totals.skipped_duplicates,
+                        skippedInvalid: batchResult.totals.skipped_invalid,
+                      })} من {batchResult.totals.processedCities} مدينة.
+                    </p>
                     {batchResult.totals.cityReports.some((report) => report.error || report.sources.some((source) => source.error)) && (
                       <div>
                         <p className="font-semibold text-red-200">المدن التي تعذّر جلبها:</p>
@@ -460,7 +560,7 @@ export default function ProspectOsmFetch() {
                   <ul className="mt-3 space-y-1 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
                     {sources.map((source) => (
                       <li key={source.name} className={source.error ? 'text-slate-500' : 'text-slate-200'}>
-                        {source.name}: {source.error ? 'فشل' : source.count}
+                        {source.name}: {source.error ? 'فشل' : `${source.count}${source.filtered ? ` (استُبعد ${source.filtered})` : ''}`}
                       </li>
                     ))}
                   </ul>
