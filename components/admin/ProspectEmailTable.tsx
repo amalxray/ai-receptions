@@ -29,6 +29,7 @@ type Props = {
   newProspectIds: string[];
   statusLabels: Record<string, string>;
   archiveProspect: (formData: FormData) => Promise<void>;
+  deleteProspectPermanently: (formData: FormData) => Promise<void>;
 };
 
 type BatchResult = { sent: number; failed: number };
@@ -110,7 +111,13 @@ function shortDate(createdAt: string, fallback: string): string {
   return `${day} ${SHORT_ARABIC_MONTHS[month] ?? month.slice(0, 3)}`;
 }
 
-export default function ProspectEmailTable({ prospects, newProspectIds, statusLabels, archiveProspect }: Props) {
+export default function ProspectEmailTable({
+  prospects,
+  newProspectIds,
+  statusLabels,
+  archiveProspect,
+  deleteProspectPermanently,
+}: Props) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [target, setTarget] = useState<ProspectRow | null>(null);
@@ -437,7 +444,14 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
                         </button>
                       )}
                       {prospect.status !== 'archived' && (
-                        <form action={archiveProspect}>
+                        <form
+                          action={archiveProspect}
+                          onSubmit={(event) => {
+                            if (!window.confirm('هل تريد أرشفة هذه العيادة؟ لن تظهر في القائمة الافتراضية، ويمكن استعادتها لاحقاً.')) {
+                              event.preventDefault();
+                            }
+                          }}
+                        >
                           <input type="hidden" name="id" value={prospect.id} />
                           <button
                             type="submit"
@@ -449,6 +463,24 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
                           </button>
                         </form>
                       )}
+                      <form
+                        action={deleteProspectPermanently}
+                        onSubmit={(event) => {
+                          if (!window.confirm('سيتم حذف العيادة نهائياً. لن تتمكن من استرجاعها. هل أنت متأكد؟')) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="id" value={prospect.id} />
+                        <button
+                          type="submit"
+                          title="حذف نهائي"
+                          aria-label={`حذف ${prospect.clinic_name} نهائياً`}
+                          className="inline-flex items-center justify-center rounded-lg border border-red-500/30 p-1.5 text-red-300 hover:bg-red-500/10"
+                        >
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        </button>
+                      </form>
                     </div>
                   </td>
                 </tr>
