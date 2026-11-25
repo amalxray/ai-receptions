@@ -15,7 +15,7 @@
 
 import { calculatePatientAge, formatAgeAr } from '@/lib/patientAge';
 import { normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
-export { normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
+export { buildWhatsAppHref, normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -849,14 +849,6 @@ export function deriveCriticalAlerts(
 /* ------------------------------------------------------------------ */
 /* Phone / WhatsApp / money / night mode                               */
 /* ------------------------------------------------------------------ */
-
-/** Builds a real https://wa.me deep link (null when the phone is unusable). */
-export function buildWhatsAppHref(phone: string | null | undefined, message: string): string | null {
-  const target = normalizePhoneForWhatsApp(phone);
-  if (!target) return null;
-  const text = message.trim();
-  return text ? `https://wa.me/${target}?text=${encodeURIComponent(text)}` : `https://wa.me/${target}`;
-}
 
 /** Money label: thousands-grouped, integer when whole, 2 decimals otherwise. */
 export function formatMoneyAr(value: number, currency = 'د.أ'): string {
