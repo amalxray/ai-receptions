@@ -111,6 +111,8 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
   const [whatsappStep, setWhatsappStep] = useState<'compose' | 'follow-up'>('compose');
   const [whatsappBusy, setWhatsappBusy] = useState(false);
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState<'single' | 'ai' | 'batch' | null>(null);
@@ -277,25 +279,69 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
     }
   }
 
+  async function deleteSelected() {
+    const ids = selectedIds;
+    if (ids.length === 0 || busy !== null || bulkDeleteBusy) return;
+    if (ids.length > 200) {
+      setError('يمكن حذف 200 عيادة كحد أقصى في كل دفعة.');
+      return;
+    }
+
+    setBulkDeleteBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch('/api/admin/prospects/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const payload = await response.json().catch(() => null) as { deleted?: number; error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || 'تعذر حذف العيادات المحددة.');
+      if (!payload || typeof payload.deleted !== 'number' || !Number.isInteger(payload.deleted) || payload.deleted < 0) {
+        throw new Error('استجابة الحذف غير صالحة.');
+      }
+
+      setSelectedIds([]);
+      setBulkDeleteOpen(false);
+      setNotice(`تم حذف ${payload.deleted} عيادة.`);
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'تعذر حذف العيادات المحددة.');
+    } finally {
+      setBulkDeleteBusy(false);
+    }
+  }
+
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 p-4">
+      <div className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-slate-800 bg-slate-950/95 p-4 backdrop-blur">
         <label className="inline-flex items-center gap-2 text-sm text-slate-300">
           <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4 accent-amber-400" />
           تحديد الكل
         </label>
         {selectedIds.length > 0 && (
-          <button type="button" onClick={() => void sendBatch(selectedIds)} disabled={busy !== null} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">
-            {busy === 'batch' && <Loader2 className="h-4 w-4 animate-spin" />}
-            إرسال المحدد ({selectedIds.length})
-          </button>
+          <>
+            <span className="text-sm text-slate-300" aria-live="polite">تم تحديد {selectedIds.length} عيادة</span>
+            <button type="button" onClick={() => setSelectedIds([])} disabled={busy !== null || bulkDeleteBusy} className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50">
+              إلغاء التحديد
+            </button>
+            <button type="button" onClick={() => { setError(null); setBulkDeleteOpen(true); }} disabled={busy !== null || bulkDeleteBusy} className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm font-bold text-red-200 hover:bg-red-500/10 disabled:opacity-50">
+              <Trash2 aria-hidden="true" className="h-4 w-4" />
+              حذف المحدد ({selectedIds.length})
+            </button>
+            <button type="button" onClick={() => void sendBatch(selectedIds)} disabled={busy !== null || bulkDeleteBusy} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">
+              {busy === 'batch' && <Loader2 className="h-4 w-4 animate-spin" />}
+              إرسال المحدد ({selectedIds.length})
+            </button>
+          </>
         )}
-        <button type="button" onClick={() => void sendBatch(newProspectIds.slice(0, 50))} disabled={busy !== null || newProspectIds.length === 0} className="inline-flex items-center gap-2 rounded-xl border border-amber-400/40 px-4 py-2.5 text-sm font-semibold text-amber-200 hover:bg-amber-400/10 disabled:opacity-50">
+        <button type="button" onClick={() => void sendBatch(newProspectIds.slice(0, 50))} disabled={busy !== null || bulkDeleteBusy || newProspectIds.length === 0} className="inline-flex items-center gap-2 rounded-xl border border-amber-400/40 px-4 py-2.5 text-sm font-semibold text-amber-200 hover:bg-amber-400/10 disabled:opacity-50">
           <Send className="h-4 w-4" />
           إرسال لكل الجدد ({Math.min(newProspectIds.length, 50)})
         </button>
         {notice && <span role="status" className="text-sm text-emerald-300">{notice}</span>}
-        {error && <span role="alert" className="text-sm text-red-300">{error}</span>}
+        {error && !bulkDeleteOpen && <span role="alert" className="text-sm text-red-300">{error}</span>}
       </div>
 
       <div className="max-w-full overflow-x-auto overscroll-x-contain">
@@ -383,6 +429,25 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
           </tbody>
         </table>
       </div>
+
+      {bulkDeleteOpen && (
+        <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <button type="button" aria-label="إغلاق تأكيد الحذف" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleteBusy} className="absolute inset-0 cursor-default" />
+          <section role="dialog" aria-modal="true" aria-labelledby="prospect-bulk-delete-title" className="relative z-10 w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <h2 id="prospect-bulk-delete-title" className="text-lg font-bold text-white">تأكيد حذف العيادات</h2>
+            <p className="mt-3 text-sm text-slate-200">هل أنت متأكد من حذف {selectedIds.length} عيادة؟</p>
+            <p className="mt-1 text-sm text-red-300">لا يمكن التراجع عن هذا الإجراء.</p>
+            {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleteBusy} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50">إلغاء</button>
+              <button type="button" onClick={() => void deleteSelected()} disabled={bulkDeleteBusy || busy !== null} className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-red-400 disabled:opacity-50">
+                {bulkDeleteBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                حذف نهائي
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {whatsappTarget && (
         <div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">

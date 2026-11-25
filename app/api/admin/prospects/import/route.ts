@@ -49,6 +49,7 @@ const MAX_ROWS = 500;
 function normalizeHeader(value: string) {
   return value
     .replace(/^\uFEFF/, '')
+    .trim()
     .normalize('NFKC')
     .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
     .replace(/[\s_-]+/g, ' ')
@@ -151,7 +152,9 @@ export async function POST(req: Request) {
 
   let rows: string[][];
   try {
-    rows = parseCsv(await file.text());
+    const content = await file.text();
+    const cleaned = content.replace(/^\uFEFF/, '');
+    rows = parseCsv(cleaned);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'تعذر تحليل ملف CSV.' },
