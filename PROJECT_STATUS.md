@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-11-25 — البحث المجمّع + الانتقال لكمبيوتر آخر
+
+### ما تم:
+
+- أضيف البحث المتتابع لـ47 مدينة في فلسطين والأردن والسعودية والإمارات؛ التحقق الحي على Production ما زال مطلوباً.
+- صفحة `/admin/prospects` وخدمات OpenStreetMap وGeoapify وFoursquare والتجميع وإرسال البريد موثقة في `main` عبر PRs #381 و#383 و#384.
+- PRs #380 و#381 و#383 و#384 مدموجة في `main`.
+- ملفات migrations التالية موجودة في `main`: `20261124_create_prospects.sql` و`20261125_prospect_source_providers.sql` و`20261125_cleanup_non_manual_prospects.sql`. حالة تطبيقها على قاعدة البيانات تحتاج تأكيداً من Supabase ولا يمكن إثباتها من المستودع وحده.
+
+### متغيرات البيئة:
+
+- إعداد `FOURSQUARE_API_KEY` و`GEOAPIFY_API_KEY` مطلوب في Vercel Production/Preview وبيئة التطوير؛ لا تُحفظ القيم السرية في المستودع.
+
+### نقاط توقف / المرحلة القادمة:
+
+- اختبار حقيقي للبحث المجمّع على Production.
+- مراجعة يدوية للعيادات المختلطة (التقدير السابق نحو 31 سجل؛ العدد الحالي يحتاج إعادة تحقق).
+- المرحلة 3: WhatsApp والمتابعة لم تبدأ.
+
+### تنبيهات أمنية:
+
+- أفاد المالك باحتمال مشاركة مفاتيح Foursquare وGeoapify وFoursquare Client Secret في محادثة. أعد تدوير بيانات الاعتماد المتأثرة من لوحات المزودين؛ لا تُدرج القيم السرية في التوثيق أو Git.
+
 ## 2026-11-24 — Marketing Agent (First Digital Employee) — Completed
 
 - Built `lib/services/marketing/marketing-agent.ts` to generate LinkedIn posts, sales emails, and blog articles through the existing AI provider registry.
