@@ -360,6 +360,10 @@ function buildPayload(fields: FieldDef[], form: Record<string, string | boolean 
     else if (f.kind === 'color') out[f.key] = v;
     else out[f.key] = String(v);
   }
+  for (const key of ['image_path', 'image_url'] as const) {
+    const value = form[key];
+    if (typeof value === 'string' && value.trim() !== '') out[key] = value.trim();
+  }
   return out;
 }
 
@@ -573,6 +577,9 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
     const initial: Record<string, string | boolean | number> = {};
     for (const f of fields) {
       initial[f.key] = uiValue(item, f.key);
+    }
+    for (const key of ['image_path', 'image_url'] as const) {
+      initial[key] = uiValue(item, key);
     }
     setEditForm(initial);
   };
