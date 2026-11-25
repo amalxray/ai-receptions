@@ -34,7 +34,11 @@ export async function POST(req: Request) {
   for (let index = 0; index < parsed.data.ids.length; index += 1) {
     const id = parsed.data.ids[index];
     try {
-      await sendProspectEmail(id, { generateDraft: parsed.data.generateDraft }, { useDefaultBody: true });
+      await sendProspectEmail(
+        id,
+        { generateDraft: parsed.data.generateDraft },
+        { useDefaultBody: true, type: 'initial' },
+      );
       results.push({ id, ok: true });
     } catch (error) {
       const message = error instanceof ProspectEmailError

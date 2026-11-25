@@ -97,11 +97,19 @@ describe('ResendEmailProvider', () => {
   });
 
   it('sends the correct payload to the Resend API', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ id: 'resend-email-id' }),
+    } as unknown as Response);
     global.fetch = fetchMock;
 
     const provider = new ResendEmailProvider({ RESEND_API_KEY: 'test-key', EMAIL_FROM: 'Clinic <no-reply@example.com>' });
-    await provider.send({ to: 'patient@example.com', subject: 'Booking Received', text: 'Your booking has been received.' });
+    await expect(provider.send({
+      to: 'patient@example.com',
+      subject: 'Booking Received',
+      text: 'Your booking has been received.',
+    })).resolves.toEqual({ id: 'resend-email-id' });
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];

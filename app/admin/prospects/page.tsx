@@ -194,6 +194,11 @@ export default async function AdminProspectsPage({
 
   return (
     <div dir="rtl" className="space-y-6">
+      {process.env.EMAIL_PROVIDER !== 'resend' && (
+        <p role="alert" className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm font-bold text-red-200">
+          ⚠️ مزود البريد غير مُعدّ — الإرسال لن يعمل
+        </p>
+      )}
       <section className="rounded-[2rem] border border-slate-800 bg-slate-900/50 p-6 sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div>

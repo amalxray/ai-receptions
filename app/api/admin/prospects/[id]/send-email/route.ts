@@ -33,7 +33,7 @@ export async function POST(
   }
 
   try {
-    const result = await sendProspectEmail(params.id, parsed.data);
+    const result = await sendProspectEmail(params.id, parsed.data, { type: 'manual' });
     if (result.preview) return NextResponse.json({ draft: { subject: result.subject, body: result.body } });
     return NextResponse.json({ data: result });
   } catch (error) {

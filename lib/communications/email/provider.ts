@@ -16,7 +16,7 @@ export interface EmailMessage {
 
 export interface EmailProvider {
   readonly name: string;
-  send(message: EmailMessage): Promise<void>;
+  send(message: EmailMessage): Promise<{ id: string | null }>;
 }
 
 /**
@@ -26,9 +26,10 @@ export interface EmailProvider {
 export class NoopEmailProvider implements EmailProvider {
   readonly name = 'noop';
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<{ id: string | null }> {
     // Intentionally does nothing — used when EMAIL_PROVIDER is not set.
     // The queue will mark the notification as sent.
+    return { id: null };
   }
 }
 
@@ -39,10 +40,11 @@ export class NoopEmailProvider implements EmailProvider {
 export class ConsoleEmailProvider implements EmailProvider {
   readonly name = 'console';
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<{ id: string | null }> {
     console.log(`[Email] To: ${message.to}`);
     console.log(`[Email] Subject: ${message.subject}`);
     console.log(`[Email] Body: ${message.text}`);
+    return { id: null };
   }
 }
 
