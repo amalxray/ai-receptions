@@ -15,20 +15,6 @@ const DENTAIREC_CONTEXT = `
 لا تستخدم أي placeholder بين أقواس مربعة في النص النهائي. اختم الرسالة بمعلومات المرسل الثابتة الواردة في بيانات المهمة.
 `;
 
-function finalizeSalesEmail(text: string): string {
-  const replaced = text
-    .replace(/\[اسم المرسل\]/g, PLATFORM_SENDER_NAME)
-    .replace(/\[البريد الإلكتروني\]/g, PLATFORM_EMAIL)
-    .replace(/\[رقم الهاتف\]/g, PLATFORM_WHATSAPP)
-    .replace(/\[أدخل رقم الهاتف\]/g, PLATFORM_WHATSAPP);
-
-  if (replaced.includes(PLATFORM_EMAIL) && replaced.includes(PLATFORM_WHATSAPP)) {
-    return replaced;
-  }
-
-  return `${replaced}\n\nمع التحية،\n${PLATFORM_SENDER_NAME}\n${PLATFORM_EMAIL}\nواتساب: ${PLATFORM_WHATSAPP}`;
-}
-
 function requireText(value: string, field: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -67,25 +53,44 @@ export async function generateLinkedInPost(topic: string, audience: string): Pro
   );
 }
 
-/** Creates a respectful, personalized sales email for a clinic decision-maker. */
+/** Creates the standard Arabic platform sales email for a clinic. */
 export async function generateSalesEmail(
   clinicName: string,
-  doctorName: string,
-  note: string,
+  _doctorName: string,
+  _note: string,
 ): Promise<string> {
-  const content = await generateMarketingCopy(
-    'اكتب رسالة بريد إلكتروني مهنية ومخصصة للطبيب المذكور، تخاطب ملاحظة المتابعة دون اختلاق تفاصيل. اجعلها موجزة وغير ضاغطة، مع عنوان مناسب ودعوة واضحة لخطوة تالية. لا تدرج أي بيانات صحية شخصية.',
-    {
-      clinicName: requireText(clinicName, 'clinicName'),
-      doctorName: requireText(doctorName, 'doctorName'),
-      note: requireText(note, 'note'),
-      senderName: PLATFORM_SENDER_NAME,
-      senderEmail: PLATFORM_EMAIL,
-      senderWhatsApp: PLATFORM_WHATSAPP,
-    },
-    800,
-  );
-  return finalizeSalesEmail(content);
+  const name = requireText(clinicName, 'clinicName');
+  requireText(_doctorName, 'doctorName');
+  requireText(_note, 'note');
+  const clinicLabel = name.replace(/^عيادة\s+/, '');
+
+  return `مرحباً فريق عيادة ${clinicLabel}،
+
+Dentairec — نظام إدارة عيادات متكامل، يجمع كل ما تحتاجه
+في منصة واحدة:
+
+🏥 إدارة المرضى والملفات الطبية
+📅 حجز المواعيد تلقائياً (24/7)
+💰 الفواتير والمدفوعات والتقارير المالية
+🩻 تحليل الأشعة بالذكاء الاصطناعي
+📊 التقارير والتحليلات
+👥 إدارة الفريق والرواتب
+💬 شات ذكي للرد على المرضى
+📣 أدوات تسويق مدمجة
+🌐 صفحة عامة احترافية لعيادتك
+
+المميزات:
+✅ يعمل على مدار الساعة
+✅ واجهة عربية سهلة
+✅ يوفر وقت فريقك
+✅ يقلل الأخطاء
+
+نود أن نعرض لكم تجربة قصيرة (15 دقيقة)
+لنوضح كيف يمكن لـDentairec مساعدتكم.
+
+${PLATFORM_SENDER_NAME}
+${PLATFORM_EMAIL}
+واتساب: ${PLATFORM_WHATSAPP}`;
 }
 
 /** Creates an informative Arabic blog article without invented medical claims. */

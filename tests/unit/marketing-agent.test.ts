@@ -37,13 +37,17 @@ describe('marketing agent', () => {
       .toContain('أطباء الأسنان');
   });
 
-  it('generates a personalized sales email using the provided details', async () => {
-    await generateSalesEmail('عيادة النور', 'د. سارة', 'متابعة بعد التواصل');
+  it('returns the complete clinic-management sales email without placeholders', async () => {
+    const email = await generateSalesEmail('عيادة النور', 'د. سارة', 'متابعة بعد التواصل');
 
-    const prompt = vi.mocked(generateWithFailover).mock.calls[0][0].prompt;
-    expect(prompt).toContain('عيادة النور');
-    expect(prompt).toContain('د. سارة');
-    expect(prompt).toContain('متابعة بعد التواصل');
+    expect(email).toContain('مرحباً فريق عيادة النور،');
+    expect(email).toContain('نظام إدارة عيادات متكامل');
+    expect(email).toContain('🩻 تحليل الأشعة بالذكاء الاصطناعي');
+    expect(email).toContain('👥 إدارة الفريق والرواتب');
+    expect(email).toContain('info@dentairec.com');
+    expect(email).toContain('واتساب: +970569509093');
+    expect(email).not.toMatch(/\[[^\]]+\]/);
+    expect(generateWithFailover).not.toHaveBeenCalled();
   });
 
   it('generates a blog article for the requested topic', async () => {
