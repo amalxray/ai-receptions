@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Mail, MessageCircle, Send, Sparkles } from 'lucide-react';
+import { Loader2, Mail, MessageCircle, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { buildWhatsAppHref, normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
 
@@ -14,6 +14,7 @@ type ProspectRow = {
   city: string;
   country: string;
   status: string;
+  created_at: string;
   created_at_label: string;
   metadata: unknown;
 };
@@ -32,6 +33,27 @@ const COUNTRY_CALLING_CODES: Record<string, string> = {
   JO: '962',
   SA: '966',
   AE: '971',
+};
+
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('ar', {
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+
+const SHORT_ARABIC_MONTHS: Record<string, string> = {
+  يناير: 'ينا',
+  فبراير: 'فبر',
+  مارس: 'مار',
+  أبريل: 'أبر',
+  مايو: 'ماي',
+  يونيو: 'يون',
+  يوليو: 'يول',
+  أغسطس: 'أغس',
+  سبتمبر: 'سبت',
+  أكتوبر: 'أكت',
+  نوفمبر: 'نوف',
+  ديسمبر: 'ديس',
 };
 
 const DEFAULT_WHATSAPP_MESSAGE = `مرحباً فريق عيادة {clinic_name}،
@@ -66,6 +88,18 @@ function whatsappSendCount(metadata: unknown): number {
   return typeof count === 'number' && Number.isFinite(count) && count > 0
     ? Math.floor(count)
     : 0;
+}
+
+function shortDate(createdAt: string, fallback: string): string {
+  const date = new Date(createdAt);
+  if (!Number.isFinite(date.getTime())) return fallback;
+
+  const parts = SHORT_DATE_FORMATTER.formatToParts(date);
+  const day = parts.find((part) => part.type === 'day')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  if (!day || !month) return fallback;
+
+  return `${day} ${SHORT_ARABIC_MONTHS[month] ?? month.slice(0, 3)}`;
 }
 
 export default function ProspectEmailTable({ prospects, newProspectIds, statusLabels, archiveProspect }: Props) {
@@ -264,18 +298,18 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
         {error && <span role="alert" className="text-sm text-red-300">{error}</span>}
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="max-w-full overflow-x-auto overscroll-x-contain">
         <table className="w-full min-w-[980px] text-right text-sm">
           <thead className="bg-slate-950/60 text-xs text-slate-400">
             <tr>
-              <th scope="col" className="w-12 px-4 py-3"><span className="sr-only">تحديد</span></th>
-              <th scope="col" className="px-4 py-3 font-medium">الاسم</th>
-              <th scope="col" className="px-4 py-3 font-medium">المدينة</th>
-              <th scope="col" className="px-4 py-3 font-medium">الهاتف</th>
-              <th scope="col" className="px-4 py-3 font-medium">البريد</th>
-              <th scope="col" className="px-4 py-3 font-medium">الحالة</th>
-              <th scope="col" className="px-4 py-3 font-medium">التاريخ</th>
-              <th scope="col" className="px-4 py-3 font-medium">إجراءات</th>
+              <th scope="col" className="w-10 px-2 py-3"><span className="sr-only">تحديد</span></th>
+              <th scope="col" className="px-2 py-3 font-medium">الاسم</th>
+              <th scope="col" className="px-2 py-3 font-medium">المدينة</th>
+              <th scope="col" className="px-2 py-3 font-medium">الهاتف</th>
+              <th scope="col" className="px-2 py-3 font-medium">البريد</th>
+              <th scope="col" className="px-2 py-3 font-medium">الحالة</th>
+              <th scope="col" className="px-2 py-3 font-medium">التاريخ</th>
+              <th scope="col" className="w-32 whitespace-nowrap px-2 py-3 font-medium">إجراءات</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
@@ -284,29 +318,64 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
               const whatsappCount = whatsappSendCount(prospect.metadata);
               return (
                 <tr key={prospect.id} className="text-slate-200">
-                  <td className="px-4 py-3"><input type="checkbox" checked={selectedIds.includes(prospect.id)} onChange={() => toggleSelected(prospect.id)} className="h-4 w-4 accent-amber-400" aria-label={`تحديد ${prospect.clinic_name}`} /></td>
-                  <td className="px-4 py-3 font-medium text-white">{prospect.clinic_name}</td>
-                  <td className="px-4 py-3">{prospect.city}, {prospect.country}</td>
-                  <td className="px-4 py-3" dir="ltr">{prospect.phone || '—'}</td>
-                  <td className="px-4 py-3" dir="ltr">{prospect.email || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full border border-slate-700 bg-slate-950 px-2.5 py-1 text-xs">{statusLabels[prospect.status] ?? prospect.status}</span>
-                    {whatsappCount > 0 && <span className="mr-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300">واتساب ✓</span>}
+                  <td className="px-2 py-3"><input type="checkbox" checked={selectedIds.includes(prospect.id)} onChange={() => toggleSelected(prospect.id)} className="h-4 w-4 accent-amber-400" aria-label={`تحديد ${prospect.clinic_name}`} /></td>
+                  <td className="px-2 py-3 font-medium text-white">
+                    <span className="block max-w-[200px] truncate" title={prospect.clinic_name}>
+                      {prospect.clinic_name}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-400">{prospect.created_at_label}</td>
-                  <td className="flex gap-2 px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => openWhatsApp(prospect)}
-                      disabled={!prospect.phone?.trim()}
-                      title={!prospect.phone?.trim() ? 'لا يوجد رقم' : undefined}
-                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-200 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      واتساب <span className="text-[10px] text-emerald-300/70">({whatsappCount})</span>
-                    </button>
-                    {!blocked && <button type="button" onClick={() => openEmail(prospect)} className="inline-flex items-center gap-1 rounded-lg border border-cyan-400/30 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-400/10"><Mail className="h-3.5 w-3.5" /> إرسال</button>}
-                    {prospect.status !== 'archived' && <form action={archiveProspect}><input type="hidden" name="id" value={prospect.id} /><button type="submit" className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/10">حذف</button></form>}
+                  <td className="max-w-[120px] truncate px-2 py-3" title={prospect.country}>{prospect.city}</td>
+                  <td className="px-2 py-3" dir="ltr">{prospect.phone || '—'}</td>
+                  <td className="max-w-[180px] px-2 py-3" dir="ltr">
+                    <span className="block max-w-[180px] truncate" title={prospect.email ?? undefined}>
+                      {prospect.email || '—'}
+                    </span>
+                  </td>
+                  <td className="px-2 py-3">
+                    <span className="whitespace-nowrap rounded-full border border-slate-700 bg-slate-950 px-2 py-0.5 text-xs leading-4">{statusLabels[prospect.status] ?? prospect.status}</span>
+                    {whatsappCount > 0 && <span className="mr-1 whitespace-nowrap rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs leading-4 text-emerald-300">واتساب ✓</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-3 text-xs text-slate-400" title={prospect.created_at_label}>
+                    {shortDate(prospect.created_at, prospect.created_at_label)}
+                  </td>
+                  <td className="px-2 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openWhatsApp(prospect)}
+                        disabled={!prospect.phone?.trim()}
+                        title={!prospect.phone?.trim() ? 'لا يوجد رقم' : 'واتساب'}
+                        aria-label={`واتساب ${prospect.clinic_name}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/30 p-1.5 text-emerald-200 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <MessageCircle aria-hidden="true" className="h-4 w-4" />
+                        <span className="text-[10px] text-emerald-300/70">{whatsappCount}</span>
+                      </button>
+                      {!blocked && (
+                        <button
+                          type="button"
+                          onClick={() => openEmail(prospect)}
+                          title="إرسال بريد"
+                          aria-label={`إرسال بريد إلى ${prospect.clinic_name}`}
+                          className="inline-flex items-center justify-center rounded-lg border border-cyan-400/30 p-1.5 text-cyan-200 hover:bg-cyan-400/10"
+                        >
+                          <Mail aria-hidden="true" className="h-4 w-4" />
+                        </button>
+                      )}
+                      {prospect.status !== 'archived' && (
+                        <form action={archiveProspect}>
+                          <input type="hidden" name="id" value={prospect.id} />
+                          <button
+                            type="submit"
+                            title="حذف"
+                            aria-label={`حذف ${prospect.clinic_name}`}
+                            className="inline-flex items-center justify-center rounded-lg border border-red-500/30 p-1.5 text-red-300 hover:bg-red-500/10"
+                          >
+                            <Trash2 aria-hidden="true" className="h-4 w-4" />
+                          </button>
+                        </form>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
