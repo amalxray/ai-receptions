@@ -12,9 +12,12 @@ CREATE TABLE public.prospect_emails (
   delivered_at timestamptz,
   opened_at timestamptz,
   error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT prospect_emails_prospect_type_key UNIQUE (prospect_id, type)
+  created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX prospect_emails_active_prospect_type_key
+  ON public.prospect_emails(prospect_id, type)
+  WHERE status <> 'failed';
 
 CREATE INDEX idx_prospect_emails_prospect ON public.prospect_emails(prospect_id);
 CREATE INDEX idx_prospect_emails_status ON public.prospect_emails(status);
