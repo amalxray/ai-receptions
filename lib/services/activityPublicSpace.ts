@@ -105,7 +105,7 @@ export type ActivityPublicSpace = {
   /** PHASE L — owner-managed public content (enabled rows only). */
   achievements: { id: string; title: string; value: string; icon: string | null; background_color: string; font_size: string }[];
   testimonials: { id: string; patient_name: string; content: string; rating: number; image_url: string | null }[];
-  articles: { id: string; title: string; category: string | null; image_url: string | null; published_at: string | null }[];
+  articles: { id: string; title: string; category: string | null; content: string | null; image_url: string | null; published_at: string | null }[];
   news: { id: string; text: string; link: string | null; speed: string; background_color: string; text_color: string }[];
   city: string | null;
   area: string | null;
@@ -260,7 +260,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
         .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(25),
       supabaseAdmin.from('clinic_testimonials').select('id, patient_name, content, rating, image_url')
         .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(25),
-      supabaseAdmin.from('clinic_articles').select('id, title, category, image_url, published_at')
+      supabaseAdmin.from('clinic_articles').select('id, title, category, content, image_url, published_at')
         .eq('clinic_id', clinic.id).eq('enabled', true).order('display_order', { ascending: true }).limit(12),
       supabaseAdmin.from('clinic_news_ticker').select('id, text, link, speed, background_color, text_color')
         .eq('clinic_id', clinic.id).eq('enabled', true).order('priority', { ascending: true }).limit(20),
@@ -317,6 +317,7 @@ export async function getActivityPublicSpace(slug: string): Promise<ActivityPubl
     id: art.id,
     title: art.title,
     category: art.category ?? null,
+    content: art.content ?? null,
     image_url: art.image_url ?? null,
     published_at: art.published_at ?? null,
   }));
