@@ -3,7 +3,12 @@
 import { useState } from 'react';
 import { Archive, Loader2, Mail, MessageCircle, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { buildWhatsAppHref, normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
+import {
+  buildWhatsAppHref,
+  getWhatsAppPhoneWarning,
+  normalizePhoneForWhatsApp,
+  WHATSAPP_COUNTRY_CALLING_CODES,
+} from '@/lib/utils/whatsapp';
 
 type ProspectRow = {
   id: string;
@@ -27,13 +32,6 @@ type Props = {
 };
 
 type BatchResult = { sent: number; failed: number };
-
-const COUNTRY_CALLING_CODES: Record<string, string> = {
-  PS: '970',
-  JO: '962',
-  SA: '966',
-  AE: '971',
-};
 
 const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('ar', {
   day: 'numeric',
@@ -86,7 +84,7 @@ function normalizedProspectPhone(prospect: ProspectRow): string | null {
   const phone = prospect.phone?.trim();
   if (!phone) return null;
 
-  const countryCode = COUNTRY_CALLING_CODES[prospect.country.toUpperCase()];
+  const countryCode = WHATSAPP_COUNTRY_CALLING_CODES[prospect.country.toUpperCase()];
   if (/^0/.test(phone) && !countryCode) return null;
 
   return normalizePhoneForWhatsApp(phone, countryCode ?? '970');
@@ -372,6 +370,16 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
             {prospects.map((prospect) => {
               const blocked = !prospect.email || prospect.status === 'converted' || prospect.status === 'rejected';
               const whatsappCount = whatsappSendCount(prospect.metadata);
+              const whatsappWarning = getWhatsAppPhoneWarning(prospect.phone, prospect.country);
+              const whatsappPhone = normalizedProspectPhone(prospect);
+              const whatsappDisabled = whatsappWarning !== null || !whatsappPhone;
+              const whatsappTooltip = whatsappWarning === 'no-phone'
+                ? 'لا يوجد رقم هاتف'
+                : whatsappWarning === 'israeli-number'
+                  ? 'رقم إسرائيلي'
+                  : whatsappWarning === 'other-country' || !whatsappPhone
+                    ? 'رقم غير قابل للتواصل (دولة أخرى)'
+                    : 'واتساب';
               return (
                 <tr key={prospect.id} className="text-slate-200">
                   <td className="px-2 py-3"><input type="checkbox" checked={selectedIds.includes(prospect.id)} onChange={() => toggleSelected(prospect.id)} className="h-4 w-4 accent-amber-400" aria-label={`تحديد ${prospect.clinic_name}`} /></td>
@@ -381,7 +389,17 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
                     </span>
                   </td>
                   <td className="max-w-[120px] truncate px-2 py-3" title={prospect.country}>{prospect.city}</td>
-                  <td className="px-2 py-3" dir="ltr">{prospect.phone || '—'}</td>
+                  <td className="px-2 py-3" dir="ltr">
+                    <span>{prospect.phone || '—'}</span>
+                    {(whatsappWarning === 'israeli-number' || whatsappWarning === 'other-country' || (!whatsappWarning && prospect.phone && !whatsappPhone)) && (
+                      <span
+                        title={whatsappTooltip}
+                        className="ml-2 inline-flex rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200"
+                      >
+                        {whatsappWarning === 'israeli-number' ? 'إسرائيلي' : 'دولة أخرى'}
+                      </span>
+                    )}
+                  </td>
                   <td className="max-w-[180px] px-2 py-3" dir="ltr">
                     <span className="block max-w-[180px] truncate" title={prospect.email ?? undefined}>
                       {prospect.email || '—'}
@@ -399,8 +417,8 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
                       <button
                         type="button"
                         onClick={() => openWhatsApp(prospect)}
-                        disabled={!prospect.phone?.trim()}
-                        title={!prospect.phone?.trim() ? 'لا يوجد رقم' : 'واتساب'}
+                        disabled={whatsappDisabled}
+                        title={whatsappTooltip}
                         aria-label={`واتساب ${prospect.clinic_name}`}
                         className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/30 p-1.5 text-emerald-200 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-40"
                       >
