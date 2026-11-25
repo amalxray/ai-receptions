@@ -1,9 +1,14 @@
 import { searchClinics } from './openstreetmap';
 import { searchFoursquareClinics } from './foursquare';
 import { searchGeoapifyClinics } from './geoapify';
+import { getCountries, getCountryCallingCode, isSupportedCountry } from 'libphonenumber-js';
 import type { ProspectClinic } from './types';
 
-export type SourceReport = { name: string; count: number; error?: string };
+export type SourceReport = { name: string; count: number; error?: string; filtered?: number };
+
+const KNOWN_CALLING_CODES = Array.from(
+  new Set(getCountries().map((country) => getCountryCallingCode(country))),
+).sort((a, b) => b.length - a.length);
 
 const EXCLUDED_NAME_PATTERNS = [
   /منزل/i,
@@ -94,6 +99,39 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown source error';
 }
 
+export function countryMatchesPhone(country: string, phone: string | null): boolean {
+  if (!phone?.trim()) return true;
+
+  const countryCode = country.trim().toUpperCase();
+  const trimmedPhone = phone.trim();
+  const isInternational = trimmedPhone.startsWith('+') || trimmedPhone.startsWith('00');
+
+  if (!isInternational) {
+    const localDigits = trimmedPhone.replace(/\D/g, '');
+    if (countryCode === 'JO' && localDigits.startsWith('07')) return true;
+    if (countryCode === 'PS' && localDigits.startsWith('05')) return true;
+    if ((countryCode === 'JO' && localDigits.startsWith('05'))
+      || (countryCode === 'PS' && localDigits.startsWith('07'))) {
+      return false;
+    }
+    return true;
+  }
+
+  const digits = trimmedPhone
+    .replace(/^\+/, '')
+    .replace(/^00/, '')
+    .replace(/\D/g, '');
+  const callingCode = KNOWN_CALLING_CODES.find((code) => digits.startsWith(code));
+  if (!callingCode) return true;
+
+  if (callingCode === '1') return countryCode === 'US' || countryCode === 'CA';
+  if (callingCode === '44') return countryCode === 'UK' || countryCode === 'GB';
+
+  const supportedCountry = countryCode === 'UK' ? 'GB' : countryCode;
+  if (!isSupportedCountry(supportedCountry)) return false;
+  return getCountryCallingCode(supportedCountry) === callingCode;
+}
+
 export async function fetchAllClinics(city: string, country: string): Promise<{
   clinics: ProspectClinic[];
   sources: SourceReport[];
@@ -121,5 +159,15 @@ export async function fetchAllClinics(city: string, country: string): Promise<{
     }
   });
 
-  return { clinics: Array.from(byKey.values()).filter(isDentalRelevant), sources };
+  const deduplicatedClinics = Array.from(byKey.values());
+  const phoneFilteredClinics = deduplicatedClinics.filter(
+    (clinic) => countryMatchesPhone(clinic.country, clinic.phone ?? null),
+  );
+  sources.push({
+    name: 'PhoneFilter',
+    count: 0,
+    filtered: deduplicatedClinics.length - phoneFilteredClinics.length,
+  });
+
+  return { clinics: phoneFilteredClinics.filter(isDentalRelevant), sources };
 }
