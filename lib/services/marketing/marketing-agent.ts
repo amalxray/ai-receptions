@@ -93,6 +93,44 @@ ${PLATFORM_EMAIL}
 واتساب: ${PLATFORM_WHATSAPP}`;
 }
 
+/** Creates the first concise follow-up email with an unsubscribe link. */
+export function generateFollowUpEmail1(clinicName: string, unsubscribeUrl: string): string {
+  const name = requireText(clinicName, 'clinicName');
+  const unsubscribe = requireText(unsubscribeUrl, 'unsubscribeUrl');
+
+  return `مرحباً فريق ${name}،
+
+أتابع رسالتي السابقة للتأكد من وصولها. إذا كان لديكم اهتمام بالتعرّف على Dentairec وكيف يمكنه مساعدة فريق الاستقبال في متابعة اتصالات المرضى والحجوزات، يسعدنا ترتيب عرض مختصر يناسب وقتكم.
+
+إن لم يكن هذا مناسباً حالياً، فلا حاجة للرد.
+
+مع التحية،
+${PLATFORM_SENDER_NAME}
+${PLATFORM_EMAIL}
+واتساب: ${PLATFORM_WHATSAPP}
+
+لإلغاء الاشتراك: ${unsubscribe}`;
+}
+
+/** Creates the final, low-pressure follow-up email with an unsubscribe link. */
+export function generateFollowUpEmail2(clinicName: string, unsubscribeUrl: string): string {
+  const name = requireText(clinicName, 'clinicName');
+  const unsubscribe = requireText(unsubscribeUrl, 'unsubscribeUrl');
+
+  return `مرحباً فريق ${name}،
+
+هذه آخر متابعة مني بخصوص Dentairec. أتفهم تماماً أن التوقيت قد لا يكون مناسباً، لذلك لن أرسل رسائل متابعة أخرى بعد هذه الرسالة.
+
+إذا رغبتم بالتعرّف على النظام لاحقاً، يمكنكم التواصل معنا في الوقت المناسب لكم.
+
+مع التحية،
+${PLATFORM_SENDER_NAME}
+${PLATFORM_EMAIL}
+واتساب: ${PLATFORM_WHATSAPP}
+
+لإلغاء الاشتراك: ${unsubscribe}`;
+}
+
 /** Creates an informative Arabic blog article without invented medical claims. */
 export async function generateBlogArticle(topic: string): Promise<string> {
   return generateMarketingCopy(

@@ -8,6 +8,7 @@ import ProspectCsvImport from '@/components/admin/ProspectCsvImport';
 import ProspectEmailTable from '@/components/admin/ProspectEmailTable';
 import ProspectOsmFetch from '@/components/admin/ProspectOsmFetch';
 import { countDailyEmailSends, DAILY_EMAIL_LIMIT } from '@/lib/services/prospecting/prospectEmail';
+import { getPendingFollowUps } from '@/lib/services/prospecting/followUp';
 
 const optionalText = z.preprocess(
   (value) => (typeof value === 'string' && !value.trim() ? undefined : value),
@@ -163,6 +164,7 @@ export default async function AdminProspectsPage({
     { count: archivedCount, error: archivedCountError },
     { data: newRows, error: newRowsError },
     dailyEmailCount,
+    pendingFollowUps,
   ] = await Promise.all([
     prospectsQuery,
     supabaseAdmin.from('prospects').select('id', { count: 'exact', head: true }),
@@ -170,6 +172,7 @@ export default async function AdminProspectsPage({
     supabaseAdmin.from('prospects').select('id', { count: 'exact', head: true }).eq('status', 'archived'),
     supabaseAdmin.from('prospects').select('id').eq('status', 'new').limit(50),
     countDailyEmailSends(),
+    getPendingFollowUps(),
   ]);
   if (error) throw new Error(`تعذّر تحميل العيادات المحتملة: ${error.message}`);
   if (countError) throw new Error(`تعذّر تحميل العدد الإجمالي: ${countError.message}`);
@@ -211,6 +214,12 @@ export default async function AdminProspectsPage({
               {' '}· يعرض الجدول حتى 200 من الأحدث.
             </p>
             <p className="mt-1 text-xs text-amber-200/80">اليوم: {dailyEmailCount}/{DAILY_EMAIL_LIMIT} إرسال</p>
+            <a
+              href="/admin/prospects/follow-up"
+              className="mt-2 inline-flex rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-200 hover:bg-amber-400/20"
+            >
+              🔔 {pendingFollowUps.stage_1.length + pendingFollowUps.stage_2.length} عيادة تحتاج متابعة
+            </a>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <ProspectCsvImport />
