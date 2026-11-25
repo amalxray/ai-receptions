@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { saveClinicsToProspects } from '@/lib/services/prospecting/openstreetmap';
 import { fetchAllClinics } from '@/lib/services/prospecting/aggregate';
+import { createProspectImportMessage } from '@/lib/services/prospecting/import-message';
 
 const OSM_ERROR = 'خدمة OpenStreetMap غير متاحة حالياً. جرّب لاحقاً أو استخدم الإدخال اليدوي/CSV.';
 const requestSchema = z.object({
@@ -47,10 +48,19 @@ export async function POST(req: Request) {
 
   try {
     const saved = await saveClinicsToProspects(clinics.clinics as Parameters<typeof saveClinicsToProspects>[0]);
+    const skippedInvalid = clinics.sources
+      .filter((source) => source.name === 'PhoneFilter' || source.name === 'QualityFilter')
+      .reduce((total, source) => total + (source.filtered ?? 0), 0);
     return NextResponse.json({
       found: clinics.clinics.length,
       inserted: saved.inserted,
-      skipped: saved.skipped,
+      skipped_duplicates: saved.skipped,
+      skipped_invalid: skippedInvalid,
+      message: createProspectImportMessage({
+        inserted: saved.inserted,
+        skippedDuplicates: saved.skipped,
+        skippedInvalid,
+      }),
       city,
       country,
       sources: clinics.sources,

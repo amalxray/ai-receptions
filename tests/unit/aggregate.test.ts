@@ -49,6 +49,7 @@ describe('fetchAllClinics', () => {
       { name: 'Foursquare', count: 1 },
       { name: 'Geoapify', count: 0, error: 'quota exceeded' },
       { name: 'PhoneFilter', count: 0, filtered: 0 },
+      { name: 'QualityFilter', count: 0, filtered: 2 },
     ]);
   });
 
@@ -94,7 +95,10 @@ describe('fetchAllClinics', () => {
         'foursquare:landline',
         'foursquare:no-phone',
       ]);
-      expect(result.sources.at(-1)).toEqual({ name: 'PhoneFilter', count: 0, filtered: 1 });
+      expect(result.sources.slice(-2)).toEqual([
+        { name: 'PhoneFilter', count: 0, filtered: 1 },
+        { name: 'QualityFilter', count: 0, filtered: 0 },
+      ]);
     });
   });
 });
