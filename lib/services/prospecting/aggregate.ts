@@ -107,11 +107,8 @@ export function countryMatchesPhone(country: string, phone: string | null): bool
   const isInternational = trimmedPhone.startsWith('+') || trimmedPhone.startsWith('00');
 
   if (!isInternational) {
-    const localDigits = trimmedPhone.replace(/\D/g, '');
-    if (countryCode === 'JO' && localDigits.startsWith('07')) return true;
-    if (countryCode === 'PS' && localDigits.startsWith('05')) return true;
-    if ((countryCode === 'JO' && localDigits.startsWith('05'))
-      || (countryCode === 'PS' && localDigits.startsWith('07'))) {
+    const isNorthAmericanNationalFormat = /^\(?[2-9]\d{2}\)?[\s.-]*[2-9]\d{2}[\s.-]*\d{4}$/.test(trimmedPhone);
+    if (isNorthAmericanNationalFormat && countryCode !== 'US' && countryCode !== 'CA') {
       return false;
     }
     return true;
