@@ -81,6 +81,12 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function nominatimCountryCode(country: string): string | undefined {
+  const normalized = country.trim().toLowerCase();
+  if (normalized === 'uk') return 'gb';
+  return /^[a-z]{2}$/.test(normalized) ? normalized : undefined;
+}
+
 function isGeocodedCity(value: unknown): value is GeocodedCity {
   if (typeof value !== 'object' || value === null) return false;
   const place = value as Record<string, unknown>;
@@ -97,11 +103,14 @@ export async function geocodeCity(
   country: string,
 ): Promise<GeocodedCity | null> {
   const url = new URL(NOMINATIM_URL);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     q: `${city.trim()},${country.trim()}`,
     format: 'json',
     limit: '1',
-  }).toString();
+  });
+  const countryCode = nominatimCountryCode(country);
+  if (countryCode) params.set('countrycodes', countryCode);
+  url.search = params.toString();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -261,12 +270,15 @@ function isNominatimSearchResult(value: unknown): value is NominatimSearchResult
 
 async function searchNominatimClinics(city: string, country: string): Promise<OSMClinic[]> {
   const url = new URL(NOMINATIM_URL);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     q: `dentist in ${city.trim()}, ${country.trim()}`,
     format: 'json',
     extratags: '1',
     limit: '50',
-  }).toString();
+  });
+  const countryCode = nominatimCountryCode(country);
+  if (countryCode) params.set('countrycodes', countryCode);
+  url.search = params.toString();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
