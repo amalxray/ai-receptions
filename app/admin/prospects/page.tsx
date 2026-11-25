@@ -45,6 +45,7 @@ type Prospect = {
   country: string;
   status: string;
   created_at: string;
+  metadata: unknown;
 };
 
 const STATUS_OPTIONS = [

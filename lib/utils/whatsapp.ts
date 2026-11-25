@@ -25,6 +25,17 @@ export function normalizePhoneForWhatsApp(
   return digits.length >= 8 ? digits : null;
 }
 
+export function buildWhatsAppHref(
+  phone: string | null | undefined,
+  message: string,
+  defaultCountryCode = '970',
+): string | null {
+  const target = normalizePhoneForWhatsApp(phone, defaultCountryCode);
+  if (!target) return null;
+  const text = message.trim();
+  return text ? `https://wa.me/${target}?text=${encodeURIComponent(text)}` : `https://wa.me/${target}`;
+}
+
 /** Returns a safe WhatsApp link for a saved phone number or supported URL. */
 export function buildPublicWhatsAppHref(value?: string | null): string | null {
   const trimmed = value?.trim();

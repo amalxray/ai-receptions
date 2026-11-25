@@ -7,6 +7,7 @@ import {
   normalizePhoneForWhatsApp,
   parsePatientMetadata,
 } from '@/components/dashboard/patients/smartProfile';
+import { buildWhatsAppHref as buildWhatsAppUtilityHref } from '@/lib/utils/whatsapp';
 
 /**
  * B38 — the patient profile built its WhatsApp link by hand
@@ -52,6 +53,14 @@ describe('B38 — WhatsApp link normalization', () => {
     );
     expect(buildWhatsAppHref('12345', 'مرحبا')).toBeNull();
     expect(buildWhatsAppHref(null, 'مرحبا')).toBeNull();
+  });
+
+  it('builds a prefilled wa.me href through the shared WhatsApp utility', () => {
+    expect(buildWhatsAppUtilityHref('0599123456', 'مرحباً فريق العيادة'))
+      .toBe(`https://wa.me/970599123456?text=${encodeURIComponent('مرحباً فريق العيادة')}`);
+    expect(buildWhatsAppUtilityHref('0791234567', 'مرحباً', '962'))
+      .toBe(`https://wa.me/962791234567?text=${encodeURIComponent('مرحباً')}`);
+    expect(buildWhatsAppUtilityHref('لا يوجد', 'مرحباً')).toBeNull();
   });
 });
 
