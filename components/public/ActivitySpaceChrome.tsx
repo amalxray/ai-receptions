@@ -20,6 +20,7 @@ import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
 import BeforeAfterSection from '@/components/public/BeforeAfterSection';
 import AchievementsSection from '@/components/public/AchievementsSection';
 import { publicGalleryImageSrc, publicGalleryImageSrcSet } from '@/lib/media/publicGalleryImages';
+import ClinicArticleCard from '@/components/public/ClinicArticleCard';
 
 // Map loads only on the client (CDN Leaflet) — never during SSR.
 const PublicLocationMap = dynamic(() => import('@/components/public/PublicLocationMap'), {
@@ -698,21 +699,16 @@ export function ActivitySpaceChrome({
         {/* PHASE L — articles (education, after content). Patient reviews are
             combined with their average and rating distribution below the page. */}
         {on('articles') && space.articles.length > 0 && (
-          <section className="mx-auto w-full max-w-7xl px-4 pb-14" style={{ order: sectionPosition('articles') }}>
+          <section id="articles" className="mx-auto w-full max-w-7xl scroll-mt-8 px-4 pb-14" style={{ order: sectionPosition('articles') }}>
             <h2 className="mb-6 text-center text-xl font-bold text-slate-800">مقالات ومنشورات</h2>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {space.articles.map((art) => (
-                <article key={art.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  {art.image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={art.image_url} alt={art.title} loading="lazy" className="mb-3 h-36 w-full rounded-xl object-cover" />
-                  )}
-                  {art.category && <span className="text-xs font-semibold text-brand-cyan">{art.category}</span>}
-                  <h3 className="mt-1 font-bold text-slate-800">{art.title}</h3>
-                  {art.published_at && (
-                    <p className="mt-1 text-xs text-slate-400">{new Date(art.published_at).toLocaleDateString('ar')}</p>
-                  )}
-                </article>
+                <ClinicArticleCard
+                  key={art.id}
+                  article={art}
+                  href={`/${space.slug}/articles/${encodeURIComponent(art.id)}`}
+                  fallbackImage={space.coverUrl || space.logo}
+                />
               ))}
             </div>
           </section>
