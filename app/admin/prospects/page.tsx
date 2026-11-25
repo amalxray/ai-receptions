@@ -48,20 +48,24 @@ type Prospect = {
   metadata: unknown;
 };
 
-const STATUS_OPTIONS = [
+const ACTIVE_STATUSES = ['new', 'contacted', 'replied', 'meeting', 'converted'];
+
+const STATUS_FILTERS = [
   { value: 'all', label: 'كل الحالات' },
-  { value: 'new', label: 'جديد' },
-  { value: 'contacted', label: 'تم التواصل' },
-  { value: 'replied', label: 'ردّت' },
-  { value: 'meeting', label: 'اجتماع' },
-  { value: 'converted', label: 'تم الاشتراك' },
-  { value: 'rejected', label: 'مرفوض' },
+  { value: 'active', label: 'نشط' },
   { value: 'archived', label: 'مؤرشف' },
+  { value: 'rejected', label: 'مرفوض' },
 ];
 
-const STATUS_LABELS = Object.fromEntries(
-  STATUS_OPTIONS.filter((option) => option.value !== 'all').map(({ value, label }) => [value, label]),
-);
+const STATUS_LABELS: Record<string, string> = {
+  new: 'جديد',
+  contacted: 'تم التواصل',
+  replied: 'ردّت',
+  meeting: 'اجتماع',
+  converted: 'تم الاشتراك',
+  archived: 'مؤرشف',
+  rejected: 'مرفوض',
+};
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('ar', {
   day: 'numeric',
@@ -139,9 +143,9 @@ export default async function AdminProspectsPage({
   const gate = await requirePlatformAdmin();
   if (!gate.ok) redirect('/login?next=/admin/prospects');
 
-  const status = STATUS_OPTIONS.some((option) => option.value === searchParams?.status)
+  const status = STATUS_FILTERS.some((option) => option.value === searchParams?.status)
     ? searchParams?.status
-    : 'all';
+    : 'active';
   const query = searchParams?.q?.trim() ?? '';
 
   let prospectsQuery = supabaseAdmin
@@ -149,16 +153,28 @@ export default async function AdminProspectsPage({
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
     .limit(200);
-  if (status !== 'all') prospectsQuery = prospectsQuery.eq('status', status);
+  if (status === 'active') prospectsQuery = prospectsQuery.in('status', ACTIVE_STATUSES);
+  else if (status === 'archived' || status === 'rejected') prospectsQuery = prospectsQuery.eq('status', status);
 
-  const [{ data, error }, { count: totalCount, error: countError }, { data: newRows, error: newRowsError }, dailyEmailCount] = await Promise.all([
+  const [
+    { data, error },
+    { count: totalCount, error: countError },
+    { count: activeCount, error: activeCountError },
+    { count: archivedCount, error: archivedCountError },
+    { data: newRows, error: newRowsError },
+    dailyEmailCount,
+  ] = await Promise.all([
     prospectsQuery,
     supabaseAdmin.from('prospects').select('id', { count: 'exact', head: true }),
+    supabaseAdmin.from('prospects').select('id', { count: 'exact', head: true }).in('status', ACTIVE_STATUSES),
+    supabaseAdmin.from('prospects').select('id', { count: 'exact', head: true }).eq('status', 'archived'),
     supabaseAdmin.from('prospects').select('id').eq('status', 'new').limit(50),
     countDailyEmailSends(),
   ]);
   if (error) throw new Error(`تعذّر تحميل العيادات المحتملة: ${error.message}`);
   if (countError) throw new Error(`تعذّر تحميل العدد الإجمالي: ${countError.message}`);
+  if (activeCountError) throw new Error(`تعذّر تحميل عدد العيادات النشطة: ${activeCountError.message}`);
+  if (archivedCountError) throw new Error(`تعذّر تحميل عدد العيادات المؤرشفة: ${archivedCountError.message}`);
   if (newRowsError) throw new Error(`تعذّر تحميل العيادات الجديدة: ${newRowsError.message}`);
 
   const prospects = ((data ?? []) as Prospect[]).filter((prospect) =>
@@ -166,6 +182,11 @@ export default async function AdminProspectsPage({
   );
   const notice = searchParams?.notice;
   const actionError = searchParams?.error;
+  const toggleStatus = status === 'archived' ? 'active' : 'archived';
+  const archiveToggleHref = `/admin/prospects?${new URLSearchParams({
+    status: toggleStatus,
+    ...(query ? { q: query } : {}),
+  }).toString()}`;
   const tableProspects = prospects.map((prospect) => ({
     ...prospect,
     created_at_label: DATE_FORMATTER.format(new Date(prospect.created_at)),
@@ -181,7 +202,8 @@ export default async function AdminProspectsPage({
               العيادات المحتملة
             </h1>
             <p className="mt-2 text-sm text-slate-400">
-              {totalCount ?? 0} جهة في القائمة · يعرض الجدول حتى 200 من الأحدث.
+              {activeCount ?? 0} نشط · {archivedCount ?? 0} مؤرشف · المجموع {totalCount ?? 0}
+              {' '}· يعرض الجدول حتى 200 من الأحدث.
             </p>
             <p className="mt-1 text-xs text-amber-200/80">اليوم: {dailyEmailCount}/{DAILY_EMAIL_LIMIT} إرسال</p>
           </div>
@@ -323,7 +345,7 @@ export default async function AdminProspectsPage({
         )}
         {notice === 'archived' && (
           <p role="status" className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-            تم أرشفة العيادة.
+            تم أرشفة 1 عيادة.
           </p>
         )}
         {actionError && (
@@ -348,7 +370,7 @@ export default async function AdminProspectsPage({
             defaultValue={status}
             className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
           >
-            {STATUS_OPTIONS.map((option) => (
+            {STATUS_FILTERS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
@@ -366,11 +388,21 @@ export default async function AdminProspectsPage({
           >
             تطبيق الفلاتر
           </button>
+          <a
+            href={archiveToggleHref}
+            className="rounded-xl border border-amber-400/40 px-4 py-2.5 text-center text-sm text-amber-200 hover:bg-amber-400/10"
+          >
+            {status === 'archived' ? 'عرض النشط' : 'عرض المؤرشف'}
+          </a>
         </form>
 
         {prospects.length === 0 ? (
           <p className="p-10 text-center text-sm text-slate-400">
-            لا توجد عيادات بعد — أضف أول عيادة
+            {status === 'active'
+              ? 'لا توجد عيادات نشطة.'
+              : status === 'archived'
+                ? 'لا توجد عيادات مؤرشفة.'
+                : 'لا توجد عيادات مطابقة للفلاتر.'}
           </p>
         ) : (
           <ProspectEmailTable

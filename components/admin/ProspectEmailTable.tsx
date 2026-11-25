@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Mail, MessageCircle, Send, Sparkles, Trash2 } from 'lucide-react';
+import { Archive, Loader2, Mail, MessageCircle, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { buildWhatsAppHref, normalizePhoneForWhatsApp } from '@/lib/utils/whatsapp';
 
@@ -413,11 +413,11 @@ export default function ProspectEmailTable({ prospects, newProspectIds, statusLa
                           <input type="hidden" name="id" value={prospect.id} />
                           <button
                             type="submit"
-                            title="حذف"
-                            aria-label={`حذف ${prospect.clinic_name}`}
+                            title="أرشفة"
+                            aria-label={`أرشفة ${prospect.clinic_name}`}
                             className="inline-flex items-center justify-center rounded-lg border border-red-500/30 p-1.5 text-red-300 hover:bg-red-500/10"
                           >
-                            <Trash2 aria-hidden="true" className="h-4 w-4" />
+                            <Archive aria-hidden="true" className="h-4 w-4" />
                           </button>
                         </form>
                       )}
