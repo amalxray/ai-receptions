@@ -21,7 +21,7 @@ export class ResendEmailProvider implements EmailProvider {
     this.from = env.EMAIL_FROM || '';
   }
 
-  async send(message: EmailMessage): Promise<void> {
+  async send(message: EmailMessage): Promise<{ id: string }> {
     if (!this.apiKey) {
       throw new Error('RESEND_API_KEY is not configured');
     }
@@ -48,5 +48,18 @@ export class ResendEmailProvider implements EmailProvider {
       const body = await res.text().catch(() => '');
       throw new Error(`Resend API error (${res.status}): ${body}`);
     }
+
+    const payload: unknown = await res.json();
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      !('id' in payload) ||
+      typeof payload.id !== 'string' ||
+      !payload.id
+    ) {
+      throw new Error('Resend API returned a successful response without an email ID');
+    }
+
+    return { id: payload.id };
   }
 }
