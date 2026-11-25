@@ -9,6 +9,10 @@ export type SourceReport = { name: string; count: number; error?: string; filter
 const KNOWN_CALLING_CODES = Array.from(
   new Set(getCountries().map((country) => getCountryCallingCode(country))),
 ).sort((a, b) => b.length - a.length);
+const ARAB_COUNTRIES = new Set([
+  'JO', 'PS', 'SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'EG',
+  'LB', 'SY', 'IQ', 'YE', 'SD', 'LY', 'TN', 'DZ', 'MA',
+]);
 
 const EXCLUDED_NAME_PATTERNS = [
   /منزل/i,
@@ -105,6 +109,18 @@ export function countryMatchesPhone(country: string, phone: string | null): bool
   const countryCode = country.trim().toUpperCase();
   const trimmedPhone = phone.trim();
   const isInternational = trimmedPhone.startsWith('+') || trimmedPhone.startsWith('00');
+  const phoneDigits = trimmedPhone.replace(/\D/g, '');
+  const internationalDigits = trimmedPhone.startsWith('+')
+    ? phoneDigits
+    : trimmedPhone.startsWith('00')
+      ? phoneDigits.slice(2)
+      : phoneDigits;
+
+  if (ARAB_COUNTRIES.has(countryCode)
+    && ((isInternational && internationalDigits.startsWith('1'))
+      || (!isInternational && phoneDigits.length === 11 && phoneDigits.startsWith('1')))) {
+    return false;
+  }
 
   if (!isInternational) {
     const isNorthAmericanNationalFormat = /^\(?[2-9]\d{2}\)?[\s.-]*[2-9]\d{2}[\s.-]*\d{4}$/.test(trimmedPhone);
