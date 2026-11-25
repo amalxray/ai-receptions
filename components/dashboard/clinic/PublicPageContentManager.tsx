@@ -300,7 +300,8 @@ type FieldDef =
   | { kind: 'textarea'; key: string; label: string; max: number; required?: boolean; placeholder?: string }
   | { kind: 'number'; key: string; label: string; min: number; max: number }
   | { kind: 'select'; key: string; label: string; options: { value: string; label: string }[] }
-  | { kind: 'color'; key: string; label: string };
+  | { kind: 'color'; key: string; label: string }
+  | { kind: 'hidden'; key: 'image_path' | 'image_url' };
 
 type ItemRow = Record<string, unknown> & { id: string; enabled?: boolean; display_order?: number };
 
@@ -334,6 +335,8 @@ const FIELDS: Record<ContentType, FieldDef[]> = {
     { kind: 'text', key: 'category', label: 'الفئة', max: 80 },
     { kind: 'color', key: 'title_color', label: 'لون العنوان' },
     { kind: 'select', key: 'font_size', label: 'حجم الخط', options: FONT_OPTIONS },
+    { kind: 'hidden', key: 'image_path' },
+    { kind: 'hidden', key: 'image_url' },
   ],
   news: [
     { kind: 'text', key: 'text', label: 'نص الخبر', max: 300, required: true },
@@ -377,6 +380,7 @@ function FieldInput({
   onChange: (v: string) => void;
 }) {
   const inputCls = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
+  if (field.kind === 'hidden') return null;
   switch (field.kind) {
     case 'textarea':
       return <textarea value={value} onChange={(e) => onChange(e.target.value)} maxLength={field.max} rows={4} className={inputCls} placeholder={field.placeholder} />;
@@ -610,15 +614,18 @@ export function ContentEditor({ type, api }: { type: ContentType; api: ManagerAp
 
   const fieldGrid = (current: Record<string, string | boolean | number>, set: (v: Record<string, string | boolean | number>) => void) => (
     <div className="grid gap-3 sm:grid-cols-2">
-      {fields.map((f) => (
-        <Field key={f.key} label={f.label + ((f.kind === 'text' || f.kind === 'textarea') && f.required ? ' *' : '')}>
-          <FieldInput
-            field={f}
-            value={String(current[f.key] ?? '')}
-            onChange={(v) => set({ ...current, [f.key]: v })}
-          />
-        </Field>
-      ))}
+      {fields.map((f) => {
+        if (f.kind === 'hidden') return null;
+        return (
+          <Field key={f.key} label={f.label + ((f.kind === 'text' || f.kind === 'textarea') && f.required ? ' *' : '')}>
+            <FieldInput
+              field={f}
+              value={String(current[f.key] ?? '')}
+              onChange={(v) => set({ ...current, [f.key]: v })}
+            />
+          </Field>
+        );
+      })}
       {(type === 'testimonials' || type === 'articles') && (
         <Field label={type === 'testimonials' ? 'صورة المريض (اختياري)' : 'صورة المقال (اختياري)'}>
           <input
