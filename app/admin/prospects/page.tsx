@@ -136,6 +136,30 @@ async function archiveProspect(formData: FormData) {
   redirect('/admin/prospects?notice=archived');
 }
 
+async function deleteProspectPermanently(formData: FormData) {
+  'use server';
+
+  const gate = await requirePlatformAdmin();
+  if (!gate.ok) redirect('/login?next=/admin/prospects');
+
+  const id = z.string().uuid().safeParse(formValue(formData, 'id'));
+  if (!id.success) redirect('/admin/prospects?error=invalid-id');
+
+  const { data, error } = await supabaseAdmin
+    .from('prospects')
+    .delete()
+    .eq('id', id.data)
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    redirect(`/admin/prospects?error=${encodeURIComponent(error.message)}`);
+  }
+  if (!data) redirect('/admin/prospects?error=not-found');
+
+  revalidatePath('/admin/prospects');
+  redirect('/admin/prospects?notice=deleted');
+}
+
 export default async function AdminProspectsPage({
   searchParams,
 }: {
@@ -362,6 +386,11 @@ export default async function AdminProspectsPage({
             تم أرشفة 1 عيادة.
           </p>
         )}
+        {notice === 'deleted' && (
+          <p role="status" className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+            تم حذف العيادة نهائياً.
+          </p>
+        )}
         {actionError && (
           <p role="alert" className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
             {actionError === 'invalid'
@@ -424,6 +453,7 @@ export default async function AdminProspectsPage({
             newProspectIds={(newRows ?? []).map((row) => row.id)}
             statusLabels={STATUS_LABELS}
             archiveProspect={archiveProspect}
+            deleteProspectPermanently={deleteProspectPermanently}
           />
         )}
       </section>
