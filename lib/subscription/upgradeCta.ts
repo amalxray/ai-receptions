@@ -8,9 +8,10 @@
  */
 import type { EntitlementResource } from './entitlements';
 
-/** All seven canonical resources with Arabic labels (single source for UI). */
+/** Entitlement resources with Arabic labels (single source for UI). */
 export const RESOURCE_LABEL_AR: Record<EntitlementResource, string> = {
   ai_messages: 'رسائل الذكاء الاصطناعي',
+  agent_runs: 'تشغيل الوكلاء',
   bookings: 'الحجوزات',
   patients: 'المرضى',
   providers: 'الأطباء',
@@ -22,12 +23,13 @@ export const RESOURCE_LABEL_AR: Record<EntitlementResource, string> = {
 /**
  * Approved upgrade suggestion per resource (v2 4-tier matrix).
  *   * non-null  -> a SELLABLE plan that resolves the limit for that resource,
- *   * null      -> the resource is unlimited on every plan — never offer an upgrade.
+ *   * null      -> there is no plan upgrade recommendation for the resource.
  * Only sellable plan ids may appear here (basic / advanced / center and their
  * *_yearly variants) — never `limited`, which is the degraded fallback itself.
  */
 export const UPGRADE_SUGGESTIONS: Record<EntitlementResource, string | null> = {
   ai_messages: 'advanced',    // limited 10 → advanced unlimited
+  agent_runs: null,           // fixed fallback of 50 across plans; no plan-specific upgrade
   bookings: 'advanced',       // limited 50 → advanced unlimited
   patients: 'basic',          // limited 5  → basic 500 → advanced/center unlimited
   providers: 'advanced',      // limited 2  → advanced 4 → center 10
@@ -39,6 +41,7 @@ export const UPGRADE_SUGGESTIONS: Record<EntitlementResource, string | null> = {
 /** Human Arabic message for an entitlement block (admin-facing). */
 export const ENTITLEMENT_BLOCK_MSG: Record<EntitlementResource, string> = {
   ai_messages: 'لقد وصلت إلى الحد الشهري لرسائل الذكاء الاصطناعي في هذه الخطة.',
+  agent_runs: 'لقد وصلت إلى الحد الشهري لتشغيل الوكلاء.',
   bookings: 'لقد وصلت إلى الحد الشهري للحجوزات في هذه الخطة.',
   patients: 'لقد وصلت إلى الحد الأقصى للمرضى في هذه الخطة.',
   providers: 'لقد وصلت إلى الحد الأقصى لعدد الأطباء في هذه الخطة.',

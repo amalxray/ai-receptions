@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   generateSalesEmail: vi.fn(),
   generateBlogArticle: vi.fn(),
   logEvent: vi.fn(),
+  withEntitlement: vi.fn(async (_clinicId: string, _resource: string, generate: () => Promise<string>) => generate()),
+  entitlementErrorResponse: vi.fn(() => null),
 }));
 
 vi.mock('@/lib/services/clinicAuthorization', () => ({
@@ -24,6 +26,10 @@ vi.mock('@/lib/services/marketing/marketing-agent', () => ({
 }));
 
 vi.mock('@/lib/server/logging', () => ({ logEvent: mocks.logEvent }));
+vi.mock('@/lib/subscription/entitlements', () => ({
+  withEntitlement: mocks.withEntitlement,
+  entitlementErrorResponse: mocks.entitlementErrorResponse,
+}));
 
 import { POST } from '@/app/api/agents/marketing/route';
 
@@ -69,6 +75,7 @@ describe('POST /api/agents/marketing', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { content: 'LinkedIn draft' } });
     expect(mocks.generateLinkedInPost).toHaveBeenCalledWith('Patient experience', 'Dentists');
+    expect(mocks.withEntitlement).toHaveBeenCalledWith('clinic-1', 'agent_runs', expect.any(Function));
   });
 
   it('generates a sales email from the submitted details', async () => {

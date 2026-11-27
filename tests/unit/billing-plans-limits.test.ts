@@ -37,7 +37,7 @@ const CID = '11111111-1111-1111-1111-111111111111';
 // The approved v2 owner matrix — the single source of truth for this test.
 // (30-day trial → limited fallback; basic/advanced/center USD tiers;
 //  founding = legacy grandfathered row, still resolvable but not sellable.)
-const FINAL_LIMITS: Record<string, Record<EntitlementResource, number | null>> = {
+const FINAL_LIMITS: Record<string, Partial<Record<EntitlementResource, number | null>>> = {
   free_trial: { ai_messages: 100, bookings: 50, patients: 50, providers: 2, users: 2, knowledge_docs: 5, conversations: null },
   limited: { ai_messages: 10, bookings: 50, patients: 5, providers: 2, users: 2, knowledge_docs: 3, conversations: null },
   basic: { ai_messages: null, bookings: null, patients: 500, providers: 1, users: 1, knowledge_docs: null, conversations: null },
@@ -48,6 +48,7 @@ const FINAL_LIMITS: Record<string, Record<EntitlementResource, number | null>> =
 
 const RESOURCES: EntitlementResource[] = [
   'ai_messages',
+  'agent_runs',
   'bookings',
   'patients',
   'providers',
@@ -65,9 +66,10 @@ describe('15G-FIX — approved limits matrix resolves correctly (catalog-first)'
     mockDb.__chain.maybeSingle.mockResolvedValue({ data: { limits: FINAL_LIMITS[planId] }, error: null });
     const expected = FINAL_LIMITS[planId];
     for (const resource of RESOURCES) {
+      const configured = Object.prototype.hasOwnProperty.call(expected, resource);
       const { limit, fromCatalog } = await getPlanResourceLimit(planId, resource);
-      expect(limit).toBe(expected[resource]);
-      expect(fromCatalog).toBe(true);
+      expect(limit).toBe(configured ? expected[resource] : FALLBACK_LIMITS[resource]);
+      expect(fromCatalog).toBe(configured);
     }
   });
 
@@ -108,7 +110,11 @@ describe('15G-FIX — getEntitlementState reflects the approved matrix (catalog-
       expect(state.status).toBe('active');
       expect(state.degraded).toBe(false);
       for (const resource of RESOURCES) {
-        expect(state.resources[resource].limit).toBe(FINAL_LIMITS[planId][resource]);
+        const configured = Object.prototype.hasOwnProperty.call(FINAL_LIMITS[planId], resource);
+        expect(state.resources[resource].limit).toBe(
+          configured ? FINAL_LIMITS[planId][resource] : FALLBACK_LIMITS[resource],
+        );
+        expect(state.resources[resource].fromCatalog).toBe(configured);
       }
       expect(mockDb.__chain.in).toHaveBeenCalledTimes(1);
     }
@@ -182,6 +188,7 @@ describe('15G-FIX — regression guards', () => {
   it('fallback (limited) limits contract — v2 approved matrix', () => {
     expect(FALLBACK_LIMITS).toEqual({
       ai_messages: 10,
+      agent_runs: 50,
       bookings: 50,
       patients: 5,
       providers: 2,
@@ -197,7 +204,9 @@ describe('15G-FIX — regression guards', () => {
       'utf8'
     );
     expect(migration).toContain('billing_plans_limits_only_canonical_keys');
-    for (const r of RESOURCES) expect(migration).toContain(`'${r}'`);
+    const catalogResources = RESOURCES.filter((resource) => resource !== 'agent_runs');
+    for (const resource of catalogResources) expect(migration).toContain(`'${resource}'`);
+    expect(migration).not.toContain("'agent_runs'");
 
     const legacyKeys = ['max_patients', 'ai_messages_per_day', 'max_documents', 'max_team', 'max_clinics'];
     const assignments = migration.match(/set limits =\s+'([^']+)'/g) ?? [];

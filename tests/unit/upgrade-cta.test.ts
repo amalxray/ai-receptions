@@ -77,12 +77,18 @@ describe('15G-B — buildUpgradeHref', () => {
     expect(buildUpgradeHref('conversations', null, 'amal-clinic')).toBeNull();
   });
 
-  it('suggestedPlanFor is null only for unlimited resources', () => {
+  it('does not recommend a plan upgrade for agent_runs because its cap is shared by all plans', () => {
+    expect(buildUpgradeHref('agent_runs')).toBeNull();
+    expect(suggestedPlanFor('agent_runs')).toBeNull();
+    expect(UPGRADE_SUGGESTIONS.agent_runs).toBeNull();
+  });
+
+  it('suggestedPlanFor is null for unlimited resources or resources without a plan-specific upgrade', () => {
     expect(suggestedPlanFor('conversations')).toBeNull();
     expect(suggestedPlanFor('bookings')).toBe('advanced');
-    // Every key in the map is one of the seven canonical resources.
+    // Every entitlement resource has a suggestion entry, even when no upgrade applies.
     expect(Object.keys(UPGRADE_SUGGESTIONS).sort()).toEqual([
-      'ai_messages', 'bookings', 'conversations', 'knowledge_docs', 'patients', 'providers', 'users',
+      'agent_runs', 'ai_messages', 'bookings', 'conversations', 'knowledge_docs', 'patients', 'providers', 'users',
     ]);
   });
 });

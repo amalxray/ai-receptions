@@ -42,6 +42,7 @@ import { logEvent } from '@/lib/server/logging';
 
 export type EntitlementResource =
   | 'ai_messages'
+  | 'agent_runs'
   | 'bookings'
   | 'patients'
   | 'providers'
@@ -51,6 +52,7 @@ export type EntitlementResource =
 
 const ENTITLEMENT_RESOURCES: readonly EntitlementResource[] = [
   'ai_messages',
+  'agent_runs',
   'bookings',
   'patients',
   'providers',
@@ -59,9 +61,10 @@ const ENTITLEMENT_RESOURCES: readonly EntitlementResource[] = [
   'conversations',
 ];
 
-/** Arabic labels for the seven canonical entitlement resources (15G-A display). */
+/** Arabic labels for entitlement resources displayed in usage summaries. */
 export const RESOURCE_LABELS_AR: Record<EntitlementResource, string> = {
   ai_messages: 'رسائل الذكاء الاصطناعي',
+  agent_runs: 'تشغيل الوكلاء',
   bookings: 'الحجوزات',
   patients: 'المرضى',
   providers: 'الأطباء',
@@ -80,6 +83,7 @@ export const RESOURCE_LABELS_AR: Record<EntitlementResource, string> = {
  */
 export const FALLBACK_LIMITS: Record<EntitlementResource, number | null> = {
   ai_messages: 10,
+  agent_runs: 50,
   bookings: 50,
   patients: 5,
   providers: 2,

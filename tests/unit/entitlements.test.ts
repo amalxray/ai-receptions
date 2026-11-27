@@ -109,6 +109,7 @@ describe('15C — limit extraction (canonical keys only)', () => {
   it('fallback (limited) defaults match the approved v2 matrix', () => {
     expect(FALLBACK_LIMITS).toEqual({
       ai_messages: 10,
+      agent_runs: 50,
       bookings: 50,
       patients: 5,
       providers: 2,
@@ -119,7 +120,25 @@ describe('15C — limit extraction (canonical keys only)', () => {
   });
   it('validates resource names', () => {
     expect(isEntitlementResource('ai_messages')).toBe(true);
+    expect(isEntitlementResource('agent_runs')).toBe(true);
     expect(isEntitlementResource('nope')).toBe(false);
+  });
+
+  it('uses the independent 50-run fallback when plans do not define agent_runs', async () => {
+    const { getPlanResourceLimit } = await import('@/lib/subscription/entitlements');
+    mockDb.__billing.maybeSingle.mockImplementation(() => ({
+      data: { limits: { ai_messages: 10 } },
+      error: null,
+    }));
+
+    await expect(getPlanResourceLimit('limited', 'agent_runs')).resolves.toEqual({
+      limit: 50,
+      fromCatalog: false,
+    });
+    await expect(getPlanResourceLimit('limited', 'ai_messages')).resolves.toEqual({
+      limit: 10,
+      fromCatalog: true,
+    });
   });
 });
 
