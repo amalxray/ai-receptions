@@ -3,7 +3,6 @@ import { ensureAIProviders } from '@/lib/ai/providers/registry';
 import { generateWithFailover } from '@/lib/ai/resilience';
 import { logEvent } from '@/lib/server/logging';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
-import { entitlementErrorResponse, withEntitlement } from '@/lib/subscription/entitlements';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -33,24 +32,6 @@ function tallyStatuses(rows: Array<{ status: string | null }>) {
   return Array.from(counts.entries())
     .map(([label, count]) => ({ label, count }))
     .sort((left, right) => right.count - left.count);
-}
-
-/**
- * Resolve billing scope only from an explicit, active owner membership belonging
- * to this already-authorized platform admin. Never choose an arbitrary tenant.
- */
-async function getUniqueOwnerClinicId(userId: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin
-    .from('clinic_users')
-    .select('clinic_id')
-    .eq('user_id', userId)
-    .eq('role', 'owner')
-    .is('deleted_at', null)
-    .limit(2);
-
-  if (error) throw new Error('Unable to resolve admin billing context');
-  if (!data || data.length !== 1 || typeof data[0].clinic_id !== 'string') return null;
-  return data[0].clinic_id;
 }
 
 /** Loads only the same aggregate fields shown on the existing admin dashboard. */
@@ -134,43 +115,20 @@ export async function POST(request: Request) {
     );
   }
 
-  let clinicId: string | null;
   try {
-    clinicId = await getUniqueOwnerClinicId(authorization.admin.user_id);
-  } catch {
-    logEvent('admin_analytics_billing_context_unavailable', {}, 'error');
-    return NextResponse.json({ error: 'ADMIN_BILLING_CONTEXT_UNAVAILABLE' }, { status: 503 });
-  }
-
-  if (!clinicId) {
-    return NextResponse.json(
-      {
-        error: 'ADMIN_BILLING_CLINIC_REQUIRED',
-        message: 'يجب ربط مسؤول المنصة بعيادة واحدة يملكها لاستخدام حصة تشغيل الوكلاء.',
-      },
-      { status: 409 },
-    );
-  }
-
-  try {
-    const answer = await withEntitlement(clinicId, 'agent_runs', async () => {
-      const stats = await loadCurrentAdminStats();
-      ensureAIProviders();
-      const result = await generateWithFailover({
-        prompt: buildPrompt(question, stats),
-        maxTokens: 450,
-        temperature: 0.2,
-      });
-      const text = result.text.trim();
-      if (!text) throw new Error('Empty analytics response');
-      return text;
+    const stats = await loadCurrentAdminStats();
+    ensureAIProviders();
+    const result = await generateWithFailover({
+      prompt: buildPrompt(question, stats),
+      maxTokens: 450,
+      temperature: 0.2,
     });
+    const answer = result.text.trim();
+    if (!answer) throw new Error('Empty analytics response');
 
+    logEvent('admin_analytics_agent_used', { admin_id: authorization.admin.id });
     return NextResponse.json({ data: { answer } });
   } catch (error) {
-    const entitlementResponse = entitlementErrorResponse(error);
-    if (entitlementResponse) return entitlementResponse;
-
     logEvent('admin_analytics_agent_failed', {}, 'error');
     return NextResponse.json({ error: 'ANALYTICS_GENERATION_FAILED' }, { status: 502 });
   }
