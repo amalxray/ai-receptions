@@ -17,12 +17,22 @@ type RecentClinic = {
   created_at: string;
 };
 
+type ClinicUsage = {
+  clinic_id: string;
+  clinic_name: string;
+  clinic_slug: string;
+  patient_count: number;
+  appointment_count: number;
+  ai_message_count: number;
+};
+
 type AdminStats = {
   clinics: number;
   active_clinics: number;
   members: number;
   active_subscriptions: number;
   payments_volume: number;
+  clinic_usage: ClinicUsage[];
   clinics_by_type: Tally[];
   members_by_role: Tally[];
   subscriptions_by_status: Tally[];
@@ -153,7 +163,7 @@ function Overview({
           accent="violet"
         />
         <StatTile
-          title="حجم المدفوعات"
+          title="إجمالي صافي المدفوعات"
           value={Math.round(stats.payments_volume)}
           suffix="₪"
           icon="💰"
@@ -213,6 +223,37 @@ function Overview({
       </div>
 
       <AdminAnalyticsAsk />
+
+      <Panel title="حجم الاستخدام حسب العيادة" hint="مؤشرات تشغيلية فقط">
+        <p className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+          البيانات المالية للعيادات سرية ولا تظهر هنا. المؤشرات المعروضة هي حجم الاستخدام فقط.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-right text-sm">
+            <thead className="text-xs text-slate-400">
+              <tr>
+                <th className="p-3 font-medium">العيادة</th>
+                <th className="p-3 font-medium">المرضى</th>
+                <th className="p-3 font-medium">المواعيد</th>
+                <th className="p-3 font-medium">رسائل AI</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {(stats.clinic_usage ?? []).map((clinic) => (
+                <tr key={clinic.clinic_id} className="text-slate-200">
+                  <td className="p-3">{clinic.clinic_name}</td>
+                  <td className="p-3 tabular-nums">{clinic.patient_count.toLocaleString('ar')}</td>
+                  <td className="p-3 tabular-nums">{clinic.appointment_count.toLocaleString('ar')}</td>
+                  <td className="p-3 tabular-nums">{clinic.ai_message_count.toLocaleString('ar')}</td>
+                </tr>
+              ))}
+              {(stats.clinic_usage ?? []).length === 0 && (
+                <tr><td className="p-3 text-slate-400" colSpan={4}>لا توجد بيانات استخدام.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
       {/* Recent activity */}
       <Panel title="أحدث المؤسسات" hint="آخر ست مؤسسات انضمّت للمنصة">

@@ -26,11 +26,13 @@ function queryResult(table: string, kind: string): { count?: number; data?: unkn
   if (table === 'clinics') {
     return { data: [{ id: 'clinic-a', name: 'عيادة أ', slug: 'clinic-a' }], error: null };
   }
+  if (table === 'patients') return { data: [{ clinic_id: 'clinic-a' }], error: null };
+  if (table === 'appointments') return { data: [{ clinic_id: 'clinic-a' }], error: null };
+  if (table === 'messages') return { data: [{ clinic_id: 'clinic-a' }], error: null };
   if (table === 'clinic_payments') {
     return {
       data: [
         {
-          clinic_id: 'clinic-a',
           direction: 'payment',
           amount: '120.5',
           created_at: new Date().toISOString(),
@@ -38,7 +40,6 @@ function queryResult(table: string, kind: string): { count?: number; data?: unkn
           voided_at: null,
         },
         {
-          clinic_id: 'clinic-a',
           direction: 'refund',
           amount: 20,
           created_at: new Date().toISOString(),
@@ -96,6 +97,7 @@ describe('POST /api/admin/analytics/ask', () => {
           return query;
         },
         eq() { return query; },
+        neq() { return query; },
         is() { return query; },
         order() { return query; },
         range() { return query; },
@@ -126,7 +128,7 @@ describe('POST /api/admin/analytics/ask', () => {
     expect(mocks.generateWithFailover).not.toHaveBeenCalled();
   });
 
-  it('allows a platform admin without a clinic membership and supplies net payment analytics', async () => {
+  it('allows a platform admin without a clinic membership and supplies only platform finance plus clinic usage', async () => {
     const response = await POST(request({ question: 'كم عدد العيادات؟' }));
 
     expect(response.status).toBe(200);
@@ -139,11 +141,15 @@ describe('POST /api/admin/analytics/ask', () => {
     expect(prompt).toContain('"active_subscriptions":8');
     expect(prompt).toContain('"payments_volume":100.5');
     expect(prompt).toContain('"payments_currency":"ILS (₪)"');
-    expect(prompt).toContain('"clinic_name":"عيادة أ"');
-    expect(prompt).toContain('"amount":100.5');
     expect(prompt).toContain('"monthly_net_payments"');
+    expect(prompt).toContain('"clinic_usage"');
+    expect(prompt).toContain('"patient_count":1');
+    expect(prompt).toContain('"appointment_count":1');
+    expect(prompt).toContain('"ai_message_count":1');
+    expect(prompt).not.toContain('"clinic_net_payments"');
+    expect(prompt).not.toContain('"top_clinics_by_net_payments"');
+    expect(prompt).toContain('البيانات المالية لكل عيادة سرية');
     expect(prompt).toContain('استردادات');
-    expect(prompt).not.toContain('اتجاهات شهرية');
     expect(prompt).toContain('"question":"كم عدد العيادات؟"');
     expect(prompt).not.toContain('owner-clinic');
   });
