@@ -1,9 +1,18 @@
 'use client';
 
 import { BlurFade } from '@/components/ui/blur-fade';
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Bot, CalendarCheck, ScanFace, BarChart3, ShieldCheck, Zap, type LucideIcon } from 'lucide-react';
+import { useState, type PointerEvent } from 'react';
+import { motion, useMotionValue, useReducedMotion, useSpring } from 'framer-motion';
+import {
+  Bot,
+  CalendarCheck,
+  ScanFace,
+  BarChart3,
+  ShieldCheck,
+  Zap,
+  Megaphone,
+  type LucideIcon,
+} from 'lucide-react';
 import { useLandingCopy } from '@/components/landing/LandingContent';
 import FeatureModal from '@/components/landing/FeatureModal';
 
@@ -39,6 +48,93 @@ const CARD_SPANS = [
 
 const gridVariants = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
 const cardVariants = { hidden: { opacity: 0, y: 22 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
+
+const NEW_FEATURE_CARDS = [
+  {
+    title: 'وكيل التسويق الذكي',
+    desc: 'يولّد مسودات منشورات LinkedIn ورسائل البريد التسويقية بالعربية لتراجعها قبل استخدامها.',
+    badge: 'جديد',
+  },
+  {
+    title: 'الذكاء المالي',
+    desc: 'حلّل أداء عيادتك واتجاهاتها المالية، واطّلع على توصيات إرشادية تساعدك على تحسين الإيرادات.',
+    badge: 'جديد',
+  },
+];
+
+function FeatureCard({
+  feature,
+  icon,
+  color,
+}: {
+  feature: typeof NEW_FEATURE_CARDS[number];
+  icon: LucideIcon;
+  color: 'cyan' | 'violet';
+}) {
+  const shouldReduceMotion = useReducedMotion();
+  const tiltX = useMotionValue(0);
+  const tiltY = useMotionValue(0);
+  const rotateX = useSpring(tiltX, { stiffness: 180, damping: 22, mass: 0.35 });
+  const rotateY = useSpring(tiltY, { stiffness: 180, damping: 22, mass: 0.35 });
+  const Icon = icon;
+
+  function handlePointerMove(event: PointerEvent<HTMLElement>) {
+    if (shouldReduceMotion || event.pointerType !== 'mouse') return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+    const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+    tiltX.set(-y * 8);
+    tiltY.set(x * 8);
+  }
+
+  function resetTilt() {
+    tiltX.set(0);
+    tiltY.set(0);
+  }
+
+  return (
+    <motion.article
+      variants={cardVariants}
+      style={{ rotateX, rotateY, transformPerspective: 900, willChange: 'transform' }}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={resetTilt}
+      whileHover={shouldReduceMotion ? undefined : { y: -7, scale: 1.015 }}
+      whileTap={shouldReduceMotion ? undefined : { scale: 0.99 }}
+      className={`group relative isolate overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06] p-6 text-start backdrop-blur-xl transition-colors duration-300 ${
+        color === 'cyan' ? 'hover:border-cyan-300/50' : 'hover:border-violet-300/50'
+      }`}
+    >
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute -inset-px z-0 bg-gradient-to-br ${
+          color === 'cyan'
+            ? 'from-cyan-400/35 via-violet-500/15 to-transparent'
+            : 'from-violet-400/35 via-cyan-500/15 to-transparent'
+        } opacity-20 blur-2xl transition-opacity duration-300 group-hover:opacity-80`}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 rounded-3xl shadow-[0_24px_60px_-25px_rgba(34,211,238,0.35)] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
+      <span className="relative z-10 flex h-full flex-col">
+        <span className="flex items-start justify-between gap-3">
+          <span className={`grid h-14 w-14 place-items-center rounded-2xl ${
+            color === 'cyan' ? 'bg-cyan-500/15 text-cyan-200' : 'bg-violet-500/15 text-violet-200'
+          }`}>
+            <Icon className="h-7 w-7" aria-hidden="true" />
+          </span>
+          {feature.badge && (
+            <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-xs font-bold text-cyan-200">
+              {feature.badge}
+            </span>
+          )}
+        </span>
+        <h3 className="mt-5 text-lg font-bold text-white">{feature.title}</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-400">{feature.desc}</p>
+      </span>
+    </motion.article>
+  );
+}
 
 /** لماذا AI-Receptions — premium dark Bento grid. */
 export default function WhySection() {
@@ -110,6 +206,17 @@ export default function WhySection() {
               </motion.article>
             );
           })}
+        </motion.div>
+
+        <motion.div
+          variants={gridVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: '-50px' }}
+          className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2"
+        >
+          <FeatureCard feature={NEW_FEATURE_CARDS[0]} icon={Megaphone} color="cyan" />
+          <FeatureCard feature={NEW_FEATURE_CARDS[1]} icon={BarChart3} color="violet" />
         </motion.div>
 
         {activeFeature && (
