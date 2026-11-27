@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { logEvent } from '@/lib/server/logging';
+import { getAdminPaymentAnalytics } from '@/lib/services/adminPaymentAnalytics';
+import { getAdminUsageAnalytics } from '@/lib/services/adminUsageAnalytics';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -28,11 +30,17 @@ export async function GET(req: Request) {
     .select('id', { count: 'exact', head: true })
     .eq('status', 'active')
     .is('deleted_at', null);
-  const { data: volume } = await supabaseAdmin
-    .from('clinic_payments')
-    .select('amount')
-    .is('voided_at', null);
-  const totalVolume = (volume ?? []).reduce((s, p) => s + Number(p.amount ?? 0), 0);
+  let paymentAnalytics;
+  let clinicUsage;
+  try {
+    [paymentAnalytics, clinicUsage] = await Promise.all([
+      getAdminPaymentAnalytics(),
+      getAdminUsageAnalytics(),
+    ]);
+  } catch {
+    logEvent('admin_stats_analytics_error', {}, 'error');
+    return NextResponse.json({ error: 'ADMIN_ANALYTICS_UNAVAILABLE' }, { status: 503 });
+  }
 
   // --- chart breakdowns (grouped in JS to avoid extra RPCs) ---
   const { data: clinicTypes } = await supabaseAdmin
@@ -67,7 +75,9 @@ export async function GET(req: Request) {
       active_clinics: activeClinicsCount ?? 0,
       members: membersCount ?? 0,
       active_subscriptions: subscriptionsCount ?? 0,
-      payments_volume: totalVolume,
+      payments_volume: paymentAnalytics.payments_volume,
+      monthly_net_payments: paymentAnalytics.monthly_net_payments,
+      clinic_usage: clinicUsage,
       clinics_by_type: clinicsByType,
       members_by_role: membersByRole,
       subscriptions_by_status: subscriptionsByStatus,
