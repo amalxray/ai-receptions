@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Building2, CreditCard, Megaphone, Users } from 'lucide-react';
 import StatTile from '@/components/admin/StatTile';
+import AdminAnalyticsAsk from '@/components/admin/AdminAnalyticsAsk';
 import { BarList, DonutChart, Panel, type Segment } from '@/components/admin/AdminCharts';
 
 type Tally = { label: string; count: number };
@@ -210,6 +211,8 @@ function Overview({
           </div>
         </Panel>
       </div>
+
+      <AdminAnalyticsAsk />
 
       {/* Recent activity */}
       <Panel title="أحدث المؤسسات" hint="آخر ست مؤسسات انضمّت للمنصة">
