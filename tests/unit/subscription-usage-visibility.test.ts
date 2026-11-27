@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from '@/app/api/clinic/subscription/route';
 
 // STEP 15G-A — GET /api/clinic/subscription visibility contract:
-//   * usage[] for all seven canonical resources (server-side, never client-built)
+//   * usage[] for all entitlement resources (server-side, never client-built)
 //   * null limit -> unlimited (never 0 / never a fallback)
 //   * effective plan from entitlements.planId (trialing -> free_trial etc.)
 //   * no stripe_price_id / metadata / billing_customer_id / raw limits leak
@@ -37,7 +37,13 @@ const mockDb = vi.hoisted(() => {
     const resolved = () => {
       if (name === 'subscriptions') return { data: mockDb.__subRow, error: null };
       if (name === 'entitlement_usage') return { data: mockDb.__usage, error: null };
-      return { data: mockDb.__limitsRow, error: null };
+      if (name === 'billing_plans') {
+        return {
+          data: mockDb.__planIds.map((plan_id: string) => ({ plan_id, ...mockDb.__limitsRow })),
+          error: null,
+        };
+      }
+      return { data: null, error: null };
     };
     const chain: any = {};
     chain.select = vi.fn(() => chain);
@@ -45,6 +51,10 @@ const mockDb = vi.hoisted(() => {
     chain.is = vi.fn(() => chain);
     chain.order = vi.fn(() => chain);
     chain.limit = vi.fn(() => chain);
+    chain.in = vi.fn((_column: string, planIds: string[]) => {
+      mockDb.__planIds = planIds;
+      return chain;
+    });
     chain.maybeSingle = vi.fn(async () => resolved());
     chain.then = (res: (x: unknown) => void) => res(resolved());
     chain.catch = vi.fn();
@@ -59,6 +69,7 @@ const mockDb = vi.hoisted(() => {
     __chains: chains,
     __subRow: null as any,
     __limitsRow: null as any,
+    __planIds: [] as string[],
     __usage: [] as any[],
   };
   return db;
@@ -86,11 +97,12 @@ beforeEach(() => {
   mockAuth.authorizeClinicRequest.mockResolvedValue({ authorized: true, user: { id: 'u1' }, role: 'owner' });
   mockDb.__subRow = null;
   mockDb.__limitsRow = null;
+  mockDb.__planIds = [];
   mockDb.__usage = [];
 });
 
 describe('STEP 15G-A — GET subscription visibility', () => {
-  it('returns usage for all seven canonical resources with numeric limits and remaining', async () => {
+  it('returns usage for all entitlement resources with numeric limits and remaining', async () => {
     mockDb.__subRow = { plan_id: 'advanced', status: 'active', billing_status: 'monthly', current_period_end: '2026-09-30T00:00:00.000Z', billing_customer_id: 'cus_secretXYZ' };
     mockDb.__limitsRow = { limits: mockApproved.growth };
     mockCatalog.getPlanOrFallback.mockResolvedValue(planFor('advanced'));
@@ -100,10 +112,15 @@ describe('STEP 15G-A — GET subscription visibility', () => {
     const body = await res.json();
     const { usage, entitlements, subscription } = body.data;
 
-    expect(usage).toHaveLength(7);
+    expect(usage).toHaveLength(8);
     expect(usage.map((u: any) => u.resource)).toEqual([
-      'ai_messages', 'bookings', 'patients', 'providers', 'users', 'knowledge_docs', 'conversations',
+      'ai_messages', 'agent_runs', 'bookings', 'patients', 'providers', 'users', 'knowledge_docs', 'conversations',
     ]);
+    const agentRuns = usage.find((u: any) => u.resource === 'agent_runs');
+    expect(agentRuns.limit).toBe(50);
+    expect(agentRuns.used).toBe(0);
+    expect(agentRuns.remaining).toBe(50);
+    expect(agentRuns.fromCatalog).toBe(false);
     // Numeric limit: used/remaining defaults to 0 when no counter row exists yet.
     const users = usage.find((u: any) => u.resource === 'users');
     expect(users.limit).toBe(10);

@@ -10,6 +10,7 @@ import {
   generateSalesEmail,
 } from '@/lib/services/marketing/marketing-agent';
 import { logEvent } from '@/lib/server/logging';
+import { entitlementErrorResponse, withEntitlement } from '@/lib/subscription/entitlements';
 
 const MAX_FIELD_LENGTH = 1000;
 
@@ -73,9 +74,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const content = await generate();
+    const content = await withEntitlement(clinicId, 'agent_runs', generate);
     return NextResponse.json({ data: { content } });
   } catch (error) {
+    const entitlementResponse = entitlementErrorResponse(error);
+    if (entitlementResponse) return entitlementResponse;
+
     logEvent('marketing_agent_generation_failed', {
       clinic_id: clinicId,
       action,
