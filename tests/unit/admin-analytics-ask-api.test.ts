@@ -23,8 +23,31 @@ function queryResult(table: string, kind: string): { count?: number; data?: unkn
   if (table === 'subscriptions') {
     return { data: [{ status: 'active' }, { status: 'active' }, { status: 'trialing' }], error: null };
   }
+  if (table === 'clinics') {
+    return { data: [{ id: 'clinic-a', name: 'عيادة أ', slug: 'clinic-a' }], error: null };
+  }
   if (table === 'clinic_payments') {
-    return { data: [{ amount: 25 }, { amount: '75.5' }], error: null };
+    return {
+      data: [
+        {
+          clinic_id: 'clinic-a',
+          direction: 'payment',
+          amount: '120.5',
+          created_at: new Date().toISOString(),
+          status: 'recorded',
+          voided_at: null,
+        },
+        {
+          clinic_id: 'clinic-a',
+          direction: 'refund',
+          amount: 20,
+          created_at: new Date().toISOString(),
+          status: 'recorded',
+          voided_at: null,
+        },
+      ],
+      error: null,
+    };
   }
   return { data: [], error: null };
 }
@@ -74,6 +97,8 @@ describe('POST /api/admin/analytics/ask', () => {
         },
         eq() { return query; },
         is() { return query; },
+        order() { return query; },
+        range() { return query; },
         limit() { return query; },
         then(resolve: (result: unknown) => void) {
           return Promise.resolve(queryResult(table, String(query.kind))).then(resolve);
@@ -101,7 +126,7 @@ describe('POST /api/admin/analytics/ask', () => {
     expect(mocks.generateWithFailover).not.toHaveBeenCalled();
   });
 
-  it('allows a platform admin with no clinic membership and supplies only current aggregate stats', async () => {
+  it('allows a platform admin without a clinic membership and supplies net payment analytics', async () => {
     const response = await POST(request({ question: 'كم عدد العيادات؟' }));
 
     expect(response.status).toBe(200);
@@ -114,7 +139,11 @@ describe('POST /api/admin/analytics/ask', () => {
     expect(prompt).toContain('"active_subscriptions":8');
     expect(prompt).toContain('"payments_volume":100.5');
     expect(prompt).toContain('"payments_currency":"ILS (₪)"');
-    expect(prompt).toContain('اتجاهات شهرية');
+    expect(prompt).toContain('"clinic_name":"عيادة أ"');
+    expect(prompt).toContain('"amount":100.5');
+    expect(prompt).toContain('"monthly_net_payments"');
+    expect(prompt).toContain('استردادات');
+    expect(prompt).not.toContain('اتجاهات شهرية');
     expect(prompt).toContain('"question":"كم عدد العيادات؟"');
     expect(prompt).not.toContain('owner-clinic');
   });
