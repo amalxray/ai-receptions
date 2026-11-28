@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Archive, Loader2, Mail, MessageCircle, Send, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, Archive, Loader2, Mail, MessageCircle, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   buildWhatsAppHref,
@@ -33,6 +33,7 @@ type Props = {
 };
 
 type BatchResult = { sent: number; failed: number };
+type BulkDeleteResult = { deleted?: unknown; emails_deleted?: unknown; error?: unknown };
 
 const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('ar', {
   day: 'numeric',
@@ -109,6 +110,44 @@ function shortDate(createdAt: string, fallback: string): string {
   if (!day || !month) return fallback;
 
   return `${day} ${SHORT_ARABIC_MONTHS[month] ?? month.slice(0, 3)}`;
+}
+
+function defaultBackupFilename(): string {
+  const timestamp = new Date().toISOString()
+    .replace('T', '-')
+    .replace(/:/g, '')
+    .replace(/\.\d{3}Z$/, '');
+  return `prospects-backup-${timestamp}.csv`;
+}
+
+function backupFilename(contentDisposition: string | null): string {
+  const encodedFilename = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encodedFilename) {
+    try {
+      return decodeURIComponent(encodedFilename);
+    } catch {
+      return defaultBackupFilename();
+    }
+  }
+
+  const filename = contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1];
+  return filename || defaultBackupFilename();
+}
+
+function downloadBackup(blob: Blob, filename: string): void {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.style.display = 'none';
+
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
+  }
 }
 
 export default function ProspectEmailTable({
@@ -306,23 +345,65 @@ export default function ProspectEmailTable({
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch('/api/admin/prospects/bulk-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
-      const payload = await response.json().catch(() => null) as { deleted?: number; error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || 'تعذر حذف العيادات المحددة.');
-      if (!payload || typeof payload.deleted !== 'number' || !Number.isInteger(payload.deleted) || payload.deleted < 0) {
-        throw new Error('استجابة الحذف غير صالحة.');
+      try {
+        const exportResponse = await fetch('/api/admin/prospects/export-csv', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        if (!exportResponse.ok) throw new Error('Backup export failed.');
+
+        const backupBlob = await exportResponse.blob();
+        if (backupBlob.size === 0) throw new Error('Backup export was empty.');
+        downloadBackup(backupBlob, backupFilename(exportResponse.headers.get('Content-Disposition')));
+      } catch {
+        setError('تعذّر إنشاء النسخة الاحتياطية — لم يُنفَّذ الحذف. حاول مرة أخرى.');
+        return;
+      }
+
+      if (!window.confirm(`تم تنزيل النسخة الاحتياطية. سيُحذف ${ids.length} سجل نهائياً الآن. متابعة؟`)) {
+        setBulkDeleteOpen(false);
+        return;
+      }
+
+      let deleteResponse: Response;
+      try {
+        deleteResponse = await fetch('/api/admin/prospects/bulk-delete', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+      } catch {
+        setError('تم تنزيل النسخة الاحتياطية بنجاح، لكن تعذّر الحذف: تعذّر الاتصال بخدمة الحذف.');
+        return;
+      }
+
+      const payload = await deleteResponse.json().catch(() => null) as BulkDeleteResult | null;
+      if (!deleteResponse.ok) {
+        const reason = typeof payload?.error === 'string' && payload.error.trim()
+          ? payload.error
+          : 'تعذّر حذف العيادات المحددة.';
+        setError(`تم تنزيل النسخة الاحتياطية بنجاح، لكن تعذّر الحذف: ${reason}`);
+        return;
+      }
+
+      if (!payload
+        || typeof payload.deleted !== 'number'
+        || !Number.isInteger(payload.deleted)
+        || payload.deleted < 0
+        || typeof payload.emails_deleted !== 'number'
+        || !Number.isInteger(payload.emails_deleted)
+        || payload.emails_deleted < 0) {
+        setError('تم تنزيل النسخة الاحتياطية بنجاح، لكن تعذّر الحذف: استجابة الحذف غير صالحة.');
+        return;
       }
 
       setSelectedIds([]);
       setBulkDeleteOpen(false);
-      setNotice(`تم حذف ${payload.deleted} عيادة.`);
+      setNotice(`تم حذف ${payload.deleted} عيادة نهائياً و${payload.emails_deleted} سجل بريد.`);
       router.refresh();
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'تعذر حذف العيادات المحددة.');
     } finally {
       setBulkDeleteBusy(false);
     }
@@ -341,9 +422,9 @@ export default function ProspectEmailTable({
             <button type="button" onClick={() => setSelectedIds([])} disabled={busy !== null || bulkDeleteBusy} className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50">
               إلغاء التحديد
             </button>
-            <button type="button" onClick={() => { setError(null); setBulkDeleteOpen(true); }} disabled={busy !== null || bulkDeleteBusy} className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm font-bold text-red-200 hover:bg-red-500/10 disabled:opacity-50">
+            <button type="button" onClick={() => { if (selectedIds.length === 0) return; setError(null); setBulkDeleteOpen(true); }} disabled={busy !== null || bulkDeleteBusy} className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm font-bold text-red-200 hover:bg-red-500/10 disabled:opacity-50">
               <Trash2 aria-hidden="true" className="h-4 w-4" />
-              حذف المحدد ({selectedIds.length})
+              حذف نهائي للمحدد ({selectedIds.length})
             </button>
             <button type="button" onClick={() => void sendBatch(selectedIds)} disabled={busy !== null || bulkDeleteBusy} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">
               {busy === 'batch' && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -494,9 +575,12 @@ export default function ProspectEmailTable({
         <div className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
           <button type="button" aria-label="إغلاق تأكيد الحذف" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleteBusy} className="absolute inset-0 cursor-default" />
           <section role="dialog" aria-modal="true" aria-labelledby="prospect-bulk-delete-title" className="relative z-10 w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-            <h2 id="prospect-bulk-delete-title" className="text-lg font-bold text-white">تأكيد حذف العيادات</h2>
+            <h2 id="prospect-bulk-delete-title" className="text-lg font-bold text-white">حذف نهائي للمحدد</h2>
             <p className="mt-3 text-sm text-slate-200">هل أنت متأكد من حذف {selectedIds.length} عيادة؟</p>
-            <p className="mt-1 text-sm text-red-300">لا يمكن التراجع عن هذا الإجراء.</p>
+            <p className="mt-2 flex items-start gap-2 text-sm text-red-300">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>هذا الإجراء لا يمكن التراجع عنه — ستُحذف السجلات نهائياً من قاعدة البيانات، وسيتم تنزيل نسخة احتياطية CSV تلقائياً قبل الحذف.</span>
+            </p>
             {error && <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleteBusy} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50">إلغاء</button>
