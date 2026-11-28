@@ -66,6 +66,36 @@ describe('Groq Provider', () => {
       expect(body.messages[0]).toEqual({ role: 'user', content: 'hi' });
     });
 
+    it('sends JSON object mode when responseFormat is json', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okResponse('{"ok":true}'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await GroqProvider.generate({ prompt: 'Return JSON', responseFormat: 'json' });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.response_format).toEqual({ type: 'json_object' });
+    });
+
+    it('does not send a response format when responseFormat is omitted', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okResponse('plain text'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await GroqProvider.generate({ prompt: 'Return text' });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).not.toHaveProperty('response_format');
+    });
+
+    it('does not send a response format when responseFormat is text', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okResponse('plain text'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await GroqProvider.generate({ prompt: 'Return text', responseFormat: 'text' });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).not.toHaveProperty('response_format');
+    });
+
     it('uses the configured model from GROQ_MODEL env', async () => {
       process.env.GROQ_MODEL = 'allam-2-7b';
       const fetchMock = vi.fn().mockResolvedValue(okResponse('ok'));

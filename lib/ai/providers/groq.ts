@@ -69,16 +69,20 @@ async function buildProviderError(response: Response, operation: string): Promis
 export const GroqProvider: AIProvider = {
   id: 'groq',
 
-  async generate({ prompt, maxTokens = 512, temperature = 0.2 }): Promise<GenerateResult> {
+  async generate(params: GenerateParams): Promise<GenerateResult> {
+    const { prompt, maxTokens = 512, temperature = 0.2 } = params;
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error('Groq API key is not configured. Set GROQ_API_KEY in the environment.');
 
-    const requestBody = JSON.stringify({
+    const requestBody: Record<string, unknown> = {
       model: process.env.GROQ_MODEL ?? DEFAULT_MODEL,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: maxTokens,
       temperature,
-    });
+    };
+    if (params.responseFormat === 'json') {
+      requestBody.response_format = { type: 'json_object' };
+    }
 
     // One attempt. Any provider error, including an empty response, immediately
     // reaches the resilience layer so the next provider can start without a
@@ -90,7 +94,7 @@ export const GroqProvider: AIProvider = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${key}`,
         },
-        body: requestBody,
+        body: JSON.stringify(requestBody),
       }, REQUEST_TIMEOUT_MS);
 
       if (!res.ok) {

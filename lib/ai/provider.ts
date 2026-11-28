@@ -3,6 +3,7 @@ export type GenerateParams = {
   maxTokens?: number;
   temperature?: number;
   stream?: boolean;
+  responseFormat?: 'json' | 'text';
 };
 
 export type GenerateResult = {

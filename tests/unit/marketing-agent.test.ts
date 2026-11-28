@@ -114,12 +114,59 @@ describe('marketing agent', () => {
     expect(ensureAIProviders).toHaveBeenCalledOnce();
     expect(generateWithFailover).toHaveBeenCalledWith(expect.objectContaining({
       preferredProviderId: 'groq',
+      responseFormat: 'json',
+      maxTokens: 2000,
+      temperature: 0.5,
       prompt: expect.stringContaining('عيادة النور'),
     }));
     const prompt = vi.mocked(generateWithFailover).mock.calls[0][0].prompt;
     expect(prompt).toContain('اجعل الرسالة أقصر');
     expect(prompt).toContain(PLATFORM_LINKS_ARABIC_BLOCK);
+    expect(prompt).toContain('كائن JSON واحداً صحيحاً فقط');
+    expect(prompt).toContain('اهرب أسطر body الجديدة بصيغة \\n');
     expect(prompt.split(PLATFORM_LINKS.showcaseImaging)).toHaveLength(2);
+  });
+
+  it('parses a clean JSON response directly', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '{"subject":"x","body":"y"}',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({ subject: 'x', body: 'y' });
+  });
+
+  it('parses JSON preceded by a json label', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: 'json\n{"subject":"x","body":"y"}\n',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({ subject: 'x', body: 'y' });
+  });
+
+  it('extracts JSON following an Arabic introduction', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: 'إليك الرسالة المطلوبة:\n{"subject":"x","body":"y"}',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({ subject: 'x', body: 'y' });
   });
 
   it('classifies provider failures', async () => {
@@ -176,6 +223,72 @@ describe('marketing agent', () => {
       currentBody: 'النص الحالي',
       instructions: 'اختصر',
     })).resolves.toEqual({ subject: 'عنوان جديد', body: 'نص جديد' });
+  });
+
+  it('recovers complete fields from an incomplete JSON object and decodes escapes', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '{"subject":"عنوان جديد","body":"سطر أول\\nسطر ثانٍ مع } داخل النص"',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({
+      subject: 'عنوان جديد',
+      body: 'سطر أول\nسطر ثانٍ مع } داخل النص',
+    });
+  });
+
+  it('recovers fields when the provider emits literal newlines inside JSON strings', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: `{"subject":"عنوان جديد","body":"السطر الأول
+السطر الثاني"}`,
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({
+      subject: 'عنوان جديد',
+      body: 'السطر الأول\nالسطر الثاني',
+    });
+  });
+
+  it('parses escaped newlines in a JSON body', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '{"subject":"عنوان جديد","body":"السطر الأول\\nالسطر الثاني"}',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({
+      subject: 'عنوان جديد',
+      body: 'السطر الأول\nالسطر الثاني',
+    });
+  });
+
+  it('classifies a truncated JSON response as invalid_json', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '{"subject":"x"',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).rejects.toMatchObject({ code: 'invalid_json' });
   });
 
   it('classifies provider timeouts separately', async () => {
