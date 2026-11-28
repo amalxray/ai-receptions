@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePlatformAdmin } from '@/lib/services/platformAdmin';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { buildProspectBackupCsv } from '@/lib/services/prospecting/exportBackup';
 
 const bodySchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(200),
@@ -29,15 +30,31 @@ export async function POST(req: Request) {
   }
 
   const ids = parsed.data.ids.filter((id, index, values) => values.indexOf(id) === index);
+  let emailCount: number;
+  try {
+    ({ emailCount } = await buildProspectBackupCsv(ids));
+  } catch (error) {
+    console.error('Failed to create prospect backup before deletion:', error);
+    return NextResponse.json(
+      { error: 'تعذّر إنشاء النسخة الاحتياطية — لم يُنفَّذ الحذف.' },
+      { status: 500 },
+    );
+  }
+
   const { data, error } = await supabaseAdmin
     .from('prospects')
-    .update({ status: 'archived' })
+    .delete()
     .in('id', ids)
     .select('id');
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Failed to delete selected prospects:', error);
+    return NextResponse.json({ error: 'تعذّر حذف العيادات المحددة.' }, { status: 500 });
   }
 
-  return NextResponse.json({ deleted: data?.length ?? 0 });
+  return NextResponse.json({
+    deleted: data?.length ?? 0,
+    emails_deleted: emailCount,
+    deleted_at: new Date().toISOString(),
+  });
 }

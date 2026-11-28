@@ -42,3 +42,4 @@ scripts/test-one-image.py
 classify-images.py
 
 /OmniRoute/
+.worktrees/
