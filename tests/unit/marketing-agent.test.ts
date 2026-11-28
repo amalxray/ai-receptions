@@ -46,12 +46,14 @@ describe('marketing agent', () => {
   it('returns the complete clinic-management sales email without placeholders', async () => {
     const email = await generateSalesEmail('عيادة النور', 'د. سارة', 'متابعة بعد التواصل');
 
-    expect(email).toContain('مرحباً فريق عيادة النور،');
-    expect(email).toContain('نظام إدارة عيادات متكامل');
-    expect(email).toContain('🩻 تحليل الأشعة بالذكاء الاصطناعي');
-    expect(email).toContain('👥 إدارة الفريق والرواتب');
+    expect(email).toContain('السادة/ فريق عيادة النور المحترمين،');
+    expect(email).toContain('1️⃣ وكلاء رقميون 24/7');
+    expect(email).toContain('47 مدينة');
+    expect(email).toContain(PLATFORM_LINKS.showcaseImaging);
+    expect(email).toContain('wa.me/970569509093');
     expect(email).toContain('info@dentairec.com');
     expect(email).toContain('واتساب: +970569509093');
+    expect(email.split(PLATFORM_LINKS.showcaseImaging)).toHaveLength(2);
     expect(email).not.toMatch(/\[[^\]]+\]/);
     expect(generateWithFailover).not.toHaveBeenCalled();
   });
@@ -114,8 +116,10 @@ describe('marketing agent', () => {
       preferredProviderId: 'groq',
       prompt: expect.stringContaining('عيادة النور'),
     }));
-    expect(vi.mocked(generateWithFailover).mock.calls[0][0].prompt)
-      .toContain('اجعل الرسالة أقصر');
+    const prompt = vi.mocked(generateWithFailover).mock.calls[0][0].prompt;
+    expect(prompt).toContain('اجعل الرسالة أقصر');
+    expect(prompt).toContain(PLATFORM_LINKS_ARABIC_BLOCK);
+    expect(prompt.split(PLATFORM_LINKS.showcaseImaging)).toHaveLength(2);
   });
 
   it('classifies provider failures', async () => {
