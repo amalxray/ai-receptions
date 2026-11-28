@@ -446,12 +446,13 @@ export async function getActivitySpaceEntries(): Promise<ActivitySpaceSeoEntry[]
   const clinicIds = rows.map((r) => r.id);
   const subscribed = new Set<string>();
   if (clinicIds.length > 0) {
-    const { data: subRows } = await supabaseAdmin
+    const { data: subRows, error: subError } = await supabaseAdmin
       .from('subscriptions')
       .select('clinic_id, status')
       .in('clinic_id', clinicIds)
       .is('deleted_at', null)
       .order('updated_at', { ascending: false });
+    if (subError) throw new Error(subError.message);
     const latest = new Map<string, string>();
     for (const s of (subRows ?? []) as { clinic_id: string; status: string }[]) {
       if (!latest.has(s.clinic_id)) latest.set(s.clinic_id, s.status);
@@ -470,4 +471,99 @@ export async function getActivitySpaceEntries(): Promise<ActivitySpaceSeoEntry[]
       city: r.city ?? null,
       area: r.area ?? null,
     }));
+}
+
+export type EligibleCenter = {
+  id: string;
+  name: string;
+  slug: string;
+  activityType: Extract<ActivityType, 'imaging_center' | 'dental_lab'>;
+  city: string | null;
+  area: string | null;
+  address: string | null;
+  phone: string | null;
+  description: string | null;
+  images: string[];
+};
+
+type EligibleCenterRow = {
+  id: string;
+  name: string;
+  slug: string;
+  activity_type: ActivityType;
+  city: string | null;
+  area: string | null;
+  address_detail: string | null;
+  phone: string | null;
+  settings: unknown;
+};
+
+type PublicCenterMediaRow = {
+  clinic_id: string;
+  media_type: string;
+  public_url: string;
+};
+
+/** Centers eligible for the public directory, with only public-profile fields. */
+export async function getEligibleCenters(): Promise<EligibleCenter[]> {
+  const eligibleSlugs = (await getActivitySpaceEntries())
+    .filter((entry) => entry.kind === 'imaging_center' || entry.kind === 'dental_lab')
+    .map((entry) => entry.slug);
+  if (eligibleSlugs.length === 0) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('clinics')
+    .select('id, name, slug, activity_type, city, area, address_detail, phone, settings')
+    .in('slug', eligibleSlugs)
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as unknown as EligibleCenterRow[];
+  const centers = rows.filter(
+    (row): row is EligibleCenterRow & { activity_type: 'imaging_center' | 'dental_lab' } =>
+      row.activity_type === 'imaging_center' || row.activity_type === 'dental_lab'
+  );
+  if (centers.length === 0) return [];
+
+  const clinicIds = centers.map((center) => center.id);
+  const { data: mediaData, error: mediaError } = await supabaseAdmin
+    .from('clinic_public_media')
+    .select('clinic_id, media_type, public_url')
+    .in('clinic_id', clinicIds)
+    .eq('enabled', true)
+    .eq('media_type', 'image')
+    .order('display_order', { ascending: true })
+    .limit(24 * centers.length);
+  if (mediaError) throw new Error(mediaError.message);
+
+  const imagesByClinic = new Map<string, string[]>();
+  for (const media of (mediaData ?? []) as PublicCenterMediaRow[]) {
+    const images = imagesByClinic.get(media.clinic_id) ?? [];
+    const imageUrl = localStorageImageUrl(media.public_url);
+    if (imageUrl) images.push(imageUrl);
+    imagesByClinic.set(media.clinic_id, images);
+  }
+
+  return centers.map((center) => {
+    const settings = (center.settings ?? {}) as {
+      show_phone?: unknown;
+      public_profile?: { show_phone?: unknown } | null;
+    };
+    const publicProfile = readPublicProfile(center.settings, center.activity_type);
+    return {
+      id: center.id,
+      name: center.name,
+      slug: center.slug,
+      activityType: center.activity_type,
+      city: center.city ?? null,
+      area: center.area ?? null,
+      address: center.address_detail ?? null,
+      phone:
+        publicProfile.show_phone === true || settings.show_phone === true
+          ? center.phone ?? null
+          : null,
+      description: publicProfile.description ?? publicProfile.about ?? null,
+      images: imagesByClinic.get(center.id) ?? [],
+    };
+  });
 }
