@@ -35,6 +35,7 @@ type Props = {
 
 type BatchResult = { sent: number; failed: number };
 type BulkDeleteResult = { deleted?: unknown; emails_deleted?: unknown; error?: unknown };
+type EmailDraft = { subject: string; body: string };
 
 const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('ar', {
   day: 'numeric',
@@ -56,6 +57,27 @@ const SHORT_ARABIC_MONTHS: Record<string, string> = {
   نوفمبر: 'نوف',
   ديسمبر: 'ديس',
 };
+
+function isEmailDraft(value: unknown): value is EmailDraft {
+  return typeof value === 'object'
+    && value !== null
+    && 'subject' in value
+    && typeof value.subject === 'string'
+    && 'body' in value
+    && typeof value.body === 'string';
+}
+
+function responseError(payload: unknown, fallback: string): string {
+  if (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'error' in payload &&
+    typeof payload.error === 'string'
+  ) {
+    return payload.error;
+  }
+  return fallback;
+}
 
 function normalizedProspectPhone(prospect: ProspectRow): string | null {
   const phone = prospect.phone?.trim();
@@ -144,6 +166,8 @@ export default function ProspectEmailTable({
   const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [regenerateInstructions, setRegenerateInstructions] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [busy, setBusy] = useState<'single' | 'ai' | 'batch' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +186,7 @@ export default function ProspectEmailTable({
     setTarget(prospect);
     setSubject(`اقتراح لتحسين تواصل ${prospect.clinic_name} مع المرضى`);
     setBody('');
+    setRegenerateInstructions('');
     setNotice(null);
     setError(null);
   }
@@ -169,6 +194,7 @@ export default function ProspectEmailTable({
   function closeEmail() {
     if (busy === 'single' || busy === 'ai') return;
     setTarget(null);
+    setRegenerateInstructions('');
     setNotice(null);
     setError(null);
   }
@@ -245,20 +271,62 @@ export default function ProspectEmailTable({
     setBusy('ai');
     setError(null);
     try {
+      const currentBody = body.trim() || `مسودة أولية لرسالة تسويقية إلى فريق ${target.clinic_name} عن منصة Dentairec.`;
       const response = await fetch(`/api/admin/prospects/${target.id}/send-email`, {
-        method: 'POST',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, generateDraft: true, preview: true }),
+        credentials: 'include',
+        body: JSON.stringify({
+          currentSubject: subject.trim() || `اقتراح لتحسين تواصل ${target.clinic_name} مع المرضى`,
+          currentBody,
+          instructions: body.trim()
+            ? 'حسّن صياغة هذه المسودة لتكون رسالة تسويقية عربية مهنية ومناسبة للتواصل الأول.'
+            : 'اكتب رسالة تسويقية عربية أولية ومهنية للتعريف بالمنصة وخدماتها للعيادة.',
+        }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'تعذر توليد المسودة.');
-      setSubject(payload.draft?.subject || subject);
-      setBody(payload.draft?.body || '');
-      setNotice('تم توليد المسودة، راجعها قبل الإرسال.');
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(responseError(payload, 'تعذر توليد المسودة.'));
+      if (!isEmailDraft(payload)) throw new Error('استجابة AI غير صالحة.');
+      setSubject(payload.subject);
+      setBody(payload.body);
+      setNotice('تم توليد المسودة بالذكاء الاصطناعي، راجعها قبل الإرسال.');
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'تعذر توليد المسودة.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleRegenerate() {
+    const instructions = regenerateInstructions.trim();
+    if (!target || !instructions || busy || isRegenerating) return;
+    setIsRegenerating(true);
+    setBusy('ai');
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/prospects/${target.id}/send-email`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          instructions,
+          currentSubject: subject.trim() || `اقتراح لتحسين تواصل ${target.clinic_name} مع المرضى`,
+          currentBody: body.trim() || `مسودة أولية لرسالة تسويقية إلى فريق ${target.clinic_name} عن منصة Dentairec.`,
+        }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(responseError(payload, 'تعذّر إعادة التوليد — حاول مرة أخرى.'));
+      if (!isEmailDraft(payload)) throw new Error('استجابة AI غير صالحة.');
+      setSubject(payload.subject);
+      setBody(payload.body);
+      setRegenerateInstructions('');
+      setNotice('تم تعديل المسودة. راجعها قبل الإرسال.');
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'تعذّر إعادة التوليد — حاول مرة أخرى.');
+    } finally {
+      setBusy(null);
+      setIsRegenerating(false);
     }
   }
 
@@ -632,6 +700,28 @@ export default function ProspectEmailTable({
             <div className="mt-5 space-y-4">
               <label className="block space-y-2 text-sm text-slate-300"><span>الموضوع</span><input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={300} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-white outline-none focus:border-cyan-400" /></label>
               <label className="block space-y-2 text-sm text-slate-300"><span>نص الرسالة</span><textarea value={body} onChange={(event) => setBody(event.target.value)} rows={9} maxLength={20_000} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-white outline-none focus:border-cyan-400" /></label>
+              <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
+                <label className="block space-y-2 text-sm text-slate-300">
+                  <span>✏️ عدّل الرسالة بالعربية</span>
+                  <textarea
+                    value={regenerateInstructions}
+                    onChange={(event) => setRegenerateInstructions(event.target.value)}
+                    placeholder="مثال: أضف الوكلاء الموظفين والبحث المجاني والإعلانات"
+                    rows={2}
+                    maxLength={1000}
+                    disabled={isRegenerating}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-sm text-white outline-none focus:border-violet-400 disabled:opacity-50"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleRegenerate()}
+                  disabled={isRegenerating || busy !== null || !regenerateInstructions.trim()}
+                  className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white hover:bg-violet-500 disabled:opacity-50"
+                >
+                  {isRegenerating ? '⏳ جاري التوليد...' : '🤖 أعد التوليد بالـ AI'}
+                </button>
+              </div>
               {notice && <p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{notice}</p>}
               {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
               <div className="flex flex-wrap justify-end gap-3">

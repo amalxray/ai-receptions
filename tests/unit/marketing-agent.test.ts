@@ -16,6 +16,7 @@ import {
   generateFollowUpEmail1,
   generateFollowUpEmail2,
   generateLinkedInPost,
+  regenerateProspectEmail,
   generateSalesEmail,
 } from '@/lib/services/marketing/marketing-agent';
 import { PLATFORM_LINKS, PLATFORM_LINKS_ARABIC_BLOCK } from '@/lib/communications/platformLinks';
@@ -93,6 +94,42 @@ describe('marketing agent', () => {
     expect(email).toContain('تصوير CBCT ثلاثي الأبعاد');
     expect(email).toContain('DICOM');
     expect(email).toContain('amal-x-ray-center.dentairec.com');
+  });
+
+  it('regenerates a prospect email using Groq-preferred failover and parses fenced JSON', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '```json\n{"subject":"عنوان جديد","body":"نص جديد"}\n```',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اجعل الرسالة أقصر',
+    })).resolves.toEqual({ subject: 'عنوان جديد', body: 'نص جديد' });
+
+    expect(ensureAIProviders).toHaveBeenCalledOnce();
+    expect(generateWithFailover).toHaveBeenCalledWith(expect.objectContaining({
+      preferredProviderId: 'groq',
+      prompt: expect.stringContaining('عيادة النور'),
+    }));
+    expect(vi.mocked(generateWithFailover).mock.calls[0][0].prompt)
+      .toContain('اجعل الرسالة أقصر');
+  });
+
+  it('rejects malformed AI JSON instead of returning a success-shaped draft', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: 'ليس JSON صالحاً',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).rejects.toThrow('تعذّر تحليل استجابة AI');
   });
 
   it('generates a blog article for the requested topic', async () => {
