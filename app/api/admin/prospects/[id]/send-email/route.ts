@@ -5,6 +5,8 @@ import {
   ProspectEmailError,
   sendProspectEmail,
 } from '@/lib/services/prospecting/prospectEmail';
+import { regenerateProspectEmail } from '@/lib/services/marketing/marketing-agent';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const bodySchema = z.object({
   subject: z.string().trim().max(300).optional(),
@@ -12,6 +14,12 @@ const bodySchema = z.object({
   generateDraft: z.boolean().optional().default(false),
   // Used by the UI to populate the editor without sending the generated draft.
   preview: z.boolean().optional().default(false),
+});
+
+const regenerateSchema = z.object({
+  instructions: z.string().trim().min(1).max(1000),
+  currentSubject: z.string().trim().min(1).max(300),
+  currentBody: z.string().trim().min(1).max(20_000),
 });
 
 export async function POST(
@@ -42,6 +50,61 @@ export async function POST(
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'فشل إرسال البريد.' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  const gate = await requirePlatformAdmin(req);
+  if (!gate.ok) {
+    return NextResponse.json({ error: 'غير مصرح' }, { status: gate.status });
+  }
+
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'يجب إرسال JSON صالح.' }, { status: 400 });
+  }
+
+  const parsed = regenerateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'تعليمات غير صالحة — يجب 1-1000 حرف.' },
+      { status: 400 },
+    );
+  }
+
+  const { data: prospect, error: dbError } = await supabaseAdmin
+    .from('prospects')
+    .select('clinic_name')
+    .eq('id', params.id)
+    .maybeSingle();
+
+  if (dbError) {
+    console.error('Failed to load prospect for email regeneration:', dbError);
+    return NextResponse.json({ error: 'تعذّر تحميل بيانات العيادة.' }, { status: 500 });
+  }
+  if (!prospect) {
+    return NextResponse.json({ error: 'العيادة غير موجودة.' }, { status: 404 });
+  }
+
+  try {
+    const result = await regenerateProspectEmail({
+      clinicName: prospect.clinic_name,
+      currentSubject: parsed.data.currentSubject,
+      currentBody: parsed.data.currentBody,
+      instructions: parsed.data.instructions,
+    });
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error('Failed to regenerate prospect email:', error);
+    return NextResponse.json(
+      { error: 'تعذّر إعادة توليد الرسالة — حاول مرة أخرى.' },
       { status: 500 },
     );
   }
