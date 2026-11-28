@@ -4,6 +4,7 @@ import {
   PLATFORM_SENDER_NAME,
   PLATFORM_WHATSAPP,
 } from '@/lib/services/marketing/marketing-agent';
+import { PLATFORM_LINKS_ARABIC_BLOCK } from '@/lib/communications/platformLinks';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getEmailProvider } from '@/lib/communications/email/provider';
 import { getAppBaseUrl } from '@/lib/communications/links';
@@ -76,6 +77,8 @@ function defaultBody(prospect: ProspectRecord) {
 نتواصل معكم بخصوص ${prospect.clinic_name} في ${prospect.city}. نود تعريفكم بـ Dentairec، موظفة استقبال رقمية تساعد العيادات على متابعة اتصالات المرضى والحجوزات على مدار الساعة.
 
 إذا كان ذلك مناسباً، يسعدنا ترتيب عرض مختصر للتعرّف على احتياجاتكم.
+
+${PLATFORM_LINKS_ARABIC_BLOCK}
 
 مع التحية،
 ${PLATFORM_SENDER_NAME}

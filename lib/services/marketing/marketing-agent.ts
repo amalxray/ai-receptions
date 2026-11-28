@@ -1,9 +1,10 @@
 import { ensureAIProviders } from '@/lib/ai/providers/registry';
 import { generateWithFailover } from '@/lib/ai/resilience';
+import { PLATFORM_LINKS, PLATFORM_LINKS_ARABIC_BLOCK } from '@/lib/communications/platformLinks';
 
 export const PLATFORM_SENDER_NAME = 'فريق Dentairec';
-export const PLATFORM_EMAIL = 'info@dentairec.com';
-export const PLATFORM_WHATSAPP = '+970569509093';
+export const PLATFORM_EMAIL = PLATFORM_LINKS.supportEmail;
+export const PLATFORM_WHATSAPP = PLATFORM_LINKS.supportPhone;
 
 const DENTAIREC_CONTEXT = `
 المنتج هو Dentairec، موظفة استقبال رقمية للعيادات تعمل على مدار الساعة ولا تنام.
@@ -88,6 +89,8 @@ Dentairec — نظام إدارة عيادات متكامل، يجمع كل ما
 نود أن نعرض لكم تجربة قصيرة (15 دقيقة)
 لنوضح كيف يمكن لـDentairec مساعدتكم.
 
+${PLATFORM_LINKS_ARABIC_BLOCK}
+
 ${PLATFORM_SENDER_NAME}
 ${PLATFORM_EMAIL}
 واتساب: ${PLATFORM_WHATSAPP}`;
@@ -103,6 +106,8 @@ export function generateFollowUpEmail1(clinicName: string, unsubscribeUrl: strin
 أتابع رسالتي السابقة للتأكد من وصولها. إذا كان لديكم اهتمام بالتعرّف على Dentairec وكيف يمكنه مساعدة فريق الاستقبال في متابعة اتصالات المرضى والحجوزات، يسعدنا ترتيب عرض مختصر يناسب وقتكم.
 
 إن لم يكن هذا مناسباً حالياً، فلا حاجة للرد.
+
+${PLATFORM_LINKS_ARABIC_BLOCK}
 
 مع التحية،
 ${PLATFORM_SENDER_NAME}
@@ -123,12 +128,43 @@ export function generateFollowUpEmail2(clinicName: string, unsubscribeUrl: strin
 
 إذا رغبتم بالتعرّف على النظام لاحقاً، يمكنكم التواصل معنا في الوقت المناسب لكم.
 
+${PLATFORM_LINKS_ARABIC_BLOCK}
+
 مع التحية،
 ${PLATFORM_SENDER_NAME}
 ${PLATFORM_EMAIL}
 واتساب: ${PLATFORM_WHATSAPP}
 
 لإلغاء الاشتراك: ${unsubscribe}`;
+}
+
+export function buildImagingCenterEmail(clinicName: string): string {
+  const name = requireText(clinicName, 'clinicName');
+
+  return `مرحباً فريق ${name}،
+
+Dentairec — منصة متكاملة لمراكز تصوير الأسنان، تجمع كل ما تحتاجه:
+
+🩻 إدارة طلبات التصوير الواردة من العيادات المحوّلة
+📸 تصوير CBCT ثلاثي الأبعاد + بانوراما رقمية
+📤 إرسال الصور (واتساب، إيميل، DICOM) مباشرة للطبيب
+💰 الفواتير والمدفوعات والتقارير المالية
+📅 حجز المواعيد إلكترونياً (24/7)
+🌐 صفحة عامة احترافية لمركزك
+💬 شات ذكي للرد على المرضى
+📊 تقارير وتحليلات
+
+✅ يعمل على مدار الساعة
+✅ واجهة عربية سهلة
+✅ يوفّر وقت فريقك
+
+${PLATFORM_LINKS_ARABIC_BLOCK}
+
+هل يناسبكم عرض توضيحي قصير (15 دقيقة)؟
+
+${PLATFORM_SENDER_NAME}
+${PLATFORM_LINKS.supportEmail}
+${PLATFORM_LINKS.supportPhone}`;
 }
 
 /** Creates an informative Arabic blog article without invented medical claims. */
