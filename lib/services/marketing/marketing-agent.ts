@@ -96,6 +96,16 @@ ${PLATFORM_EMAIL}
 واتساب: ${PLATFORM_WHATSAPP}`;
 }
 
+export class ProspectEmailRegenerateError extends Error {
+  constructor(
+    public readonly code: 'provider_failed' | 'invalid_json' | 'missing_fields' | 'timeout',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ProspectEmailRegenerateError';
+  }
+}
+
 export async function regenerateProspectEmail(input: {
   clinicName: string;
   currentSubject: string;
@@ -135,37 +145,94 @@ ${input.currentBody}
 { "subject": "الموضوع الجديد", "body": "النص الجديد" }
   `.trim();
 
-  ensureAIProviders();
-  const result = await generateWithFailover({
-    preferredProviderId: 'groq',
-    prompt,
-    maxTokens: 1200,
-    temperature: 0.7,
-  });
-
-  const fencedJson = result.text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const jsonMatch = fencedJson?.[1]?.trim() || result.text.match(/\{[\s\S]*\}/)?.[0];
-  if (!jsonMatch) throw new Error('تعذّر تحليل استجابة AI');
-
-  let parsed: unknown;
+  let rawText: string;
   try {
-    parsed = JSON.parse(jsonMatch);
-  } catch {
-    throw new Error('تعذّر تحليل استجابة AI');
+    ensureAIProviders();
+    const result = await generateWithFailover({
+      preferredProviderId: 'groq',
+      prompt,
+      maxTokens: 1200,
+      temperature: 0.7,
+    });
+    rawText = result.text;
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'UnknownError';
+    const message = error instanceof Error ? error.message : String(error);
+    const isTimeout = /timeout|timed out|aborted|ETIMEDOUT/i.test(message);
+    const safeMessage = message
+      .replace(prompt, '[prompt redacted]')
+      .replace(/gsk_[A-Za-z0-9_-]{10,}/g, 'gsk_[redacted]')
+      .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+      .slice(0, 500);
+    console.error('[regenerateProspectEmail] provider failed:', {
+      provider: 'groq-preferred failover',
+      name,
+      message: safeMessage,
+      isTimeout,
+    });
+    throw new ProspectEmailRegenerateError(
+      isTimeout ? 'timeout' : 'provider_failed',
+      safeMessage,
+    );
   }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('استجابة AI ناقصة');
-  }
-  const value = parsed as Record<string, unknown>;
-  if (
-    typeof value.subject !== 'string' || !value.subject.trim() ||
-    typeof value.body !== 'string' || !value.body.trim()
-  ) {
-    throw new Error('استجابة AI ناقصة');
+  let parsed: Record<string, unknown> | null = null;
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const value: unknown = JSON.parse(jsonMatch[0]);
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        parsed = value as Record<string, unknown>;
+      } else {
+        parsed = {};
+      }
+    } catch {
+      parsed = null;
+    }
   }
 
-  return { subject: value.subject.trim(), body: value.body.trim() };
+  if (!parsed) {
+    const extractStringField = (field: 'subject' | 'body'): string | null => {
+      const match = rawText.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+      if (!match) return null;
+      try {
+        const value: unknown = JSON.parse(`"${match[1]}"`);
+        return typeof value === 'string' ? value : null;
+      } catch {
+        return null;
+      }
+    };
+    const subject = extractStringField('subject');
+    const body = extractStringField('body');
+    if (subject !== null && body !== null) parsed = { subject, body };
+  }
+
+  if (!parsed) {
+    console.error('[regenerateProspectEmail] invalid_json:', {
+      name: 'SyntaxError',
+      message: 'AI response is not valid JSON',
+      responseLength: rawText.length,
+    });
+    throw new ProspectEmailRegenerateError('invalid_json', 'AI response is not valid JSON');
+  }
+
+  if (!parsed.subject || !parsed.body) {
+    throw new ProspectEmailRegenerateError(
+      'missing_fields',
+      'AI response missing subject or body',
+    );
+  }
+
+  const subject = String(parsed.subject).trim();
+  const body = String(parsed.body).trim();
+  if (!subject || !body) {
+    throw new ProspectEmailRegenerateError(
+      'missing_fields',
+      'AI response missing subject or body',
+    );
+  }
+
+  return { subject, body };
 }
 
 /** Creates the first concise follow-up email with an unsubscribe link. */

@@ -79,6 +79,18 @@ function responseError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function responseErrorCode(payload: unknown): string | null {
+  if (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'code' in payload &&
+    typeof payload.code === 'string'
+  ) {
+    return payload.code;
+  }
+  return null;
+}
+
 function normalizedProspectPhone(prospect: ProspectRow): string | null {
   const phone = prospect.phone?.trim();
   if (!phone) return null;
@@ -316,7 +328,12 @@ export default function ProspectEmailTable({
         }),
       });
       const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(responseError(payload, 'تعذّر إعادة التوليد — حاول مرة أخرى.'));
+      if (!response.ok) {
+        const message = responseError(payload, 'تعذّر إعادة التوليد — حاول مرة أخرى');
+        const code = responseErrorCode(payload);
+        setError(code ? `${message} (${code})` : message);
+        return;
+      }
       if (!isEmailDraft(payload)) throw new Error('استجابة AI غير صالحة.');
       setSubject(payload.subject);
       setBody(payload.body);

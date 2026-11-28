@@ -5,7 +5,10 @@ import {
   ProspectEmailError,
   sendProspectEmail,
 } from '@/lib/services/prospecting/prospectEmail';
-import { regenerateProspectEmail } from '@/lib/services/marketing/marketing-agent';
+import {
+  ProspectEmailRegenerateError,
+  regenerateProspectEmail,
+} from '@/lib/services/marketing/marketing-agent';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const bodySchema = z.object({
@@ -102,7 +105,26 @@ export async function PUT(
     });
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Failed to regenerate prospect email:', error);
+    if (error instanceof ProspectEmailRegenerateError) {
+      console.error('[send-email PUT] regenerate failed:', {
+        code: error.code,
+        message: error.message,
+      });
+      const userMessages: Record<string, string> = {
+        provider_failed: 'تعذّر الاتصال بمزود الذكاء الاصطناعي — حاول مرة أخرى بعد دقيقة.',
+        timeout: 'انتهت مهلة الاتصال بمزود الذكاء الاصطناعي — حاول مرة أخرى.',
+        invalid_json: 'استجابة الذكاء الاصطناعي غير صالحة — حاول مرة أخرى.',
+        missing_fields: 'استجابة الذكاء الاصطناعي ناقصة — حاول مرة أخرى.',
+      };
+      return NextResponse.json(
+        {
+          error: userMessages[error.code] ?? 'تعذّر إعادة توليد الرسالة',
+          code: error.code,
+        },
+        { status: error.code === 'timeout' ? 504 : 502 },
+      );
+    }
+    console.error('[send-email PUT] unexpected error:', error);
     return NextResponse.json(
       { error: 'تعذّر إعادة توليد الرسالة — حاول مرة أخرى.' },
       { status: 500 },
