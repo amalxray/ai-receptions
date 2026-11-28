@@ -3,11 +3,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   insertResult: { data: { id: 'email-record-id' }, error: null as null | { code?: string; message: string } },
   duplicateResult: { data: null as null | { id: string }, error: null as null | { message: string } },
+  prospect: null as null | {
+    id: string;
+    clinic_name: string;
+    doctor_name: string | null;
+    email: string;
+    city: string;
+    status: string;
+    metadata: Record<string, unknown>;
+    unsubscribe_token: string;
+    unsubscribed_at: string | null;
+  },
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: {
     from: (table: string) => {
+      let prospectLookup = false;
       if (table === 'prospect_emails') {
         const query = {
           insert: vi.fn(() => query),
@@ -22,19 +34,43 @@ vi.mock('@/lib/supabase/admin', () => ({
         ilike: vi.fn(() => query),
         not: vi.fn(() => query),
         limit: vi.fn(() => query),
-        maybeSingle: vi.fn(async () => state.duplicateResult),
+        eq: vi.fn(() => {
+          prospectLookup = true;
+          return query;
+        }),
+        maybeSingle: vi.fn(async () => (
+          prospectLookup
+            ? { data: state.prospect, error: null }
+            : state.duplicateResult
+        )),
       };
       return query;
     },
   },
 }));
 
-import { canSendEmail, claimEmailSlot } from '@/lib/services/prospecting/prospectEmail';
+import {
+  canSendEmail,
+  claimEmailSlot,
+  sendProspectEmail,
+} from '@/lib/services/prospecting/prospectEmail';
+import { PLATFORM_LINKS, PLATFORM_LINKS_ARABIC_BLOCK } from '@/lib/communications/platformLinks';
 
 describe('prospect email protection helpers', () => {
   beforeEach(() => {
     state.insertResult = { data: { id: 'email-record-id' }, error: null };
     state.duplicateResult = { data: null, error: null };
+    state.prospect = {
+      id: 'prospect-id',
+      clinic_name: 'عيادة النور',
+      doctor_name: 'د. نور',
+      email: 'clinic@example.test',
+      city: 'نابلس',
+      status: 'new',
+      metadata: {},
+      unsubscribe_token: 'unsubscribe-token',
+      unsubscribed_at: null,
+    };
   });
 
   it('claims an available email slot', async () => {
@@ -74,5 +110,18 @@ describe('prospect email protection helpers', () => {
       email: 'clinic@example.test',
       unsubscribed_at: null,
     })).resolves.toBe(true);
+  });
+
+  it('includes the central links block once in the default prospect email preview', async () => {
+    const result = await sendProspectEmail(
+      'prospect-id',
+      { preview: true },
+      { useDefaultBody: true },
+    );
+
+    expect(result).toHaveProperty('preview', true);
+    if (!('body' in result)) throw new Error('Expected a prospect email preview body');
+    expect(result.body).toContain(PLATFORM_LINKS_ARABIC_BLOCK);
+    expect(result.body.split(PLATFORM_LINKS.showcaseImaging)).toHaveLength(2);
   });
 });

@@ -11,10 +11,15 @@ vi.mock('@/lib/ai/resilience', () => ({
 import { ensureAIProviders } from '@/lib/ai/providers/registry';
 import { generateWithFailover } from '@/lib/ai/resilience';
 import {
+  buildImagingCenterEmail,
   generateBlogArticle,
+  generateFollowUpEmail1,
+  generateFollowUpEmail2,
   generateLinkedInPost,
   generateSalesEmail,
 } from '@/lib/services/marketing/marketing-agent';
+import { PLATFORM_LINKS, PLATFORM_LINKS_ARABIC_BLOCK } from '@/lib/communications/platformLinks';
+import { DEFAULT_WHATSAPP_MESSAGE } from '@/lib/communications/whatsappTemplates';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -48,6 +53,46 @@ describe('marketing agent', () => {
     expect(email).toContain('واتساب: +970569509093');
     expect(email).not.toMatch(/\[[^\]]+\]/);
     expect(generateWithFailover).not.toHaveBeenCalled();
+  });
+
+  it('keeps all five platform links in the shared links block and WhatsApp template', () => {
+    const links = [
+      PLATFORM_LINKS.home,
+      PLATFORM_LINKS.ask,
+      PLATFORM_LINKS.discover,
+      PLATFORM_LINKS.showcaseImaging,
+      PLATFORM_LINKS.whatsapp,
+    ];
+
+    expect(PLATFORM_LINKS_ARABIC_BLOCK.match(/https:\/\//g)).toHaveLength(5);
+    for (const link of links) {
+      expect(PLATFORM_LINKS_ARABIC_BLOCK).toContain(link);
+      expect(DEFAULT_WHATSAPP_MESSAGE).toContain(link);
+    }
+  });
+
+  it('adds the shared links block once to each email template', async () => {
+    const emails = [
+      await generateSalesEmail('عيادة النور', 'د. سارة', 'متابعة بعد التواصل'),
+      generateFollowUpEmail1('عيادة النور', 'https://example.test/unsubscribe/token'),
+      generateFollowUpEmail2('عيادة النور', 'https://example.test/unsubscribe/token'),
+      buildImagingCenterEmail('عيادة الاختبار'),
+    ];
+
+    for (const email of emails) {
+      expect(email).toContain(PLATFORM_LINKS_ARABIC_BLOCK);
+      expect(email.split(PLATFORM_LINKS.showcaseImaging)).toHaveLength(2);
+      expect(email).toContain('https://wa.me/970569509093');
+    }
+  });
+
+  it('creates an imaging-center email with the requested service details', () => {
+    const email = buildImagingCenterEmail('عيادة الاختبار');
+
+    expect(email).toContain('مرحباً فريق عيادة الاختبار،');
+    expect(email).toContain('تصوير CBCT ثلاثي الأبعاد');
+    expect(email).toContain('DICOM');
+    expect(email).toContain('amal-x-ray-center.dentairec.com');
   });
 
   it('generates a blog article for the requested topic', async () => {
