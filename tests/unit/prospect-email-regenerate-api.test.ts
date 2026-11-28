@@ -13,9 +13,10 @@ vi.mock('@/lib/services/platformAdmin', () => ({
   requirePlatformAdmin: vi.fn(async () => state.gate),
 }));
 
-vi.mock('@/lib/services/marketing/marketing-agent', () => ({
-  regenerateProspectEmail: state.regenerate,
-}));
+vi.mock('@/lib/services/marketing/marketing-agent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/services/marketing/marketing-agent')>();
+  return { ...actual, regenerateProspectEmail: state.regenerate };
+});
 
 vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: {
@@ -31,6 +32,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 
 import { PUT } from '@/app/api/admin/prospects/[id]/send-email/route';
+import { ProspectEmailRegenerateError } from '@/lib/services/marketing/marketing-agent';
 
 function requestWithBody(body: string): Request {
   return new Request('http://localhost/api/admin/prospects/prospect-id/send-email', {
@@ -99,5 +101,33 @@ describe('admin prospect email regeneration API', () => {
 
     expect(response.status).toBe(404);
     expect(state.regenerate).not.toHaveBeenCalled();
+  });
+
+  it('returns 502 and provider_failed code for provider errors', async () => {
+    state.regenerate.mockRejectedValueOnce(
+      new ProspectEmailRegenerateError('provider_failed', 'provider unavailable'),
+    );
+    const response = await PUT(requestWithBody(JSON.stringify({
+      instructions: 'اختصر الرسالة',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+    })), { params: { id: 'prospect-id' } });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ code: 'provider_failed' });
+  });
+
+  it('returns 504 and timeout code for provider timeouts', async () => {
+    state.regenerate.mockRejectedValueOnce(
+      new ProspectEmailRegenerateError('timeout', 'provider timed out'),
+    );
+    const response = await PUT(requestWithBody(JSON.stringify({
+      instructions: 'اختصر الرسالة',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+    })), { params: { id: 'prospect-id' } });
+
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toMatchObject({ code: 'timeout' });
   });
 });

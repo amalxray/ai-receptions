@@ -118,7 +118,21 @@ describe('marketing agent', () => {
       .toContain('اجعل الرسالة أقصر');
   });
 
-  it('rejects malformed AI JSON instead of returning a success-shaped draft', async () => {
+  it('classifies provider failures', async () => {
+    vi.mocked(generateWithFailover).mockRejectedValueOnce(new Error('Groq unavailable (503)'));
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).rejects.toMatchObject({
+      name: 'ProspectEmailRegenerateError',
+      code: 'provider_failed',
+    });
+  });
+
+  it('classifies malformed AI JSON as invalid_json', async () => {
     vi.mocked(generateWithFailover).mockResolvedValueOnce({
       text: 'ليس JSON صالحاً',
       providerId: 'groq',
@@ -129,7 +143,46 @@ describe('marketing agent', () => {
       currentSubject: 'العنوان الحالي',
       currentBody: 'النص الحالي',
       instructions: 'اختصر',
-    })).rejects.toThrow('تعذّر تحليل استجابة AI');
+    })).rejects.toMatchObject({ code: 'invalid_json' });
+  });
+
+  it('classifies valid JSON without subject or body as missing_fields', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '{"subject":"عنوان فقط"}',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).rejects.toMatchObject({ code: 'missing_fields' });
+  });
+
+  it('extracts subject and body when the response omits JSON braces', async () => {
+    vi.mocked(generateWithFailover).mockResolvedValueOnce({
+      text: '"subject": "عنوان جديد", "body": "نص جديد"',
+      providerId: 'groq',
+    });
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).resolves.toEqual({ subject: 'عنوان جديد', body: 'نص جديد' });
+  });
+
+  it('classifies provider timeouts separately', async () => {
+    vi.mocked(generateWithFailover).mockRejectedValueOnce(new Error('Groq request timed out'));
+
+    await expect(regenerateProspectEmail({
+      clinicName: 'عيادة النور',
+      currentSubject: 'العنوان الحالي',
+      currentBody: 'النص الحالي',
+      instructions: 'اختصر',
+    })).rejects.toMatchObject({ code: 'timeout' });
   });
 
   it('generates a blog article for the requested topic', async () => {
