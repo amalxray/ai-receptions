@@ -121,6 +121,10 @@ describe('prospect email protection helpers', () => {
 
     expect(result).toHaveProperty('preview', true);
     if (!('body' in result)) throw new Error('Expected a prospect email preview body');
+    expect(result.body).toContain('السادة/ فريق عيادة النور المحترمين');
+    expect(result.body).toContain('1️⃣ وكلاء رقميون 24/7');
+    expect(result.body).toContain('47 مدينة');
+    expect(result.body).toContain('info@dentairec.com');
     expect(result.body).toContain(PLATFORM_LINKS_ARABIC_BLOCK);
     expect(result.body.split(PLATFORM_LINKS.showcaseImaging)).toHaveLength(2);
   });

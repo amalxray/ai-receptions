@@ -54,6 +54,47 @@ export async function generateLinkedInPost(topic: string, audience: string): Pro
   );
 }
 
+export function buildProspectSalesEmail(clinicName: string): string {
+  const name = requireText(clinicName, 'clinicName');
+  const clinicLabel = name.replace(/^عيادة\s+/, '');
+
+  return `السادة/ فريق عيادة ${clinicLabel} المحترمين،
+
+نود أن نعرّفكم بمنصة Dentairec المتكاملة، الحل الذكي الذي يرفع من كفاءة إدارة عيادتكم ويعزز تواصلها مع المرضى. Dentairec ليست مجرد نظام لإدارة العيادات، بل هي منصة نمو شاملة توفر لكم:
+
+1️⃣ وكلاء رقميون 24/7:
+
+- وكيل الاستقبال: يرد على استفسارات المرضى ويحجز المواعيد فوراً.
+- وكيل التسويق: يكتب المنشورات والإعلانات لجذب المزيد من العملاء.
+- وكيل المتابعة: يتابع المرضى بعد الزيارة لضمان رضاهم ورفع معدلات العودة.
+- وكيل الذكاء الاصطناعي: يحلل الأشعة ويقدم تقارير دقيقة لدعم اتخاذ القرار الطبي.
+2️⃣ حضور رقمي مجاني:
+
+- ظهور عيادتكم في نتائج البحث عن عيادات الأسنان في 47 مدينة.
+- صفحة عامة احترافية على نطاق فرعي خاص بكم.
+- مقالات SEO تُنشر بانتظام لتعزيز الظهور الإلكتروني.
+- إعلانات مجانية داخل منصة Dentairec للوصول إلى جمهور أوسع.
+3️⃣ إدارة شاملة:
+
+- ملفات المرضى والسجلات الطبية بأمان وسهولة.
+- نظام حجز مواعيد إلكتروني مرن.
+- فواتير، مدفوعات، ورواتب مُدارة بنظام متكامل.
+- تقارير وتحليلات تفصيلية تساعدكم على اتخاذ قرارات مبنية على بيانات دقيقة.
+مع Dentairec، ستحقق عيادة ${clinicLabel}:
+
+- تحسين تجربة المرضى وزيادة رضاهم.
+- تقليل الوقت والجهد المبذول في مهام الإدارة اليومية.
+- تعزيز حضوركم الرقمي وجذب المزيد من المرضى الجدد.
+نحن على استعداد لتقديم عرض تجريبي مجاني وتخصيص الوكلاء الرقميين وفق احتياجات عيادتكم. لا تترددوا في التواصل معنا لتحديد موعد عرض توضيحي أو للإجابة على أي استفسار.
+
+${PLATFORM_LINKS_ARABIC_BLOCK}
+
+مع خالص التحية،
+${PLATFORM_SENDER_NAME}
+${PLATFORM_EMAIL}
+واتساب: ${PLATFORM_WHATSAPP}`;
+}
+
 /** Creates the standard Arabic platform sales email for a clinic. */
 export async function generateSalesEmail(
   clinicName: string,
@@ -63,37 +104,7 @@ export async function generateSalesEmail(
   const name = requireText(clinicName, 'clinicName');
   requireText(_doctorName, 'doctorName');
   requireText(_note, 'note');
-  const clinicLabel = name.replace(/^عيادة\s+/, '');
-
-  return `مرحباً فريق عيادة ${clinicLabel}،
-
-Dentairec — نظام إدارة عيادات متكامل، يجمع كل ما تحتاجه
-في منصة واحدة:
-
-🏥 إدارة المرضى والملفات الطبية
-📅 حجز المواعيد تلقائياً (24/7)
-💰 الفواتير والمدفوعات والتقارير المالية
-🩻 تحليل الأشعة بالذكاء الاصطناعي
-📊 التقارير والتحليلات
-👥 إدارة الفريق والرواتب
-💬 شات ذكي للرد على المرضى
-📣 أدوات تسويق مدمجة
-🌐 صفحة عامة احترافية لعيادتك
-
-المميزات:
-✅ يعمل على مدار الساعة
-✅ واجهة عربية سهلة
-✅ يوفر وقت فريقك
-✅ يقلل الأخطاء
-
-نود أن نعرض لكم تجربة قصيرة (15 دقيقة)
-لنوضح كيف يمكن لـDentairec مساعدتكم.
-
-${PLATFORM_LINKS_ARABIC_BLOCK}
-
-${PLATFORM_SENDER_NAME}
-${PLATFORM_EMAIL}
-واتساب: ${PLATFORM_WHATSAPP}`;
+  return buildProspectSalesEmail(name);
 }
 
 export class ProspectEmailRegenerateError extends Error {
@@ -132,6 +143,16 @@ export async function regenerateProspectEmail(input: {
    - مواعيد وحجز إلكتروني
    - فواتير ومدفوعات ورواتب
    - تقارير وتحليلات
+
+يجب أن تنتهي الرسالة بالضبط بهذا البلوك قبل التوقيع:
+${PLATFORM_LINKS_ARABIC_BLOCK}
+
+والتوقيع:
+فريق Dentairec
+info@dentairec.com
+واتساب: +970569509093
+
+لا تحذف الروابط ولا تعدّلها. لا تكرر رابط مركز التصوير خارج البلوك.
 
 المطلوب: أعد كتابة الرسالة التالية حسب تعليمات المستخدم.
 - اسم العيادة: ${input.clinicName}
